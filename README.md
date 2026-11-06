@@ -18,4 +18,5 @@ in step.
 
 ## License
 
-[Apache 2.0](LICENSE).
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). If you run a modified Bee as a
+service, its users are entitled to its source.
