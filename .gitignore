@@ -1,0 +1,26 @@
+# Gradle / Kotlin
+.gradle/
+build/
+.kotlin/
+local.properties
+kotlin-js-store/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Node (A2UI web renderer)
+node_modules/
+
+# Session scratch: hand-off notes between Claude sessions, never committed
+next-plan.md
+next-plan-*.md
+morning-report.md
+morning-report-*.md
+
+# Brainstorming companion screens
+.superpowers/
+
+# Dispatched worker worktrees
+.claude/worktrees/
