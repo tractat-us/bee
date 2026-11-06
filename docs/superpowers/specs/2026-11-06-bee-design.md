@@ -85,6 +85,13 @@ its clicks, through Bee instead:
 | Push `waiting.html` | Clear the board |
 | Idle timeout loses the session | The board outlives the server and every session |
 
+**Where that change lands (design call): a Bee-side adapter first.** The companion lives in the
+portable `agent-scheme` plugin (`tractat-us/claude-plugins`), which also runs on machines with no
+Bee. So v1 doesn't touch it. A Bee adapter emulates the companion's contract: it watches
+`screen_dir`, shows each new screen as a `Sketch` surface, and writes clicks back to
+`state_dir/events`. Teaching the plugin to prefer Bee when it's present, with a fallback, is a
+later and separate PR in that repo.
+
 **Secondary test:** two concurrent Claude sessions plus Iain use one board for a working day. One
 session asks a question and Iain answers it on the board. One session claims a card, the other
 sees the claim, and killing the claimant shows up on the board.
@@ -117,8 +124,9 @@ and the people present decide what happens next.
 from the earlier brainstorm's handoff, which put the replica in the browser tab and synced tabs over
 WebRTC. Here's why:
 
-- kuilt is proven on the JVM. Nobody has checked whether `kuilt-crdt` and `kuilt-raft` build for
-  wasmJs.
+- kuilt-crdt and kuilt-raft do build for wasmJs. A replica in the browser would still bring
+  IndexedDB persistence, WebRTC between tabs, and a replica per tab into v1. On the JVM daemon none
+  of that is needed.
 - The official A2UI web renderer can stay stock. kuilt sits *behind* the A2UI protocol, and the
   renderer never sees a CRDT.
 - Spikes 1 and 2 from the handoff (WebRTC without STUN or TURN, signalling over a WebSocket) and
@@ -132,9 +140,14 @@ Worker C ────────── bee-mcp (stdio) ─┘     replica · pr
 
 ### 5.1 The daemon
 
-- Holds the **board replica**: every surface as a kuilt `JsonCrdt` document. It's replicated with
-  kuilt's `Quilter`, even in v1, so that adding a second daemon later is a topology change, not a
-  rewrite.
+- Holds the **always-on board replica**: every surface as a kuilt `JsonCrdt` document.
+- **Each MCP bridge is a replica too (design call).** The bridges and the daemon replicate with
+  kuilt's `Quilter` over a localhost WebSocket fabric: `KtorServerLoom` on the daemon,
+  `KtorClientLoom` in each bridge. This is what makes concurrent writers real (spike 2), lets a
+  session read the board locally, and gives "what the actor had seen" a causal meaning (§6.2). It's
+  also the same shape as several machines later, so adding a second daemon is a topology change,
+  not a rewrite.
+- **Browser tabs are not replicas.** They speak A2UI only (§5.3).
 - Holds **presence** in an `EphemeralMap`, keyed by peer.
 - Runs **claims** over `kuilt-raft` (§6.3).
 - Persists everything durable through kuilt's `DurableStore` (`FileChannelDurableStore` on JVM), so
@@ -148,13 +161,24 @@ Worker C ────────── bee-mcp (stdio) ─┘     replica · pr
   **(design call)** Using one process per session means the bridge's lifetime *is* the session's.
   When the bridge disconnects, the session crashed or ended, and kuilt's liveness detection
   (`kuilt-liveness`) reports it as a departure.
-- Gives each session a stable **peer identity** (session name plus a fresh instance id), distinct
-  from the transport connection.
+- Gives each session a **peer identity** (session name plus a fresh instance id), distinct from
+  the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
+  a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
+  `Poll` counts people and agents, not tabs.
+- **`/clear` is a departure (design call).** A stdio MCP server normally survives `/clear`, but the
+  agent has lost its context, so its claims should not stay live. A `SessionStart` hook with
+  `source=clear` tells the bridge to retire its identity and take a fresh one. The old identity's
+  claims become orphaned (§6.4). Spike 3 verifies that the bridge does survive `/clear` and that
+  the hook fires.
 - Exposes tools for: reading the board; opening, updating and closing surfaces; reading and
   answering action records; claiming and releasing work; and posting presence ("working on X").
   The exact tool list is left to the plan.
-- **Waiting without polling (design call):** a tool that blocks until an action record addressed
-  to this session arrives, with a timeout. This is the replacement for reading `state_dir/events`.
+- **Waiting without polling (design call):** a tool that blocks until a matching action record
+  arrives, with a timeout. This is the replacement for reading `state_dir/events`.
+- **Records are addressed to a surface, never to a session instance (design call).** Session
+  identities are fresh each time, so a record addressed to one would wait forever once that session
+  ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
+  always goes through a claim** (§6.3), so two sessions never both act on one click.
 
 ### 5.3 The browser and the A2UI boundary
 
@@ -167,6 +191,10 @@ Worker C ────────── bee-mcp (stdio) ─┘     replica · pr
   replaces (upserts) a value at a JSON Pointer path. The daemon turns each merged CRDT change into
   those replacements for the browser. In the other direction it turns each browser `action` into a
   CRDT edit plus an action record. Merge rules live only in the daemon, never in the renderer.
+- **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
+  concurrently written value, but A2UI's `updateDataModel` takes exactly one. The daemon projects a
+  deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
+  instead of hiding it. Spike 2 picks the rule.
 - **Open for the spike:** in v0.9, bound inputs such as a `TextField` update the renderer's *local*
   model, and send it only on an action with `sendDataModel`. Live shared typing needs Bee's page to
   observe local data-model changes (likely through `@a2ui/web_core`) or a Bee component that does.
@@ -229,6 +257,14 @@ handler tell "the clicker voted before the third option was added" from "the cli
 to". **Design call:** records live in a dot-carrying sequence (kuilt `Rga`), per #2869's ruling
 that input identities come only from dot-carrying types.
 
+**Capturing the basis (design call):**
+
+- **An agent's action** takes its basis from its bridge's own replica at the moment it acts.
+- **A browser click** has no causal context of its own, because an A2UI `action` carries none.
+  The daemon therefore records, for each tab connection, the board version it last sent that tab,
+  and stamps that version as the click's basis. A click can't claim to have seen something its tab
+  hadn't yet been sent.
+
 How a surface's author declares which records are theirs is open (§10).
 
 ### 6.3 Claims: exactly one
@@ -259,8 +295,9 @@ claim through it.
 ## 7. Bee and kuilt
 
 - **Bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** It's private while it starts and
-  meant to be open source. The license is undecided: AGPL-3.0 or Apache 2.0. The seed commit
-  carries Apache 2.0 as a placeholder. kuilt may reference public `tractat-us` projects **(Iain)**,
+  meant to be open source under **AGPL-3.0 (Iain)**. **Every outside contribution requires a
+  strict CLA that assigns all rights to Iain (Iain)**, so relicensing (for example, moving a piece
+  into Apache-licensed kuilt, or a separate grant to an employer) stays his to decide. kuilt may reference public `tractat-us` projects **(Iain)**,
   which needs a matching edit to kuilt's References policy (§11).
 - **Generic pieces graduate to kuilt** once Bee has proven them: surfaces on `JsonCrdt` (including
   the A2UI mapping, if it stays generic), action records with a basis, exactly-once claims, a
@@ -278,9 +315,13 @@ claim through it.
 fixed in advance on a dinner story, so changing its story mid-M2 would void its baseline. Bee
 borrows from it:
 
-- the input-history contract (§6.2) and M1's `CONTRACTS.md`, frozen in kuilt
-- M2's reconnect shape (A), from the private M2 repo's spike report
-- the re-check of a shown answer when the viewer learns more (kuilt#2880)
+- the input-history contract (§6.2) and M1's `CONTRACTS.md`, frozen in kuilt at
+  `demo/workspace/` (commit `53f89b34`)
+- M2's reconnect shape (A), how a bridge's replica survives losing its connection to the daemon,
+  from `docs/spikes/2026-10-reconnect-shape.md` in `tractat-us/kuilt-workspace` (private, checked
+  out at `~/tractatus/kuilt-workspace`)
+- the re-check of a shown answer when the viewer learns more (kuilt#2880). Its code was removed
+  from kuilt and survives only at `53f89b34`, so it's borrowable as a design, not as a dependency.
 
 Bee also answers #2869's M5 question, whether A2UI earns its place over a fixed screen, for a case
 that has no fixed screen at all.
@@ -308,14 +349,17 @@ At each one, look for pieces to pick up in either direction.
 - The quiet-period threshold before the board prompts about a quiet claim.
 - The layout and history-strip UI.
 - Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in Bee.
-- Peer identity format and how a returning session reclaims its identity after `/clear`. This is
-  probably a fresh identity per session, so "returning" isn't a thing.
+- The exact peer identity format. The rules are in §5.2: fresh per session, kind human or agent,
+  and retired on `/clear`.
 
 ## 11. Follow-ups outside Bee
 
 - **kuilt References policy:** amend kuilt's `AGENTS.md` to allow references to public `tractat-us`
   projects (Iain's ruling). That's a kuilt PR, best landed once Bee is public.
-- **Workspace index:** add Bee to `~/tractatus/CLAUDE.md`.
+- **Workspace index:** Bee added to `~/tractatus/CLAUDE.md` (done).
+- **The CLA:** the assignment agreement's text (have a lawyer write it, not an agent) and a signing
+  check on PRs. Both are needed before the repo accepts outside contributions. `CONTRIBUTING.md`
+  says so meanwhile.
 - **Epic issues:** a Bee epic in `tractat-us/bee`, and a kuilt tracking issue for the primitives
   Bee will need. Each links the other and kuilt#2869.
 
