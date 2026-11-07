@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest
+import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpack
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -61,6 +63,17 @@ kotlin {
             }
         }
     }
+}
+
+// webpack (the bundle, and Karma's test bundle) reads bee-notions from its copy in node_modules,
+// which these tasks' own inputs leave out. The root build re-copies it when its sources change;
+// tracking the same sources here reruns the tasks that bundle it.
+val notionsSources = fileTree("../bee-notions") { exclude("node_modules/**") }
+tasks.withType<KotlinWebpack>().configureEach {
+    inputs.files(notionsSources).withPropertyName("beeNotions").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+tasks.withType<KotlinJsTest>().configureEach {
+    inputs.files(notionsSources).withPropertyName("beeNotions").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // The production page, for bee-host to pack under `web/`.
