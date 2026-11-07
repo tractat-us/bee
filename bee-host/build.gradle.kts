@@ -48,9 +48,6 @@ tasks.processResources {
     from(webDistribution) { into("web") }
 }
 
-// The fixture mains are test sources with no tests beside them until Task 3 adds some.
-tasks.test { failOnNoDiscoveredTests = false }
-
 // bee-web's build starts FixtureVoterMain from this project's test runtime classpath
 // before its browser test. It may not resolve this project's configurations while its own
 // task runs, so this task writes the resolved path to a file. bee-web consumes that file
