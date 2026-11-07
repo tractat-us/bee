@@ -6,6 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.onEach
+import kotlinx.serialization.BinaryFormat
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import us.tractat.bee.core.BEE_QUILTER_CONFIG
 import us.tractat.bee.core.BoardState
@@ -130,7 +132,8 @@ class BoardRelay(
         const val PATH: String = "/ws/board"
 
         /** The Quilter's wire format, named here because the forward decodes the same frames. */
-        private val FORMAT = Cbor
+        @OptIn(ExperimentalSerializationApi::class)
+        private val FORMAT: BinaryFormat = Cbor
 
         /** A relay whose hub accepts spokes from [source]. Background work runs on [scope]. */
         suspend fun hosted(
