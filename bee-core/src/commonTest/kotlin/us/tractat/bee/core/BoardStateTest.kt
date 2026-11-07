@@ -1,5 +1,9 @@
 package us.tractat.bee.core
 
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -18,17 +22,25 @@ import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.bee.core.BoardFixtures.values
+import us.tractat.kuilt.core.InMemoryLoom
+import us.tractat.kuilt.core.InMemoryTag
+import us.tractat.kuilt.core.Pattern
+import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.piece
+import us.tractat.kuilt.quilter.QuiltMessage
+import us.tractat.kuilt.quilter.Quilter
+import us.tractat.kuilt.quilter.QuilterConfig
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 class BoardStateTest {
@@ -254,6 +266,54 @@ class BoardStateTest {
                 delta.piece(patch.delta)
             }
         }
+    }
+
+    /**
+     * A populated board through the Quilter's own wire, CBOR by default: a replica seeded with it
+     * hands it to an empty one in its first-contact `FullState`. bee-core's compile classpath has
+     * no CBOR (kuilt-quilter keeps it `implementation`), so the Quilter is the codec, which is
+     * also the codec the board really travels in. It covers a record with a basis, every
+     * `JsonValue` kind (the null is a reopened surface's `closedAt`) and a closed surface's meta.
+     */
+    @Test
+    fun populatedBoardRoundTripsThroughTheQuilterWire() = runTest(StandardTestDispatcher()) {
+        val meta = SurfaceMeta("Later", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), BoardFixtures.OPENED_AT)
+        val closedAt = Instant.parse("2026-11-06T13:00:00Z")
+        val data = buildJsonObject {
+            put("flag", true)
+            put("count", 2)
+            put("ratio", 0.5)
+            put("answer", "pizza")
+            put("nested", buildJsonObject { put("a", "b") })
+            put("list", ids("x", "y"))
+        }
+        val board = opened(data)
+            .piece { it.appendEntry(A, SURFACE, "/options", str("Pizza")) }
+            .let { it.piece { s -> s.appendRecord(A, BoardFixtures.record(s)) } }
+            .piece { it.openSurface(B, "closed", meta, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+            .piece { it.closeSurface(B, "closed", closedAt) }
+            .piece { it.openSurface(B, "reopened", meta, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+            .piece { it.closeSurface(B, "reopened", closedAt) }
+            .piece { it.reopenSurface(B, "reopened") }
+        val loom = InMemoryLoom()
+        val config = QuilterConfig(expectVirtualTime = true)
+        val wire = QuiltMessage.serializer(BoardState.serializer())
+        Quilter(ReplicaId("q-a"), loom.weave(Rendezvous.New(Pattern("board"))), board, wire, backgroundScope, config)
+        val receiver = Quilter(ReplicaId("q-b"), loom.weave(Rendezvous.Existing(InMemoryTag("board"))), BoardState.EMPTY, wire, backgroundScope, config)
+        advanceTimeBy(100.milliseconds)
+        runCurrent()
+        val got = receiver.state.value
+        assertAll(
+            { assertEquals(1, board.records(SURFACE).size, "precondition: the board holds a record") },
+            { assertEquals(board, got) },
+            { assertEquals(board.records(SURFACE), got.records(SURFACE), "records, with their bases") },
+            { assertEquals(meta.copy(closedAt = closedAt), got.meta("closed")) },
+            { assertEquals(meta, got.meta("reopened")) },
+            { assertEquals(listOf(SURFACE, "reopened"), got.openSurfaces()) },
+            { assertEquals(setOf(JsonPrimitive(0.5)), values(got, "/ratio")) },
+            { assertEquals(setOf(JsonPrimitive(true)), values(got, "/flag")) },
+            { assertEquals(setOf<JsonElement>(ids("x", "y")), values(got, "/list")) },
+        )
     }
 
     private fun <T> permutations(items: List<T>): List<List<T>> =
