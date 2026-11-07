@@ -9,7 +9,14 @@ the whole voter set, so a claim commits once it appends it.
 The first run, against `0.7.0-dev.1690`, stopped at the fit check: a second learner cut the first
 off the log (bee#11). Iain ruled to fix kuilt first. kuilt#3121 (the learner reconciler) and
 kuilt#3122 (learner removal after a grace) fixed it, published as `0.7.0-dev.1692` (kuilt
-`7654ac4c2`).
+`7654ac4c2`). The grace itself first fires on `0.7.0-dev.1693` (kuilt `e6044eb42`, kuilt#3130).
+
+**The in-memory results before `2d19414` ran partly in real time** (bee#25). `ClaimsRig` passed
+kuilt's `identified(…)` a bare `TestCoroutineScheduler`, which isn't a dispatcher, so the seams'
+read and write loops ran on `Dispatchers.Default` inside virtual-time tests. That covers the
+46-of-50 control rerun on 1690, the 100 ms virtual-time latency, and the red controls on the old
+client below. `2d19414` passes `StandardTestDispatcher(testScheduler)`. Those numbers weren't
+rerun, except the race, which still comes to 0 of 50 with each client winning 25.
 
 ## Fit-check answers
 
@@ -108,7 +115,7 @@ the `NodeId` that an `Auto` id is built from. So v1 assumes every learner is hon
 `Depart`, as it already does about whose name a `Claim` carries. Enforcing it needs an
 authenticated proposer, which the host doesn't have yet.
 
-## Learner removal: wired, but it never fires
+## Learner removal after a grace
 
 `ClaimsVoter` builds its cluster with `learnerGrace = 30.seconds`. Every page load, bridge and
 `/clear` dials under a fresh `NodeId`, so without removal the learner set grows with every
@@ -117,23 +124,26 @@ a reconnect: `clusterClient` re-joins at once on a tear. Removal costs a claim n
 holds claims by `PeerIdentity`, and a learner that comes back after the grace is admitted again and
 catches up.
 
-**A kuilt gap stops the grace from ever starting:**
-[tractat-us/kuilt#3127](https://github.com/tractat-us/kuilt/issues/3127).
-`ServerCluster.admitLearner` holds each admitted room in `awaitCancellation()`, and only its
-`finally` withdraws the learner's spoke from `RaftRelayHub.learnersFlow`. The grace starts from that
-withdrawal. Nothing cancels a room's `onRoom` coroutine when its connection closes, in
-`KtorRoomHost` or in bee's in-memory host.
+**It works from kuilt `0.7.0-dev.1693`.** On `0.7.0-dev.1692` the grace never started
+([tractat-us/kuilt#3127](https://github.com/tractat-us/kuilt/issues/3127)):
+`ServerCluster.admitLearner` held each admitted room in `awaitCancellation()`, and only its
+`finally` withdrew the learner's spoke from `RaftRelayHub.learnersFlow`, where the grace starts.
+Nothing cancelled a room's `onRoom` coroutine when its connection closed, in `KtorRoomHost` or in
+bee's in-memory host. kuilt#3130 ends the admission when the learner leaves the room's roster.
 
-- In memory: `ClaimsRaceTest.aLearnerGoneForTheGraceLeavesTheConfig`. One learner's scope is
-  cancelled, and its id is still in the config 60 s of virtual time later. The test is `@Ignore`d,
-  naming kuilt#3127.
-- On real sockets (Netty, `KtorRoomHost`, CIO), with a throwaway diagnostic not kept in the tree:
-  `smoke-b`'s client scope was cancelled, and 45 s later the config still listed both learners.
+`ClaimsRaceTest.aLearnerGoneForTheGraceLeavesTheConfig` cancels one learner's client scope, which
+closes its in-memory link. No bee code changed for it to pass.
 
-Claims stay correct, but the host leaks. Every connection leaves a parked coroutine and an overlay
-attachment behind. Every dead learner stays in the config, and the leader keeps replicating to it
-for as long as the host runs. Once removal works, kuilt#3124 still keeps a removed peer's
-replication state on the leader.
+| kuilt | In memory (virtual time) | Real sockets (Netty, `KtorRoomHost`, CIO) |
+|---|---|---|
+| `0.7.0-dev.1692` | Still in the config at 60 s; the test was `@Ignore`d | Still in the config 45 s later |
+| `0.7.0-dev.1693` | Removed at 30 s; the other learner claims `Won` after | Removed after 30.08 s; the other learner claims `Won` after |
+
+The 1692 in-memory row was rerun on `2d19414`'s rig, as a control on this pin bump. Both
+real-socket rows came from a throwaway diagnostic not kept in the tree: one smoke learner's client
+scope cancelled, the voter's membership watched for 60 s.
+
+kuilt#3124 still keeps a removed peer's replication state on the leader.
 
 ## The learner's id must equal the client's `NodeId`
 
@@ -194,7 +204,7 @@ where `0.7.0-dev.1690` committed one per admission (103 entries).
 - `bee-host`: `ClaimsVoter` over `DurableStoreRaftStorage`, and a real `FixtureVoterMain`.
 - Green: `ClaimTableTest` (13), `ClaimsClientTest` (7, including
   `lateCommitOfTimedOutClaimIsReleased`, which reds when the late release is disabled),
-  `ClaimsRaceTest` (2 of 3, the third `@Ignore`d above), `VoterRestartTest` (2), `ClaimsSmokeTest`
+  `ClaimsRaceTest` (3, the grace test from `0.7.0-dev.1693`), `VoterRestartTest` (2), `ClaimsSmokeTest`
   (2) and `WasmClaimTest`.
 
 ### Where the code departs from the plan's interfaces
