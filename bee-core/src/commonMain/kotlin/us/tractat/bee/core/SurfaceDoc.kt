@@ -71,10 +71,22 @@ internal object SurfaceDoc {
      * keyed object, each key written the same way, and a scalar or a whole array as one leaf.
      *
      * An object write replaces the value at its path, as A2UI's `updateDataModel` does
-     * (tractat-us/bee#14): every key this replica holds there that [value] doesn't name is removed,
-     * at every depth, append-only arrays included. The removal is `ORMap`'s observed remove, so it
-     * retires only the keys this replica has seen, and a key another peer adds concurrently
-     * survives the merge. A removed path holds no type, so a later write may give it any.
+     * (tractat-us/bee#14). Each key this replica holds there that [value] doesn't name is cleared,
+     * at every depth, and the clearing touches only what this replica has seen:
+     * - A key whose subtree holds no append-only array is removed with `ORMap`'s observed remove.
+     * - An append-only array keeps its node and has every entry seen tombstoned with `Rga`
+     *   removes, so its sequence counter survives and no dot is ever minted twice: a basis that
+     *   saw an old entry can't claim a new one. An object holding such an array is kept, and
+     *   cleared the same way. A concurrent append to a cleared array survives.
+     *
+     * kuilt's add-wins has two consequences under a removed key, pinned in `BoardStateTest`:
+     * - A peer's concurrent write beneath it revives the key with that write only, so an item can
+     *   come back as a fragment, such as a card holding `column` and no `label`.
+     * - That revival also carries the peer's own earlier writes there, even ones this replica saw
+     *   and meant to remove, because `ORMap.put` folds its writer's own history into the new tag.
+     *
+     * A removed path holds no type, so a later write may give it any. A peer's concurrent write of
+     * the old type then loses under kuilt's `Object > Array > Leaf` rule, with no conflict shown.
      *
      * @throws IllegalArgumentException if a node on the way isn't an object, a key is empty, or the
      *   write would change a path's type (object, append-only array, whole array, scalar)
@@ -170,11 +182,7 @@ internal object SurfaceDoc {
             is JsonObject -> {
                 val entries = value.entries.map { it.key to it.value }
                 require(entries.none { it.first.isEmpty() }) { "$at holds an object with an empty key." }
-                val map = objectMap(existing, at)
-                val puts = threadedPuts(map, replica, entries) { key, current, v ->
-                    writeValue(current, replica, v, "$at/${SurfaceFormat.escapeSegment(key)}")
-                }
-                JsonNode.Object(puts.piece(removals(map, map.keys - value.keys)))
+                JsonNode.Object(replaceMembers(objectMap(existing, at), replica, entries, at))
             }
             else -> {
                 val structured = value is JsonArray
@@ -222,6 +230,43 @@ internal object SurfaceDoc {
         }
         return delta
     }
+
+    /**
+     * The delta that leaves the object [map], at [at], holding [entries] and nothing else this
+     * replica has seen: each entry written, and each other key cleared as [updateData] describes.
+     */
+    private fun replaceMembers(
+        map: ORMap<String, JsonNode>,
+        replica: ReplicaId,
+        entries: List<Pair<String, JsonElement>>,
+        at: String,
+    ): ORMap<String, JsonNode> {
+        val named = entries.map { it.first }.toSet()
+        val (kept, dropped) = map.keys.filterNot { it in named }.sorted().partition { holdsArray(map[it]!!) }
+        val writes = entries.map { (key, v) -> key to { current: JsonNode? -> writeValue(current, replica, v, child(at, key)) } } +
+            kept.map { key -> key to { current: JsonNode? -> clear(current!!, replica, child(at, key)) } }
+        val puts = threadedPuts(map, replica, writes) { _, current, write -> write(current) }
+        return puts.piece(removals(map, dropped.toSet()))
+    }
+
+    /** The delta clearing [node], which holds an append-only array: see [updateData]. */
+    private fun clear(node: JsonNode, replica: ReplicaId, at: String): JsonNode = when (node) {
+        is JsonNode.Array -> {
+            val (_, removes) = node.rga.removeFirst(node.rga.size)
+            JsonNode.Array(removes.fold(Rga.empty()) { delta, op -> delta.apply(op) })
+        }
+        is JsonNode.Object -> JsonNode.Object(replaceMembers(node.map, replica, emptyList(), at))
+        is JsonNode.Leaf -> error("$at is a leaf, which holds no append-only array to clear.")
+    }
+
+    /** Whether [node] is, or holds, an append-only array. Entries are leaves (A12), so no deeper. */
+    private fun holdsArray(node: JsonNode): Boolean = when (node) {
+        is JsonNode.Array -> true
+        is JsonNode.Object -> node.map.keys.any { holdsArray(node.map[it]!!) }
+        is JsonNode.Leaf -> false
+    }
+
+    private fun child(at: String, key: String) = "$at/${SurfaceFormat.escapeSegment(key)}"
 
     /**
      * The joined deltas of removing each of [keys] from [map]. A remove mints no tag, so unlike
