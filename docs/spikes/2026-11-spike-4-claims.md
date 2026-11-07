@@ -13,10 +13,13 @@ kuilt#3122 (learner removal after a grace) fixed it, published as `0.7.0-dev.169
 
 **The in-memory results before `2d19414` ran partly in real time** (bee#25). `ClaimsRig` passed
 kuilt's `identified(…)` a bare `TestCoroutineScheduler`, which isn't a dispatcher, so the seams'
-read and write loops ran on `Dispatchers.Default` inside virtual-time tests. That covers the
-46-of-50 control rerun on 1690, the 100 ms virtual-time latency, and the red controls on the old
-client below. `2d19414` passes `StandardTestDispatcher(testScheduler)`. Those numbers weren't
-rerun, except the race, which still comes to 0 of 50 with each client winning 25.
+read and write loops ran on `Dispatchers.Default` inside virtual-time tests. That covers every
+in-memory number recorded before `2d19414`, including the 47-of-50 first run and the 46-of-50
+control rerun on 1690, the 100 ms virtual-time latency, the 102- and 103-entry log counts, and the
+red controls on the old client below. `2d19414` passes `StandardTestDispatcher(testScheduler)`.
+Those numbers weren't rerun, except the race: rerun on `2d19414`'s rig against
+`0.7.0-dev.1693`, it still comes to 0 of 50, with each client winning 25 and the log committed
+through 102.
 
 ## Fit-check answers
 
@@ -99,8 +102,10 @@ target ends `Free`. The caller has to claim again.
 entry carrying the same `Claim`, committed after that claim's `Release`, wins again under a token
 nobody holds. No duplicate arrives on `0.7.0-dev.1692` within one incarnation, but kuilt's
 forwarding contract allows one: `ClientIdentity.Auto` leaves it to the consumer's
-`ClientSessionTable`. Production needs that table folded on `entry.dedupKey`, with a session-close
-hook to keep it bounded, which ties to kuilt#3127.
+`ClientSessionTable`. Production needs that table folded on `entry.dedupKey`, and kept bounded by
+dropping a session when it closes. No kuilt API exposes a session-close event yet: kuilt#3130,
+which closed kuilt#3127, ends the learner's admission but adds no such hook. That gap is
+tractat-us/kuilt#3129.
 
 ## Who may depart
 
@@ -131,8 +136,10 @@ catches up.
 Nothing cancelled a room's `onRoom` coroutine when its connection closed, in `KtorRoomHost` or in
 bee's in-memory host. kuilt#3130 ends the admission when the learner leaves the room's roster.
 
-`ClaimsRaceTest.aLearnerGoneForTheGraceLeavesTheConfig` cancels one learner's client scope, which
-closes its in-memory link. No bee code changed for it to pass.
+`ClaimsRaceTest.aLearnerGoneForTheGraceLeavesTheConfig` cancels one learner's client scope. That
+runs the client's shutdown, which sends a `Goodbye` and then closes its in-memory link: a clean
+leave, not a silent death. kuilt's own tests cover the silent case. No bee code changed for the
+test to pass.
 
 | kuilt | In memory (virtual time) | Real sockets (Netty, `KtorRoomHost`, CIO) |
 |---|---|---|
