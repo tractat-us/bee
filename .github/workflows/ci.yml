@@ -1,0 +1,212 @@
+name: ci
+
+# Aggregator pattern, modelled on tractat-us/kuilt's ci.yml:
+#
+#   detect  →  links  ┐
+#           →  build  ┴→  ci-required (the ONE required status check)
+#
+# detect (ubuntu, no JDK, seconds) diffs the change and emits three flags:
+#   docs-inputs  — any *.md changed               → links runs
+#   build-inputs — any non-doc path changed       → build runs, if…
+#   has-gradle   — a Gradle wrapper exists        → …this is also true
+# Bee is at design stage, so has-gradle is false and build is skipped until Spike 1
+# adds the Kotlin Multiplatform build (JVM + wasmJs, JDK 25). Spike 1 extends this file.
+#
+# ci-required passes only when every job that should have run succeeded and every
+# other job was skipped. It uses `if: always()`, not `!cancelled()`: a job skipped by
+# its `if:` reports as passing to branch protection, so a `!cancelled()` gate would
+# turn a cancelled run green. Keep the job name stable — branch protection names it.
+#
+# The repo is private, so Actions minutes are billed: ubuntu-latest only, no matrix,
+# a timeout on every job, drafts skipped, superseded PR runs cancelled.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # ready_for_review: drafts skip the jobs, so leaving draft must trigger a real run.
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Present so a merge queue can be enabled without editing this file.
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The ready/push split (kuilt#1132): when a final push and draft→ready land in the
+# same second, the draft run must not cancel the ready run on the same sha.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'ready_for_review' && 'ready' || 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  detect:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs-inputs: ${{ steps.classify.outputs.docs-inputs }}
+      build-inputs: ${{ steps.classify.outputs.build-inputs }}
+      has-gradle: ${{ steps.classify.outputs.has-gradle }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: the repo is small, and every base sha must resolve for the diff.
+          fetch-depth: 0
+
+      - name: Classify change
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          MQ_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          HAS_GRADLE=false
+          [ -f gradlew ] && HAS_GRADLE=true
+
+          run_everything() {
+            echo "$1 — running every gate."
+            { echo "docs-inputs=true"; echo "build-inputs=true"; echo "has-gradle=$HAS_GRADLE"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          case "$EVENT" in
+            pull_request) RANGE="$PR_BASE HEAD" ;;
+            merge_group)  RANGE="$MQ_BASE $MQ_HEAD" ;;
+            push)
+              [[ "$PUSH_BEFORE" =~ ^0+$ ]] && run_everything "Initial push"
+              RANGE="$PUSH_BEFORE $PUSH_AFTER" ;;
+            *) run_everything "$EVENT" ;;
+          esac
+
+          # Fail safe: an unresolvable diff runs everything rather than skipping gates.
+          # shellcheck disable=SC2086
+          FILES=$(git diff --name-only $RANGE) || run_everything "git diff failed"
+          [ -z "$FILES" ] && run_everything "No changed files detected"
+          echo "Changed files:"; echo "$FILES"
+
+          DOCS_INPUTS=false
+          BUILD_INPUTS=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if [[ "$file" == *.md ]]; then
+              DOCS_INPUTS=true
+            fi
+            if ! { [[ "$file" == *.md ]] || [[ "$file" == docs/* ]] \
+              || [[ "$file" == LICENSE ]] || [[ "$file" == .gitignore ]]; }; then
+              BUILD_INPUTS=true
+            fi
+          done <<< "$FILES"
+
+          if [ "$BUILD_INPUTS" = true ] && [ "$HAS_GRADLE" = false ]; then
+            echo "::notice::Build inputs changed but there is no Gradle wrapper yet — build skipped."
+          fi
+          { echo "docs-inputs=$DOCS_INPUTS"; echo "build-inputs=$BUILD_INPUTS"; echo "has-gradle=$HAS_GRADLE"; } >> "$GITHUB_OUTPUT"
+
+  # Relative links and #fragments in the repo's own Markdown. --offline skips every
+  # remote URL, so this never flakes on someone else's site.
+  links:
+    needs: detect
+    if: needs.detect.outputs.docs-inputs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check relative links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          lycheeVersion: v0.24.2
+          args: --offline --include-fragments --no-progress './**/*.md'
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.build-inputs == 'true' && needs.detect.outputs.has-gradle == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          # Spike 1: pin the exact build here, alongside the Gradle toolchain.
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: wrapper
+          # Write the cache only from main; PRs read it.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Build
+        run: ./gradlew build --stacktrace
+
+      # A green build is a claim until the test count says otherwise.
+      - name: Test count
+        if: always()
+        run: |
+          shopt -s globstar nullglob
+          files=(**/build/test-results/**/*.xml)
+          count=0
+          for f in "${files[@]}"; do
+            n=$( { grep -o '<testcase ' "$f" || true; } | wc -l)
+            count=$((count + n))
+          done
+          echo "Executed test cases: $count (from ${#files[@]} result files)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  ci-required:
+    needs: [detect, links, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check gate results
+        env:
+          DRAFT: ${{ github.event.pull_request.draft }}
+          DETECT: ${{ needs.detect.result }}
+          LINKS: ${{ needs.links.result }}
+          BUILD: ${{ needs.build.result }}
+          DOCS_INPUTS: ${{ needs.detect.outputs.docs-inputs }}
+          BUILD_INPUTS: ${{ needs.detect.outputs.build-inputs }}
+          HAS_GRADLE: ${{ needs.detect.outputs.has-gradle }}
+        run: |
+          set -euo pipefail
+          # A draft run verified nothing, so it is never a merge signal (kuilt#131).
+          if [ "$DRAFT" = "true" ]; then
+            echo "::error::Draft run — not a merge gate. Mark the PR ready for review."; exit 1
+          fi
+
+          echo "detect: $DETECT  links: $LINKS  build: $BUILD"
+          echo "docs-inputs: $DOCS_INPUTS  build-inputs: $BUILD_INPUTS  has-gradle: $HAS_GRADLE"
+
+          if [ "$DETECT" != "success" ]; then
+            echo "::error::detect did not succeed (result: $DETECT)."; exit 1
+          fi
+
+          # gate <name> <result> <should-have-run>
+          gate() {
+            if [ "$3" = "true" ]; then
+              if [ "$2" != "success" ]; then
+                echo "::error::$1 had to run and pass (result: $2). skipped is not accepted."; exit 1
+              fi
+            elif [ "$2" != "skipped" ] && [ "$2" != "success" ]; then
+              echo "::error::$1 had unexpected result: $2."; exit 1
+            fi
+          }
+
+          gate links "$LINKS" "$DOCS_INPUTS"
+          SHOULD_BUILD=false
+          [ "$BUILD_INPUTS" = "true" ] && [ "$HAS_GRADLE" = "true" ] && SHOULD_BUILD=true
+          gate build "$BUILD" "$SHOULD_BUILD"
+          echo "All gates green."
