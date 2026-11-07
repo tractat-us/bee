@@ -27,18 +27,21 @@ value class ClaimTarget(val value: String) {
 data class ClaimToken(val term: Long, val index: Long)
 
 /**
- * One claim proposal's identity, drawn at random by its proposer. kuilt's `LogEntry.dedupKey` can't
- * serve: `ClusterClient.propose` draws the serial inside the call and hands it back only on success,
- * so a proposal that timed out has no key its proposer knows.
+ * One claim proposal's identity, unique by construction: the proposer's Raft [node] id, which kuilt
+ * keeps unique across the cluster and bee mints fresh per dial, a random [incarnation] drawn once
+ * per client, and a per-client [serial]. The incarnation guards a reused [node]: a client folds the
+ * log from index 1, so it meets every claim an earlier client under that id ever made.
+ *
+ * kuilt's `LogEntry.dedupKey` can't serve: `ClusterClient.propose` draws the serial inside the call
+ * and hands it back only on success, so a proposal that timed out has no key its proposer knows.
  */
 @Serializable
-@JvmInline
-value class ProposalId(val value: Long)
+data class ProposalId(val node: String, val incarnation: Long, val serial: Long)
 
 /**
- * One command in the claims log. Every command is idempotent under replay: the table it folds
- * into rejects a second application of the same command, because the first changed the state the
- * second is checked against.
+ * One command in the claims log. Replaying an entry at an index the table has applied changes
+ * nothing. A second entry carrying the same command is another matter: a duplicate `Claim`
+ * committed after a `Release` wins again (see [ClaimTable] and bee#23).
  */
 @Serializable
 sealed interface ClaimCommand {
