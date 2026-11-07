@@ -1,0 +1,40 @@
+#!/bin/sh
+# bee's SessionStart hook: on /clear, tell this session's bee bridge to retire its identity (A8).
+#
+# Claude Code passes the hook's JSON on stdin. When its "source" is "clear", this finds the
+# nearest ancestor process named `claude` (the rule the bridge uses, ClaudeAncestry.kt), reads
+# the port from $BEE_RUN_DIR/<claudePid>.json (default ~/.bee/run), and POSTs /retire to it.
+# Any other source exits 0 silently.
+#
+# A SessionStart hook's stdout joins the session's context, so this writes nothing there.
+# It always exits 0: a missing bridge must never break the session.
+
+input=$(cat)
+source=$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+[ "$source" = "clear" ] || exit 0
+
+say() { printf 'bee-session-start-hook: %s\n' "$*" >&2; }
+
+claude_pid=""
+pid=$PPID
+while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null) || break
+    if [ "$(basename -- "$comm")" = "claude" ]; then
+        claude_pid=$pid
+        break
+    fi
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+done
+[ -n "$claude_pid" ] || { say "no claude ancestor; nothing to retire"; exit 0; }
+
+run_file="${BEE_RUN_DIR:-$HOME/.bee/run}/$claude_pid.json"
+[ -r "$run_file" ] || { say "no bridge registered for claude $claude_pid ($run_file)"; exit 0; }
+port=$(tr -d '\n' < "$run_file" | sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+[ -n "$port" ] || { say "no port in $run_file"; exit 0; }
+
+if response=$(curl -fsS --max-time 5 -X POST "http://127.0.0.1:$port/retire" 2>&1); then
+    say "retired: $response"
+else
+    say "POST /retire on port $port failed: $response"
+fi
+exit 0
