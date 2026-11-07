@@ -39,7 +39,9 @@ sealed interface ClaimStatus {
  *   release with no token applies only to an [ClaimStatus.Orphaned] target.
  * - [ClaimCommand.Reassign] applies only to an orphaned target, and mints a new token.
  * - [ClaimCommand.Depart] orphans every claim the identity holds, and every later command by a
- *   retired identity applies as rejected.
+ *   retired identity applies as rejected. Only agents depart (§6.4): a `Depart` of a human applies
+ *   as rejected. The table can't check who proposed a `Depart`, so it trusts the log on that (the
+ *   spike 4 notes say why).
  *
  * A rejected command still advances [appliedIndex]: every committed index is accounted for.
  */
@@ -117,12 +119,14 @@ class ClaimTable private constructor(
 
     private fun complete(c: ClaimCommand.Complete): ClaimTable? {
         val current = status(c.target)
-        val allowed = !retired(c.by) && current is ClaimStatus.Held && current.holder == c.by && current.token == c.token
+        // No retired check: a retired identity can't hold a Held target (Depart orphans it, and a
+        // retired identity's claims and reassigns to it are rejected).
+        val allowed = current is ClaimStatus.Held && current.holder == c.by && current.token == c.token
         return if (allowed) set(c.target, ClaimStatus.Done(c.by)) else null
     }
 
     private fun depart(c: ClaimCommand.Depart): ClaimTable? {
-        if (retired(c.identity)) return null
+        if (c.identity.kind != PeerKind.Agent || retired(c.identity)) return null
         val orphaned = claims.mapValues { (_, s) ->
             if (s is ClaimStatus.Held && s.holder == c.identity) ClaimStatus.Orphaned(s.holder, s.token) else s
         }
