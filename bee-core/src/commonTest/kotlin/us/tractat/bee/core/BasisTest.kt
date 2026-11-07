@@ -9,6 +9,7 @@ import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.kuilt.crdt.Patch
+import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.VersionVector
 import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.test.assertAll
@@ -85,6 +86,26 @@ class BasisTest {
             { assertFalse(claimed.completeIn(base, SURFACE)) },
             { assertTrue(claimed.completeIn(base.piece(onB), SURFACE)) },
             { assertFalse(claimedRecord.completeIn(base, SURFACE)) },
+            // A replica that hasn't received the surface yet hasn't delivered the basis either.
+            { assertFalse(captured.completeIn(BoardState.EMPTY, SURFACE)) },
+        )
+    }
+
+    @Test
+    fun floorIsCoveredAuthorByAuthor() {
+        val three = base
+            .piece { it.appendEntry(A, SURFACE, "/options", str("Tacos")) }
+            .piece { it.appendEntry(A, SURFACE, "/options", str("Ramen")) }
+        val captured = Basis.capture(three, SURFACE)
+        fun floored(vararg high: Pair<ReplicaId, Long>) =
+            captured.copy(surfaceDots = emptyMap(), surfaceFloors = mapOf("/options" to VersionVector.of(mapOf(*high))))
+        assertAll(
+            // Capture folds A's gap-free run 1..3 into the floor.
+            { assertEquals(VersionVector.of(mapOf(A to 3L)), captured.surfaceFloors["/options"]) },
+            { assertTrue(floored(A to 3L).completeIn(three, SURFACE)) },
+            { assertFalse(floored(A to 3L).completeIn(base, SURFACE)) },
+            { assertFalse(floored(A to 4L).completeIn(three, SURFACE)) },
+            { assertFalse(floored(A to 1L, B to 1L).completeIn(three, SURFACE)) },
         )
     }
 
