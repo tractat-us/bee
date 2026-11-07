@@ -129,6 +129,9 @@ class ReplaceSemanticsTest {
             { assertFailsWith<IllegalArgumentException> { cleared.updateData(A, SURFACE, "/poll/votes", count) } },
             { assertFailsWith<IllegalArgumentException> { cleared.appendEntry(A, SURFACE, "/poll/votes", str("x")) } },
             { assertEquals(JsonPrimitive(5), poll(cleared.piece { it.updateData(A, SURFACE, "/poll/votes", JsonPrimitive(5)) })["votes"]) },
+            // A cleared leaf holds no scalar any more, so it takes a whole array, which a scalar refuses.
+            { assertFailsWith<IllegalArgumentException>("control") { base.updateData(A, SURFACE, "/poll/votes", ids(1, 2)) } },
+            { assertEquals(ids(1, 2), poll(cleared.piece { it.updateData(A, SURFACE, "/poll/votes", ids(1, 2)) })["votes"]) },
         )
     }
 
@@ -145,7 +148,8 @@ class ReplaceSemanticsTest {
         val tacos = entryDots(reappended, "/poll/options").single()
         assertAll(
             { assertIs<JsonNode.Array>(node(replaced, "/poll/options")) },
-            { assertEquals(JsonArray(emptyList()), poll(replaced)["options"]) },
+            // An append-only array with every entry cleared is a husk, and is hidden.
+            { assertEquals(null, poll(replaced)["options"]) },
             { assertNotEquals(pizza, tacos) },
             { assertFalse(sawPizza.saw("/poll/options", tacos)) },
             // A replica holding only the old entry hasn't delivered what the new basis names.
@@ -169,11 +173,69 @@ class ReplaceSemanticsTest {
     }
 
     @Test
-    fun droppedObjectShowsAsAnEmptyHusk() {
-        // A replace keeps a dropped object and clears it, so it shows as {} rather than absent.
-        val base = opened(buildJsonObject { put("poll", buildJsonObject { put("question", "Lunch?") }); put("answer", "x") })
-        val replaced = base.piece { it.updateData(A, SURFACE, "/", buildJsonObject { put("answer", "y") }) }
-        assertEquals(buildJsonObject { put("answer", "y"); put("poll", JsonObject(emptyMap())) }, view(replaced).data)
+    fun droppedObjectIsHidden() {
+        // A replace keeps a dropped object and clears it. Holding keys but nothing to show, it's a
+        // husk, and hidden. An empty array written as data is a leaf, not a husk, and still shows.
+        val base = opened(
+            buildJsonObject {
+                put("poll", buildJsonObject { put("question", "Lunch?") })
+                put("answer", "x")
+                put("tags", ids("a"))
+            },
+        ).piece { it.appendEntry(A, SURFACE, "/poll/options", str("Pizza")) }
+        val replaced = base.piece { it.updateData(A, SURFACE, "/", buildJsonObject { put("answer", "y"); put("tags", ids()) }) }
+        assertAll(
+            { assertIs<JsonNode.Object>(node(replaced, "/poll"), "precondition: the node is kept") },
+            { assertEquals(buildJsonObject { put("answer", "y"); put("tags", ids()) }, view(replaced).data) },
+        )
+    }
+
+    @Test
+    fun deletedCardLeavesTheBoard() {
+        // A replace is the only delete, so a card it drops must go: from items, and from the order.
+        val state = board("c0", "c1").piece {
+            it.updateData(A, SURFACE, "/board/items", buildJsonObject { put("c0", card("c0")) })
+        }
+        assertAll(
+            { assertEquals(buildJsonObject { put("c0", card("c0")) }, items(state)) },
+            { assertEquals(listOf("c0"), cardOrder(state)) },
+        )
+    }
+
+    @Test
+    fun emptiedItemsStillShowAsACollection() {
+        // A collection's own items show as {} when emptied, not hidden, so the board stays one.
+        val state = board("c0").piece { it.updateData(A, SURFACE, "/board/items", JsonObject(emptyMap())) }
+        assertEquals(
+            buildJsonObject { put("items", JsonObject(emptyMap())); put("order", ids()) },
+            view(state).data["board"],
+        )
+    }
+
+    @Test
+    fun droppedExtrasLeaveACollection() {
+        // While /board holds a filter object and a tags array besides items and order, it's ordinary
+        // data. A replace naming only items clears both extras, and the order's entries. A cleared
+        // object and a fully tombstoned append-only array are husks, which don't count, so /board
+        // is a collection again and shows its items sorted by id.
+        val extras = board("c1", "c0")
+            .piece { it.updateData(A, SURFACE, "/board/filter", buildJsonObject { put("col", "todo") }) }
+            .piece { it.appendEntry(A, SURFACE, "/board/tags", str("urgent")) }
+        val replaced = extras.piece {
+            it.updateData(A, SURFACE, "/board", buildJsonObject { put("items", buildJsonObject { put("c0", card("c0")); put("c1", card("c1")) }) })
+        }
+        assertAll(
+            { assertEquals(ids("c1", "c0"), (view(extras).data.getValue("board") as JsonObject)["order"], "precondition: not a collection") },
+            { assertEquals(setOf("items", "order"), (view(replaced).data.getValue("board") as JsonObject).keys) },
+            { assertEquals(listOf("c0", "c1"), cardOrder(replaced)) },
+        )
+    }
+
+    @Test
+    fun wholeArrayOrderIsNotACollection() {
+        // Only an append-only order makes a collection. A whole array is data, shown as written.
+        val state = opened(buildJsonObject { put("list", buildJsonObject { put("items", buildJsonObject { put("x", 1) }); put("order", ids("x", "y")) }) })
+        assertEquals(ids("x", "y"), (view(state).data.getValue("list") as JsonObject)["order"])
     }
 
     @Test
@@ -188,6 +250,8 @@ class ReplaceSemanticsTest {
             { assertEquals(ab, onB.piece(onA)) },
             { assertEquals(buildJsonObject { put("column", "done") }, items(ab)["c1"]) },
             { assertEquals(listOf("c1"), cardOrder(ab)) },
+            // The clear is no value of its own: it never shows as a conflict with B's write.
+            { assertEquals(emptyMap(), view(ab).conflicts) },
         )
     }
 
@@ -283,6 +347,15 @@ class ReplaceSemanticsTest {
     }
 
     private fun poll(state: BoardState): JsonObject = view(state).data.getValue("poll") as JsonObject
+
+    private fun ids(vararg ids: Any): JsonArray = JsonArray(
+        ids.map {
+            when (it) {
+                is Number -> JsonPrimitive(it)
+                else -> JsonPrimitive(it.toString())
+            }
+        },
+    )
 
     private fun items(state: BoardState): JsonObject =
         (view(state).data.getValue("board") as JsonObject).getValue("items") as JsonObject

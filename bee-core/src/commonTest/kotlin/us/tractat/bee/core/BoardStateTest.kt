@@ -173,13 +173,22 @@ class BoardStateTest {
     fun deltasJoinInAnyOrderWithRepeats() {
         // Three replicas run every mutator; their six deltas, delivered in all 720 orders with the
         // first delivered twice, reach one state and one projection (the lattice laws).
-        // A's replace of /poll races B's add to it and B's append to the array it clears, and A and
-        // C each add a card to one order (#14).
+        // A's replace of /poll races B's add to it, B's append to the array it clears, B's write to
+        // a leaf it clears and B's write inside an object it clears. A then rewrites two cleared
+        // paths, which must still conflict with or sit beside B's writes. A and C each add a card
+        // to one order (#14).
         val base = addCard(
             opened(
                 buildJsonObject {
                     put("order", ids("a", "b"))
-                    put("poll", buildJsonObject { put("question", "Lunch?"); put("votes", 3) })
+                    put(
+                        "poll",
+                        buildJsonObject {
+                            put("question", "Lunch?")
+                            put("votes", 3)
+                            put("meta", buildJsonObject { put("by", "a"); put("at", "noon") })
+                        },
+                    )
                     put("board", buildJsonObject { put("items", JsonObject(emptyMap())) })
                 },
             ),
@@ -202,6 +211,8 @@ class BoardStateTest {
                 { it.updateData(A, SURFACE, "/cards", cards) },
                 { it.updateData(A, SURFACE, "/board/items/c1", card("c1")) },
                 { it.appendEntry(A, SURFACE, "/board/order", str("c1")) },
+                { it.updateData(A, SURFACE, "/poll/votes", JsonPrimitive(5)) },
+                { it.updateData(A, SURFACE, "/poll/meta/at", str("one")) },
             ),
         ) + deltasOf(
             base,
@@ -210,6 +221,8 @@ class BoardStateTest {
                 { it.updateData(B, SURFACE, "/answer", str("y")) },
                 { it.updateData(B, SURFACE, "/poll/comment", str("hi")) },
                 { it.appendEntry(B, SURFACE, "/poll/options", str("Tacos")) },
+                { it.updateData(B, SURFACE, "/poll/votes", JsonPrimitive(4)) },
+                { it.updateData(B, SURFACE, "/poll/meta/by", str("b")) },
             ),
             listOf({ it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
         ) + deltasOf(
@@ -237,10 +250,17 @@ class BoardStateTest {
             { assertEquals(listOf("x", "y").map(::str), views(expected).getValue(SURFACE).conflicts["/answer"]) },
             {
                 assertEquals(
-                    buildJsonObject { put("comment", "hi"); put("options", ids("Tacos")); put("question", "Dinner?") },
+                    buildJsonObject {
+                        put("comment", "hi")
+                        put("meta", buildJsonObject { put("at", "one"); put("by", "b") })
+                        put("options", ids("Tacos"))
+                        put("question", "Dinner?")
+                        put("votes", 5)
+                    },
                     views(expected).getValue(SURFACE).data["poll"],
                 )
             },
+            { assertEquals(listOf(4, 5).map(::JsonPrimitive), views(expected).getValue(SURFACE).conflicts["/poll/votes"]) },
             { assertEquals(setOf("c0", "c1", "c2"), cardOrder(expected).toSet()) },
             { assertEquals(3, cardOrder(expected).size) },
         )
