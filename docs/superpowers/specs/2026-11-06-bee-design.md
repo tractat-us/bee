@@ -282,8 +282,9 @@ Claude session ── bee-mcp                                           ┘     
   routes `/`, `/ws/board` and `/ws/claims`. The host has no write route: it writes to the board
   only through its own replica.
 - **Where it runs.** Solo: on Iain's laptop. It binds loopback only unless it's started with
-  `--lan` (design call), and then it's reachable on his network at `tractatus.local` (§5.7). For a team: on a
-  shared server. For an employer's hackathon on employer code, that's the hosting party's call.
+  `--lan` (design call), and then it's reachable on his network at `tractatus.local` (§5.7).
+  For a team: on a shared server. For an employer's hackathon on employer code, that's the
+  hosting party's call.
 
 ### 5.5 After v1: the phone app (Iain)
 
@@ -339,8 +340,9 @@ design call:
 orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
 someone can see the new screen.
 
-The other details are design calls too. Loopback connections need no key. A key in the URL (`?k=`) still
-admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong entries void it.
+The other details are design calls too. Loopback connections need no key. A key in the URL
+(`?k=`) still admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong
+entries void it.
 
 **This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is
 self-declared by trusted local peers. §9's sharing rule still governs what goes on the board.
