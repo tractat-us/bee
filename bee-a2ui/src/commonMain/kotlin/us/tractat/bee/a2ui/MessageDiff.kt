@@ -1,6 +1,7 @@
 package us.tractat.bee.a2ui
 
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -40,7 +41,8 @@ private fun dataChanges(surfaceId: String, pointer: String, a: JsonElement?, b: 
         a is JsonObject && b is JsonObject -> (a.keys + b.keys).sorted().flatMap { key ->
             dataChanges(surfaceId, "$pointer/${SurfaceFormat.escapeSegment(key)}", a[key], b[key])
         }
-        else -> listOf(A2uiMessage.UpdateDataModel(surfaceId, pointer.ifEmpty { ROOT }, b))
+        // A2UI v0.9.1 has no null value: a leaf holding JSON null is shown as absent.
+        else -> listOf(A2uiMessage.UpdateDataModel(surfaceId, pointer.ifEmpty { ROOT }, b.takeUnless { it == JsonNull }))
     }
 
 /** A2UI v0.9's path for the whole data model. */

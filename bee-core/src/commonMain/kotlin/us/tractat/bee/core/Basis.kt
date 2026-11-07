@@ -1,6 +1,7 @@
 package us.tractat.bee.core
 
 import kotlinx.serialization.Serializable
+import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.kuilt.crdt.Quilted
@@ -62,7 +63,7 @@ data class Basis(
          */
         fun capture(state: BoardState, surfaceId: String): Basis {
             val doc = requireNotNull(state.surfaceDoc(surfaceId)) { "No surface $surfaceId on the board." }
-            val arrays = buildMap { collectArrays(doc[SurfaceDoc.Format.DATA], "", this) }
+            val arrays = buildMap { collectArrays(doc[SurfaceFormat.DATA], "", this) }
             val compact = arrays.mapValues { (_, crdt) -> Compacted.of(crdt) }
             val records = Compacted.of(state.records)
             return Basis(
@@ -76,7 +77,7 @@ data class Basis(
         private fun collectArrays(node: JsonNode?, pointer: String, into: MutableMap<String, Quilted<*>>) {
             when (node) {
                 is JsonNode.Object -> node.map.keys.forEach { key ->
-                    collectArrays(node.map[key], "$pointer/${SurfaceDoc.Format.escapeSegment(key)}", into)
+                    collectArrays(node.map[key], "$pointer/${SurfaceFormat.escapeSegment(key)}", into)
                 }
                 // Entries are leaves (A12), so an array holds no array to name.
                 is JsonNode.Array -> into[pointer] = node.rga

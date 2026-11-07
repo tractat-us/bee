@@ -13,6 +13,8 @@ import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.bee.core.BoardFixtures.values
+import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.kuilt.crdt.ReplicaId
@@ -40,7 +42,7 @@ class BoardStateTest {
         assertAll(
             { assertEquals(ab, ba) },
             { assertEquals(setOf(str("from a")), values(ab, "/note")) },
-            { assertEquals(setOf(JsonPrimitive(2.0)), values(ab, "/count")) },
+            { assertEquals(setOf(JsonPrimitive(2)), values(ab, "/count")) },
             { assertEquals(2, BoardFixtures.entryDots(ab, "/options").size) },
             { assertEquals(setOf("root", "go"), (ab.surfaceDoc(SURFACE)!!["components"] as JsonNode.Object).map.keys) },
         )
@@ -159,7 +161,6 @@ internal object BoardFixtures {
     val B = ReplicaId("mcp-b")
     const val SURFACE = "lunch"
     val OPENED_AT: Instant = Instant.parse("2026-11-06T12:00:00Z")
-    private const val CATALOG = "https://tractat.us/bee/catalogs/notions/v1.json"
 
     val root: JsonObject = buildJsonObject {
         put("id", "root")
@@ -169,7 +170,7 @@ internal object BoardFixtures {
 
     /** A board holding one open surface, opened on [A]. */
     fun opened(data: JsonObject = JsonObject(emptyMap())): BoardState {
-        val meta = SurfaceMeta("Lunch", CATALOG, PeerIdentity.human("iain"), OPENED_AT)
+        val meta = SurfaceMeta("Lunch", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), OPENED_AT)
         return BoardState.EMPTY.piece { it.openSurface(A, SURFACE, meta, listOf(root), data) }
     }
 
@@ -186,7 +187,7 @@ internal object BoardFixtures {
 
     /** The data node at [pointer] in [SURFACE]. */
     fun node(state: BoardState, pointer: String): JsonNode? =
-        SurfaceDoc.Format.segments(pointer).fold(state.surfaceDoc(SURFACE)!![SurfaceDoc.Format.DATA]) { node, key ->
+        SurfaceFormat.segments(pointer).fold(state.surfaceDoc(SURFACE)!![SurfaceFormat.DATA]) { node, key ->
             (node as JsonNode.Object).map[key]
         }
 

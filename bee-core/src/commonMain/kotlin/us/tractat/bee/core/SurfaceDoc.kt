@@ -1,14 +1,11 @@
 package us.tractat.bee.core
 
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.kuilt.crdt.JsonCrdt
 import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.kuilt.crdt.JsonValue
@@ -46,7 +43,7 @@ internal object SurfaceDoc {
         data: JsonObject,
     ): JsonCrdt {
         val writes = listOf<(JsonCrdt) -> Patch<JsonCrdt>>(
-            { it.set(Format.META, metaNode(null, replica, meta)) },
+            { it.set(SurfaceFormat.META, metaNode(null, replica, meta)) },
             { updateComponents(it, replica, components) },
             { updateData(it, replica, "", data) },
         )
@@ -54,19 +51,19 @@ internal object SurfaceDoc {
     }
 
     fun updateComponents(doc: JsonCrdt, replica: ReplicaId, components: List<JsonObject>): Patch<JsonCrdt> {
-        val existing = doc[Format.COMPONENTS]
-        val map = objectMap(existing, "/${Format.COMPONENTS}")
+        val existing = doc[SurfaceFormat.COMPONENTS]
+        val map = objectMap(existing, "/${SurfaceFormat.COMPONENTS}")
         val delta = threadedPuts(map, replica, components.map { componentId(it) to it }) { _, current, component ->
-            leafFrom(current, replica, JsonValue.Str(Format.canonical(component)))
+            leafFrom(current, replica, JsonValue.Str(SurfaceFormat.canonical(component)))
         }
-        return doc.set(Format.COMPONENTS, JsonNode.Object(delta))
+        return doc.set(SurfaceFormat.COMPONENTS, JsonNode.Object(delta))
     }
 
     fun setClosedAt(doc: JsonCrdt, replica: ReplicaId, at: Instant?): Patch<JsonCrdt> {
-        val meta = doc[Format.META] as JsonNode.Object
+        val meta = doc[SurfaceFormat.META] as JsonNode.Object
         val value = at?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null
-        val leaf = leafFrom(meta.map[Format.META_CLOSED_AT], replica, value)
-        return doc.set(Format.META, JsonNode.Object(meta.map.put(replica, Format.META_CLOSED_AT, leaf).delta))
+        val leaf = leafFrom(meta.map[SurfaceFormat.META_CLOSED_AT], replica, value)
+        return doc.set(SurfaceFormat.META, JsonNode.Object(meta.map.put(replica, SurfaceFormat.META_CLOSED_AT, leaf).delta))
     }
 
     /**
@@ -77,16 +74,16 @@ internal object SurfaceDoc {
      *   change a path's type (object, append-only array, whole array, scalar)
      */
     fun updateData(doc: JsonCrdt, replica: ReplicaId, pointer: String, value: JsonElement): Patch<JsonCrdt> {
-        val segments = Format.segments(pointer)
-        require(segments.firstOrNull() != Format.RESERVED_DATA_KEY) { "/${Format.RESERVED_DATA_KEY} is reserved." }
+        val segments = SurfaceFormat.segments(pointer)
+        require(segments.firstOrNull() != SurfaceFormat.RESERVED_DATA_KEY) { "/${SurfaceFormat.RESERVED_DATA_KEY} is reserved." }
         require(segments.isNotEmpty() || value is JsonObject) { "The data model's root must be an object." }
         if (segments.isEmpty()) {
-            require(Format.RESERVED_DATA_KEY !in (value as JsonObject)) { "/${Format.RESERVED_DATA_KEY} is reserved." }
+            require(SurfaceFormat.RESERVED_DATA_KEY !in (value as JsonObject)) { "/${SurfaceFormat.RESERVED_DATA_KEY} is reserved." }
         }
-        val delta = writeAt(doc[Format.DATA], segments, 0, replica) { existing, at ->
+        val delta = writeAt(doc[SurfaceFormat.DATA], segments, 0, replica) { existing, at ->
             writeValue(existing, replica, value, at)
         }
-        return doc.set(Format.DATA, delta)
+        return doc.set(SurfaceFormat.DATA, delta)
     }
 
     /**
@@ -96,43 +93,43 @@ internal object SurfaceDoc {
      * @throws IllegalArgumentException if the path holds anything but an append-only array
      */
     fun appendEntry(doc: JsonCrdt, replica: ReplicaId, pointer: String, value: JsonElement): Patch<JsonCrdt> {
-        val segments = Format.segments(pointer)
+        val segments = SurfaceFormat.segments(pointer)
         require(segments.isNotEmpty()) { "An append-only array can't be the data model's root." }
-        require(segments.first() != Format.RESERVED_DATA_KEY) { "/${Format.RESERVED_DATA_KEY} is reserved." }
-        val delta = writeAt(doc[Format.DATA], segments, 0, replica) { existing, at ->
+        require(segments.first() != SurfaceFormat.RESERVED_DATA_KEY) { "/${SurfaceFormat.RESERVED_DATA_KEY} is reserved." }
+        val delta = writeAt(doc[SurfaceFormat.DATA], segments, 0, replica) { existing, at ->
             val rga = when (existing) {
                 null -> Rga.empty()
                 is JsonNode.Array -> existing.rga
                 else -> refuse(at, existing, "an append-only array")
             }
-            val entry = JsonNode.Leaf(MVRegister.empty<JsonValue>().set(replica, Format.encodeLeaf(value)))
+            val entry = JsonNode.Leaf(MVRegister.empty<JsonValue>().set(replica, SurfaceFormat.encodeLeaf(value)))
             val (_, op) = rga.insertAt(replica, rga.size, entry)
             JsonNode.Array(Rga.empty<JsonNode>().apply(op))
         }
-        return doc.set(Format.DATA, delta)
+        return doc.set(SurfaceFormat.DATA, delta)
     }
 
     fun meta(doc: JsonCrdt): SurfaceMeta {
-        val meta = doc[Format.META] as JsonNode.Object
-        fun field(key: String): JsonElement = Format.winner(meta.map[key] as JsonNode.Leaf)
+        val meta = doc[SurfaceFormat.META] as JsonNode.Object
+        fun field(key: String): JsonElement = SurfaceFormat.winner(meta.map[key] as JsonNode.Leaf)
         return SurfaceMeta(
-            title = field(Format.META_TITLE).jsonPrimitive.content,
-            catalogId = field(Format.META_CATALOG_ID).jsonPrimitive.content,
-            openedBy = PeerIdentity.parse(field(Format.META_OPENED_BY).jsonPrimitive.content),
-            openedAt = Instant.parse(field(Format.META_OPENED_AT).jsonPrimitive.content),
-            closedAt = (field(Format.META_CLOSED_AT) as? JsonPrimitive)?.takeIf { it.isString }?.let { Instant.parse(it.content) },
+            title = field(SurfaceFormat.META_TITLE).jsonPrimitive.content,
+            catalogId = field(SurfaceFormat.META_CATALOG_ID).jsonPrimitive.content,
+            openedBy = PeerIdentity.parse(field(SurfaceFormat.META_OPENED_BY).jsonPrimitive.content),
+            openedAt = Instant.parse(field(SurfaceFormat.META_OPENED_AT).jsonPrimitive.content),
+            closedAt = (field(SurfaceFormat.META_CLOSED_AT) as? JsonPrimitive)?.takeIf { it.isString }?.let { Instant.parse(it.content) },
         )
     }
 
     private fun metaNode(existing: JsonNode?, replica: ReplicaId, meta: SurfaceMeta): JsonNode {
         val fields = listOf(
-            Format.META_TITLE to JsonValue.Str(meta.title),
-            Format.META_CATALOG_ID to JsonValue.Str(meta.catalogId),
-            Format.META_OPENED_BY to JsonValue.Str(meta.openedBy.toString()),
-            Format.META_OPENED_AT to JsonValue.Str(meta.openedAt.toString()),
-            Format.META_CLOSED_AT to (meta.closedAt?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null),
+            SurfaceFormat.META_TITLE to JsonValue.Str(meta.title),
+            SurfaceFormat.META_CATALOG_ID to JsonValue.Str(meta.catalogId),
+            SurfaceFormat.META_OPENED_BY to JsonValue.Str(meta.openedBy.toString()),
+            SurfaceFormat.META_OPENED_AT to JsonValue.Str(meta.openedAt.toString()),
+            SurfaceFormat.META_CLOSED_AT to (meta.closedAt?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null),
         )
-        val map = objectMap(existing, "/${Format.META}")
+        val map = objectMap(existing, "/${SurfaceFormat.META}")
         return JsonNode.Object(threadedPuts(map, replica, fields) { _, current, v -> leafFrom(current, replica, v) })
     }
 
@@ -153,7 +150,7 @@ internal object SurfaceDoc {
         replica: ReplicaId,
         write: (existing: JsonNode?, pointer: String) -> JsonNode,
     ): JsonNode {
-        val at = Format.pointer(segments.take(depth))
+        val at = SurfaceFormat.pointer(segments.take(depth))
         if (depth == segments.size) return write(node, at)
         val map = objectMap(node, at)
         val key = segments[depth]
@@ -167,7 +164,7 @@ internal object SurfaceDoc {
                 val entries = value.entries.map { it.key to it.value }
                 JsonNode.Object(
                     threadedPuts(objectMap(existing, at), replica, entries) { key, current, v ->
-                        writeValue(current, replica, v, "$at/${Format.escapeSegment(key)}")
+                        writeValue(current, replica, v, "$at/${SurfaceFormat.escapeSegment(key)}")
                     },
                 )
             }
@@ -176,12 +173,12 @@ internal object SurfaceDoc {
                 when (existing) {
                     null -> Unit
                     is JsonNode.Leaf -> {
-                        val held = existing.register.values.map(Format::isStructured).toSet()
+                        val held = existing.register.values.map(SurfaceFormat::isStructured).toSet()
                         if (held.isNotEmpty() && structured !in held) refuse(at, existing, kindOf(value))
                     }
                     else -> refuse(at, existing, kindOf(value))
                 }
-                leafFrom(existing, replica, Format.encodeLeaf(value))
+                leafFrom(existing, replica, SurfaceFormat.encodeLeaf(value))
             }
         }
 
@@ -239,93 +236,8 @@ internal object SurfaceDoc {
         val held = when (existing) {
             is JsonNode.Object -> "an object"
             is JsonNode.Array -> "an append-only array"
-            is JsonNode.Leaf -> if (existing.register.values.any(Format::isStructured)) "a whole array" else "a scalar"
+            is JsonNode.Leaf -> if (existing.register.values.any(SurfaceFormat::isStructured)) "a whole array" else "a scalar"
         }
         throw IllegalArgumentException("$at holds $held; writing $wanted there would change its type.")
-    }
-
-    /**
-     * MIRROR of bee-a2ui's `SurfaceFormat`, which the projection reads with. bee-core can't depend
-     * on bee-a2ui yet (tractat-us/bee#8 adds it), so the layout lives in both places until then;
-     * fold this into `SurfaceFormat` once it does.
-     */
-    object Format {
-        const val META = "meta"
-        const val COMPONENTS = "components"
-        const val DATA = "data"
-        const val META_TITLE = "title"
-        const val META_CATALOG_ID = "catalogId"
-        const val META_OPENED_BY = "openedBy"
-        const val META_OPENED_AT = "openedAt"
-        const val META_CLOSED_AT = "closedAt"
-        const val RESERVED_DATA_KEY = "_bee"
-        const val STRUCTURED_PREFIX = "\u0000json:"
-
-        val VALUE_ORDER: Comparator<JsonValue> = Comparator { a, b ->
-            val byRank = rank(a).compareTo(rank(b))
-            if (byRank != 0) {
-                byRank
-            } else {
-                when (a) {
-                    JsonValue.Null -> 0
-                    is JsonValue.Bool -> a.value.compareTo((b as JsonValue.Bool).value)
-                    is JsonValue.Num -> a.value.compareTo((b as JsonValue.Num).value)
-                    is JsonValue.Str -> a.value.compareTo((b as JsonValue.Str).value)
-                }
-            }
-        }
-
-        private fun rank(v: JsonValue): Int = when (v) {
-            JsonValue.Null -> 0
-            is JsonValue.Bool -> 1
-            is JsonValue.Num -> 2
-            is JsonValue.Str -> 3
-        }
-
-        fun encodeLeaf(element: JsonElement): JsonValue = when (element) {
-            is JsonObject, is JsonArray -> JsonValue.Str(STRUCTURED_PREFIX + canonical(element))
-            JsonNull -> JsonValue.Null
-            is JsonPrimitive -> encodeScalar(element)
-        }
-
-        private fun encodeScalar(p: JsonPrimitive): JsonValue {
-            if (p.isString) {
-                require(!p.content.startsWith(STRUCTURED_PREFIX)) { "A data string starts with bee's reserved prefix." }
-                return JsonValue.Str(p.content)
-            }
-            p.booleanOrNull?.let { return JsonValue.Bool(it) }
-            return JsonValue.Num(requireNotNull(p.doubleOrNull) { "Not a JSON scalar: $p" })
-        }
-
-        fun decodeLeaf(v: JsonValue): JsonElement = when (v) {
-            JsonValue.Null -> JsonNull
-            is JsonValue.Bool -> JsonPrimitive(v.value)
-            is JsonValue.Num -> JsonPrimitive(v.value)
-            is JsonValue.Str ->
-                if (isStructured(v)) Json.parseToJsonElement(v.value.removePrefix(STRUCTURED_PREFIX)) else JsonPrimitive(v.value)
-        }
-
-        fun isStructured(v: JsonValue): Boolean = v is JsonValue.Str && v.value.startsWith(STRUCTURED_PREFIX)
-
-        fun winner(leaf: JsonNode.Leaf): JsonElement =
-            leaf.register.values.maxWithOrNull(VALUE_ORDER)?.let(::decodeLeaf) ?: JsonNull
-
-        fun canonical(element: JsonElement): String = sortKeys(element).toString()
-
-        private fun sortKeys(element: JsonElement): JsonElement = when (element) {
-            is JsonObject -> JsonObject(element.keys.sorted().associateWith { sortKeys(element.getValue(it)) })
-            is JsonArray -> JsonArray(element.map(::sortKeys))
-            is JsonPrimitive -> element
-        }
-
-        fun escapeSegment(segment: String): String = segment.replace("~", "~0").replace("/", "~1")
-
-        fun pointer(segments: List<String>): String = segments.joinToString("") { "/" + escapeSegment(it) }
-
-        fun segments(pointer: String): List<String> {
-            if (pointer.isEmpty()) return emptyList()
-            require(pointer.startsWith("/")) { "A JSON Pointer must start with '/': $pointer" }
-            return pointer.substring(1).split("/").map { it.replace("~1", "/").replace("~0", "~") }
-        }
     }
 }

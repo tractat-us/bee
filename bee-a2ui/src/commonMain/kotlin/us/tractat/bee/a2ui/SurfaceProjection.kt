@@ -27,8 +27,8 @@ import kotlin.math.abs
  * object, as an array entry) holds a [JsonValue.Str] of its canonical JSON behind
  * [STRUCTURED_PREFIX]. A scalar string never starts with that prefix, because writers refuse one.
  *
- * bee-core writes this layout and mirrors these constants in `SurfaceDoc.kt` until bee-core can
- * depend on this module; the two must not drift.
+ * bee-core's `SurfaceDoc` writes this layout through these functions, and the projection reads it
+ * with them, so the format lives once.
  */
 object SurfaceFormat {
     const val META = "meta"
@@ -124,6 +124,13 @@ object SurfaceFormat {
     /** One JSON Pointer reference token, escaped (RFC 6901). */
     fun escapeSegment(segment: String): String = segment.replace("~", "~0").replace("/", "~1")
 
+    /** The JSON Pointer naming [segments], each escaped. */
+    fun pointer(segments: List<String>): String = segments.joinToString("") { "/" + escapeSegment(it) }
+
+    /** The value [leaf] shows: its greatest under [VALUE_ORDER], or `null` JSON if it holds none. */
+    fun winner(leaf: JsonNode.Leaf): JsonElement =
+        leaf.register.values.maxWithOrNull(VALUE_ORDER)?.let(::decodeLeaf) ?: JsonNull
+
     /** The reference tokens of [pointer], unescaped. `""` is the root and has none. */
     fun segments(pointer: String): List<String> {
         if (pointer.isEmpty()) return emptyList()
@@ -144,9 +151,9 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     val meta = requireNotNull(this[SurfaceFormat.META] as? JsonNode.Object) { "Surface $id has no meta." }
     val catalogId = requireNotNull(meta.map[SurfaceFormat.META_CATALOG_ID] as? JsonNode.Leaf) {
         "Surface $id has no catalogId."
-    }.let(::winner)
+    }.let(SurfaceFormat::winner)
     val components = (this[SurfaceFormat.COMPONENTS] as? JsonNode.Object)?.map?.let { map ->
-        map.keys.sorted().associateWith { key -> winner(map[key] as JsonNode.Leaf).jsonObject }
+        map.keys.sorted().associateWith { key -> SurfaceFormat.winner(map[key] as JsonNode.Leaf).jsonObject }
     } ?: emptyMap()
     val conflicts = mutableMapOf<String, List<JsonElement>>()
     val data = this[SurfaceFormat.DATA]?.let { project(it, "", conflicts) } as? JsonObject ?: JsonObject(emptyMap())
@@ -175,9 +182,6 @@ private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<Strin
             values.lastOrNull()?.let { dedupe(SurfaceFormat.decodeLeaf(it)) } ?: JsonNull
         }
     }
-
-private fun winner(leaf: JsonNode.Leaf): JsonElement =
-    leaf.register.values.maxWithOrNull(SurfaceFormat.VALUE_ORDER)?.let(SurfaceFormat::decodeLeaf) ?: JsonNull
 
 private fun dedupe(element: JsonElement): JsonElement =
     if (element is JsonArray) JsonArray(element.distinct()) else element
