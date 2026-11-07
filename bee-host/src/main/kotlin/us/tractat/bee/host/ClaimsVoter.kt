@@ -80,7 +80,7 @@ class ClaimsVoter private constructor(
          * learner set grows with every connection the host has ever seen, and the voter replicates
          * to all of them. Removal costs nothing a claim depends on: the table holds claims by
          * [PeerIdentity], not by [NodeId], and a learner that returns after the grace is admitted
-         * again and folds from index 1.
+         * again and catches up.
          *
          * 30 s is the spec's heartbeat reconnect window (§6.4), the point at which bee already treats
          * a lost link as gone. It is well over a reconnect: `clusterClient` re-joins at once on a
