@@ -55,9 +55,10 @@ and agent attached, and it's still there when they come back.
 
 **Non-goals for v1**
 
-- More than one machine. v1 is one person on one laptop (see §5).
-- Peer-to-peer browser networking (WebRTC), browser-held replicas (wasm), and offline-first
-  phones.
+- A team deployment. v1 is one person, with the host on their laptop (§5). Other browsers on the
+  same network, such as a conference-room screen, may join it.
+- Peer-to-peer browser networking (WebRTC). Everyone talks through the host.
+- The phone app. It comes after v1, as a native shell around the web client (§5.5).
 - A general A2UI implementation. Bee uses an existing renderer.
 - Bookings, payments, or any side effect beyond the board and the agents' own work.
 
@@ -98,69 +99,63 @@ sees the claim, and killing the claimant shows up on the board.
 
 ## 4. How it works, in plain terms
 
-There are three kinds of peer:
+Everything attached to the board keeps its own copy of it:
 
-- **Browser tabs**, where people look and click.
-- **Claude sessions**, each attached through its own small MCP bridge.
-- **The Bee daemon**, which is always on and holds the board.
+- **A browser**, any browser: your laptop, a conference-room screen, a guest's. Nothing to install.
+- **A Claude session**, attached through its own small MCP bridge.
+- **The Bee host**, which is always on. It relays changes between everyone, keeps a backup copy,
+  and serves the web page.
 
-The daemon keeps the board as a shared, mergeable document. A tab shows it. A session reads it and
-changes it through MCP tools. When anything changes, every attached peer sees the change.
+Each copy is a shared, mergeable document. When one copy changes, the change flows through the host
+to all the others, and every screen updates. A copy that was away catches up when it returns.
 
 When you tap a button, two things happen:
 
-1. **Your tab updates at once.** The edit goes into the board's data.
+1. **Your screen updates at once.** The edit goes into your browser's own copy of the board.
 2. **An action record is written onto the board.** It says who did what, and what they could see
    when they did it. Whichever agent wired that button picks the record up, does the work, and
    writes the result back as another edit. If that agent isn't attached right now, the record waits.
 
 When something must be done by exactly one peer, a peer **claims** it. The claim goes through a
 vote among the voters, so two peers can't both win. If the claimant disappears, the board says so
-and the people present decide what happens next.
+and whoever is present decides what happens next.
 
 ## 5. Architecture (v1)
 
-**Design call: in v1 the board lives in one always-on JVM daemon, not in the browser.** This departs
-from the earlier brainstorm's handoff, which put the replica in the browser tab and synced tabs over
-WebRTC. Here's why:
-
-- kuilt-crdt and kuilt-raft do build for wasmJs. A replica in the browser would still bring
-  IndexedDB persistence, WebRTC between tabs, and a replica per tab into v1. On the JVM daemon none
-  of that is needed.
-- The official A2UI web renderer can stay stock. kuilt sits *behind* the A2UI protocol, and the
-  renderer never sees a CRDT.
-- Spikes 1 and 2 from the handoff (WebRTC without STUN or TURN, signalling over a WebSocket) and
-  the browser half of spike 3 drop out of v1. They aren't ruled out, only deferred.
+**Push as much as possible into the browser (Iain).** A browser is a full peer, with its own kuilt
+replica, so any screen in the building can join with nothing installed. The host shrinks to what
+only an always-on machine can do. This is close to the earlier handoff's shape, with one change:
+WebRTC is deferred, and everyone talks through the host over WebSockets, outbound only.
 
 ```
-Claude session A ── bee-mcp (stdio) ─┐
-Claude session B ── bee-mcp (stdio) ─┼── bee daemon (JVM) ── WebSocket ── browser tab(s)
-Worker C ────────── bee-mcp (stdio) ─┘     replica · presence · claims · disk
+browser (any)  ── Bee client: kuilt replica (wasm) + Lit renderer ─┐
+browser (any)  ── Bee client                                        ├── WebSocket ── Bee host (JVM)
+Claude session ── bee-mcp: kuilt replica (JVM) + MCP tools ────────┤               relay · replica on disk
+Claude session ── bee-mcp                                           ┘               voter · serves the page
 ```
 
-### 5.1 The daemon
+### 5.1 The Bee client (browser)
 
-- Holds the **always-on board replica**: every surface as a kuilt `JsonCrdt` document.
-- **Each MCP bridge is a replica too (design call).** The bridges and the daemon replicate with
-  kuilt's `Quilter` over a localhost WebSocket fabric: `KtorServerLoom` on the daemon,
-  `KtorClientLoom` in each bridge. This is what makes concurrent writers real (spike 2), lets a
-  session read the board locally, and gives "what the actor had seen" a causal meaning (§6.2). It's
-  also the same shape as several machines later, so adding a second daemon is a topology change,
-  not a rewrite.
-- **Browser tabs are not replicas.** They speak A2UI only (§5.3).
-- Holds **presence** in an `EphemeralMap`, keyed by peer.
-- Runs **claims** over `kuilt-raft` (§6.3).
-- Persists everything durable through kuilt's `DurableStore` (`FileChannelDurableStore` on JVM), so
-  a daemon restart loses nothing but presence.
-- Serves the browser over a WebSocket, speaking **plain A2UI** (§5.3).
-- Accepts bridge connections from MCP bridges on localhost.
+- **One Kotlin Multiplatform client, compiled to wasm for the browser (Iain's direction; the module
+  shape is a design call).** It holds:
+  - the **board replica**: every surface as a kuilt `JsonCrdt` document, replicated by kuilt's
+    `Quilter`
+  - durable local state in kuilt's `IndexedDbDurableStore`, so a reload or a closed laptop loses
+    nothing
+  - the connection to the host: kuilt's `KtorClientLoom` (`kuilt-websocket` has a wasm build)
+  - an **in-page A2UI driver** that turns the replica into A2UI messages for the renderer, and the
+    renderer's actions back into edits (§5.3)
+- kuilt's CRDT, Raft and WebSocket modules all build for wasmJs.
+- **Spike 1 is the glue (Iain: "good with the new spike").** Kotlin/wasm and the JavaScript renderer
+  have to share one page: messages in, actions out. It's the newest and riskiest seam, so it goes
+  first.
 
 ### 5.2 The MCP bridge (`bee-mcp`)
 
-- A stdio MCP server, one per Claude session, launched by Claude Code from its MCP config.
-  **(design call)** Using one process per session means the bridge's lifetime *is* the session's.
-  When the bridge disconnects, the session crashed or ended, and kuilt's liveness detection
-  (`kuilt-liveness`) reports it as a departure.
+- A stdio MCP server, one per Claude session, launched by Claude Code from its MCP config. It's the
+  same client core as the browser, compiled for the JVM, holding its own replica and connecting to
+  the host the same way. Its lifetime *is* the session's **(design call)**: when it disconnects,
+  the session crashed or ended.
 - Gives each session a **peer identity** (session name plus a fresh instance id), distinct from
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
@@ -180,34 +175,57 @@ Worker C ────────── bee-mcp (stdio) ─┘     replica · pr
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
   always goes through a claim** (§6.3), so two sessions never both act on one click.
 
-### 5.3 The browser and the A2UI boundary
+### 5.3 The A2UI boundary, inside the page
 
 - **Pinned protocol and renderer (design call):** A2UI **v0.9.1** with the official **Lit** (Web
   Components) renderer. Lit is stable for v0.9 and framework-free. v1.0 is a release candidate, so
   re-pin when it lands.
-- The daemon is the browser's A2UI server. It sends `createSurface`, `updateComponents`,
-  `updateDataModel` and `deleteSurface`, and receives `action`.
+- The in-page driver plays the A2UI server's part. It feeds the renderer `createSurface`,
+  `updateComponents`, `updateDataModel` and `deleteSurface`, and receives `action`. The renderer is
+  stock and never sees a CRDT.
 - **The CRDT is the source of truth, and the renderer is a view.** A2UI's `updateDataModel`
-  replaces (upserts) a value at a JSON Pointer path. The daemon turns each merged CRDT change into
-  those replacements for the browser. In the other direction it turns each browser `action` into a
-  CRDT edit plus an action record. Merge rules live only in the daemon, never in the renderer.
+  replaces (upserts) a value at a JSON Pointer path. The driver turns each merged CRDT change into
+  those replacements, and each `action` into a CRDT edit plus an action record. Merge rules live
+  only in the replica, never in the renderer.
 - **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
-  concurrently written value, but A2UI's `updateDataModel` takes exactly one. The daemon projects a
+  concurrently written value, but A2UI's `updateDataModel` takes exactly one. The driver projects a
   deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
   instead of hiding it. Spike 2 picks the rule.
 - **Open for the spike:** in v0.9, bound inputs such as a `TextField` update the renderer's *local*
-  model, and send it only on an action with `sendDataModel`. Live shared typing needs Bee's page to
-  observe local data-model changes (likely through `@a2ui/web_core`) or a Bee component that does.
-  Spike 4 settles this.
+  model, and send it only on an action with `sendDataModel`. Live shared typing needs the driver to
+  observe local data-model changes (likely through `@a2ui/web_core`) or a Notions component that does.
+  Spike 2 settles this.
 
-### 5.4 The Neon catalog
+### 5.4 The Bee host
 
-Bee's custom A2UI catalog, advertised through `supportedCatalogIds`. **The name "Neon" is a design
-call, a nod to Iain's A2O aside.** It starts with:
+- **Relay.** Every peer dials the host. Nobody needs to accept inbound connections, which matches
+  the handoff's network constraint. `KtorServerLoom` or `KtorRoomHost` on the JVM.
+- **The always-on replica**, persisted with `FileChannelDurableStore`, so the board outlives every
+  peer, including every browser closing at once.
+- **The voter that never claims** (§6.3).
+- **Serves the web client** (the wasm bundle, the renderer and the Notions catalog), so a
+  conference-room browser needs only a URL.
+- **Where it runs.** Solo: on Iain's laptop, reachable on his network at `tractatus.local`. For a
+  team: on a shared server. For an employer's hackathon on employer code, that's the hosting
+  party's call.
+
+### 5.5 After v1: the phone app (Iain)
+
+A "blank white" app for iPhone and Android: **a Compose Multiplatform frame around the web client
+(Iain)**. Compose draws the app's own chrome (connect to a host, which board, presence), and the
+board itself is the same web client in a WebView. kuilt is KMP throughout and the iOS and Android
+build setup already exists, so the app costs little beyond the browser client. Later, a native
+Compose renderer can replace the WebView once A2UI's official Compose renderer exists, and the
+client core then runs natively instead of as wasm.
+
+### 5.6 The Notions catalog
+
+Bee's custom A2UI catalog, advertised through `supportedCatalogIds`. **The name "Notions" is a design
+call: in sewing, notions are the buttons, snaps and fasteners.** It starts with:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
   (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
-  hatch the visual companion needs. Clicks inside it reach the daemon as A2UI actions through a
+  hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
   `postMessage` bridge. When A2UI gains its own way to embed content, Bee switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers.
@@ -216,15 +234,6 @@ call, a nod to Iain's A2O aside.** It starts with:
   rule, because it records everyone in the room, not just the person who asked.
 
 The basic catalog (`Text`, `Card`, `Row`, `Column`, `Button`, `ChoicePicker`, …) covers the rest.
-
-### 5.5 Later: more than one machine (not v1)
-
-Each person runs their own daemon. Daemons replicate through one shared relay host
-(`KtorRoomHost`), making outbound connections only, which matches the constraint that peers can't
-accept inbound connections. The host keeps a replica so a late-night change reaches the others by
-morning, and it votes in Raft but never claims, so a lone peer plus the host is a majority. The
-browser stays a renderer throughout. Where the host runs, especially for an employer's hackathon
-on employer code, is the hosting party's call.
 
 ## 6. The board's state
 
@@ -259,11 +268,10 @@ that input identities come only from dot-carrying types.
 
 **Capturing the basis (design call):**
 
-- **An agent's action** takes its basis from its bridge's own replica at the moment it acts.
-- **A browser click** has no causal context of its own, because an A2UI `action` carries none.
-  The daemon therefore records, for each tab connection, the board version it last sent that tab,
-  and stamps that version as the click's basis. A click can't claim to have seen something its tab
-  hadn't yet been sent.
+Every peer holds a replica, so every action takes its basis from the actor's own replica at the
+moment it acts. For a browser click, the in-page driver stamps the record from that browser's
+replica as it turns the A2UI `action` into an edit. A click can't claim to have seen something its
+browser hadn't yet received.
 
 How a surface's author declares which records are theirs is open (§10).
 
@@ -275,10 +283,12 @@ claimed yet, because no quorum is reachable, waits rather than risk running twic
 exactly-once dedup design (`docs/superpowers/specs/2026-06-16-raft-exactly-once-dedup-design.md`
 in kuilt) is the starting point.
 
-**In v1, on one laptop, the voter set is the daemon alone, so a claim is a local commit (design
-call).** That's deliberate. It keeps the claim API and its board mirror identical when the relay
-host and other daemons join as voters later. The daemon is a voter that never claims. Sessions
-claim through it.
+**In v1 the voter set is the host alone, so a claim commits once the host accepts it (design
+call).** That's deliberate. It keeps the claim API and its board mirror identical when more voters
+join later. The host votes but never claims. Browsers and bridges claim through it, which is the
+shape of kuilt's `kuilt-cluster` (`ServerCluster` voters, `clusterClient` learners that forward
+proposals with `requestId` dedup). The plan should check whether `kuilt-cluster` fits as-is before
+building a claim path of its own.
 
 ### 6.4 Presence and failure
 
@@ -287,10 +297,12 @@ claim through it.
 - **Crashed** means the bridge connection is gone, detected by `kuilt-liveness`. The peer's claims
   show as **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
 - **Quiet** means the bridge is alive but the agent hasn't acted for a while (for example, a long
-  build). It shows as "quiet since …", not as failed **(design call)**. A quiet claim doesn't
-  lapse on its own. How long before the board prompts is open (§10).
+  build). It shows as "quiet since …" until a timeout, then **the session is declared dead, exactly
+  as if it had crashed (Iain).** Telling dead from slow can't be done exactly, so Bee picks a
+  reasonable threshold and acts on it. The threshold is left to the plan (§10).
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
-  wait). The decision commits as a new claim or a release through Raft, like any other.
+  wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
+  decision commits as a new claim or a release through Raft, like any other.
 
 ## 7. Bee and kuilt
 
@@ -301,8 +313,9 @@ claim through it.
   which needs a matching edit to kuilt's References policy (§11).
 - **Generic pieces graduate to kuilt** once Bee has proven them: surfaces on `JsonCrdt` (including
   the A2UI mapping, if it stays generic), action records with a basis, exactly-once claims, a
-  voter that never claims, and anything presence or liveness needs. Bee owns the daemon, the MCP
-  bridge, the Neon catalog, policy and deployment.
+  voter that never claims, and anything presence or liveness needs. Bee owns the client and its
+  in-page A2UI driver, the host, the MCP bridge, the Notions catalog, the phone frame, policy and
+  deployment.
 - **A kuilt peer session handles kuilt asks during development (Iain).** When Bee hits a kuilt gap,
   it files a kuilt issue and hands it to that session, a separate Claude Code session in the kuilt
   checkout. Bee never patches kuilt locally.
@@ -317,7 +330,7 @@ borrows from it:
 
 - the input-history contract (§6.2) and M1's `CONTRACTS.md`, frozen in kuilt at
   `demo/workspace/` (commit `53f89b34`)
-- M2's reconnect shape (A), how a bridge's replica survives losing its connection to the daemon,
+- M2's reconnect shape (A), how a client's replica survives losing its connection to the host,
   from `docs/spikes/2026-10-reconnect-shape.md` in `tractat-us/kuilt-workspace` (private, checked
   out at `~/tractatus/kuilt-workspace`)
 - the re-check of a shown answer when the viewer learns more (kuilt#2880). Its code was removed
@@ -335,8 +348,8 @@ At each one, look for pieces to pick up in either direction.
   secret it found. v1 is single-user, so the risk is small, but the bridge's tools should make
   "this goes on the shared board" an explicit act, never a side effect. Before a second person
   attaches, there must be a rule for what may never be written to the board.
-- **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. The daemon
-  never executes surface content.
+- **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
+  host nor the Bee client ever executes surface content outside that sandbox.
 - **IP.** Bee is built on Iain's own time and equipment as open source. It's brought to an employer
   hackathon as an existing tool, never built there. Hosting there is the employer's call.
 - **Keep it small.** Each piece earns its place by being needed in the first hour of real use.
@@ -346,7 +359,7 @@ At each one, look for pieces to pick up in either direction.
 - The exact MCP tool list and its shape.
 - How a surface's author declares which action records it handles, and how handlers find them.
   Candidates: a handler field on the component, or a subscription by surface.
-- The quiet-period threshold before the board prompts about a quiet claim.
+- The timeout after which a quiet session is declared dead.
 - The layout and history-strip UI.
 - Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in Bee.
 - The exact peer identity format. The rules are in §5.2: fresh per session, kind human or agent,
@@ -365,15 +378,19 @@ At each one, look for pieces to pick up in either direction.
 
 ## 12. Spike order (proposed)
 
-1. **Daemon and renderer.** The daemon serves one hard-coded A2UI surface to the stock Lit renderer.
-   A button click arrives as an action. Proves the A2UI boundary and pins versions.
-2. **`JsonCrdt` behind A2UI.** Two writers edit one surface concurrently, and the merge renders
-   correctly. Settles live shared typing (§5.3). (Handoff spike 4.)
-3. **MCP bridge.** A Claude session opens a surface, waits for an action record, and answers it.
-   A second session sees it. Kill one, and the board shows it gone. (Handoff spike 5.)
-4. **Claims.** Two sessions race for one card, and exactly one wins. Kill the winner, and the claim
-   shows as orphaned. (Handoff spike 6, single voter.)
+1. **Kotlin/wasm and the renderer in one page.** The Bee client, compiled to wasm, drives one
+   hard-coded surface in the stock Lit renderer, and a button click comes back into Kotlin as an
+   action. This proves the newest seam and pins versions.
+2. **`JsonCrdt` behind A2UI, across browsers.** Two browsers, each with a replica, edit one surface
+   at the same time through the host. The merge renders correctly in both. This settles the
+   `MVRegister` projection and live shared typing (§5.3). (Handoff spikes 3 and 4.)
+3. **MCP bridge.** A Claude session opens a surface, waits for an action record and answers it. A
+   second session sees it. Kill one, or `/clear` it, and the board shows it gone. (Handoff spike 5.)
+4. **Claims.** Two peers race for one card, and exactly one wins. Kill the winner, and the claim
+   shows as orphaned. Check `kuilt-cluster` first. (Handoff spike 6, single voter.)
 5. **`Sketch` and the companion.** The brainstorming companion's screens render through Bee. This
    is the acceptance test (§3).
-6. **Durability.** Restart the daemon with surfaces, records and claims intact. (Handoff spike 3,
-   JVM half.)
+6. **Durability.** Restart the host, and reload or close every browser, with surfaces, records and
+   claims intact.
+7. **A second screen.** A conference-room browser on the same network joins through
+   `tractatus.local` with nothing installed.
