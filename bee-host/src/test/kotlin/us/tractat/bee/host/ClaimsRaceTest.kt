@@ -71,7 +71,9 @@ class ClaimsRaceTest {
         }
         rig.report(
             "race: $ROUNDS rounds, log committed through ${voter.table.value.appliedIndex}, " +
-                "latencies a=${a.latencies.value.summary()} b=${b.latencies.value.summary()}",
+                "latencies a=${a.latencies.value.summary()} b=${b.latencies.value.summary()}, " +
+                "a folded through ${a.table.value.appliedIndex}, b through ${b.table.value.appliedIndex}, " +
+                "outcomes ${rounds.map { it.second }}",
         )
         assertAll(
             { assertEquals(List(ROUNDS) { 1 }, wins, "exactly one Won per round") },
