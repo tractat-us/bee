@@ -1,6 +1,6 @@
-# Contributing to Bee
+# Contributing to bee
 
-Bee is licensed under the [AGPL-3.0](LICENSE).
+bee is licensed under the [AGPL-3.0](LICENSE).
 
 **Every contribution requires a signed contributor agreement that assigns all rights in the
 contribution to the project owner, Iain Keddie.** No pull request from an outside contributor is

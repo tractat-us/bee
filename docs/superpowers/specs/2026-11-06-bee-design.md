@@ -1,4 +1,4 @@
-# Bee: design
+# bee: design
 
 **Date:** 2026-11-06 · **Status:** draft for approval · **Owner:** Iain Keddie
 
@@ -8,7 +8,7 @@ Decisions are marked **(Iain)** when they came from Iain in the design conversat
 ## 1. The idea
 
 A quilting bee is a group of people gathered around one quilt, each working their own corner and
-talking while they sew. Bee gives a person or a small team, plus their coding agents, one live
+talking while they sew. bee gives a person or a small team, plus their coding agents, one live
 board to gather around.
 
 People talk out loud. The board carries what's worth seeing or capturing, and the agents redraw it
@@ -21,7 +21,7 @@ as the conversation moves. The board can be:
 - a code review the group walks through together
 - nothing at all: "clear the board", and talk about lunch
 
-**Bee is a communication medium, not an app with screens (Iain).** The format is deliberately loose.
+**bee is a communication medium, not an app with screens (Iain).** The format is deliberately loose.
 Nothing about the board's layout is fixed. When the group realizes the discussion has to change,
 someone asks an agent and the board becomes something else.
 
@@ -31,14 +31,14 @@ someone asks an agent and the board becomes something else.
    the "others" around the board are his own sessions: workers report status, ask him to rule on
    things, and claim work. Today that traffic runs through text files and blocking prompts:
    `morning-report.md`, `next-plan.md`, `AskUserQuestion`, and Draft-PR claims.
-2. **A small team at a hackathon, each with their own coding agent (Iain).** Bee arrives as an
+2. **A small team at a hackathon, each with their own coding agent (Iain).** bee arrives as an
    existing open-source tool, like someone's own editor. It is **not** the hackathon project.
 
 ### Why it matters
 
 Today one agent always has context another lacks, and people carry it between them by pasting.
 Screenshots arrive with no context, agreed follow-ups fall out of view, and a session's state dies
-with the session. Bee makes the board the shared state. Anything on it is visible to every person
+with the session. bee makes the board the shared state. Anything on it is visible to every person
 and agent attached, and it's still there when they come back.
 
 ## 2. Goals, non-goals, anti-goals
@@ -59,38 +59,38 @@ and agent attached, and it's still there when they come back.
   same network, such as a conference-room screen, may join it.
 - Peer-to-peer browser networking (WebRTC). Everyone talks through the host.
 - The phone app. It comes after v1, as a native shell around the web client (§5.5).
-- A general A2UI implementation. Bee uses an existing renderer.
+- A general A2UI implementation. bee uses an existing renderer.
 - Bookings, payments, or any side effect beyond the board and the agents' own work.
 
 **Anti-goals**
 
-- **Building the tool instead of the work (Iain).** If using Bee costs more attention than it saves,
+- **Building the tool instead of the work (Iain).** If using bee costs more attention than it saves,
   it has failed, whatever it can technically do. Bias every choice toward "useful in the first hour".
 - Silent automation of a group decision. Reassigning, discarding or overriding someone's work is
   always a visible choice.
-- A board that leaks. Free-form surfaces make it easy to paste something sensitive. Bee must make
+- A board that leaks. Free-form surfaces make it easy to paste something sensitive. bee must make
   what's shared, and with whom, obvious (§9).
 
 ## 3. Success
 
-**The acceptance test (Iain): the brainstorming skill's visual companion runs on Bee.** Today the
+**The acceptance test (Iain): the brainstorming skill's visual companion runs on bee.** Today the
 companion is a small single-session server: an agent writes an HTML file to `screen_dir`, the
 browser shows the newest one, and clicks land in `state_dir/events`. In this very conversation it
-idled out and lost its session. Bee is done for v1 when that skill pushes its screens, and reads
-its clicks, through Bee instead:
+idled out and lost its session. bee is done for v1 when that skill pushes its screens, and reads
+its clicks, through bee instead:
 
-| Companion today | On Bee |
+| Companion today | On bee |
 |---|---|
 | Write an HTML file to `screen_dir` | An agent opens or updates a surface (a `Sketch` for free-form mockups) |
 | Clicks appear in `state_dir/events` | Action records the agent reads |
 | Push `waiting.html` | Clear the board |
 | Idle timeout loses the session | The board outlives the server and every session |
 
-**Where that change lands (design call): a Bee-side adapter first.** The companion lives in the
+**Where that change lands (design call): a bee-side adapter first.** The companion lives in the
 portable `agent-scheme` plugin (`tractat-us/claude-plugins`), which also runs on machines with no
-Bee. So v1 doesn't touch it. A Bee adapter emulates the companion's contract: it watches
+bee. So v1 doesn't touch it. A bee adapter emulates the companion's contract: it watches
 `screen_dir`, shows each new screen as a `Sketch` surface, and writes clicks back to
-`state_dir/events`. Teaching the plugin to prefer Bee when it's present, with a fallback, is a
+`state_dir/events`. Teaching the plugin to prefer bee when it's present, with a fallback, is a
 later and separate PR in that repo.
 
 **Secondary test:** two concurrent Claude sessions plus Iain use one board for a working day. One
@@ -103,7 +103,7 @@ Everything attached to the board keeps its own copy of it:
 
 - **A browser**, any browser: your laptop, a conference-room screen, a guest's. Nothing to install.
 - **A Claude session**, attached through its own small MCP bridge.
-- **The Bee host**, which is always on. It relays changes between everyone, keeps a backup copy,
+- **The bee host**, which is always on. It relays changes between everyone, keeps a backup copy,
   and serves the web page.
 
 Each copy is a shared, mergeable document. When one copy changes, the change flows through the host
@@ -128,13 +128,13 @@ only an always-on machine can do. This is close to the earlier handoff's shape, 
 WebRTC is deferred, and everyone talks through the host over WebSockets, outbound only.
 
 ```
-browser (any)  ── Bee client: kuilt replica (wasm) + Lit renderer ─┐
-browser (any)  ── Bee client                                        ├── WebSocket ── Bee host (JVM)
+browser (any)  ── bee client: kuilt replica (wasm) + Lit renderer ─┐
+browser (any)  ── bee client                                        ├── WebSocket ── bee host (JVM)
 Claude session ── bee-mcp: kuilt replica (JVM) + MCP tools ────────┤               relay · replica on disk
 Claude session ── bee-mcp                                           ┘               voter · serves the page
 ```
 
-### 5.1 The Bee client (browser)
+### 5.1 The bee client (browser)
 
 - **One Kotlin Multiplatform client, compiled to wasm for the browser (Iain's direction; the module
   shape is a design call).** It holds:
@@ -196,7 +196,7 @@ Claude session ── bee-mcp                                           ┘     
   observe local data-model changes (likely through `@a2ui/web_core`) or a Notions component that does.
   Spike 2 settles this.
 
-### 5.4 The Bee host
+### 5.4 The bee host
 
 - **Relay.** Every peer dials the host. Nobody needs to accept inbound connections, which matches
   the handoff's network constraint. `KtorServerLoom` or `KtorRoomHost` on the JVM.
@@ -220,13 +220,13 @@ client core then runs natively instead of as wasm.
 
 ### 5.6 The Notions catalog
 
-Bee's custom A2UI catalog, advertised through `supportedCatalogIds`. **The name "Notions" is a design
+bee's custom A2UI catalog, advertised through `supportedCatalogIds`. **The name "Notions" is a design
 call: in sewing, notions are the buttons, snaps and fasteners.** It starts with:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
   (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
   hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
-  `postMessage` bridge. When A2UI gains its own way to embed content, Bee switches to it.
+  `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers.
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
@@ -298,34 +298,34 @@ building a claim path of its own.
   show as **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
 - **Quiet** means the bridge is alive but the agent hasn't acted for a while (for example, a long
   build). It shows as "quiet since …" until a timeout, then **the session is declared dead, exactly
-  as if it had crashed (Iain).** Telling dead from slow can't be done exactly, so Bee picks a
+  as if it had crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a
   reasonable threshold and acts on it. The threshold is left to the plan (§10).
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.
 
-## 7. Bee and kuilt
+## 7. bee and kuilt
 
-- **Bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** It's private while it starts and
+- **bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** It's private while it starts and
   meant to be open source under **AGPL-3.0 (Iain)**. **Every outside contribution requires a
   strict CLA that assigns all rights to Iain (Iain)**, so relicensing (for example, moving a piece
   into Apache-licensed kuilt, or a separate grant to an employer) stays his to decide. kuilt may reference public `tractat-us` projects **(Iain)**,
   which needs a matching edit to kuilt's References policy (§11).
-- **Generic pieces graduate to kuilt** once Bee has proven them: surfaces on `JsonCrdt` (including
+- **Generic pieces graduate to kuilt** once bee has proven them: surfaces on `JsonCrdt` (including
   the A2UI mapping, if it stays generic), action records with a basis, exactly-once claims, a
-  voter that never claims, and anything presence or liveness needs. Bee owns the client and its
+  voter that never claims, and anything presence or liveness needs. bee owns the client and its
   in-page A2UI driver, the host, the MCP bridge, the Notions catalog, the phone frame, policy and
   deployment.
-- **A kuilt peer session handles kuilt asks during development (Iain).** When Bee hits a kuilt gap,
+- **A kuilt peer session handles kuilt asks during development (Iain).** When bee hits a kuilt gap,
   it files a kuilt issue and hands it to that session, a separate Claude Code session in the kuilt
-  checkout. Bee never patches kuilt locally.
-- Bee consumes kuilt as published snapshots, with `if (file("../kuilt").exists())
+  checkout. bee never patches kuilt locally.
+- bee consumes kuilt as published snapshots, with `if (file("../kuilt").exists())
   includeBuild("../kuilt")` for side-by-side work.
 
-## 8. Bee and kuilt#2869
+## 8. bee and kuilt#2869
 
-**Bee is a separate epic. #2869 stays paused (Iain).** #2869 is a research epic with hypotheses
-fixed in advance on a dinner story, so changing its story mid-M2 would void its baseline. Bee
+**bee is a separate epic. #2869 stays paused (Iain).** #2869 is a research epic with hypotheses
+fixed in advance on a dinner story, so changing its story mid-M2 would void its baseline. bee
 borrows from it:
 
 - the input-history contract (§6.2) and M1's `CONTRACTS.md`, frozen in kuilt at
@@ -336,7 +336,7 @@ borrows from it:
 - the re-check of a shown answer when the viewer learns more (kuilt#2880). Its code was removed
   from kuilt and survives only at `53f89b34`, so it's borrowable as a design, not as a dependency.
 
-Bee also answers #2869's M5 question, whether A2UI earns its place over a fixed screen, for a case
+bee also answers #2869's M5 question, whether A2UI earns its place over a fixed screen, for a case
 that has no fixed screen at all.
 
 **Revisit #2869 at three checkpoints (Iain):** after this spec, after the plan, and during execution.
@@ -349,8 +349,8 @@ At each one, look for pieces to pick up in either direction.
   "this goes on the shared board" an explicit act, never a side effect. Before a second person
   attaches, there must be a rule for what may never be written to the board.
 - **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
-  host nor the Bee client ever executes surface content outside that sandbox.
-- **IP.** Bee is built on Iain's own time and equipment as open source. It's brought to an employer
+  host nor the bee client ever executes surface content outside that sandbox.
+- **IP.** bee is built on Iain's own time and equipment as open source. It's brought to an employer
   hackathon as an existing tool, never built there. Hosting there is the employer's call.
 - **Keep it small.** Each piece earns its place by being needed in the first hour of real use.
 
@@ -361,24 +361,24 @@ At each one, look for pieces to pick up in either direction.
   Candidates: a handler field on the component, or a subscription by surface.
 - The timeout after which a quiet session is declared dead.
 - The layout and history-strip UI.
-- Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in Bee.
+- Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in bee.
 - The exact peer identity format. The rules are in §5.2: fresh per session, kind human or agent,
   and retired on `/clear`.
 
-## 11. Follow-ups outside Bee
+## 11. Follow-ups outside bee
 
 - **kuilt References policy:** amend kuilt's `AGENTS.md` to allow references to public `tractat-us`
-  projects (Iain's ruling). That's a kuilt PR, best landed once Bee is public.
-- **Workspace index:** Bee added to `~/tractatus/CLAUDE.md` (done).
+  projects (Iain's ruling). That's a kuilt PR, best landed once bee is public.
+- **Workspace index:** bee added to `~/tractatus/CLAUDE.md` (done).
 - **The CLA:** the assignment agreement's text (have a lawyer write it, not an agent) and a signing
   check on PRs. Both are needed before the repo accepts outside contributions. `CONTRIBUTING.md`
   says so meanwhile.
-- **Epic issues:** a Bee epic in `tractat-us/bee`, and a kuilt tracking issue for the primitives
-  Bee will need. Each links the other and kuilt#2869.
+- **Epic issues:** a bee epic in `tractat-us/bee`, and a kuilt tracking issue for the primitives
+  bee will need. Each links the other and kuilt#2869.
 
 ## 12. Spike order (proposed)
 
-1. **Kotlin/wasm and the renderer in one page.** The Bee client, compiled to wasm, drives one
+1. **Kotlin/wasm and the renderer in one page.** The bee client, compiled to wasm, drives one
    hard-coded surface in the stock Lit renderer, and a button click comes back into Kotlin as an
    action. This proves the newest seam and pins versions.
 2. **`JsonCrdt` behind A2UI, across browsers.** Two browsers, each with a replica, edit one surface
@@ -388,7 +388,7 @@ At each one, look for pieces to pick up in either direction.
    second session sees it. Kill one, or `/clear` it, and the board shows it gone. (Handoff spike 5.)
 4. **Claims.** Two peers race for one card, and exactly one wins. Kill the winner, and the claim
    shows as orphaned. Check `kuilt-cluster` first. (Handoff spike 6, single voter.)
-5. **`Sketch` and the companion.** The brainstorming companion's screens render through Bee. This
+5. **`Sketch` and the companion.** The brainstorming companion's screens render through bee. This
    is the acceptance test (§3).
 6. **Durability.** Restart the host, and reload or close every browser, with surfaces, records and
    claims intact.
