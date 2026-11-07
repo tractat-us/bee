@@ -128,6 +128,12 @@ test('concurrent typing shows one value and a conflict marker in both', async ({
     await expect(field(peer.page, 'conflict')).toHaveValue('banana', { timeout: 10_000 });
     await expect(conflict(peer.page, 'conflict')).toHaveText('apple,banana', { timeout: 10_000 });
   }
+  // And it stays: showing the winner is the driver's echo, never an edit, so neither page
+  // writes it back and resolves the conflict nobody decided.
+  await alex.page.waitForTimeout(1_500);
+  for (const peer of [alex, sam]) {
+    await expect(conflict(peer.page, 'conflict')).toHaveText('apple,banana');
+  }
 });
 
 test('a click becomes a record with a basis', async ({ browser }) => {
