@@ -45,6 +45,12 @@ person's own value too, because the renderer has one data model per surface. Onl
 bindings (`{"path": "/…"}`) are tracked. A `TextField` inside a list template binds a relative
 path, and v1 has none.
 
+Nothing on this route fails quietly. A relative binding, a surface the renderer can't be
+watched on, and a focused field the hook can't place all reach the page's `#problem` line, as
+does an edit or a click on a surface the board doesn't hold. While a debounced write is
+outstanding, `#board` carries `data-pending`, which the conflict test waits on instead of
+sleeping.
+
 **Controls.** Each mechanism has a mutation that turns its test red, so each test can fail.
 
 - **Echo filter off.** The loser's page writes the winner back, which clears the conflict, and
@@ -55,6 +61,14 @@ With the hold off, the other four tests stayed green. With the echo filter off, 
 first passed too, because it only checked that the conflict appeared, and it caught the brief
 moment before the echo cleared it. It now also checks that the conflict is still there 1.5 s
 later.
+
+**The dirty half of the hold has no test that can fail.** A path is also held while it has an edit
+not yet written, after its field loses focus. That matters only if a remote change to the same
+path lands inside the 150 ms debounce. Without it, the driver diffs against what it last
+rendered, so a re-render with no remote change leaves the field alone either way. I wrote that
+test, then removed it: with the dirty half turned off it still passed, 5 runs out of 5. Forcing the
+interleaving needs an injectable debounce or a test hook in `LiveInputs`, and neither is in this
+task's files.
 
 ## The projection rule's evidence
 
@@ -108,9 +122,13 @@ too much, and the echo carries everything (kuilt#2469).
 
 - `toSurfaceView`, `diff` and the hold overlay depend only on `kuilt-crdt` and A2UI's JSON. Any
   A2UI consumer with a `JsonCrdt` per surface could use them.
-- `LiveInputs` depends on web_core's `DataModel` and on the basic catalog's light DOM. It also
-  reads the Lit element's `context.componentModel.id`, which is internal, not a documented API.
-  That belongs with the renderer glue, not in kuilt.
+- `LiveInputs` depends on web_core's `DataModel` and on how the basic catalog renders. Reading
+  `context.componentModel.id` is safe: `A2uiLitElement.context` is a public `ComponentContext`,
+  and A2UI's own conformance tests use `ComponentModel.id`. The fragile parts are the tag name
+  `a2ui-basic-textfield`, which the focus hook looks for, and the catalog's light DOM, which lets
+  focus events reach the root with the input as their target. A catalog that renders a field into
+  a shadow root, or under another tag, would lose the hold. That belongs with the renderer glue,
+  not in kuilt.
 
 Graduating the first half waits for a second consumer, as the plan says. Revisit after Task 7.
 
