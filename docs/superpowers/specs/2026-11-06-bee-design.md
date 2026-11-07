@@ -355,6 +355,21 @@ a stable surface id. The board is the set of open surfaces plus their layout.
 to a history strip and can be reopened with their results. This takes the persistence goal at its
 word. A lunch break shouldn't erase the morning's vote.
 
+**The layout (design call).** Open surfaces stack in the order they were opened (ties by surface
+id). Closed surfaces sit in a collapsed history strip, newest first, and reopen with their records.
+
+**Two kinds of state in a surface (design call).** A sequence element in kuilt's `Rga` is
+write-once: it has insert, remove and compact, but no update, so two concurrent edits of one
+element would duplicate it. So a surface keeps two kinds of state apart:
+
+- **Appended content**: anything a basis must name, or a handler must reason about having seen
+  (§6.2). Action records, poll options and question revisions are appended entries in a
+  `JsonNode.Array`, never edited. Correcting one means removing it and appending a new entry with
+  a new identity.
+- **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
+  stable id, with its order kept in a separate array of ids that the projection dedupes, keeping
+  the first occurrence. No basis names it.
+
 Two concurrent edits to one surface must still render. That's the handoff's spike 4, and the
 mapping between `JsonCrdt` merges and A2UI path replacement is where the risk sits. kuilt#2469
 (nested-write cost, and the concurrent-delete choice) is related.
