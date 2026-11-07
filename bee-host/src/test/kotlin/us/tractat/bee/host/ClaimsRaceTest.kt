@@ -1,8 +1,10 @@
 package us.tractat.bee.host
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +47,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -121,6 +125,43 @@ class ClaimsRaceTest {
             { assertIs<ClaimOutcome.Won>(second, "b's claim") },
             { assertNotNull(bSaw, "the newest learner folds the log") },
             { assertNotNull(aSaw, "the first learner still folds the log after the second joined") },
+        )
+        voter.close()
+    }
+
+    /**
+     * A learner that goes away leaves the voter's config once it has been gone for
+     * [ClaimsVoter.LEARNER_GRACE], and not before. The learner that stays keeps claiming.
+     *
+     * The removal's virtual time is the signal: the overload without a grace never removes (null),
+     * and a shorter grace removes early (elapsed under the grace).
+     */
+    @Test
+    fun aLearnerGoneForTheGraceLeavesTheConfig() = runTest(timeout = 120.seconds) {
+        val rig = ClaimsRig(this)
+        val voter = rig.startVoter()
+        val alice = PeerIdentity.agent("alice", Random(1))
+        val bob = PeerIdentity.agent("bob", Random(2))
+        val a = rig.client(NodeId("claims-a"))
+        val bScope = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
+        val b = rig.client(NodeId("claims-b"), bScope)
+        val joined = listOf(a.claim(ClaimTarget("record:grace:1"), alice), b.claim(ClaimTarget("record:grace:2"), bob))
+        val bothIn = voter.membership.value.learners
+
+        val gone = testScheduler.currentTime
+        bScope.coroutineContext.getValue(Job).cancelAndJoin()
+        val removed = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2) {
+            voter.membership.first { NodeId("claims-b") !in it.learners }
+        }
+        val elapsed = (testScheduler.currentTime - gone).milliseconds
+        val after = a.claim(ClaimTarget("record:grace:3"), alice)
+        rig.report("grace: b removed after $elapsed, membership ${voter.membership.value}")
+        assertAll(
+            { assertEquals(List(2) { true }, joined.map { it is ClaimOutcome.Won }, "rig: both learners were admitted") },
+            { assertEquals(setOf(NodeId("claims-a"), NodeId("claims-b")), bothIn, "rig: both learners were in the config") },
+            { assertEquals(setOf(NodeId("claims-a")), removed?.learners, "the gone learner leaves; the other stays") },
+            { assertTrue(elapsed >= ClaimsVoter.LEARNER_GRACE, "not removed before the grace, was $elapsed") },
+            { assertIs<ClaimOutcome.Won>(after, "the remaining learner still claims") },
         )
         voter.close()
     }
