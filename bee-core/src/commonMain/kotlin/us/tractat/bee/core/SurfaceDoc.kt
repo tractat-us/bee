@@ -93,7 +93,8 @@ internal object SurfaceDoc {
      * `Object > Array > Leaf` race, which would drop a peer's concurrent write with no conflict.
      *
      * @throws IllegalArgumentException if a node on the way isn't an object, a key is empty, or the
-     *   write would change a path's type (object, append-only array, whole array, scalar)
+     *   write would change a path's kind (object, append-only array or leaf), or would put a whole
+     *   array on a leaf holding a scalar, or a scalar on one holding a whole array
      */
     fun updateData(doc: JsonCrdt, replica: ReplicaId, pointer: String, value: JsonElement): Patch<JsonCrdt> {
         val segments = SurfaceFormat.segments(pointer)

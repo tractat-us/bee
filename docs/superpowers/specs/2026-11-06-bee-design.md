@@ -245,8 +245,11 @@ Claude session ── bee-mcp                                           ┘     
   the losing subtree.
 - **An object write replaces (#14),** as `updateDataModel` does, by keep-and-clear. What the
   writer saw that the new value doesn't name is cleared and kept. A leaf gets a `"\u0000cleared"`
-  value from the register just read, which the projection hides. An append-only array has the
-  entries seen tombstoned. An object is cleared member by member, and shows as `{}`. bee never
+  value from the register just read. An append-only array has the entries seen tombstoned. An
+  object is cleared member by member. The projection hides each **husk** a clear leaves: a cleared
+  leaf, an append-only array with no entry left, and an object with keys but nothing shown. So a
+  replace is also how a card is deleted. An empty array written as data is a leaf and still
+  shows. The data model's root, and an ordered collection with its `items`, always show. bee never
   removes a key, because `ORMap.remove` drops the subtree's causal history, and a rewritten key
   would then reissue dots (tractat-us/kuilt#3126). Keeping every node keeps every counter, so no
   dot is minted twice, and a cleared path keeps its kind. A peer's concurrent write survives the
