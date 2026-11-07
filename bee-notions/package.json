@@ -1,0 +1,12 @@
+{
+  "name": "@bee/notions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "bee's A2UI renderer host: the stock Lit renderer over web_core's MessageProcessor, and the Notions catalog.",
+  "license": "AGPL-3.0-only",
+  "main": "src/renderer-host.js",
+  "dependencies": {
+    "@a2ui/lit": "0.15.0",
+    "@a2ui/web_core": "0.15.0"
+  }
+}
