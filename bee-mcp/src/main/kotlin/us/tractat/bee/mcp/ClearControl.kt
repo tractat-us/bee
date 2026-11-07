@@ -71,6 +71,8 @@ class ClearControl(
 
     private fun handleRetire(exchange: HttpExchange) {
         exchange.use {
+            // A context matches by prefix; only the exact path retires.
+            if (it.requestURI.path != RETIRE_PATH) return it.respond(404, """{"error":"not found"}""")
             if (it.requestMethod != "POST") return it.respond(405, """{"error":"POST only"}""")
             val retired = identity.current.value
             try {
