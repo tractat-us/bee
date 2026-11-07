@@ -174,7 +174,10 @@ class LiveInputsTest {
         val view = board.surfaceDoc(SURFACE)!!.toSurfaceView(SURFACE)
         inputs.whileRendering { A2uiRenderer(root).render(diff(null, view)) }
         inputs.track(view)
-        // Lit renders on the real event loop; virtual time doesn't move it.
+        // Lit renders on the real event loop, so this polls there. While the body waits off the test
+        // scheduler, runTest keeps running its queued events and advancing virtual time to them.
+        // Nothing is queued yet, so the check below holds; if it fails, the rig started the window
+        // before the test did.
         val input = withContext(Dispatchers.Default) {
             withTimeout(UNTIL) {
                 var found: HTMLInputElement? = null
@@ -184,6 +187,10 @@ class LiveInputsTest {
                 }
                 found
             }
+        }
+        check(testScheduler.currentTime == 0L && inputs.releases.value == 0 && inputs.held(SURFACE).isEmpty()) {
+            "mount() moved virtual time or the hold: t=${testScheduler.currentTime}, " +
+                "releases=${inputs.releases.value}, held=${inputs.held(SURFACE)}"
         }
         return Field(inputs, client, input)
     }
