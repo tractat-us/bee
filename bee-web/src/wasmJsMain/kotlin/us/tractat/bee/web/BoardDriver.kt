@@ -117,21 +117,23 @@ class BoardDriver(
         placeholders.remove(id)?.remove()
     }
 
+    /**
+     * Appends [action] as a record. An action on a surface the board doesn't hold is refused by
+     * `Basis.capture`, and the person is told; it's never dropped quietly.
+     */
     private suspend fun record(action: A2uiAction) {
         try {
-            client.mutateOrSkip { state ->
-                state.surfaceDoc(action.surfaceId)?.let {
-                    val record = ActionRecord(
-                        surfaceId = action.surfaceId,
-                        componentId = action.sourceComponentId,
-                        actor = actor,
-                        name = action.name,
-                        context = action.context,
-                        basis = Basis.capture(state, action.surfaceId),
-                        at = clock(),
-                    )
-                    state.appendRecord(author, record)
-                }
+            client.mutate { state ->
+                val record = ActionRecord(
+                    surfaceId = action.surfaceId,
+                    componentId = action.sourceComponentId,
+                    actor = actor,
+                    name = action.name,
+                    context = action.context,
+                    basis = Basis.capture(state, action.surfaceId),
+                    at = clock(),
+                )
+                state.appendRecord(author, record)
             }
         } catch (refused: IllegalArgumentException) {
             onProblem("Couldn't record ${action.name} on ${action.surfaceId}: ${refused.message}")
