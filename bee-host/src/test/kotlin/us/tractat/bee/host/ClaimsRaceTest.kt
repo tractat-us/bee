@@ -45,7 +45,6 @@ import us.tractat.kuilt.test.fabric.HoldableConnection
 import us.tractat.kuilt.test.fabric.connectionPair
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -152,10 +151,9 @@ class ClaimsRaceTest {
      * The removal's virtual time is the signal: the overload without a grace never removes (null),
      * and a shorter grace removes early (elapsed under the grace).
      */
-    // Red on kuilt 0.7.0-dev.1692: a learner's own disconnect never starts the grace, because
-    // ServerCluster holds each admitted room until its coroutine is cancelled and no RoomHost
-    // cancels it on a tear (tractat-us/kuilt#3127, spike 4 notes).
-    @Ignore
+    // Red on kuilt 0.7.0-dev.1692 (tractat-us/kuilt#3127): ServerCluster held each admitted room
+    // until its coroutine was cancelled, so a learner's own disconnect never started the grace.
+    // Green from 0.7.0-dev.1693 (kuilt#3130): the admission ends when the learner leaves the roster.
     @Test
     fun aLearnerGoneForTheGraceLeavesTheConfig() = runTest(timeout = 120.seconds) {
         val rig = ClaimsRig(this)
