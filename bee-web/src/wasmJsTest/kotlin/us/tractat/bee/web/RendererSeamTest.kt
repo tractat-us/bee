@@ -28,6 +28,8 @@ import us.tractat.kuilt.test.assertAll
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -93,13 +95,10 @@ class RendererSeamTest {
         renderer.render(listOf(A2uiMessage.DeleteSurface("again")))
         awaitTrue("the delete clears it") { !deepText(root).contains("Hello from Kotlin") }
 
-        val errors = renderer.render(helloSurface("again", text = "Hello again"))
+        renderer.render(helloSurface("again", text = "Hello again"))
         awaitTrue("the reopen renders") { deepText(root).contains("Hello again") }
 
-        assertAll(
-            { assertEquals(emptyList(), errors) },
-            { assertEquals(1, root.querySelectorAll("a2ui-surface").length) },
-        )
+        assertEquals(1, root.querySelectorAll("a2ui-surface").length)
     }
 
     @Test
@@ -108,11 +107,10 @@ class RendererSeamTest {
         renderer.render(helloSurface("open"))
         awaitTrue("the first open renders") { deepText(root).contains("Hello from Kotlin") }
 
-        val errors = renderer.render(helloSurface("open", text = "Opened twice"))
+        renderer.render(helloSurface("open", text = "Opened twice"))
         awaitTrue("the second open renders") { deepText(root).contains("Opened twice") }
 
         assertAll(
-            { assertEquals(emptyList(), errors) },
             { assertEquals(1, root.querySelectorAll("a2ui-surface").length) },
             { assertTrue(!deepText(root).contains("Hello from Kotlin")) },
         )
@@ -135,9 +133,19 @@ class RendererSeamTest {
         )
         awaitTrue("the bound value renders") { deepText(root).contains("bound value") }
 
-        val errors = renderer.render(listOf(A2uiMessage.UpdateDataModel("data", "/greeting", null)))
+        renderer.render(listOf(A2uiMessage.UpdateDataModel("data", "/greeting", null)))
         awaitTrue("the delete clears it") { !deepText(root).contains("bound value") }
-        assertEquals(emptyList(), errors)
+        // The value went, not the component bound to it.
+        assertNotNull(deepQuery(root, "a2ui-basic-text"), "the Text element is gone")
+    }
+
+    @Test
+    fun rendererErrorsThrow() = onEventLoop {
+        // An update for a surface that was never created: the processor reports it.
+        val orphan = A2uiMessage.UpdateDataModel("never-created", "/n", JsonPrimitive(1))
+        val thrown = assertFailsWith<A2uiRenderException> { A2uiRenderer(root).render(listOf(orphan)) }
+
+        assertEquals(1, thrown.errors.size, "errors: ${thrown.errors}")
     }
 
     private fun helloSurface(id: String, text: String = "Hello from Kotlin"): List<A2uiMessage> = listOf(

@@ -47,13 +47,16 @@ class A2uiRenderer(root: Element) {
     }
 
     /**
-     * Applies [messages] in order. Returns the errors the renderer reported, as its
-     * RendererErrorMessage objects, empty when it reported none.
+     * Applies [messages] in order.
+     *
+     * @throws A2uiRenderException if the renderer reported any error. The processor applies
+     *   every message it can before reporting, so the messages before and after a bad one
+     *   still land; the errors are never dropped.
      */
-    fun render(messages: List<A2uiMessage>): List<JsonObject> {
+    fun render(messages: List<A2uiMessage>) {
         val sent = messages.flatMap(::withReopen)
-        val errors = host.process(A2uiJson.encode(sent))
-        return Json.parseToJsonElement(errors).jsonArray.map { it.jsonObject }
+        val errors = Json.parseToJsonElement(host.process(A2uiJson.encode(sent))).jsonArray.map { it.jsonObject }
+        if (errors.isNotEmpty()) throw A2uiRenderException(errors)
     }
 
     private fun withReopen(message: A2uiMessage): List<A2uiMessage> = when (message) {
@@ -63,3 +66,6 @@ class A2uiRenderer(root: Element) {
         else -> listOf(message)
     }
 }
+
+/** The renderer refused some of what it was given. [errors] are its RendererErrorMessage objects. */
+class A2uiRenderException(val errors: List<JsonObject>) : IllegalStateException("The A2UI renderer reported errors: $errors")
