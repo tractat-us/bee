@@ -59,7 +59,7 @@ and agent attached, and it's still there when they come back.
 **Non-goals for v1**
 
 - A team deployment. v1 is one person, with the host on their laptop (§5). Other browsers on the
-  same network, such as a conference-room screen, may join it once a participant admits it
+  same network, such as a conference-room screen, may join it once a person there admits it
   (§5.7).
 - Peer-to-peer browser networking (WebRTC). Everyone talks through the host.
 - The phone app. It comes after v1, as a native shell around the web client (§5.5).
@@ -133,7 +133,7 @@ WebRTC is deferred, and everyone talks through the host over WebSockets, outboun
 
 ```
 browser (any)  ── bee client: kuilt replica (wasm) + Lit renderer ─┐
-browser (any)  ── bee client                                        ├── WebSocket ── bee host (JVM)
+browser (any)  ── bee client                                        ├── WebSockets ─ bee host (JVM)
 Claude session ── bee-mcp: kuilt replica (JVM) + MCP tools ────────┤               relay · replica on disk
 Claude session ── bee-mcp                                           ┘               voter · serves the page
 ```
