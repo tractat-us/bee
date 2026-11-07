@@ -240,11 +240,21 @@ Claude session ── bee-mcp                                           ┘     
 - **How a surface is stored (design call).** Each A2UI component is stored whole, as one leaf
   holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. Such
   a leaf holds a string of canonical JSON behind a `"\u0000json:"` prefix, which is v1's persisted
-  format (tractat-us/kuilt#3119 asks for a structured case). A data path never changes type,
-  because an object-versus-scalar conflict silently deletes the losing subtree. An object write
-  replaces, as `updateDataModel` does: it removes the keys the writer saw that the new value
-  doesn't name, by observed remove, so a key a peer adds concurrently survives (#14). §6.1 says
-  which state is appended and which is edited.
+  format (tractat-us/kuilt#3119 asks for a structured case). A write never changes the type of
+  a path that holds a value, because an object-versus-scalar conflict silently deletes the losing
+  subtree.
+- **An object write replaces (#14),** as `updateDataModel` does. It clears what the writer saw
+  that the new value doesn't name, and a peer's concurrent write survives. A key is removed by
+  observed remove. An append-only array keeps its node and has the entries seen tombstoned, so
+  no dot is minted twice. Three effects follow from kuilt's add-wins, and are pinned by tests:
+  - A peer's concurrent write beneath a removed key revives it with that write alone, so a card
+    can come back as a fragment with no `label`. The projection shows a fragment as it is.
+  - The revival also carries that peer's own earlier writes there, even ones the remover saw.
+  - A removed path holds no type. If the remover then writes it as an object while a peer
+    writes a scalar there, the scalar is lost with no conflict shown.
+
+  A recursive clear in kuilt would retire the first two (tractat-us/kuilt#3119). §6.1 says which
+  state is appended and which is edited.
 - **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
   concurrently written value, but A2UI's `updateDataModel` takes exactly one. The driver projects a
   deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
@@ -374,9 +384,9 @@ element would duplicate it. So a surface keeps two kinds of state apart:
   entry means removing it and appending a new one with a new identity.
 - **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
   stable id. An ordered collection is an object with `items`, keyed by id, and `order`, an
-  append-only array of ids, so two concurrent adds both land (#14). The projection shows each item
-  once: the order's ids at their first occurrence, then any item the order lacks, sorted by id. No
-  basis names it.
+  append-only array of ids, so two concurrent adds both land (#14). `order` may be absent. The
+  projection shows each item once: the order's ids at their first occurrence, then any item the
+  order lacks, sorted by id. No basis names it.
 
 Two concurrent edits to one surface must still render. That's the handoff's spike 4, and the
 mapping between `JsonCrdt` merges and A2UI path replacement is where the risk sits. kuilt#2469
