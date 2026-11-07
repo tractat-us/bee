@@ -503,6 +503,9 @@ At each one, look for pieces to pick up in either direction.
   secret it found. v1 is single-user, so the risk is small, but the bridge's tools should make
   "this goes on the shared board" an explicit act, never a side effect. Before a second person
   attaches, there must be a rule for what may never be written to the board.
+- **Who can reach the board.** The host binds loopback only by default. On the local network a
+  browser needs a key, which a person grants by pairing (§5.7). That's an access gate, not
+  transport security.
 - **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
   host nor the bee client ever executes surface content outside that sandbox.
 - **IP.** bee is built on Iain's own time and equipment as open source. It's brought to an employer
@@ -511,14 +514,19 @@ At each one, look for pieces to pick up in either direction.
 
 ## 10. Left to the builder or the plan
 
-- The exact MCP tool list and its shape.
-- How a surface's author declares which action records it handles, and how handlers find them.
-  Candidates: a handler field on the component, or a subscription by surface.
-- The timeout after which a quiet session is declared dead.
-- The layout and history-strip UI.
-- Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in bee.
-- The exact peer identity format. The rules are in §5.2: fresh per session, kind human or agent,
-  and retired on `/clear`.
+The v1 plan decided each of these, and the sections above now carry the answers. Its
+[Decisions section](../plans/2026-11-06-bee-v1.md#decisions-this-plan-makes-spec-10) lists them
+together.
+
+- ~~The exact MCP tool list and its shape.~~ Decided: §5.2.
+- ~~How a surface's author declares which action records it handles, and how handlers find
+  them.~~ Decided: a subscription by surface (§5.2, §6.2).
+- ~~The timeout after which a quiet session is declared dead.~~ Decided: 20 minutes (§6.4).
+- ~~The layout and history-strip UI.~~ Decided: §6.1.
+- ~~The exact peer identity format.~~ Decided: §5.2.
+- Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in bee. **Still
+  open.** The plan keeps it graduable, since its module depends only on `kuilt-crdt`, and
+  revisits the question once the browser driver works.
 
 ## 11. Follow-ups outside bee
 
