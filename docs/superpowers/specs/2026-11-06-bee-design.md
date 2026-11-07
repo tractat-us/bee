@@ -514,7 +514,7 @@ At each one, look for pieces to pick up in either direction.
 
 ## 10. Left to the builder or the plan
 
-The v1 plan decided each of these, and the sections above now carry the answers. Its
+The v1 plan decided all but the last of these, and the sections above now carry the answers. Its
 [Decisions section](../plans/2026-11-06-bee-v1.md#decisions-this-plan-makes-spec-10) lists them
 together.
 
@@ -539,21 +539,37 @@ together.
 - **Epic issues:** a bee epic in `tractat-us/bee`, and a kuilt tracking issue for the primitives
   bee will need. Each links the other and kuilt#2869.
 
-## 12. Spike order (proposed)
+## 12. Build order
 
-1. **Kotlin/wasm and the renderer in one page.** The bee client, compiled to wasm, drives one
-   hard-coded surface in the stock Lit renderer, and a button click comes back into Kotlin as an
-   action. This proves the newest seam and pins versions.
-2. **`JsonCrdt` behind A2UI, across browsers.** Two browsers, each with a replica, edit one surface
-   at the same time through the host. The merge renders correctly in both. This settles the
-   `MVRegister` projection and live shared typing (§5.3). (Handoff spikes 3 and 4.)
-3. **MCP bridge.** A Claude session opens a surface, waits for an action record and answers it. A
-   second session sees it. Kill one, or `/clear` it, and the board shows it gone. (Handoff spike 5.)
-4. **Claims.** Two peers race for one card, and exactly one wins. Kill the winner, and the claim
-   shows as orphaned. Check `kuilt-cluster` first. (Handoff spike 6, single voter.)
-5. **`Sketch` and the companion.** The brainstorming companion's screens render through bee. This
-   is the acceptance test (§3).
-6. **Durability.** Restart the host, and reload or close every browser, with surfaces, records and
-   claims intact.
-7. **A second screen.** A conference-room browser on the same network joins through
-   `tractatus.local` with nothing installed.
+The [v1 plan](../plans/2026-11-06-bee-v1.md#dependency-graph-and-fan-out) builds the seven spikes
+as eleven tasks. The bridge spike needs claims, because handling a record goes through a claim
+(§5.2). So its risky half, the bridge's lifecycle, `/clear` and bounded waits, runs beside the
+others, and its board-and-claims half joins them afterwards (design call).
+
+1. **Kotlin/wasm and the renderer in one page** (spike 1), plus all the build wiring. This proves
+   the newest seam and pins versions.
+2. **The board lattice and its projection** (spike 2, part 1).
+3. **The relay** (spike 2, part 2).
+4. **The browser driver: two browsers edit one surface** (spike 2, part 3). This settles the
+   projection and live shared typing (§5.3).
+5. **Bridge mechanics** (spike 3, first half).
+6. **Claims** (spike 4): two peers race for one card, and exactly one wins.
+7. **Join**, which completes spikes 3 and 4. Then Iain reviews before anything more.
+8. **`Sketch` and the companion** (spike 5). This is the acceptance test (§3).
+9. **Durability** (spike 6): restart the host, and reload or close every browser, with surfaces,
+   records and claims intact.
+10. **A second screen** (spike 7): a browser on the same network pairs (§5.7) and joins through
+    `tractatus.local` with nothing installed.
+11. **Working-day surfaces**: `Board`, `Poll`, orphan decisions and the history strip, which §3's
+    secondary test needs.
+
+```
+Task 1 (alone; precondition: tractat-us/bee#5 merged)
+ ├─► Task 2 lattice + projection ─► Task 3 relay ─► Task 4 driver + e2e ─┐
+ ├─► Task 5 bridge mechanics ─────────────────────────────────────────────┼─► Task 7 join (completes spikes 3–4)
+ └─► Task 6 claims ───────────────────────────────────────────────────────┘        ══ STOP for Iain's review ══
+                                                                                    ├─► Task 8  Sketch + companion (spike 5)
+                                                                                    ├─► Task 9  durability (spike 6)
+                                                                                    ├─► Task 11 Board, Poll, orphans, history
+                                                                                    └─► Task 10 second screen (spike 7; LAN pairing)
+```
