@@ -52,9 +52,10 @@ gave this:
 - **The hook fired and hit `/retire`.** The hook's log showed
   `retired: {"retired":"agent:cleartest#0491068b","current":"agent:cleartest#e08394c9"}`, and the
   bridge logged the same retirement, 12 s after start.
-- **Both sides found the same `claudePid` by the nearest-`claude`-ancestor rule.** Java's
-  `ProcessHandle.info().command()` reports `/Users/keddie/.local/bin/claude`, and `ps -o comm=`
-  reports `claude`.
+- **Both sides found the same `claudePid` by the nearest-`claude`-ancestor rule.** In the first
+  runs the bridge read `ProcessHandle.info().command()` (`/Users/keddie/.local/bin/claude`) and
+  the hook read `ps -o comm=` (`claude`). After review, both read `ps -o comm=`, so they apply
+  literally one rule, and the rerun found the same pid.
 - The new-folder trust prompt defaults to "No, exit", so the script answers it with Down and
   Enter.
 
@@ -72,24 +73,48 @@ nothing, while `source: "clear"` retired the bridge and wrote nothing to stdout.
   `kotlin-logging: initializing... active logger factory: Slf4jLoggerFactory`, went to stdout, which
   is the MCP protocol stream. It printed when `MainKt` loaded, before `main` redirected anything.
   `main` now keeps the real stdout for the transport and points `System.out` at stderr, and
-  `Main`'s logger is lazy, so it starts after the redirect. Logback's default console appender
-  follows `System.out`, so its lines go to stderr too. A `logback.xml` sending everything to
-  stderr would be sturdier, but `bee-mcp/src/main/resources/` isn't in Task 5's file list. The
-  SDK's DEBUG lines are noisy too.
+  `Main`'s logger is lazy, so it starts after the redirect. `bee-mcp`'s `logback.xml` sends every
+  log line to stderr, and holds the SDK's per-request DEBUG and per-tool INFO lines to WARN.
 
 ## Choices made inside the task
 
 - **`ClearControl` serves through the JDK's `com.sun.net.httpserver`, not Ktor.** It's one route
-  on loopback, and this way it needs no dependency and no native access on JDK 25.
-- **`ClearControl` takes `claudePid`** (default `ClaudeAncestry.claudePid()`) next to the plan's
-  `identity` and `runDir`, so tests pick the run file's name. With no `claude` ancestor it still
-  serves, but it writes no run file and logs a warning.
+  on loopback, and this way it needs no dependency and no native access on JDK 25. Handlers run
+  on virtual threads, never on the server's dispatcher.
+- **`/retire` is authenticated.** A loopback bind alone admits other OS users, and any web page
+  that sends a body-less POST to a guessed port (a simple request, so no preflight). The run file
+  is `{"port","token","pid"}`:
+  - The token is 32 bytes from `SecureRandom`.
+  - The file is mode 0600, in a directory forced to 0700 even when it already existed.
+  - A request needs `Authorization: Bearer <token>`, compared in constant time. A browser can't
+    send that header cross-origin without a preflight, and the server approves none.
+  - The hook passes the token to curl on stdin, not as an argument `ps` would show.
+  - The hook checks `kill -0 <pid>` first, so a stale file can't retire another session's bridge
+    when the pid or port has been reused.
+- **A retire never holds a server thread or shutdown.** It runs on the bridge's `SupervisorJob`
+  scope. The response waits up to 5 s and says `200` (done), `202` (still running), or `500`
+  (failed). A Depart that hangs in Task 7 stalls neither the hook nor the shutdown hook.
+- **`ClearControl` takes `scope` and `claudePid`** (default `ClaudeAncestry.claudePid()`) next to
+  the plan's `identity` and `runDir`. With no `claude` ancestor it still serves, but it writes no
+  run file and logs a warning.
+- **`ClaudeAncestry.claudePid` takes `() -> List<Ancestor>`**, where `Ancestor` is a pid and a
+  `comm`. The plan had `() -> List<ProcessHandle>`, but `ProcessHandle` can't carry what `ps`
+  says, and one rule needs `ps` on both sides. The bridge runs `ps -A -o pid=,ppid=,comm=` once.
+  A `comm` may hold spaces.
 - **`BEE_RUN_DIR`** moves the run directory for the bridge and the hook alike, so tests and these
   measurements never touched `~/.bee/run`.
 - **The source owns the wait's bound.** `ActionSource.next` must return within its `timeout`,
-  because only the source knows which cursor to hand back when nothing came. `WaitTool` validates
-  `timeoutSeconds` (a whole number from 1 to 60) and passes it through. Task 7's
+  because only the source knows which cursor to hand back when nothing came. Task 7's
   `BoardActionSource` inherits that obligation.
+- **Cursors are opaque and only a source makes them (a writer's call, after review).**
+  - After a timeout, the cursor is a position to resume from. It may have moved past records the
+    caller could no longer claim, so it need not equal the cursor passed in.
+  - `list` returns `ActionPage(records, cursor)` (`{records, cursor}` on the wire), so a caller
+    never builds a cursor to page on.
+- **Arguments are refused by name.** `timeoutSeconds` must be a JSON integer from 1 to 60. A
+  string such as `"30"` is refused, not read as a number, because the schema says integer.
+  `cursor` and `since` must be strings, and JSON `null` counts as absent. Each refusal is a tool
+  error that names the argument.
 - **`BridgeIdentity.retire` mints first, then reports.** A failed report propagates without
   leaving the bridge on the identity it meant to retire.
 - **`ClearControlTest` binds an ephemeral loopback port** in the required gate. The channel is
@@ -102,8 +127,8 @@ nothing, while `source: "clear"` retired the bridge and wrote nothing to stdout.
 - The 5-minute holds show that this client version doesn't need the bound. A future version with a
   shorter default, or a user's `MCP_TOOL_TIMEOUT` under 60 s, would. The cap stays as the safe
   side.
-- **The rule depends on how Claude Code is installed.** An npm-installed Claude Code runs as `node`,
-  so Java's `command()` would report `node` while `ps -o comm=` may report `claude` (the process
-  title). The two rules would then disagree, and `/clear` would retire nothing. On the native
-  install measured here they agree. Not tested.
+- **An npm-installed Claude Code is untested.** It runs as `node`. The shared `ps` rule finds it
+  only if `ps -o comm=` shows its process title (`claude`). The bridge and the hook now agree
+  either way, so the failure mode is "neither finds it" and `/clear` retires nothing. They can't
+  disagree anymore.
 - No kuilt gap came up in this half.
