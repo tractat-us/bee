@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
@@ -205,7 +206,9 @@ private fun List<kotlin.time.Duration>.summary(): String =
 internal class ClaimsRig(private val test: TestScope, val store: DurableStore = InMemoryDurableStore()) {
     val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
     val raftConfig = RaftConfig(expectVirtualTime = true, random = Random(6))
-    val host = InMemoryClaimsHost(test.testScheduler, clock)
+    // A test dispatcher on the test's scheduler, not the scheduler itself: `identified` runs the seam
+    // loops on what it is given, and a bare scheduler has no dispatcher, so they ran on Default in real time.
+    val host = InMemoryClaimsHost(StandardTestDispatcher(test.testScheduler), clock)
     val mirrored = MutableStateFlow(ClaimTable.EMPTY)
     private var clientSeeds = 0
 
