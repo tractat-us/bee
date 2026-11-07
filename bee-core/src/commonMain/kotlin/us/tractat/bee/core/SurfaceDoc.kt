@@ -43,7 +43,7 @@ internal object SurfaceDoc {
         data: JsonObject,
     ): JsonCrdt {
         val writes = listOf<(JsonCrdt) -> Patch<JsonCrdt>>(
-            { it.set(SurfaceFormat.META, metaNode(null, replica, meta)) },
+            { it.set(SurfaceFormat.META, metaNode(replica, meta)) },
             { updateComponents(it, replica, components) },
             { updateData(it, replica, "", data) },
         )
@@ -121,7 +121,7 @@ internal object SurfaceDoc {
         )
     }
 
-    private fun metaNode(existing: JsonNode?, replica: ReplicaId, meta: SurfaceMeta): JsonNode {
+    private fun metaNode(replica: ReplicaId, meta: SurfaceMeta): JsonNode {
         val fields = listOf(
             SurfaceFormat.META_TITLE to JsonValue.Str(meta.title),
             SurfaceFormat.META_CATALOG_ID to JsonValue.Str(meta.catalogId),
@@ -129,8 +129,7 @@ internal object SurfaceDoc {
             SurfaceFormat.META_OPENED_AT to JsonValue.Str(meta.openedAt.toString()),
             SurfaceFormat.META_CLOSED_AT to (meta.closedAt?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null),
         )
-        val map = objectMap(existing, "/${SurfaceFormat.META}")
-        return JsonNode.Object(threadedPuts(map, replica, fields) { _, current, v -> leafFrom(current, replica, v) })
+        return JsonNode.Object(threadedPuts(ORMap.empty(), replica, fields) { _, current, v -> leafFrom(current, replica, v) })
     }
 
     private fun componentId(component: JsonObject): String {
