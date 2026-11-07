@@ -2,76 +2,104 @@
 
 Task 6 of the [bee v1 plan](../superpowers/plans/2026-11-06-bee-v1.md). The question was whether
 `kuilt-cluster` fits as-is for claims: one host voter that never claims, and learners (browsers and
-bridges) that claim through it. **It doesn't, yet.** A single learner works end to end, in the JVM
-and in the browser. A second learner cuts the first one off the log. Step 1's rule applies: the
-spike stops here, and A4's fallback is Iain's call.
+bridges) that claim through it. **It does, from kuilt `0.7.0-dev.1692`.** Two clients racing for
+one target get exactly one winner, and both see it. The voter is a sequencer, not consensus: it is
+the whole voter set, so a claim commits once it appends it.
+
+The first run, against `0.7.0-dev.1690`, stopped at the fit check: a second learner cut the first
+off the log (bee#11). Iain ruled to fix kuilt first. kuilt#3121 (the learner reconciler) and
+kuilt#3122 (learner removal after a grace) fixed it, published as `0.7.0-dev.1692` (kuilt
+`7654ac4c2`).
 
 ## Fit-check answers
 
-Measured against kuilt `0.7.0-dev.1690` (kuilt `280de6b49`).
+Measured against kuilt `0.7.0-dev.1692`.
 
 | Question | Answer | Evidence |
 |---|---|---|
 | (a) A real WebSocket from wasm | **Yes.** `clusterClient` over `KtorClientLoom` on the browser's WebSocket claims `Won` through the fixture voter. | `WasmClaimTest.browserClaimsThroughTheVoter`, with `-Pbee.realsocket.tests=true` |
 | (b) The server proposes its own `Depart` | **Yes.** `voterNodes[HOST_NODE].propose(…)` commits inline on the single voter. | `ClaimsClientTest.aLearnerFoldsTheLogFromIndexOneIncludingTheVotersDepart`, `VoterRestartTest` |
-| (c) Learners receive committed entries from index 1 or an `Install` | **From index 1, as entries.** The voter publishes no snapshot, so raft has no `Install` to send. A learner admitted after the voter's `Depart` folds that `Depart`. | `aLearnerFoldsTheLogFromIndexOneIncludingTheVotersDepart` |
-| A second learner stays on the log | **No. This one fails.** | below |
+| (c) Learners receive committed entries from index 1 or an `Install` | **From index 1, as entries.** The voter publishes no snapshot, so raft has no `Install` to send. | `aLearnerFoldsTheLogFromIndexOneIncludingTheVotersDepart` |
+| A second learner stays on the log | **Yes, from `0.7.0-dev.1692`.** Both learners stay in the config and fold the voter's later `Depart`. | `ClaimsRaceTest.aSecondLearnerLeavesTheFirstOnTheLog`, `ClaimsSmokeTest.aSecondLearnerLeavesTheFirstOnTheLogOverRealSockets` |
 
-### The failure: admitting a learner drops the one before it
+## The race
 
-`ServerCluster.admitLearner` builds the new configuration from the configuration the cluster was
-**constructed** with, not from the current one (`ServerCluster.kt:185-190` at `280de6b49`, and
-unchanged at kuilt `f83d01b43`):
+`ClaimsRaceTest.twoClientsRaceAndExactlyOneWins` runs 50 rounds. In each, two learners claim the
+same target at once. It asserts exactly one `Won` per round, and that the mirror names the winner
+with the winner's token.
 
-```kotlin
-val withLearner = ClusterConfig(
-    voters = voterConfig.voters,
-    learners = voterConfig.learners + learnerId,   // voterConfig.learners is always empty
-)
-```
+| kuilt | Rounds without exactly one `Won` |
+|---|---|
+| `0.7.0-dev.1690`, first run | 47 of 50 |
+| `0.7.0-dev.1690`, control rerun on this branch | 46 of 50 |
+| `0.7.0-dev.1692` | 0 of 50 |
 
-A learner-set-only change commits as `Simple(target)`, which replaces the learner set. So each
-admission leaves exactly one learner: the newest. The voter stops replicating to every earlier one.
-An earlier learner's proposals still forward and commit, but it never sees them, so its claims time
-out as `Unavailable` while the voter holds them for it.
+On `0.7.0-dev.1692` both learners folded the whole log, through index 102. In this virtual-time
+schedule the first client wins every round, so the test pins exactly-once and agreement, not
+fairness.
 
-The same result holds in memory and on real sockets:
+On `0.7.0-dev.1690`, every claim committed at the voter, but the first learner had been dropped from
+the config, so it never saw its own wins and reported `Unavailable`. The cause was
+`ServerCluster.admitLearner` building each config from the one the cluster was constructed with, so
+each admission kept only the newest learner. kuilt#3121 replaced per-connection admission with one
+reconciler that builds from the leader's current membership.
 
-- `ClaimsRaceTest.aSecondLearnerLeavesTheFirstOnTheLog` (virtual time) and
-  `ClaimsSmokeTest.aSecondLearnerLeavesTheFirstOnTheLogOverRealSockets` (Netty, `KtorRoomHost`,
-  CIO). After `a` claims, then `b` joins and claims, then the voter departs `b`: the log is
-  through index 6, `a` folded through 3, `b` through 6. The voter's membership is
-  `learners=[claims-b]` (`[smoke-b]` on sockets).
-- `ClaimsRaceTest.twoClientsRaceAndExactlyOneWins`: all 100 claims commit, through index 103. The
-  first client wins every round at the voter, but it folded only through index 1, so it reports
-  `Unavailable` every time, and the second client mostly reports `Lost`. In the first recorded run,
-  "exactly one `Won` per round" failed in 47 of 50 rounds.
+The two-learner tests now wait for the `Depart`'s own index before checking that both learners
+folded it. Before, they read the voter's index straight after `depart` returned, ahead of the fold.
 
-These three tests are `@Ignore`d, with a comment, so `check` stays green. Each turns green, with no
-change to bee, once kuilt admits learners from the current membership, as `CoreLearnerAdmission`
-already does (`current.learners + next`). Remove the `@Ignore`s then.
+## Learner removal: wired, but it never fires
 
-**The tracking issue misreads this.** kuilt#3119's third defect says a learner is "never removed
-from membership" and the config grows without bound. In fact each admission removes all the others.
-The two fixes interact: once admission keeps the current learners, the unbounded growth that entry
-describes becomes real.
+`ClaimsVoter` builds its cluster with `learnerGrace = 30.seconds`. Every page load, bridge and
+`/clear` dials under a fresh `NodeId`, so without removal the learner set grows with every
+connection the host has seen. 30 s is the spec's heartbeat reconnect window (§6.4). It is well over
+a reconnect: `clusterClient` re-joins at once on a tear. Removal costs a claim nothing: the table
+holds claims by `PeerIdentity`, and a learner that comes back after the grace is admitted again and
+catches up.
+
+**A kuilt gap stops the grace from ever starting.** `ServerCluster.admitLearner` holds each admitted
+room in `awaitCancellation()`, and only its `finally` withdraws the learner's spoke from
+`RaftRelayHub.learnersFlow`. The grace starts from that withdrawal. Neither `KtorRoomHost` nor bee's
+in-memory host cancels a room's `onRoom` coroutine when its connection closes. `RaftRelayHub`'s
+spoke collector ends on a closed seam, but it doesn't withdraw the spoke. So a learner that
+disconnects stays in the config until the relay itself stops. kuilt's removal tests disconnect by
+cancelling the server-side `onRoom` job in `ServerClusterSim`, which no production host does.
+
+- In memory: `ClaimsRaceTest.aLearnerGoneForTheGraceLeavesTheConfig`. One learner's scope is
+  cancelled, and its id is still in the config 60 s of virtual time later. The test is `@Ignore`d,
+  naming the gap.
+- On real sockets (Netty, `KtorRoomHost`, CIO), with a throwaway diagnostic not kept in the tree:
+  `smoke-b`'s client scope was cancelled, and 45 s later the config still listed both learners.
+
+This bears only on the config's size, not on correctness. A dead learner's id stays in the config,
+and the leader keeps sending it entries.
+
+## The learner's id must equal the client's `NodeId`
+
+The server takes a learner's `NodeId` from the roster, which `KtorClientLoom` fills from its
+`selfPeerId`. The client names itself in `clusterClient`'s `clientNodeId` and `clusterConfig`. If
+the two differ, the voter replicates to an id the client doesn't answer to. bee has no production
+`clusterClient` yet: Task 7 builds it. Today the three test sites (`ClaimsRig.client`,
+`ClaimsSmokeTest.client` and `WasmClaimTest`) each build both from one `NodeId`. The membership
+assertions in the two-learner tests pin that the voter admits the ids the clients chose. Task 7
+should build the loom and the client in one function that takes a single `NodeId`, so the two can't
+differ.
 
 ## Other kuilt findings
+
+These were found on `0.7.0-dev.1690`. They weren't rechecked on `0.7.0-dev.1692`.
 
 - **`ServerCluster.close()` leaves the relay running, and the relay then throws.** `start()` runs in
   the caller's scope, not the cluster's. When that coroutine ends after `close()`,
   `admitLearner`'s `finally` calls `overlay.evict`, and the overlay's `Quilter` is already closed:
-  `IllegalStateException: Quilter(…#overlay-dir) is closed`. Under `runTest` that fails the test.
-  `ClaimsVoter.close()` cancels and joins the relay before it closes the cluster.
+  `IllegalStateException: Quilter(…#overlay-dir) is closed`. `ClaimsVoter.close()` cancels and
+  joins the relay before it closes the cluster.
 - **A refused dial ends a `clusterClient`'s reconnect loop with an uncaught exception.** With the
   voter stopped, the loop's next `SeamRoomFactory.join` throws `ConnectException: Connection
-  refused` out of `buildClusterClient`'s reconnect coroutine, and nothing retries. It reached the
-  next test as `UncaughtExceptionsBeforeTest`. This bears on Review Focus 4, where the host is down
-  when someone acts. I saw it once, at teardown, and didn't chase it further. The smoke now closes
-  its clients before it stops the voter.
+  refused`, and nothing retries. This bears on Review Focus 4, where the host is down when someone
+  acts. The smoke closes its clients before it stops the voter.
 - **No in-memory multi-connection `RoomHost`.** `LoomRoomHost` hosts one room, and `KtorRoomHost`'s
-  constructor over a `Loom` is internal. The deterministic tests carry `InMemoryClaimsHost`
-  (in `ClaimsRaceTest.kt`), which gives every dial its own room, as `/ws/claims` does, and holds a
+  constructor over a `Loom` is internal. The deterministic tests carry `InMemoryClaimsHost` (in
+  `ClaimsRaceTest.kt`), which gives every dial its own room, as `/ws/claims` does, and holds a
   dial's server-to-client sends through `HoldableConnection`.
 
 ## A bee build finding
@@ -85,17 +113,17 @@ CI starts clean, so it doesn't see this. Deleting the file works around it. The 
 ## Measurements
 
 These are first-claim latencies, so each includes the join and the learner's admission. They are
-not steady-state numbers.
+single runs, not steady-state numbers.
 
-| Where | Claim latency |
-|---|---|
-| Virtual time, in memory, one learner | 100 ms |
-| Real loopback sockets, JVM (CIO to Netty) | 265 ms |
-| Real loopback socket, wasm in headless Chrome | 174 ms |
+| Where | `0.7.0-dev.1690` | `0.7.0-dev.1692` |
+|---|---|---|
+| Virtual time, in memory, one learner | 100 ms | 100 ms |
+| Real loopback sockets, JVM (CIO to Netty) | 265 ms | 189 ms |
+| Real loopback socket, wasm in headless Chrome | 174 ms | 217 ms |
 
-**The log after the race:** 103 committed entries. That's 100 claims, the election no-op and two
-learner-admission config entries, with nothing compacted. The race ran against the defect, but
-every claim committed at the voter, so the count stands.
+**The log after the race:** 102 committed entries, with nothing compacted. That's 100 claims, the
+election no-op and one membership change. The reconciler admitted both learners in that one change,
+where `0.7.0-dev.1690` committed one per admission (103 entries).
 
 ## What was built
 
@@ -104,7 +132,8 @@ every claim committed at the voter, so the count stands.
 - `bee-host`: `ClaimsVoter` over `DurableStoreRaftStorage`, and a real `FixtureVoterMain`.
 - Green: `ClaimTableTest` (10), `ClaimsClientTest` (3, including
   `lateCommitOfTimedOutClaimIsReleased`, which reds when the late release is disabled),
-  `VoterRestartTest` (2), `ClaimsSmokeTest.claimOverRealSockets` and `WasmClaimTest`.
+  `ClaimsRaceTest` (2 of 3, the third `@Ignore`d above), `VoterRestartTest` (2), `ClaimsSmokeTest`
+  (2) and `WasmClaimTest`.
 
 ### Where the code departs from the plan's interfaces
 
