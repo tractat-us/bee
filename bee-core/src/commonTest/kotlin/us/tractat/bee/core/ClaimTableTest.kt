@@ -25,7 +25,7 @@ class ClaimTableTest {
 
     @Test
     fun firstCommittedClaimWinsAndLaterOnesAreRejected() {
-        val t = table(ClaimCommand.Claim(target, alice), ClaimCommand.Claim(target, bob), ClaimCommand.Claim(target, alice))
+        val t = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Claim(target, bob, P), ClaimCommand.Claim(target, alice, P))
         assertAll(
             { assertEquals(ClaimStatus.Held(alice, ClaimToken(1, 1)), t.status(target)) },
             { assertEquals(setOf(target), t.heldBy(alice)) },
@@ -36,12 +36,12 @@ class ClaimTableTest {
 
     @Test
     fun replayedEntryChangesNothing() {
-        val once = table(ClaimCommand.Claim(target, alice))
+        val once = table(ClaimCommand.Claim(target, alice, P))
         val release = entry(2, ClaimCommand.Release(target, alice, ClaimToken(1, 1)))
         val released = once.fold(release)
         assertAll(
-            { assertEquals(once, once.fold(entry(1, ClaimCommand.Claim(target, alice)))) },
-            { assertEquals(once, once.fold(entry(1, ClaimCommand.Claim(target, bob)))) },
+            { assertEquals(once, once.fold(entry(1, ClaimCommand.Claim(target, alice, P)))) },
+            { assertEquals(once, once.fold(entry(1, ClaimCommand.Claim(target, bob, P)))) },
             { assertEquals(released, released.fold(release)) },
             { assertEquals(ClaimStatus.Free, released.status(target)) },
         )
@@ -49,7 +49,7 @@ class ClaimTableTest {
 
     @Test
     fun internalAdvancesTheIndexOnly() {
-        val t = table(ClaimCommand.Claim(target, alice))
+        val t = table(ClaimCommand.Claim(target, alice, P))
         val advanced = t.fold(Committed.Internal(5))
         assertAll(
             { assertEquals(5L, advanced.appliedIndex) },
@@ -60,8 +60,8 @@ class ClaimTableTest {
 
     @Test
     fun installReplacesTheTable() {
-        val snapshot = table(ClaimCommand.Claim(other, bob), ClaimCommand.Depart(bob, DepartReason.Quiet))
-        val mine = table(ClaimCommand.Claim(target, alice))
+        val snapshot = table(ClaimCommand.Claim(other, bob, P), ClaimCommand.Depart(bob, DepartReason.Quiet))
+        val mine = table(ClaimCommand.Claim(target, alice, P))
         val installed = mine.fold(Committed.Install(Snapshot(throughIndex = 2, state = snapshot.encode())))
         assertAll(
             { assertEquals(snapshot, installed) },
@@ -74,8 +74,8 @@ class ClaimTableTest {
     @Test
     fun departOrphansAndReassignsNothing() {
         val t = table(
-            ClaimCommand.Claim(target, alice),
-            ClaimCommand.Claim(other, bob),
+            ClaimCommand.Claim(target, alice, P),
+            ClaimCommand.Claim(other, bob, P),
             ClaimCommand.Depart(alice, DepartReason.Crashed),
         )
         assertAll(
@@ -89,7 +89,7 @@ class ClaimTableTest {
     @Test
     fun staleTokenCompleteIsRejected() {
         val t = table(
-            ClaimCommand.Claim(target, alice),
+            ClaimCommand.Claim(target, alice, P),
             ClaimCommand.Depart(alice, DepartReason.Quiet),
             ClaimCommand.Reassign(target, to = bob, by = iain),
             ClaimCommand.Complete(target, bob, ClaimToken(1, 1)),
@@ -103,9 +103,9 @@ class ClaimTableTest {
 
     @Test
     fun commandFromARetiredIdentityIsRejected() {
-        val retired = table(ClaimCommand.Claim(target, alice), ClaimCommand.Depart(alice, DepartReason.Cleared))
+        val retired = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Depart(alice, DepartReason.Cleared))
         val after = listOf(
-            ClaimCommand.Claim(other, alice),
+            ClaimCommand.Claim(other, alice, P),
             ClaimCommand.Release(target, alice, ClaimToken(1, 1)),
             ClaimCommand.Complete(target, alice, ClaimToken(1, 1)),
             ClaimCommand.Reassign(target, to = bob, by = alice),
@@ -120,9 +120,9 @@ class ClaimTableTest {
 
     @Test
     fun reassignMintsANewToken() {
-        val held = table(ClaimCommand.Claim(target, alice), ClaimCommand.Reassign(target, to = bob, by = iain))
+        val held = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Reassign(target, to = bob, by = iain))
         val t = table(
-            ClaimCommand.Claim(target, alice),
+            ClaimCommand.Claim(target, alice, P),
             ClaimCommand.Depart(alice, DepartReason.Crashed),
             ClaimCommand.Reassign(target, to = bob, by = iain),
         ).fold(entry(4, ClaimCommand.Reassign(target, to = iain, by = iain), term = 2))
@@ -134,13 +134,13 @@ class ClaimTableTest {
 
     @Test
     fun onlyOrphansAreReleasedWithoutAToken() {
-        val held = table(ClaimCommand.Claim(target, alice), ClaimCommand.Release(target, alice, null))
+        val held = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Release(target, alice, null))
         val orphaned = table(
-            ClaimCommand.Claim(target, alice),
+            ClaimCommand.Claim(target, alice, P),
             ClaimCommand.Depart(alice, DepartReason.Crashed),
             ClaimCommand.Release(target, iain, null),
         )
-        val wrongHolder = table(ClaimCommand.Claim(target, alice), ClaimCommand.Release(target, bob, ClaimToken(1, 1)))
+        val wrongHolder = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Release(target, bob, ClaimToken(1, 1)))
         assertAll(
             { assertEquals(ClaimStatus.Held(alice, ClaimToken(1, 1)), held.status(target)) },
             { assertEquals(ClaimStatus.Free, orphaned.status(target)) },
@@ -151,7 +151,7 @@ class ClaimTableTest {
     @Test
     fun commandsRoundTripTheirWireForm() {
         val commands = listOf(
-            ClaimCommand.Claim(target, alice),
+            ClaimCommand.Claim(target, alice, ProposalId(-7)),
             ClaimCommand.Release(target, alice, null),
             ClaimCommand.Release(target, alice, ClaimToken(2, 9)),
             ClaimCommand.Reassign(target, to = iain, by = bob),
@@ -159,5 +159,41 @@ class ClaimTableTest {
             ClaimCommand.Depart(alice, DepartReason.Quiet),
         )
         assertEquals(commands, commands.map { ClaimCommand.decode(ClaimCommand.encode(it)) })
+    }
+
+    @Test
+    fun aHumanNeverDeparts() {
+        val t = table(ClaimCommand.Claim(target, iain, P), ClaimCommand.Depart(iain, DepartReason.Crashed))
+        assertAll(
+            { assertEquals(false, t.retired(iain), "only agents depart") },
+            { assertEquals(ClaimStatus.Held(iain, ClaimToken(1, 1)), t.status(target), "the human's claim stays held") },
+            { assertEquals(2L, t.appliedIndex, "the rejected Depart still advances the index") },
+        )
+    }
+
+    @Test
+    fun aRetiredIdentityCantReleaseAnotherOrphan() {
+        val t = table(
+            ClaimCommand.Claim(target, alice, P),
+            ClaimCommand.Depart(alice, DepartReason.Crashed),
+            ClaimCommand.Depart(bob, DepartReason.Quiet),
+            ClaimCommand.Release(target, bob, null),
+        )
+        assertEquals(ClaimStatus.Orphaned(alice, ClaimToken(1, 1)), t.status(target))
+    }
+
+    @Test
+    fun staleTokenReleaseIsRejected() {
+        val t = table(
+            ClaimCommand.Claim(target, alice, P),
+            ClaimCommand.Depart(alice, DepartReason.Quiet),
+            ClaimCommand.Reassign(target, to = bob, by = iain),
+            ClaimCommand.Release(target, bob, ClaimToken(1, 1)),
+        )
+        assertEquals(ClaimStatus.Held(bob, ClaimToken(1, 3)), t.status(target))
+    }
+
+    private companion object {
+        val P = ProposalId(0)
     }
 }
