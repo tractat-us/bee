@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.serialization.ExperimentalSerializationApi::class)
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 
 package us.tractat.bee.host
 
@@ -7,7 +7,6 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.cbor.Cbor
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -31,6 +30,7 @@ import kotlin.time.Instant
 
 private val ALEX = ReplicaId("web-alex")
 private val SAM = ReplicaId("web-sam")
+private val CAROL = ReplicaId("web-carol")
 private val SURFACES = List(5) { "s$it" }
 
 /** Room for the gossip, mesh and Quilter headers a forwarded delta gains on its way down. */
@@ -78,7 +78,11 @@ class BoardRelayEchoTest {
         sam.connect()
         runCurrent()
         alex.openBoard()
-        settle(2400.milliseconds)
+        settle(2.seconds)
+        // A spoke joining now is sent the board in one first-contact FullState: the board's size on the wire.
+        star.client(CAROL).connect()
+        settle(400.milliseconds)
+        val board = star.taps.getValue(CAROL.value).down.max()
         star.taps.values.forEach { it.clear() }
 
         alex.mutate { it.updateData(ALEX, "s0", "/note", JsonPrimitive("hello!")) }
@@ -87,7 +91,6 @@ class BoardRelayEchoTest {
         val alexTap = star.taps.getValue(ALEX.value)
         val samTap = star.taps.getValue(SAM.value)
         val delta = alexTap.up.max()
-        val board = Cbor.encodeToByteArray(BoardState.serializer(), star.relay.state.value).size
         assertAll(
             { assertTrue(board >= 10 * delta, "precondition: the board ($board B) outweighs the delta ($delta B) tenfold") },
             { assertEquals(JsonPrimitive("hello!"), value(sam.state.value, "s0", "note"), "the edit reached sam") },
