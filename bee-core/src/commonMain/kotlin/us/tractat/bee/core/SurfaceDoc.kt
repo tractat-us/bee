@@ -85,7 +85,7 @@ internal object SurfaceDoc {
      * and a basis that saw an old entry can't claim a new one. A concurrent write, or append,
      * survives the clear. Under a cleared object it shows alone, so a card can show as a
      * fragment, such as one holding `column` and no `label`. The cost is that cleared nodes and
-     * tombstones accumulate: nothing is ever collected.
+     * tombstones accumulate: nothing is ever collected. `ReplaceSemanticsTest` pins all of this.
      *
      * A path keeps its kind for good, cleared or not: an object takes only objects, an
      * append-only array only appends, and a leaf only scalars and whole arrays. A cleared leaf
