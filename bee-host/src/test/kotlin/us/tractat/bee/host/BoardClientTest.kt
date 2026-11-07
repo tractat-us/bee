@@ -29,6 +29,7 @@ import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.core.InMemoryTag
 import us.tractat.kuilt.core.Rendezvous
+import us.tractat.kuilt.core.fabric.Connection
 import us.tractat.kuilt.core.fabric.peerMesh
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.quilter.QuilterConfig
@@ -59,6 +60,7 @@ private val OPENED_AT = Instant.parse("2026-11-06T12:00:00Z")
  */
 private class Star(private val test: TestScope) {
     val source = InMemoryConnectionSource()
+    val hubEnds = mutableListOf<Connection>()
     val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
     private val dispatcher = StandardTestDispatcher(test.testScheduler)
     lateinit var relay: BoardRelay
@@ -69,6 +71,7 @@ private class Star(private val test: TestScope) {
 
     fun loom(name: String, scope: CoroutineScope = test.backgroundScope) = SpokeLoom(scope, name, Random(name.hashCode()), clock) { id, _ ->
         val (hubEnd, spokeEnd) = connectionPair()
+        hubEnds += hubEnd
         source.offer(hubEnd)
         peerMesh(id, listOf(spokeEnd), dispatcher)
     }
@@ -228,6 +231,30 @@ class BoardClientTest {
             { assertEquals(0, loomJob.liveDescendants(), "live gossip loops after ten cycles") },
             { assertEquals(idle, clientJob.liveDescendants(), "live client jobs after ten cycles") },
             { assertFalse(alex.online.value) },
+        )
+    }
+
+    /** A link the hub drops tears the spoke; the client goes offline, then redials on its own. */
+    @Test
+    fun aTornLinkRedialsAndResyncs() = runTest(StandardTestDispatcher()) {
+        val star = Star(this).apply { start() }
+        val alex = star.client(ALEX)
+        val sam = star.client(SAM)
+        alex.connect()
+        sam.connect()
+        runCurrent()
+        val firstLink = alex.link.value
+        star.hubEnds.first().close()
+        runCurrent()
+        val offlineAfterTear = !alex.online.value
+        alex.mutate { it.openSurface(ALEX, SURFACE, meta(), listOf(root), JsonObject(emptyMap())) }
+        advanceTimeBy(1.5.seconds)
+        runCurrent()
+        assertAll(
+            { assertTrue(offlineAfterTear, "precondition: the tear took alex offline") },
+            { assertTrue(alex.online.value, "alex redialled") },
+            { assertTrue(alex.link.value != null && alex.link.value != firstLink, "under a fresh fabric id") },
+            { assertEquals(listOf(SURFACE), sam.state.value.openSurfaces(), "the edit made while torn reached sam") },
         )
     }
 }
