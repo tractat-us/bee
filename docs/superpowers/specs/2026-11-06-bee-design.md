@@ -443,12 +443,18 @@ table over the committed log:
 
 - Presence is kuilt's `EphemeralMap`. Each peer shows as attached, with an optional "working on…"
   line.
-- **Crashed** means the bridge connection is gone, detected by `kuilt-liveness`. The peer's claims
-  show as **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
+- **Crashed** means the bridge connection is gone, detected by `kuilt-liveness`: its board link
+  stays lost for the 30 s heartbeat reconnect window (design call). The peer's claims show as
+  **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
 - **Quiet** means the bridge is alive but the agent hasn't acted for a while (for example, a long
   build). It shows as "quiet since …" until a timeout, then **the session is declared dead, exactly
   as if it had crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a
-  reasonable threshold and acts on it. The threshold is left to the plan (§10).
+  reasonable threshold and acts on it: **20 minutes since the bridge's last tool call (design
+  call).** A session waiting on a surface is never quiet.
+- **"Dead" is a committed retirement (design call).** A crashed or quiet session is retired when
+  the host commits `Depart(identity, reason)` through Raft, and the claim table rejects every later
+  command from a retired identity. A bridge that finds itself retired re-identifies (§5.2). Only
+  agents depart. A person's tabs come and go without retiring them.
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.
