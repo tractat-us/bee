@@ -2,6 +2,9 @@
 
 **Date:** 2026-11-06 · **Status:** draft for approval · **Owner:** Iain Keddie
 
+**Amended 2026-11-06 by the [v1 plan](../plans/2026-11-06-bee-v1.md#spec-amendments).** Its
+amendments A1–A14, its decisions and Iain's LAN pairing ruling are folded into the sections below.
+
 Decisions are marked **(Iain)** when they came from Iain in the design conversation, and
 **(design call)** when the writer made them. Push back on any design call.
 
@@ -56,7 +59,8 @@ and agent attached, and it's still there when they come back.
 **Non-goals for v1**
 
 - A team deployment. v1 is one person, with the host on their laptop (§5). Other browsers on the
-  same network, such as a conference-room screen, may join it.
+  same network, such as a conference-room screen, may join it once a person there admits it
+  (§5.7).
 - Peer-to-peer browser networking (WebRTC). Everyone talks through the host.
 - The phone app. It comes after v1, as a native shell around the web client (§5.5).
 - A general A2UI implementation. bee uses an existing renderer.
@@ -129,7 +133,7 @@ WebRTC is deferred, and everyone talks through the host over WebSockets, outboun
 
 ```
 browser (any)  ── bee client: kuilt replica (wasm) + Lit renderer ─┐
-browser (any)  ── bee client                                        ├── WebSocket ── bee host (JVM)
+browser (any)  ── bee client                                        ├── WebSockets ─ bee host (JVM)
 Claude session ── bee-mcp: kuilt replica (JVM) + MCP tools ────────┤               relay · replica on disk
 Claude session ── bee-mcp                                           ┘               voter · serves the page
 ```
@@ -142,10 +146,26 @@ Claude session ── bee-mcp                                           ┘     
     `Quilter`
   - durable local state in kuilt's `IndexedDbDurableStore`, so a reload or a closed laptop loses
     nothing
-  - the connection to the host: kuilt's `KtorClientLoom` (`kuilt-websocket` has a wasm build)
+  - two connections to the host, one per endpoint (§5.4)
   - an **in-page A2UI driver** that turns the replica into A2UI messages for the renderer, and the
     renderer's actions back into edits (§5.3)
 - kuilt's CRDT, Raft and WebSocket modules all build for wasmJs.
+- **Two endpoints, one identity rule each (design call).**
+  - The board runs reconnect shape (A), from #2869's M2 (§8), at `/ws/board`:
+    `KtorMeshClientLoom` spokes into the host's `hostedOverlay`, a fresh fabric `PeerId` per
+    weave, and a `Quilter` rebuilt per connection from the held state.
+  - Claims run kuilt's `clusterClient` over `KtorClientLoom` (the Js engine in browsers) into
+    `serverCluster`'s `KtorRoomHost` at `/ws/claims`. `ClusterClient` owns its `Room` privately,
+    so the browser's `Quilter` needs that second socket.
+  - Raft identity is per connection, and bee's human identity sits above it.
+  - No kuilt test has dialled a real WebSocket from wasmJs yet, so Spike 4's browser smoke is the
+    first evidence.
+- **Browser identity (design call).**
+  - The person's name is asked once and kept in `localStorage["bee.human.name"]`.
+  - Every tab is its own replica, under a fresh CRDT author per page load.
+  - Only the tab holding the Web Lock `bee-board-store` writes the IndexedDB snapshot.
+  - A room screen is a named human peer opened with `?screen=<name>`, and it never proposes a
+    claim.
 - **Spike 1 is the glue (Iain: "good with the new spike").** Kotlin/wasm and the JavaScript renderer
   have to share one page: messages in, actions out. It's the newest and riskiest seam, so it goes
   first.
@@ -160,26 +180,51 @@ Claude session ── bee-mcp                                           ┘     
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
   `Poll` counts people and agents, not tabs.
+- **The identity format (design call).** An agent is `agent:<name>#<8 hex>`, fresh per bridge
+  identity, where `name` is `$BEE_SESSION_NAME`, else the working directory's basename. A human is
+  `human:<name>`, the same across tabs and devices. Only agents depart (§6.4).
+- **CRDT authors are not peer identities (design call).** A replica writes as `web-<uuid>` per page
+  load, `mcp-<uuid>` per bridge process, or `host-<uuid>` per host boot.
 - **`/clear` is a departure (design call).** A stdio MCP server normally survives `/clear`, but the
   agent has lost its context, so its claims should not stay live. A `SessionStart` hook with
   `source=clear` tells the bridge to retire its identity and take a fresh one. The old identity's
   claims become orphaned (§6.4). Spike 3 verifies that the bridge does survive `/clear` and that
   the hook fires.
-- Exposes tools for: reading the board; opening, updating and closing surfaces; reading and
-  answering action records; claiming and releasing work; and posting presence ("working on X").
-  The exact tool list is left to the plan.
-- **Waiting without polling (design call):** a tool that blocks until a matching action record
-  arrives, with a timeout. This is the replacement for reading `state_dir/events`.
+- **The `/clear` channel (design call).** At start, the bridge writes `~/.bee/run/<claudePid>.json`
+  (`{"port":N}`) and serves `POST /retire` on loopback. `claudePid` is the nearest ancestor process
+  named `claude`. The `SessionStart` hook finds the same pid by the same rule and POSTs to it.
+- **The tools (design call).** Every writing tool's description starts "Puts … on the shared
+  board, visible to everyone attached", so sharing is always an explicit act (§9).
+  - Board: `bee_board`, `bee_surface_open`, `bee_surface_update`, `bee_surface_close`,
+    `bee_board_clear`.
+  - Records: `bee_wait_action`, `bee_list_actions`, `bee_action_done`.
+  - Claims and presence: `bee_claim`, `bee_release`, `bee_presence`.
+- **Waiting without polling, bounded (design call).** `bee_wait_action` holds until a matching
+  action record arrives, and returns within 45 s, or a caller-chosen time up to 60 s. It returns
+  `{record?, timedOut, cursor}`, and sends progress notifications while it holds.
+  `bee_list_actions(since)` reads without blocking. This is the replacement for reading
+  `state_dir/events`. Bounded waits make a long hold unnecessary, so Spike 3 doesn't measure a
+  30-minute one **(Iain: dropped)**.
 - **Records are addressed to a surface, never to a session instance (design call).** Session
   identities are fresh each time, so a record addressed to one would wait forever once that session
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
   always goes through a claim** (§6.3), so two sessions never both act on one click.
+- **A session handles a surface by subscribing to it (design call).** Waiting on a surface is how
+  a session handles it, and any session may wait on any surface.
+- **The bridge validates what it writes (design call)** against the Notions schema (§5.6), and
+  refuses a malformed surface with an error that names the bad id or type.
+- **A retired bridge re-identifies before it acts (design call).** If the bridge finds its identity
+  retired (§6.4), it takes a fresh one through the `/clear` path, and refuses the board write it was
+  asked for.
 
 ### 5.3 The A2UI boundary, inside the page
 
-- **Pinned protocol and renderer (design call):** A2UI **v0.9.1** with the official **Lit** (Web
-  Components) renderer. Lit is stable for v0.9 and framework-free. v1.0 is a release candidate, so
-  re-pin when it lands.
+- **Pinned protocol and renderer (design call):** the official **Lit** (Web Components) renderer,
+  `@a2ui/lit` with `@a2ui/web_core`, framework-free. **The pin is a spec version.** Spike 1 pins
+  exact package versions and records which spec version they implement, and uses v1.0 only if
+  **both** packages export it. On 2026-11-06, `@a2ui/web_core@0.15.0` exports `./v1_0`, but
+  `@a2ui/lit@0.15.0` exports only `.`, `./ui`, `./0.8`, `./v0_8` and `./v0_9`, so today it's
+  **v0.9.1** (`version: "v0.9"`).
 - The in-page driver plays the A2UI server's part. It feeds the renderer `createSurface`,
   `updateComponents`, `updateDataModel` and `deleteSurface`, and receives `action`. The renderer is
   stock and never sees a CRDT.
@@ -187,27 +232,59 @@ Claude session ── bee-mcp                                           ┘     
   replaces (upserts) a value at a JSON Pointer path. The driver turns each merged CRDT change into
   those replacements, and each `action` into a CRDT edit plus an action record. Merge rules live
   only in the replica, never in the renderer.
+- **The driver diffs; it never applies deltas (design call).** `Quilter.state` is a conflated
+  `StateFlow`, so a delta can be skipped. The driver diffs the view it last rendered against the
+  current one, and replaces an array whole when its ids change. It validates each surface before
+  rendering it, and shows a placeholder naming the errors instead of an invalid one. bee builds
+  this on kuilt's public API, and it can graduate later.
+- **How a surface is stored (design call).** Each A2UI component is stored whole, as one leaf
+  holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. A
+  data path never changes type, because an object-versus-scalar conflict silently deletes the
+  losing subtree. §6.1 says which state is appended and which is edited.
 - **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
   concurrently written value, but A2UI's `updateDataModel` takes exactly one. The driver projects a
   deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
-  instead of hiding it. Spike 2 picks the rule.
-- **Open for the spike:** in v0.9, bound inputs such as a `TextField` update the renderer's *local*
-  model, and send it only on an action with `sendDataModel`. Live shared typing needs the driver to
-  observe local data-model changes (likely through `@a2ui/web_core`) or a Notions component that does.
-  Spike 2 settles this.
+  instead of hiding it.
+  - **A register keeps every concurrent value only when a write starts from the register just
+    read** (`leaf.register.set(replica, v)`). kuilt's documented `Leaf(MVRegister.empty().set(…))`
+    creates phantom conflicts, so bee never writes that way.
+  - **The winner (design call)** is the greatest value under a total order on `JsonValue`:
+    `Null` < `Bool` < `Num` < `Str`, then by value, with strings compared by UTF-16 code unit.
+    It's the same on every peer, never arrival order. The full set of values is published at
+    `/_bee/conflicts/<escaped pointer>`.
+- **Live shared typing.** In v0.9, bound inputs such as a `TextField` update the renderer's *local*
+  model, and send it only on an action with `sendDataModel`. So the driver subscribes to
+  `@a2ui/web_core`'s data model for every bound path and writes changes into the replica,
+  debounced. It holds remote changes to a path the person has focused or left dirty until they
+  leave it. Spike 2 proves this route.
 
 ### 5.4 The bee host
 
 - **Relay.** Every peer dials the host. Nobody needs to accept inbound connections, which matches
-  the handoff's network constraint. `KtorServerLoom` or `KtorRoomHost` on the JVM.
+  the handoff's network constraint. The board relay sits at `/ws/board` (`hostedOverlay` and the
+  host's `Quilter`), and the claims voter at `/ws/claims` (`serverCluster` on a `KtorRoomHost`),
+  as §5.1 describes.
 - **The always-on replica**, persisted with `FileChannelDurableStore`, so the board outlives every
   peer, including every browser closing at once.
-- **The voter that never claims** (§6.3).
+- **kuilt ships the stores; only the `Quilter` adapter is missing (design call).** `kuilt-store`
+  has `FileChannelDurableStore` (JVM, takes a `File`) and `IndexedDbDurableStore` (wasmJs), and
+  `kuilt-raft` has `DurableStoreRaftStorage`. For Raft it's configuration: open the storage first
+  (`DurableStoreRaftStorage.open` suspends), then pass `storageFactory = { storage }`, because
+  `serverCluster` otherwise defaults to `InMemoryRaftStorage`. The one gap is a
+  `Quilter`↔`DurableStore` adapter that snapshots on change and seeds `initial` on start. It's
+  generic, so bee proves it with no bee types, and it's a candidate for the kuilt tracking issue
+  (§11).
+- **The voter that never claims** (§6.3). It's also the only writer of the claims mirror and the
+  departure list on the board.
 - **Serves the web client** (the wasm bundle, the renderer and the Notions catalog), so a
   conference-room browser needs only a URL.
-- **Where it runs.** Solo: on Iain's laptop, reachable on his network at `tractatus.local`. For a
-  team: on a shared server. For an employer's hackathon on employer code, that's the hosting
-  party's call.
+- **Its coordinates (design call).** Port `8233` ("BEE" on a keypad), data in `~/.bee/host/`,
+  routes `/`, `/ws/board` and `/ws/claims`. The host has no write route: it writes to the board
+  only through its own replica.
+- **Where it runs.** Solo: on Iain's laptop. It binds loopback only unless it's started with
+  `--lan` (design call), and then it's reachable on his network at `tractatus.local` (§5.7).
+  For a team: on a shared server. For an employer's hackathon on employer code, that's the
+  hosting party's call.
 
 ### 5.5 After v1: the phone app (Iain)
 
@@ -220,20 +297,55 @@ client core then runs natively instead of as wasm.
 
 ### 5.6 The Notions catalog
 
-bee's custom A2UI catalog, advertised through `supportedCatalogIds`. **The name "Notions" is a design
-call: in sewing, notions are the buttons, snaps and fasteners.** It starts with:
+bee's custom A2UI catalog, advertised through `supportedCatalogIds` as
+`https://tractat.us/bee/catalogs/notions/v1.json` (design call). **The name "Notions" is a design
+call: in sewing, notions are the buttons, snaps and fasteners.** It holds the basic catalog's
+components plus these:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
   (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
   hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
   `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
-- **`Poll`**: a question, options, and live per-peer answers.
+- **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
+  appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
   captures in the browser and returns a transcript as an action. Before it ships it needs a consent
   rule, because it records everyone in the room, not just the person who asked.
 
 The basic catalog (`Text`, `Card`, `Row`, `Column`, `Button`, `ChoicePicker`, …) covers the rest.
+
+Because the host can't refuse a CRDT write, the catalog's schema is enforced by the writers: the
+bridge validates a surface before writing it (§5.2), and the browser driver before rendering it
+(§5.3).
+
+### 5.7 Letting a second screen in (Iain)
+
+**A browser on the local network gets a key through Bluetooth-style pairing (Iain).** A browser
+that arrives over the LAN without a key shows a six-digit code, and the board asks the current
+participants to type it in. A matching code admits the browser and gives it a key. The flow is a
+design call:
+
+1. The keyless browser opens a pairing endpoint that carries no board or claims traffic. The host
+   sends it a code and a pairing id, and the browser shows the code full screen.
+2. The host puts a join request on the board ("A device wants to join: enter the code it shows").
+   The code itself is never written to the board.
+3. A participant types the code into that surface, and it arrives as an action record (§6.2). A
+   match mints a key, sends it to the browser, and closes the request with "admitted by <name>".
+4. The browser dials `/ws/board` and `/ws/claims` with its key. With `--lan` on, both refuse a
+   non-loopback connection that has no valid key. Keys live in the host's memory, so a host restart
+   re-pairs every LAN device.
+
+**Only human peers may admit a device (Iain: humans only, for now).** This departs from the
+orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
+someone can see the new screen.
+
+The other details are design calls too. Loopback connections need no key. A key in the URL
+(`?k=`) still admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong
+entries void it.
+
+**This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is
+self-declared by trusted local peers. §9's sharing rule still governs what goes on the board.
 
 ## 6. The board's state
 
@@ -244,6 +356,21 @@ a stable surface id. The board is the set of open surfaces plus their layout.
 **"Clear the board" closes surfaces. It doesn't delete them (design call):** closed surfaces move
 to a history strip and can be reopened with their results. This takes the persistence goal at its
 word. A lunch break shouldn't erase the morning's vote.
+
+**The layout (design call).** Open surfaces stack in the order they were opened (ties by surface
+id). Closed surfaces sit in a collapsed history strip, newest first, and reopen with their records.
+
+**Two kinds of state in a surface (design call).** A sequence element in kuilt's `Rga` is
+write-once: it has insert, remove and compact, but no update, so two concurrent edits of one
+element would duplicate it. So a surface keeps two kinds of state apart:
+
+- **Appended content**: anything a basis must name, or a handler must reason about having seen
+  (§6.2). Poll options and question revisions are appended entries in a `JsonNode.Array`, never
+  edited, and action records are appended to the board's own `Rga`, outside any surface. Correcting an
+  entry means removing it and appending a new one with a new identity.
+- **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
+  stable id, with its order kept in a separate array of ids that the projection dedupes, keeping
+  the first occurrence. No basis names it.
 
 Two concurrent edits to one surface must still render. That's the handoff's spike 4, and the
 mapping between `JsonCrdt` merges and A2UI path replacement is where the risk sits. kuilt#2469
@@ -266,14 +393,27 @@ handler tell "the clicker voted before the third option was added" from "the cli
 to". **Design call:** records live in a dot-carrying sequence (kuilt `Rga`), per #2869's ruling
 that input identities come only from dot-carrying types.
 
+**Anything a basis must name is an appended `Rga` entry, never an edited leaf (design call).**
+This follows #2869's own rule, "a scalar input has no identity": its prototype appended an entry
+rather than use a register. **`MVRegister` dots stay private (Iain)**, so bee asks kuilt for
+nothing to open them.
+
+- Poll options and question revisions are appended entries in a `JsonNode.Array` (§6.1).
+- Each array's `Rga` mints sequence numbers on its own, so two arrays in one surface can hand out
+  the same dot. So the basis keys dots by each array's JSON pointer, and never flattens them
+  through `JsonCrdt.causalDots()`. Record dots, from the board's own `Rga`, are held apart from
+  the per-pointer surface maps for the same reason.
+- A scalar leaf, or any editable keyed state, is display state that no handler may reason about.
+
 **Capturing the basis (design call):**
 
 Every peer holds a replica, so every action takes its basis from the actor's own replica at the
 moment it acts. For a browser click, the in-page driver stamps the record from that browser's
 replica as it turns the A2UI `action` into an edit. A click can't claim to have seen something its
-browser hadn't yet received.
+browser hadn't yet received. A handler whose replica lacks a dot the basis names treats the basis
+as incomplete: unknown, never applicable.
 
-How a surface's author declares which records are theirs is open (§10).
+A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
 
 ### 6.3 Claims: exactly one
 
@@ -287,26 +427,44 @@ in kuilt) is the starting point.
 call).** That's deliberate. It keeps the claim API and its board mirror identical when more voters
 join later. The host votes but never claims. Browsers and bridges claim through it, which is the
 shape of kuilt's `kuilt-cluster` (`ServerCluster` voters, `clusterClient` learners that forward
-proposals with `requestId` dedup). The plan should check whether `kuilt-cluster` fits as-is before
-building a claim path of its own.
+proposals with `requestId` dedup). The kuilt peer confirmed that `clusterClient` compiles for
+wasmJs and that a single voter commits inline and never steps down. Spike 4 opens with a fit check
+of the questions still open before it builds on `kuilt-cluster`.
+
+**Claims are a state machine, and the host owns the mirror (design call).** `kuilt-cluster`'s
+`ClientSessionTable` dedups one proposer's retries, not two peers racing, so bee adds a claim
+table over the committed log:
+
+- The first committed `Claim` of a free target wins, and later ones apply as rejected.
+- A held claim carries a **fencing token**, the `(term, index)` of the log entry that granted it.
+  A `Complete` or `Release` with a stale token applies as rejected.
+- The host applies the committed log, and it's the only writer of the claims mirror and the list
+  of departed peers on the board.
 
 ### 6.4 Presence and failure
 
 - Presence is kuilt's `EphemeralMap`. Each peer shows as attached, with an optional "working on…"
   line.
-- **Crashed** means the bridge connection is gone, detected by `kuilt-liveness`. The peer's claims
-  show as **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
+- **Crashed** means the bridge connection is gone, detected by `kuilt-liveness`: its board link
+  stays lost for the 30 s heartbeat reconnect window (design call). The peer's claims show as
+  **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
 - **Quiet** means the bridge is alive but the agent hasn't acted for a while (for example, a long
   build). It shows as "quiet since …" until a timeout, then **the session is declared dead, exactly
   as if it had crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a
-  reasonable threshold and acts on it. The threshold is left to the plan (§10).
+  reasonable threshold and acts on it: **20 minutes since the bridge's last tool call (design
+  call).** A session waiting on a surface is never quiet.
+- **"Dead" is a committed retirement (design call).** A crashed or quiet session is retired when
+  the host commits `Depart(identity, reason)` through Raft, and the claim table rejects every later
+  command from a retired identity. A bridge that finds itself retired re-identifies (§5.2). Only
+  agents depart. A person's tabs come and go without retiring them.
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.
 
 ## 7. bee and kuilt
 
-- **bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** It's private while it starts and
+- **bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** Its name is written in
+  lowercase everywhere, like kuilt's **(Iain)**. It's private while it starts and
   meant to be open source under **AGPL-3.0 (Iain)**. **Every outside contribution requires a
   strict CLA that assigns all rights to Iain (Iain)**, so relicensing (for example, moving a piece
   into Apache-licensed kuilt, or a separate grant to an employer) stays his to decide. kuilt may reference public `tractat-us` projects **(Iain)**,
@@ -348,6 +506,9 @@ At each one, look for pieces to pick up in either direction.
   secret it found. v1 is single-user, so the risk is small, but the bridge's tools should make
   "this goes on the shared board" an explicit act, never a side effect. Before a second person
   attaches, there must be a rule for what may never be written to the board.
+- **Who can reach the board.** The host binds loopback only by default. On the local network a
+  browser needs a key, which a person grants by pairing (§5.7). That's an access gate, not
+  transport security.
 - **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
   host nor the bee client ever executes surface content outside that sandbox.
 - **IP.** bee is built on Iain's own time and equipment as open source. It's brought to an employer
@@ -356,14 +517,19 @@ At each one, look for pieces to pick up in either direction.
 
 ## 10. Left to the builder or the plan
 
-- The exact MCP tool list and its shape.
-- How a surface's author declares which action records it handles, and how handlers find them.
-  Candidates: a handler field on the component, or a subscription by surface.
-- The timeout after which a quiet session is declared dead.
-- The layout and history-strip UI.
-- Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in bee.
-- The exact peer identity format. The rules are in §5.2: fresh per session, kind human or agent,
-  and retired on `/clear`.
+The v1 plan decided all but the last of these, and the sections above now carry the answers. Its
+[Decisions section](../plans/2026-11-06-bee-v1.md#decisions-this-plan-makes-spec-10) lists them
+together.
+
+- ~~The exact MCP tool list and its shape.~~ Decided: §5.2.
+- ~~How a surface's author declares which action records it handles, and how handlers find
+  them.~~ Decided: a subscription by surface (§5.2, §6.2).
+- ~~The timeout after which a quiet session is declared dead.~~ Decided: 20 minutes (§6.4).
+- ~~The layout and history-strip UI.~~ Decided: §6.1.
+- ~~The exact peer identity format.~~ Decided: §5.2.
+- Whether the A2UI mapping is generic enough to graduate to kuilt, or stays in bee. **Still
+  open.** The plan keeps it graduable, since its module depends only on `kuilt-crdt`, and
+  revisits the question once the browser driver works.
 
 ## 11. Follow-ups outside bee
 
@@ -376,21 +542,37 @@ At each one, look for pieces to pick up in either direction.
 - **Epic issues:** a bee epic in `tractat-us/bee`, and a kuilt tracking issue for the primitives
   bee will need. Each links the other and kuilt#2869.
 
-## 12. Spike order (proposed)
+## 12. Build order
 
-1. **Kotlin/wasm and the renderer in one page.** The bee client, compiled to wasm, drives one
-   hard-coded surface in the stock Lit renderer, and a button click comes back into Kotlin as an
-   action. This proves the newest seam and pins versions.
-2. **`JsonCrdt` behind A2UI, across browsers.** Two browsers, each with a replica, edit one surface
-   at the same time through the host. The merge renders correctly in both. This settles the
-   `MVRegister` projection and live shared typing (§5.3). (Handoff spikes 3 and 4.)
-3. **MCP bridge.** A Claude session opens a surface, waits for an action record and answers it. A
-   second session sees it. Kill one, or `/clear` it, and the board shows it gone. (Handoff spike 5.)
-4. **Claims.** Two peers race for one card, and exactly one wins. Kill the winner, and the claim
-   shows as orphaned. Check `kuilt-cluster` first. (Handoff spike 6, single voter.)
-5. **`Sketch` and the companion.** The brainstorming companion's screens render through bee. This
-   is the acceptance test (§3).
-6. **Durability.** Restart the host, and reload or close every browser, with surfaces, records and
-   claims intact.
-7. **A second screen.** A conference-room browser on the same network joins through
-   `tractatus.local` with nothing installed.
+The [v1 plan](../plans/2026-11-06-bee-v1.md#dependency-graph-and-fan-out) builds the seven spikes
+as eleven tasks. The bridge spike needs claims, because handling a record goes through a claim
+(§5.2). So its risky half, the bridge's lifecycle, `/clear` and bounded waits, runs beside the
+others, and its board-and-claims half joins them afterwards (design call).
+
+1. **Kotlin/wasm and the renderer in one page** (spike 1), plus all the build wiring. This proves
+   the newest seam and pins versions.
+2. **The board lattice and its projection** (spike 2, part 1).
+3. **The relay** (spike 2, part 2).
+4. **The browser driver: two browsers edit one surface** (spike 2, part 3). This proves the
+   projection and live shared typing (§5.3).
+5. **Bridge mechanics** (spike 3, first half).
+6. **Claims** (spike 4): two peers race for one card, and exactly one wins.
+7. **Join**, which completes spikes 3 and 4. Then Iain reviews before anything more.
+8. **`Sketch` and the companion** (spike 5). This is the acceptance test (§3).
+9. **Durability** (spike 6): restart the host, and reload or close every browser, with surfaces,
+   records and claims intact.
+10. **A second screen** (spike 7): a browser on the same network pairs (§5.7) and joins through
+    `tractatus.local` with nothing installed.
+11. **Working-day surfaces**: `Board`, `Poll`, orphan decisions and the history strip, which §3's
+    secondary test needs.
+
+```
+Task 1 (alone; precondition: tractat-us/bee#5 merged)
+ ├─► Task 2 lattice + projection ─► Task 3 relay ─► Task 4 driver + e2e ─┐
+ ├─► Task 5 bridge mechanics ─────────────────────────────────────────────┼─► Task 7 join (completes spikes 3–4)
+ └─► Task 6 claims ───────────────────────────────────────────────────────┘        ══ STOP for Iain's review ══
+                                                                                    ├─► Task 8  Sketch + companion (spike 5)
+                                                                                    ├─► Task 9  durability (spike 6)
+                                                                                    ├─► Task 11 Board, Poll, orphans, history
+                                                                                    └─► Task 10 second screen (spike 7; LAN pairing)
+```
