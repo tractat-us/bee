@@ -21,6 +21,9 @@ import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardFixtures.A
 import us.tractat.bee.core.BoardFixtures.B
 import us.tractat.bee.core.BoardFixtures.SURFACE
+import us.tractat.bee.core.BoardFixtures.addCard
+import us.tractat.bee.core.BoardFixtures.card
+import us.tractat.bee.core.BoardFixtures.cardOrder
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.bee.core.BoardFixtures.values
@@ -134,71 +137,10 @@ class BoardStateTest {
     }
 
     @Test
-    fun objectWriteRemovesTheKeysItSaw() {
-        // #14 ruling 1: an object write replaces. B wrote /poll/votes and A saw it, so A's write of
-        // /poll without votes retires B's key too, through ORMap's observed remove, not a null.
-        val base = opened(buildJsonObject { put("poll", buildJsonObject { put("question", "Lunch?") }) })
-        val voted = base.piece { it.updateData(B, SURFACE, "/poll/votes", JsonPrimitive(3)) }
-        val replace = voted.updateData(A, SURFACE, "/poll", buildJsonObject { put("question", "Dinner?") })
-        val replaced = voted.piece(replace)
-        assertAll(
-            { assertEquals(setOf("question"), (BoardFixtures.node(replaced, "/poll") as JsonNode.Object).map.keys) },
-            { assertEquals(buildJsonObject { put("question", "Dinner?") }, view(replaced).data["poll"]) },
-            // A peer that took B's write after the replace drops it all the same.
-            { assertEquals(replaced, base.piece(replace.delta).piece(voted)) },
-        )
-    }
-
-    @Test
-    fun concurrentAddSurvivesAReplace() {
-        // The replace removes only the keys its writer saw: B's concurrent key is not among them.
-        val base = opened(buildJsonObject { put("poll", buildJsonObject { put("question", "Lunch?"); put("votes", 3) }) })
-        val onA = base.piece { it.updateData(A, SURFACE, "/poll", buildJsonObject { put("question", "Dinner?") }) }
-        val onB = base.piece { it.updateData(B, SURFACE, "/poll/comment", str("hi")) }
-        val ab = onA.piece(onB)
-        val ba = onB.piece(onA)
-        assertAll(
-            { assertEquals(ab, ba) },
-            { assertEquals(setOf("question", "comment"), (BoardFixtures.node(ab, "/poll") as JsonNode.Object).map.keys) },
-            { assertEquals(buildJsonObject { put("comment", "hi"); put("question", "Dinner?") }, view(ab).data["poll"]) },
-        )
-    }
-
-    @Test
-    fun concurrentCardAddsBothAppearInOneOrder() {
-        // #14 ruling 2: a card order is an append-only Rga of ids, so two concurrent adds both land.
-        val base = board("c0")
-        val onA = addCard(base, A, "c1")
-        val onB = addCard(base, B, "c2")
-        val order = cardOrder(onA.piece(onB))
-        assertAll(
-            { assertEquals(order, cardOrder(onB.piece(onA))) },
-            { assertEquals(listOf("c0"), order.take(1)) },
-            { assertEquals(setOf("c0", "c1", "c2"), order.toSet()) },
-            { assertEquals(3, order.size) },
-        )
-    }
-
-    @Test
-    fun theOrderShowsEachKeyedItemOnce() {
-        // The projection appends keyed items the order lacks, sorted by id, drops ids that name no
-        // item, and keeps an id's first occurrence, so every peer shows the same permutation.
-        val state = board("c0", "c1")
-            .piece { it.updateData(A, SURFACE, "/board/items/c3", card("c3")) }
-            .piece { it.updateData(B, SURFACE, "/board/items/c2", card("c2")) }
-            .piece { it.appendEntry(B, SURFACE, "/board/order", str("c0")) }
-            .piece { it.appendEntry(B, SURFACE, "/board/order", str("gone")) }
-        assertAll(
-            { assertEquals(4, BoardFixtures.entryDots(state, "/board/order").size, "precondition: the Rga holds the repeat and the stray") },
-            { assertEquals(listOf("c0", "c1", "c2", "c3"), cardOrder(state)) },
-        )
-    }
-
-    @Test
     fun reorderingCannotDuplicateAnItem() {
         // A JSON array written as data is stored whole, as one leaf: concurrent reorders conflict
         // as values, and each value is one writer's whole permutation. A card order is an
-        // append-only Rga instead (theOrderShowsEachKeyedItemOnce).
+        // append-only Rga instead (ReplaceSemanticsTest.theOrderShowsEachKeyedItemOnce).
         val base = opened(buildJsonObject { put("order", ids("a", "b", "c")) })
         val onA = base.piece { it.updateData(A, SURFACE, "/order", ids("c", "a", "b")) }
         val onB = base.piece { it.updateData(B, SURFACE, "/order", ids("b", "c", "a")) }
@@ -231,7 +173,8 @@ class BoardStateTest {
     fun deltasJoinInAnyOrderWithRepeats() {
         // Three replicas run every mutator; their six deltas, delivered in all 720 orders with the
         // first delivered twice, reach one state and one projection (the lattice laws).
-        // A's replace of /poll races B's add to it, and A and C each add a card to one order (#14).
+        // A's replace of /poll races B's add to it and B's append to the array it clears, and A and
+        // C each add a card to one order (#14).
         val base = addCard(
             opened(
                 buildJsonObject {
@@ -242,7 +185,7 @@ class BoardStateTest {
             ),
             A,
             "c0",
-        )
+        ).piece { it.appendEntry(A, SURFACE, "/poll/options", str("Pizza")) }
         val c = ReplicaId("host-c")
         val second = SurfaceMeta("Second", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), BoardFixtures.OPENED_AT)
         val cards = buildJsonObject { put("c1", buildJsonObject { put("label", "Order") }) }
@@ -266,6 +209,7 @@ class BoardStateTest {
                 { it.updateComponents(B, SURFACE, listOf(BoardFixtures.root, button)) },
                 { it.updateData(B, SURFACE, "/answer", str("y")) },
                 { it.updateData(B, SURFACE, "/poll/comment", str("hi")) },
+                { it.appendEntry(B, SURFACE, "/poll/options", str("Tacos")) },
             ),
             listOf({ it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
         ) + deltasOf(
@@ -291,7 +235,12 @@ class BoardStateTest {
             // The race between B's close and C's reopen resolves to closed.
             { assertEquals(listOf(SURFACE), expected.closedSurfaces()) },
             { assertEquals(listOf("x", "y").map(::str), views(expected).getValue(SURFACE).conflicts["/answer"]) },
-            { assertEquals(setOf("question", "comment"), (BoardFixtures.node(expected, "/poll") as JsonNode.Object).map.keys) },
+            {
+                assertEquals(
+                    buildJsonObject { put("comment", "hi"); put("options", ids("Tacos")); put("question", "Dinner?") },
+                    views(expected).getValue(SURFACE).data["poll"],
+                )
+            },
             { assertEquals(setOf("c0", "c1", "c2"), cardOrder(expected).toSet()) },
             { assertEquals(3, cardOrder(expected).size) },
         )
@@ -424,24 +373,6 @@ class BoardStateTest {
 
     private fun ids(vararg ids: String): JsonArray = JsonArray(ids.map(::JsonPrimitive))
 
-    private fun view(state: BoardState) = state.surfaceDoc(SURFACE)!!.toSurfaceView(SURFACE)
-
-    private fun card(label: String) = buildJsonObject { put("label", label); put("column", "todo") }
-
-    /** A board whose `/board` is an ordered collection holding [ids], in that order, all added on [A]. */
-    private fun board(vararg ids: String): BoardState {
-        val empty = opened(buildJsonObject { put("board", buildJsonObject { put("items", JsonObject(emptyMap())) }) })
-        return ids.fold(empty) { state, id -> addCard(state, A, id) }
-    }
-
-    /** [replica] adds card [id] the way a Board does: the keyed item, then its id appended to the order. */
-    private fun addCard(state: BoardState, replica: ReplicaId, id: String): BoardState = state
-        .piece { it.updateData(replica, SURFACE, "/board/items/$id", card(id)) }
-        .piece { it.appendEntry(replica, SURFACE, "/board/order", str(id)) }
-
-    private fun cardOrder(state: BoardState): List<String> =
-        ((view(state).data.getValue("board") as JsonObject).getValue("order") as JsonArray)
-            .map { (it as JsonPrimitive).content }
 }
 
 /** Two peers' CRDT authors and a surface to share, for the in-memory board tests. */
@@ -489,4 +420,25 @@ internal object BoardFixtures {
         (node(state, pointer) as JsonNode.Array).rga.entries().map { it.first.dot }
 
     fun str(s: String) = JsonPrimitive(s)
+
+    /** [SURFACE] as the driver shows it. */
+    fun view(state: BoardState) = state.surfaceDoc(SURFACE)!!.toSurfaceView(SURFACE)
+
+    fun card(label: String) = buildJsonObject { put("label", label); put("column", "todo") }
+
+    /** A board whose `/board` is an ordered collection holding [ids], in that order, all added on [A]. */
+    fun board(vararg ids: String): BoardState {
+        val empty = opened(buildJsonObject { put("board", buildJsonObject { put("items", JsonObject(emptyMap())) }) })
+        return ids.fold(empty) { state, id -> addCard(state, A, id) }
+    }
+
+    /** [replica] adds card [id] the way a Board does: the keyed item, then its id appended to the order. */
+    fun addCard(state: BoardState, replica: ReplicaId, id: String): BoardState = state
+        .piece { it.updateData(replica, SURFACE, "/board/items/$id", card(id)) }
+        .piece { it.appendEntry(replica, SURFACE, "/board/order", str(id)) }
+
+    /** The ids `/board/order` shows. */
+    fun cardOrder(state: BoardState): List<String> =
+        ((view(state).data.getValue("board") as JsonObject).getValue("order") as JsonArray)
+            .map { (it as JsonPrimitive).content }
 }
