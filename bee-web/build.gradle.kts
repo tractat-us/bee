@@ -149,9 +149,11 @@ tasks.named("wasmJsBrowserTest") {
     dependsOn(karmaConfig)
     if (realSocketTests) {
         val voter = gradle.sharedServices.registerIfAbsent("beeFixtureVoter", FixtureVoterService::class) {
+            // Resolved now, to a plain path: a provider chained on the toolchain service
+            // cannot be restored from the configuration cache.
             parameters.javaExecutable = javaToolchains
                 .launcherFor { languageVersion = JavaLanguageVersion.of(25) }
-                .map { it.executablePath.asFile.absolutePath }
+                .get().executablePath.asFile.absolutePath
             parameters.classpathFile.from(fixtureVoterClasspath)
             parameters.mainClass = "us.tractat.bee.host.fixtures.FixtureVoterMainKt"
             parameters.logFile = layout.buildDirectory.file("fixture-voter.log")
