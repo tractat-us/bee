@@ -188,3 +188,12 @@ test('a remote edit never overwrites the field being typed in', async ({ browser
   await expect(field(alex.page, 'hold')).toHaveValue('theirs', { timeout: 2_000 });
   await expect(conflict(alex.page, 'hold')).toHaveText('');
 });
+
+test('an invalid surface shows a placeholder naming its errors', async ({ browser }) => {
+  const alex = await openPeer(browser, 'alex');
+  peers = [alex];
+  const placeholder = alex.page.locator('.bee-invalid-surface[data-surface-id="malformed"]');
+  await expect(placeholder).toContainText('unknown type "Marquee"');
+  await expect(placeholder).toContainText('names child "ghost"');
+  await expect(surface(alex.page, 'malformed')).toHaveCount(0);
+});

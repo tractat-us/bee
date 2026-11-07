@@ -39,9 +39,12 @@ import kotlin.uuid.Uuid
  * The Playwright fixture surfaces (e2e/two-browsers.spec.mjs), one per test so no test sees
  * another's edits. Each holds a `TextField` bound to `/note`, a `Text` echoing `/note` (variant
  * `h5`), a caption bound to `/note`'s conflict set, a Press button, and one appended `/options`
- * entry for a basis to name.
+ * entry for a basis to name. `malformed` is the exception: a surface no valid writer would write
+ * (A11), with a type outside the catalog and a child nobody has, for the page's placeholder.
  */
-val E2E_FIXTURES: List<String> = listOf("typing", "conflict", "records", "hold")
+val E2E_FIXTURES: List<String> = listOf("typing", "conflict", "records", "hold", MALFORMED)
+
+private const val MALFORMED = "malformed"
 
 /**
  * Writes the Playwright fixture surfaces onto a running host through a JVM [BoardClient], as any
@@ -82,7 +85,8 @@ private suspend fun seed(host: URI, fixtures: List<String>) {
             writer.mutateOrSkip { state ->
                 if (state.surfaceDoc(id) != null) return@mutateOrSkip null
                 val meta = SurfaceMeta("Fixture $id", NOTIONS_CATALOG_ID, PeerIdentity.human("e2e"), clock())
-                state.openSurface(author, id, meta, components(), buildJsonObject { put("note", "") })
+                val components = if (id == MALFORMED) malformedComponents() else components()
+                state.openSurface(author, id, meta, components, buildJsonObject { put("note", "") })
             }
             writer.mutate { it.appendEntry(author, id, "/options", JsonPrimitive("lunch")) }
         }
@@ -136,5 +140,18 @@ private fun components(): List<JsonObject> = listOf(
         put("component", "Button")
         put("child", "press-label")
         putJsonObject("action") { putJsonObject("event") { put("name", "press") } }
+    },
+)
+
+private fun malformedComponents(): List<JsonObject> = listOf(
+    buildJsonObject {
+        put("id", "root")
+        put("component", "Column")
+        put("children", JsonArray(listOf(JsonPrimitive("banner"), JsonPrimitive("ghost"))))
+    },
+    buildJsonObject {
+        put("id", "banner")
+        put("component", "Marquee")
+        put("text", "<img src=x onerror=alert(1)>")
     },
 )
