@@ -9,8 +9,10 @@ name: ci
 #   docs-inputs  — any *.md changed               → links runs
 #   build-inputs — any non-doc path changed       → build runs, if…
 #   has-gradle   — a Gradle wrapper exists        → …this is also true
-# Bee is at design stage, so has-gradle is false and build is skipped until Spike 1
-# adds the Kotlin Multiplatform build (JVM + wasmJs, JDK 25). Spike 1 extends this file.
+# Spike 1 added the Kotlin Multiplatform build (JVM + wasmJs, JDK 25), so has-gradle is true.
+#
+# smoke runs the real-socket smokes (-Pbee.realsocket.tests=true) and the Playwright suite.
+# It is deliberately NOT in ci-required.needs: it is evidence, not a merge gate.
 #
 # ci-required passes only when every job that should have run succeeded and every
 # other job was skipped. It uses `if: always()`, not `!cancelled()`: a job skipped by
@@ -138,8 +140,8 @@ jobs:
       - name: Set up JDK 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          # Spike 1: pin the exact build here, alongside the Gradle toolchain.
-          java-version: '25'
+          # The exact build every module's jvmToolchain(25) runs on locally.
+          java-version: '25.0.2'
           distribution: 'temurin'
 
       - name: Set up Gradle
@@ -150,9 +152,69 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Build
-        run: ./gradlew build --stacktrace
+        env:
+          # Org secrets: Tigris credentials for the us.tractat.kuilt Maven repository.
+          S3_BUILD_CACHE_ACCESS_KEY_ID: ${{ secrets.S3_BUILD_CACHE_ACCESS_KEY_ID }}
+          S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
+        run: |
+          [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
+          timeout 600 ./gradlew check --stacktrace --console=plain
 
       # A green build is a claim until the test count says otherwise.
+      - name: Test count
+        if: always()
+        run: |
+          shopt -s globstar nullglob
+          files=(**/build/test-results/**/*.xml)
+          count=0
+          for f in "${files[@]}"; do
+            n=$( { grep -o '<testcase ' "$f" || true; } | wc -l)
+            count=$((count + n))
+          done
+          echo "Executed test cases: $count (from ${#files[@]} result files)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Real-socket smokes and the Playwright suite. Not a merge gate: absent from ci-required.
+  smoke:
+    needs: detect
+    if: needs.detect.outputs.build-inputs == 'true' && needs.detect.outputs.has-gradle == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25.0.2'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: wrapper
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Real-socket smokes
+        env:
+          S3_BUILD_CACHE_ACCESS_KEY_ID: ${{ secrets.S3_BUILD_CACHE_ACCESS_KEY_ID }}
+          S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
+        run: |
+          [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
+          # installDist: Playwright starts the host from it.
+          timeout 600 ./gradlew check :bee-host:installDist -Pbee.realsocket.tests=true --stacktrace --console=plain
+
+      - name: Playwright
+        env:
+          # global-setup.mjs runs :bee-host:e2eSeed, which resolves kuilt too.
+          S3_BUILD_CACHE_ACCESS_KEY_ID: ${{ secrets.S3_BUILD_CACHE_ACCESS_KEY_ID }}
+          S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
+        run: |
+          cd e2e
+          timeout 600 npm ci
+          timeout 600 npx playwright install --with-deps chromium
+          # Until Task 4 adds the first spec, there is nothing to run.
+          timeout 600 npx playwright test --pass-with-no-tests
+
       - name: Test count
         if: always()
         run: |

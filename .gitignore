@@ -3,7 +3,6 @@
 build/
 .kotlin/
 local.properties
-kotlin-js-store/
 
 # IDE
 .idea/
@@ -24,3 +23,8 @@ morning-report-*.md
 
 # Dispatched worker worktrees
 .claude/worktrees/
+
+# Playwright output
+e2e/playwright-report/
+e2e/test-results/
+.playwright-mcp/
