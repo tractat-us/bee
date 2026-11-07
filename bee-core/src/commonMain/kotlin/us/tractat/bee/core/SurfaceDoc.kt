@@ -30,8 +30,8 @@ data class SurfaceMeta(
  *
  * Every leaf write starts from the register just read, never from an empty one, so a rewrite
  * supersedes what the writer saw and leaves no phantom conflict (A13). Appended entries go into a
- * `JsonNode.Array` and are never edited (A12). A path never changes type while it holds a value,
- * and an object write replaces the keys it saw (#14).
+ * `JsonNode.Array` and are never edited (A12). A write never changes the type of a path that holds
+ * a value. An object write replaces, clearing what its writer saw (#14; see [updateData]).
  *
  * Each write returns the document delta, for [BoardState] to put under the surface id.
  */
