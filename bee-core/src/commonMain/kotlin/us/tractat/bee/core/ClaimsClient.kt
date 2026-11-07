@@ -1,5 +1,6 @@
 package us.tractat.bee.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.kuilt.cluster.ClusterClient
@@ -15,6 +17,7 @@ import us.tractat.kuilt.raft.Committed
 import us.tractat.kuilt.raft.ForwardedProposalFailedException
 import us.tractat.kuilt.raft.LeadershipLostException
 import us.tractat.kuilt.raft.LogEntry
+import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.NotLeaderException
 import kotlin.random.Random
 import kotlin.time.Duration
@@ -53,14 +56,20 @@ sealed interface ClaimOutcome {
  * It collects [cluster]'s committed stream, so it must be the stream's only collector, and is
  * built before the client's first join (the stream has no replay).
  *
- * @param random draws each claim's [ProposalId]. Two clients must not share a seed.
+ * @param node the `clientNodeId` [cluster] was built with. It makes each [ProposalId] unique across
+ *   the cluster.
+ * @param random draws this client's [ProposalId.incarnation], once.
  */
 class ClaimsClient(
     private val cluster: ClusterClient,
+    private val node: NodeId,
     private val clock: () -> Instant,
     private val scope: CoroutineScope,
-    private val random: Random,
+    random: Random,
 ) {
+    private val incarnation = random.nextLong()
+    private val serials = MutableStateFlow(0L)
+
     private val tableState = MutableStateFlow(ClaimTable.EMPTY)
     val table: StateFlow<ClaimTable> = tableState.asStateFlow()
 
@@ -89,12 +98,18 @@ class ClaimsClient(
     }
 
     suspend fun claim(target: ClaimTarget, by: PeerIdentity, timeout: Duration = 10.seconds): ClaimOutcome {
-        val id = ProposalId(random.nextLong())
+        val id = ProposalId(node.value, incarnation, serials.updateAndGet { it + 1 })
         proposals.update { it + (id to Proposal(target, by)) }
         val started = clock()
-        val verdict = withTimeoutOrNull(timeout) {
-            proposeOrNull(ClaimCommand.Claim(target, by, id)) ?: return@withTimeoutOrNull null
-            proposals.mapNotNull { it[id]?.verdict }.first()
+        val verdict = try {
+            withTimeoutOrNull(timeout) {
+                proposeOrNull(ClaimCommand.Claim(target, by, id)) ?: return@withTimeoutOrNull null
+                proposals.mapNotNull { it[id]?.verdict }.first()
+            }
+        } catch (e: CancellationException) {
+            // The caller gave up: nobody will hear a win, so it is abandoned like a timeout.
+            abandon(id)
+            throw e
         }
         if (verdict == null) {
             abandon(id)
@@ -158,10 +173,9 @@ class ClaimsClient(
     }
 
     private fun fold(committed: Committed) {
-        val next = tableState.value.fold(committed)
+        val (next, command) = tableState.value.applied(committed)
         tableState.value = next
-        if (committed !is Committed.Entry) return
-        val command = runCatching { ClaimCommand.decode(committed.entry.command) }.getOrNull() ?: return
+        if (committed !is Committed.Entry || command == null) return
         val target = command.target() ?: return
         val status = next.status(target)
         verdicts.update { (it + (committed.entry.index to status)).trimmed() }
@@ -176,6 +190,7 @@ class ClaimsClient(
             val proposal = current[claim.proposal]
             when {
                 proposal == null || proposal.verdict != null -> current // not ours, or a duplicate
+                proposal.target != claim.target || proposal.by != claim.by -> current // not the claim this id named
                 proposal.abandoned -> {
                     lateWin = verdict.takeIf { it.won }
                     current - claim.proposal
