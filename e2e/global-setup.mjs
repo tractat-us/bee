@@ -1,5 +1,6 @@
 // Seeds the fixture surfaces onto the host Playwright started, through a JVM BoardClient
-// (`:bee-host:e2eSeed`, whose body lands in Task 4).
+// (`:bee-host:e2eSeed`, E2eSeederMain). Playwright starts `webServer` before globalSetup, so
+// the host is up; the seeder returns once a second client reads every fixture back from it.
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
