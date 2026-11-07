@@ -25,27 +25,68 @@ Measured against kuilt `0.7.0-dev.1692`.
 ## The race
 
 `ClaimsRaceTest.twoClientsRaceAndExactlyOneWins` runs 50 rounds. In each, two learners claim the
-same target at once. It asserts exactly one `Won` per round, and that the mirror names the winner
-with the winner's token.
+same target at once, each after a seeded delay of up to 200 ms, so either may reach the voter
+first. Every round must come to exactly `Won(t)` for one client and `Lost(winner)` for the other,
+with the mirror holding the winner under `t`. At the end, both learners' tables must equal the
+voter's.
 
 | kuilt | Rounds without exactly one `Won` |
 |---|---|
 | `0.7.0-dev.1690`, first run | 47 of 50 |
 | `0.7.0-dev.1690`, control rerun on this branch | 46 of 50 |
-| `0.7.0-dev.1692` | 0 of 50 |
+| `0.7.0-dev.1692` | 0 of 50, with each client winning 25 |
 
-On `0.7.0-dev.1692` both learners folded the whole log, through index 102. In this virtual-time
-schedule the first client wins every round, so the test pins exactly-once and agreement, not
-fairness.
+The 1690 rows predate the seeded delay, when the first client won every round. On
+`0.7.0-dev.1690`, every claim committed at the voter, but the first learner had been dropped from
+the config. So it never saw its own wins and reported `Unavailable`. `ServerCluster.admitLearner`
+built each config from the one the cluster was constructed with, so each admission kept only the
+newest learner. kuilt#3121 replaced per-connection admission with one reconciler that builds from
+the leader's current membership.
 
-On `0.7.0-dev.1690`, every claim committed at the voter, but the first learner had been dropped from
-the config, so it never saw its own wins and reported `Unavailable`. The cause was
-`ServerCluster.admitLearner` building each config from the one the cluster was constructed with, so
-each admission kept only the newest learner. kuilt#3121 replaced per-connection admission with one
-reconciler that builds from the leader's current membership.
+## A claim is judged by its own id
 
-The two-learner tests now wait for the `Depart`'s own index before checking that both learners
-folded it. Before, they read the voter's index straight after `depart` returned, ahead of the fold.
+Review of this PR found that `ClaimsClient` told its own claims apart by `(target, by)`. A person's
+tabs all claim as one `human:` identity (spec §5.1), so that pair doesn't name one proposal, and
+three paths broke exactly-once:
+
+- **Another tab's win.** Tab B timed out, tab A won, and B took A's committed claim for its own late
+  win and released A's token. A held a `Won` for a free target.
+- **An earlier win.** A claim that timed out released any hold by its claimant, a win from an
+  earlier claim included.
+- **A retry.** It forgot the claim it retried. When that first claim committed and won, the target
+  stayed held under a token the caller never learned, and the retry reported `Lost`.
+
+Now each `Claim` carries a random `ProposalId`. The client judges a claim only at the first
+committed entry with that id, so a duplicate entry changes nothing. A claim reported `Unavailable`
+is released only if its own entry won, with that entry's token. The release retries, up to five
+times, until the table shows the target no longer held under that token. `ClaimsClient.unreleased`
+names any the retries couldn't free.
+
+kuilt's `LogEntry.dedupKey` couldn't serve as the id. `ClusterClient.propose` draws the serial
+inside the call and returns it only on success, so a claim that timed out has no key its proposer
+knows.
+
+| Test (`ClaimsClientTest`) | On the old client | Now |
+|---|---|---|
+| `aTabThatTimedOutNeverReleasesAnotherTabsWin` | red: the target ends `Free` | green |
+| `aTimeoutNeverReleasesAnEarlierWin` | red: the target ends `Free` | green |
+| `aClaimThatWinsAfterItsRetryStartedIsReleased` | red: the retry got `Lost(iain)`, the target is held under token `(1, 4)` | green |
+
+The release's retry has no test that tells it from a single attempt. The in-memory rig can hold a
+send but not drop it, and a held release still lands once let go.
+
+## Who may depart
+
+**Only agents depart** (spec §6.4). The table rejects a `Depart` of a human, and
+`ClaimsVoter.depart` refuses one with an `IllegalArgumentException`.
+
+**v1 trusts the log on who proposed a `Depart`.** The spec says the host commits it, but any learner
+can propose one, and the table can't tell. `LogEntry.dedupKey.clientId` would be the only marker,
+and it isn't reliable: the proposer stamps it, and a learner can pick it. `clusterClient` takes a
+`ClientIdentity`, so a learner can pass `ClientIdentity.Durable` with any id string. It also picks
+the `NodeId` that an `Auto` id is built from. So v1 assumes every learner is honest about
+`Depart`, as it already does about whose name a `Claim` carries. Enforcing it needs an
+authenticated proposer, which the host doesn't have yet.
 
 ## Learner removal: wired, but it never fires
 
@@ -56,22 +97,23 @@ a reconnect: `clusterClient` re-joins at once on a tear. Removal costs a claim n
 holds claims by `PeerIdentity`, and a learner that comes back after the grace is admitted again and
 catches up.
 
-**A kuilt gap stops the grace from ever starting.** `ServerCluster.admitLearner` holds each admitted
-room in `awaitCancellation()`, and only its `finally` withdraws the learner's spoke from
-`RaftRelayHub.learnersFlow`. The grace starts from that withdrawal. Neither `KtorRoomHost` nor bee's
-in-memory host cancels a room's `onRoom` coroutine when its connection closes. `RaftRelayHub`'s
-spoke collector ends on a closed seam, but it doesn't withdraw the spoke. So a learner that
-disconnects stays in the config until the relay itself stops. kuilt's removal tests disconnect by
-cancelling the server-side `onRoom` job in `ServerClusterSim`, which no production host does.
+**A kuilt gap stops the grace from ever starting:**
+[tractat-us/kuilt#3127](https://github.com/tractat-us/kuilt/issues/3127).
+`ServerCluster.admitLearner` holds each admitted room in `awaitCancellation()`, and only its
+`finally` withdraws the learner's spoke from `RaftRelayHub.learnersFlow`. The grace starts from that
+withdrawal. Nothing cancels a room's `onRoom` coroutine when its connection closes, in
+`KtorRoomHost` or in bee's in-memory host.
 
 - In memory: `ClaimsRaceTest.aLearnerGoneForTheGraceLeavesTheConfig`. One learner's scope is
   cancelled, and its id is still in the config 60 s of virtual time later. The test is `@Ignore`d,
-  naming the gap.
+  naming kuilt#3127.
 - On real sockets (Netty, `KtorRoomHost`, CIO), with a throwaway diagnostic not kept in the tree:
   `smoke-b`'s client scope was cancelled, and 45 s later the config still listed both learners.
 
-This bears only on the config's size, not on correctness. A dead learner's id stays in the config,
-and the leader keeps replicating to it.
+Claims stay correct, but the host leaks. Every connection leaves a parked coroutine and an overlay
+attachment behind. Every dead learner stays in the config, and the leader keeps replicating to it
+for as long as the host runs. Once removal works, kuilt#3124 still keeps a removed peer's
+replication state on the leader.
 
 ## The learner's id must equal the client's `NodeId`
 
@@ -81,9 +123,8 @@ the two differ, the voter replicates to an id the client doesn't answer to. bee 
 `clusterClient` yet: Task 7 builds it. Today the three test sites (`ClaimsRig.client`,
 `ClaimsSmokeTest.client` and `WasmClaimTest`) each build both from one `NodeId`. The membership
 assertion in `aSecondLearnerLeavesTheFirstOnTheLog` pins that the voter admits the ids the clients
-chose. Task 7
-should build the loom and the client in one function that takes a single `NodeId`, so the two can't
-differ.
+chose. Task 7 should build the loom and the client in one function that takes a single `NodeId`,
+so the two can't differ.
 
 ## Other kuilt findings
 
@@ -100,8 +141,8 @@ These were found on `0.7.0-dev.1690`. They weren't rechecked on `0.7.0-dev.1692`
   acts. The smoke closes its clients before it stops the voter.
 - **No in-memory multi-connection `RoomHost`.** `LoomRoomHost` hosts one room, and `KtorRoomHost`'s
   constructor over a `Loom` is internal. The deterministic tests carry `InMemoryClaimsHost` (in
-  `ClaimsRaceTest.kt`), which gives every dial its own room, as `/ws/claims` does, and holds a
-  dial's server-to-client sends through `HoldableConnection`.
+  `ClaimsRaceTest.kt`), which gives every dial its own room, as `/ws/claims` does, and can hold
+  either direction of a dial through `HoldableConnection`.
 
 ## A bee build finding
 
@@ -131,21 +172,21 @@ where `0.7.0-dev.1690` committed one per admission (103 entries).
 - `bee-core`: `ClaimCommand` (JSON on the wire, identities in their `toString()` form),
   `ClaimTable` (immutable, folds `Entry`, `Internal` and `Install`), `ClaimsClient`.
 - `bee-host`: `ClaimsVoter` over `DurableStoreRaftStorage`, and a real `FixtureVoterMain`.
-- Green: `ClaimTableTest` (10), `ClaimsClientTest` (3, including
+- Green: `ClaimTableTest` (13), `ClaimsClientTest` (6, including
   `lateCommitOfTimedOutClaimIsReleased`, which reds when the late release is disabled),
   `ClaimsRaceTest` (2 of 3, the third `@Ignore`d above), `VoterRestartTest` (2), `ClaimsSmokeTest`
   (2) and `WasmClaimTest`.
 
 ### Where the code departs from the plan's interfaces
 
-- `ClaimsClient(cluster, clock, scope)` takes a scope. It collects the committed stream, which
-  takes a coroutine.
-- `ClaimOutcome.Lost(holder)` has a nullable holder: null when the target was free but the
-  claimant is retired.
+- `ClaimsClient(cluster, clock, scope, random)` takes a scope, because it collects the committed
+  stream. It takes a `Random` for each claim's `ProposalId`.
+- `ClaimCommand.Claim` carries a `ProposalId`, which the table ignores.
+- `ClaimOutcome` adds `Retired`: the claimant was retired when its claim committed.
 - `release` and `complete` return whether they applied, and `reassign` returns the new token or
   null.
 - `ClaimsVoter.start` has an overload that takes a `DurableStore`, which the tests use with
   `InMemoryDurableStore`. The `File` overload wraps a `FileChannelDurableStore`.
-- A claim's verdict is read at its own index: the client keeps the target's status right after each
-  of the last 256 entries. A claim whose verdict is evicted before its proposer reads it reports
-  `Unavailable`, and if it won, the client releases it.
+- `ClaimsClient.unreleased` names late wins it couldn't release.
+- A transport failure from `propose` (`LeadershipLostException`, `ForwardedProposalFailedException`,
+  `NotLeaderException`) reports `Unavailable`. Anything else propagates.
