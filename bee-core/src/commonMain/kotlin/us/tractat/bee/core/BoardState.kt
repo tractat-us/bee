@@ -226,8 +226,8 @@ private object BoardStateSerializer : KSerializer<BoardState> {
     private val departed by lazy { GSet.serializer(Departure.serializer()) }
     private val claims by lazy { LWWMap.serializer(String.serializer(), ClaimView.serializer()) }
 
-    // TODO(Task 3): round-trip the board through CBOR, the Quilter's default format. bee-core's
-    // test classpath has no CBOR, so only JSON is tested here.
+    // JSON round-trips in BoardStateTest.serializedStateRoundTripsAfterWithReplica, and CBOR, the
+    // Quilter's wire, in BoardStateTest.populatedBoardRoundTripsThroughTheQuilterWire.
     override val descriptor: SerialDescriptor by lazy {
         buildClassSerialDescriptor("us.tractat.bee.core.BoardState") {
             element("surfaces", surfaces.descriptor)
