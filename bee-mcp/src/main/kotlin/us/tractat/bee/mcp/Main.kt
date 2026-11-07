@@ -16,7 +16,9 @@ import java.nio.file.Path
 import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
 
-private val logger = KotlinLogging.logger {}
+// Lazy, so the logger (whose start-up prints a line to stdout) starts only after main() has
+// pointed System.out at stderr. A plain top-level val starts with MainKt, before main runs.
+private val logger by lazy { KotlinLogging.logger {} }
 
 /**
  * The bridge: a stdio MCP server, one per Claude session (spec §5.2).
