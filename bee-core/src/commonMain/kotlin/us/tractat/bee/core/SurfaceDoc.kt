@@ -30,7 +30,8 @@ data class SurfaceMeta(
  *
  * Every leaf write starts from the register just read, never from an empty one, so a rewrite
  * supersedes what the writer saw and leaves no phantom conflict (A13). Appended entries go into a
- * `JsonNode.Array` and are never edited (A12). A path never changes type.
+ * `JsonNode.Array` and are never edited (A12). A path never changes type while it holds a value,
+ * and an object write replaces the keys it saw (#14).
  *
  * Each write returns the document delta, for [BoardState] to put under the surface id.
  */
@@ -69,9 +70,11 @@ internal object SurfaceDoc {
      * Writes [value] at [pointer] in the data model (`""` or `"/"` is the root): an object as a
      * keyed object, each key written the same way, and a scalar or a whole array as one leaf.
      *
-     * An object write merges: keys it doesn't name are left alone, never removed. That's the
-     * current behaviour, and whether an object write should replace instead is a decision pending
-     * with Iain (tractat-us/bee PR 9).
+     * An object write replaces the value at its path, as A2UI's `updateDataModel` does
+     * (tractat-us/bee#14): every key this replica holds there that [value] doesn't name is removed,
+     * at every depth, append-only arrays included. The removal is `ORMap`'s observed remove, so it
+     * retires only the keys this replica has seen, and a key another peer adds concurrently
+     * survives the merge. A removed path holds no type, so a later write may give it any.
      *
      * @throws IllegalArgumentException if a node on the way isn't an object, a key is empty, or the
      *   write would change a path's type (object, append-only array, whole array, scalar)
@@ -167,11 +170,11 @@ internal object SurfaceDoc {
             is JsonObject -> {
                 val entries = value.entries.map { it.key to it.value }
                 require(entries.none { it.first.isEmpty() }) { "$at holds an object with an empty key." }
-                JsonNode.Object(
-                    threadedPuts(objectMap(existing, at), replica, entries) { key, current, v ->
-                        writeValue(current, replica, v, "$at/${SurfaceFormat.escapeSegment(key)}")
-                    },
-                )
+                val map = objectMap(existing, at)
+                val puts = threadedPuts(map, replica, entries) { key, current, v ->
+                    writeValue(current, replica, v, "$at/${SurfaceFormat.escapeSegment(key)}")
+                }
+                JsonNode.Object(puts.piece(removals(map, map.keys - value.keys)))
             }
             else -> {
                 val structured = value is JsonArray
@@ -219,6 +222,13 @@ internal object SurfaceDoc {
         }
         return delta
     }
+
+    /**
+     * The joined deltas of removing each of [keys] from [map]. A remove mints no tag, so unlike
+     * [threadedPuts] these can all be taken against the same [map].
+     */
+    private fun removals(map: ORMap<String, JsonNode>, keys: Set<String>): ORMap<String, JsonNode> =
+        keys.fold(ORMap.empty()) { delta, key -> delta.piece(map.remove(key).delta) }
 
     private fun threaded(start: JsonCrdt, writes: List<(JsonCrdt) -> Patch<JsonCrdt>>): JsonCrdt {
         var current = start

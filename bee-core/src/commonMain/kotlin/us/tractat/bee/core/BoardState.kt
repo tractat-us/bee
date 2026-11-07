@@ -124,7 +124,8 @@ class BoardState internal constructor(
     /**
      * Writes [value] at JSON Pointer [path] in surface [id]'s data model. Objects are written as
      * keyed objects, scalars as leaves from the register just read (A13), and a JSON array whole,
-     * as one leaf.
+     * as one leaf. An object write replaces: it removes the keys this replica saw there that
+     * [value] doesn't name, and a key a peer adds concurrently survives (tractat-us/bee#14).
      *
      * @throws IllegalArgumentException if the write would change the path's type
      */
