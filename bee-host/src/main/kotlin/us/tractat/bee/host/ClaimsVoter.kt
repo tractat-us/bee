@@ -24,6 +24,8 @@ import us.tractat.kuilt.session.RoomHost
 import us.tractat.kuilt.store.DurableStore
 import us.tractat.kuilt.store.FileChannelDurableStore
 import java.io.File
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val log = KotlinLogging.logger("us.tractat.bee.host.ClaimsVoter")
@@ -71,6 +73,21 @@ class ClaimsVoter private constructor(
         /** The voter's node id. Learners name it as the cluster's one voter. */
         val HOST_NODE: NodeId = NodeId("bee-host")
 
+        /**
+         * How long a learner may stay disconnected before the voter drops it from the config.
+         *
+         * Every page load, bridge and `/clear` dials under a fresh [NodeId], so without removal the
+         * learner set grows with every connection the host has ever seen, and the voter replicates
+         * to all of them. Removal costs nothing a claim depends on: the table holds claims by
+         * [PeerIdentity], not by [NodeId], and a learner that returns after the grace is admitted
+         * again and folds from index 1.
+         *
+         * 30 s is the spec's heartbeat reconnect window (§6.4), the point at which bee already treats
+         * a lost link as gone. It is well over a reconnect: `clusterClient` re-joins at once on a
+         * tear, and the board link's redial tops out at a 5 s backoff plus a 5 s dial timeout.
+         */
+        val LEARNER_GRACE: Duration = 30.seconds
+
         /** Starts the voter over a [FileChannelDurableStore] in [storeDir]. */
         suspend fun start(
             scope: CoroutineScope,
@@ -94,7 +111,13 @@ class ClaimsVoter private constructor(
             val storage = DurableStoreRaftStorage.open(store)
             val job = Job(scope.coroutineContext[Job])
             val voterScope = CoroutineScope(scope.coroutineContext + job)
-            val cluster = voterScope.serverCluster(host, voterIds = listOf(HOST_NODE), raftConfig, storageFactory = { storage })
+            val cluster = voterScope.serverCluster(
+                host,
+                voterIds = listOf(HOST_NODE),
+                raftConfig,
+                learnerGrace = LEARNER_GRACE,
+                storageFactory = { storage },
+            )
             val node = cluster.voterNodes.getValue(HOST_NODE)
             val tableState = MutableStateFlow(ClaimTable.EMPTY)
             // committedFrom(1) replays the durable log, then tails: the re-fold on boot.
