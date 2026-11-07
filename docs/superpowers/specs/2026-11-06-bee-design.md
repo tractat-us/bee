@@ -261,15 +261,29 @@ Claude session ── bee-mcp                                           ┘     
 ### 5.4 The bee host
 
 - **Relay.** Every peer dials the host. Nobody needs to accept inbound connections, which matches
-  the handoff's network constraint. `KtorServerLoom` or `KtorRoomHost` on the JVM.
+  the handoff's network constraint. The board relay sits at `/ws/board` (`hostedOverlay` and the
+  host's `Quilter`), and the claims voter at `/ws/claims` (`serverCluster` on a `KtorRoomHost`),
+  as §5.1 describes.
 - **The always-on replica**, persisted with `FileChannelDurableStore`, so the board outlives every
   peer, including every browser closing at once.
-- **The voter that never claims** (§6.3).
+- **kuilt ships the stores; only the `Quilter` adapter is missing (design call).** `kuilt-store`
+  has `FileChannelDurableStore` (JVM, takes a `File`) and `IndexedDbDurableStore` (wasmJs), and
+  `kuilt-raft` has `DurableStoreRaftStorage`. For Raft it's configuration: open the storage first
+  (`DurableStoreRaftStorage.open` suspends), then pass `storageFactory = { storage }`, because
+  `serverCluster` otherwise defaults to `InMemoryRaftStorage`. The one gap is a
+  `Quilter`↔`DurableStore` adapter that snapshots on change and seeds `initial` on start. It's
+  generic, so bee proves it with no bee types, and it's a candidate for the kuilt tracking issue
+  (§11).
+- **The voter that never claims** (§6.3). It's also the only writer of the claims mirror and the
+  departure list on the board.
 - **Serves the web client** (the wasm bundle, the renderer and the Notions catalog), so a
   conference-room browser needs only a URL.
-- **Where it runs.** Solo: on Iain's laptop, reachable on his network at `tractatus.local`. For a
-  team: on a shared server. For an employer's hackathon on employer code, that's the hosting
-  party's call.
+- **Its coordinates (design call).** Port `8233` ("BEE" on a keypad), data in `~/.bee/host/`,
+  routes `/`, `/ws/board` and `/ws/claims`. The host has no write route: it writes to the board
+  only through its own replica.
+- **Where it runs.** Solo: on Iain's laptop. It binds loopback only unless it's started with
+  `--lan`, and then it's reachable on his network at `tractatus.local` (§5.7). For a team: on a
+  shared server. For an employer's hackathon on employer code, that's the hosting party's call.
 
 ### 5.5 After v1: the phone app (Iain)
 
@@ -296,6 +310,32 @@ call: in sewing, notions are the buttons, snaps and fasteners.** It starts with:
   rule, because it records everyone in the room, not just the person who asked.
 
 The basic catalog (`Text`, `Card`, `Row`, `Column`, `Button`, `ChoicePicker`, …) covers the rest.
+
+### 5.7 Letting a second screen in (Iain)
+
+**A browser on the local network gets a key through Bluetooth-style pairing (Iain).** A browser
+that arrives over the LAN without a key shows a six-digit code, and the board asks the current
+participants to type it in. A matching code admits the browser and gives it a key.
+
+1. The keyless browser opens a pairing endpoint that carries no board or claims traffic. The host
+   sends it a code and a pairing id, and the browser shows the code full screen.
+2. The host puts a join request on the board ("A device wants to join: enter the code it shows").
+   The code itself is never written to the board.
+3. A participant types the code into that surface, and it arrives as an action record (§6.2). A
+   match mints a key, sends it to the browser, and closes the request with "admitted by <name>".
+4. The browser dials `/ws/board` and `/ws/claims` with its key. With `--lan` on, both refuse a
+   non-loopback connection that has no valid key. Keys live in the host's memory, so a host restart
+   re-pairs every LAN device.
+
+**Only human peers may admit a device (Iain: humans only, for now).** This departs from the
+orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
+someone can see the new screen.
+
+The rest are design calls. Loopback connections need no key. A key in the URL (`?k=`) still
+admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong entries void it.
+
+**This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is
+self-declared by trusted local peers. §9's sharing rule still governs what goes on the board.
 
 ## 6. The board's state
 
