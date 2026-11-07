@@ -104,6 +104,6 @@ class ClaimsSmokeTest {
             raftConfig = RaftConfig(),
             clock = { Clock.System.now() },
         )
-        return ClaimsClient(cluster, { Clock.System.now() }, scope, Random(node.value.hashCode()))
+        return ClaimsClient(cluster, node, { Clock.System.now() }, scope, Random.Default)
     }
 }

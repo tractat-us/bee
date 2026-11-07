@@ -62,7 +62,7 @@ class WasmClaimTest {
                     raftConfig = RaftConfig(),
                     clock = { Clock.System.now() },
                 )
-                val claims = ClaimsClient(cluster, { Clock.System.now() }, scope, Random(node.value.hashCode()))
+                val claims = ClaimsClient(cluster, node, { Clock.System.now() }, scope, Random.Default)
                 val outcome = withTimeout(30.seconds) { claims.claim(ClaimTarget("record:wasm:${node.value}"), by) }
                 println("[claims-spike] wasm: claim latency ${claims.latencies.value}")
                 assertIs<ClaimOutcome.Won>(outcome)

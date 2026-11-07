@@ -220,7 +220,7 @@ internal class ClaimsRig(private val test: TestScope, val store: DurableStore = 
             raftConfig = raftConfig,
             clock = clock,
         )
-        return ClaimsClient(cluster, clock, scope, Random(node.value.hashCode()))
+        return ClaimsClient(cluster, node, clock, scope, Random(node.value.hashCode()))
     }
 
     fun report(line: String) = System.err.println("[claims-spike] $line")
