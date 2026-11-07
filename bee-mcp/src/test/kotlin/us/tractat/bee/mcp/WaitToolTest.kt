@@ -111,19 +111,50 @@ class WaitToolTest {
     }
 
     @Test
+    fun refusesMalformedArgumentsByName() = runTest {
+        val client = connect()
+        val calls = mapOf(
+            "zero timeout" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "timeoutSeconds" to 0)),
+            "string timeout" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "timeoutSeconds" to "30")),
+            "object timeout" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "timeoutSeconds" to buildJsonObject { put("s", 30) })),
+            "number cursor" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "cursor" to 3)),
+            "no surface" to (WaitTool.WAIT to emptyMap()),
+            "number since" to (WaitTool.LIST to mapOf("surfaceId" to "s1", "since" to 1)),
+        )
+
+        val messages = calls.mapValues { (_, call) -> client.call(call.first, call.second) }
+
+        assertAll(
+            *messages.map { (case, result) -> { assertEquals(true, result.isError, "$case: ${result.text()}") } }.toTypedArray(),
+            { assertTrue("timeoutSeconds" in messages.getValue("zero timeout").text()) },
+            { assertTrue("timeoutSeconds" in messages.getValue("string timeout").text()) },
+            { assertTrue("timeoutSeconds" in messages.getValue("object timeout").text()) },
+            { assertTrue("cursor" in messages.getValue("number cursor").text()) },
+            { assertTrue("surfaceId" in messages.getValue("no surface").text()) },
+            { assertTrue("since" in messages.getValue("number since").text()) },
+            { assertEquals(0, source.waits) },
+            { assertEquals(0L, currentTime) },
+        )
+    }
+
+    @Test
     fun listReadsWithoutBlocking() = runTest {
         source.append("s1", record("a"))
         source.append("s1", record("b"))
         val client = connect()
 
-        val all = client.call(WaitTool.LIST, mapOf("surfaceId" to "s1")).records()
-        val since = client.call(WaitTool.LIST, mapOf("surfaceId" to "s1", "since" to "1")).records()
-        val empty = client.call(WaitTool.LIST, mapOf("surfaceId" to "s2")).records()
+        val all = client.call(WaitTool.LIST, mapOf("surfaceId" to "s1")).page()
+        val since = client.call(WaitTool.LIST, mapOf("surfaceId" to "s1", "since" to all.second)).page()
+        val fromOne = client.call(WaitTool.LIST, mapOf("surfaceId" to "s1", "since" to "1")).page()
+        val empty = client.call(WaitTool.LIST, mapOf("surfaceId" to "s2")).page()
 
         assertAll(
-            { assertEquals(listOf(record("a"), record("b")), all) },
-            { assertEquals(listOf(record("b")), since) },
-            { assertEquals(emptyList(), empty) },
+            { assertEquals(listOf(record("a"), record("b")), all.first) },
+            { assertEquals("2", all.second) },
+            { assertEquals(emptyList(), since.first) },
+            { assertEquals("2", since.second) },
+            { assertEquals(listOf(record("b")), fromOne.first) },
+            { assertEquals(emptyList(), empty.first) },
             { assertEquals(0L, currentTime) },
         )
     }
@@ -163,8 +194,11 @@ class WaitToolTest {
 
     private fun CallToolResult.text(): String = content.filterIsInstance<TextContent>().joinToString { it.text }
 
-    private fun CallToolResult.records(): List<JsonObject> =
-        checkNotNull(structuredContent).getValue("records").jsonArray.map { it as JsonObject }
+    /** A list result's records and cursor. */
+    private fun CallToolResult.page(): Pair<List<JsonObject>, String> {
+        val json = checkNotNull(structuredContent) { "no structured result: ${text()}" }
+        return json.getValue("records").jsonArray.map { it as JsonObject } to json.getValue("cursor").jsonPrimitive.content
+    }
 
     private fun record(label: String): JsonObject = buildJsonObject { put("name", label) }
 
@@ -197,8 +231,10 @@ private class FakeActionSource : ActionSource {
         }
     }
 
-    override fun list(surfaceId: String, since: String?): List<JsonObject> =
-        records.value[surfaceId].orEmpty().drop(since?.toInt() ?: 0)
+    override fun list(surfaceId: String, since: String?): ActionPage {
+        val all = records.value[surfaceId].orEmpty()
+        return ActionPage(all.drop(since?.toInt() ?: 0), cursor = all.size.toString())
+    }
 }
 
 /** One end of an in-process transport pair: what one end sends, the other receives. */
