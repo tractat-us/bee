@@ -238,9 +238,13 @@ Claude session ── bee-mcp                                           ┘     
   rendering it, and shows a placeholder naming the errors instead of an invalid one. bee builds
   this on kuilt's public API, and it can graduate later.
 - **How a surface is stored (design call).** Each A2UI component is stored whole, as one leaf
-  holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. A
-  data path never changes type, because an object-versus-scalar conflict silently deletes the
-  losing subtree. §6.1 says which state is appended and which is edited.
+  holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. Such
+  a leaf holds a string of canonical JSON behind a `"\u0000json:"` prefix, which is v1's persisted
+  format (tractat-us/kuilt#3119 asks for a structured case). A data path never changes type,
+  because an object-versus-scalar conflict silently deletes the losing subtree. An object write
+  replaces, as `updateDataModel` does: it removes the keys the writer saw that the new value
+  doesn't name, by observed remove, so a key a peer adds concurrently survives (#14). §6.1 says
+  which state is appended and which is edited.
 - **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
   concurrently written value, but A2UI's `updateDataModel` takes exactly one. The driver projects a
   deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
@@ -369,8 +373,10 @@ element would duplicate it. So a surface keeps two kinds of state apart:
   edited, and action records are appended to the board's own `Rga`, outside any surface. Correcting an
   entry means removing it and appending a new one with a new identity.
 - **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
-  stable id, with its order kept in a separate array of ids that the projection dedupes, keeping
-  the first occurrence. No basis names it.
+  stable id. An ordered collection is an object with `items`, keyed by id, and `order`, an
+  append-only array of ids, so two concurrent adds both land (#14). The projection shows each item
+  once: the order's ids at their first occurrence, then any item the order lacks, sorted by id. No
+  basis names it.
 
 Two concurrent edits to one surface must still render. That's the handoff's spike 4, and the
 mapping between `JsonCrdt` merges and A2UI path replacement is where the risk sits. kuilt#2469
