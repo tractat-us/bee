@@ -41,7 +41,6 @@ import us.tractat.kuilt.test.fabric.HoldableConnection
 import us.tractat.kuilt.test.fabric.connectionPair
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -50,7 +49,6 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 class ClaimsRaceTest {
-    @Ignore // Red on kuilt 0.7.0-dev.1690: admitting a learner drops the last one (spike 4 notes).
     @Test
     fun twoClientsRaceAndExactlyOneWins() = runTest(timeout = 300.seconds) {
         val rig = ClaimsRig(this)
@@ -92,7 +90,6 @@ class ClaimsRaceTest {
      * Fit check, spike 4 Step 1: a learner keeps receiving the committed log after a second
      * learner is admitted. The voter's `Depart` after both joined must reach both tables.
      */
-    @Ignore // Red on kuilt 0.7.0-dev.1690: admitting a learner drops the last one (spike 4 notes).
     @Test
     fun aSecondLearnerLeavesTheFirstOnTheLog() = runTest(timeout = 120.seconds) {
         val rig = ClaimsRig(this)
