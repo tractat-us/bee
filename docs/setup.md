@@ -120,4 +120,4 @@ rm build/wasm/node_modules/.yarn-integrity
 ./gradlew :bee-web:wasmJsBrowserProductionWebpack --rerun
 ```
 
-CI builds from a clean checkout, so it never hits this.
+CI starts each run with no `build/wasm`, so it never hits this.
