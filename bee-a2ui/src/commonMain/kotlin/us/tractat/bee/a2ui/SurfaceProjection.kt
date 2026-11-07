@@ -23,12 +23,18 @@ import kotlin.math.abs
  * data is one leaf holding the whole array, and an append-only array is a `JsonNode.Array` whose
  * entries are leaves.
  *
+ * An **ordered collection** is a data object with two members: `items`, a keyed object of items by
+ * id, and `order`, an append-only array of their ids (A12, tractat-us/bee#14). An id is appended
+ * once and never edited, so two peers adding items at once both land. The projection shows the
+ * order as a permutation of the item ids; see [toSurfaceView].
+ *
  * A leaf holds a `JsonValue`, which has no array or object. A leaf that holds a whole array (or an
  * object, as an array entry) holds a [JsonValue.Str] of its canonical JSON behind
  * [STRUCTURED_PREFIX]. A scalar data string never starts with that prefix, because writers refuse
- * one. This encoding is the current behaviour, and whether to keep it is a decision pending with
- * Iain (tractat-us/bee PR 9). Meta strings aren't data: they're stored and read raw, so any title
- * is safe.
+ * one. **This is a persisted format**, confirmed for v1 (tractat-us/bee#14): boards on disk and on
+ * the wire hold it, so changing it needs a migration. A structured `JsonValue` case, which would
+ * retire the prefix, is asked for in tractat-us/kuilt#3119. Meta strings aren't data: they're
+ * stored and read raw, so any title is safe.
  *
  * bee-core's `SurfaceDoc` writes this layout through these functions, and the projection reads it
  * with them, so the format lives once.
@@ -47,7 +53,16 @@ object SurfaceFormat {
     /** The data key the driver publishes conflicts under, at `/_bee/conflicts/<escaped pointer>`. */
     const val RESERVED_DATA_KEY = "_bee"
 
-    /** Marks a leaf string as canonical JSON for an array or object, never a scalar string. */
+    /** An ordered collection's keyed object of items. */
+    const val ITEMS = "items"
+
+    /** An ordered collection's append-only array of item ids. */
+    const val ORDER = "order"
+
+    /**
+     * Marks a leaf string as canonical JSON for an array or object, never a scalar string. Part of
+     * v1's persisted format (tractat-us/bee#14); tractat-us/kuilt#3119 asks for its replacement.
+     */
     const val STRUCTURED_PREFIX = "\u0000json:"
 
     /**
@@ -170,6 +185,12 @@ object SurfaceFormat {
  * its pointer. An append-only array shows its entries in sequence order. A whole array shows as
  * its writer wrote it: it's one leaf, so a merge can't put an id in it twice, and nothing is
  * deduped.
+ *
+ * An ordered collection's `order` shows each of its item ids exactly once: the order's ids in
+ * sequence, each at its first occurrence, without ids that name no item, then any item the order
+ * lacks, sorted by id. An item can lack its id when a peer's edit revives an item another peer
+ * removed, or when its write arrived before its append. Every replica holding the same state shows
+ * the same permutation.
  */
 fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     val meta = requireNotNull(this[SurfaceFormat.META] as? JsonNode.Object) { "Surface $id has no meta." }
@@ -195,11 +216,12 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
 
 private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<String, List<JsonElement>>): JsonElement =
     when (node) {
-        is JsonNode.Object -> JsonObject(
-            node.map.keys.sorted().associateWith { key ->
+        is JsonNode.Object -> {
+            val members = node.map.keys.sorted().associateWith { key ->
                 project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts)
-            },
-        )
+            }
+            JsonObject(if (isOrderedCollection(node)) members + (SurfaceFormat.ORDER to orderOf(members)) else members)
+        }
         is JsonNode.Array -> JsonArray(
             node.rga.toList().mapIndexed { index, entry -> project(entry, "$pointer/$index", conflicts) },
         )
@@ -209,3 +231,16 @@ private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<Strin
             values.lastOrNull()?.let(SurfaceFormat::decodeLeaf) ?: JsonNull
         }
     }
+
+private fun isOrderedCollection(node: JsonNode.Object): Boolean =
+    node.map[SurfaceFormat.ITEMS] is JsonNode.Object && node.map[SurfaceFormat.ORDER] is JsonNode.Array
+
+/** An ordered collection's projected [members], its order made a permutation of its item ids. */
+private fun orderOf(members: Map<String, JsonElement>): JsonArray {
+    val items = (members.getValue(SurfaceFormat.ITEMS) as JsonObject).keys
+    val listed = (members.getValue(SurfaceFormat.ORDER) as JsonArray)
+        .mapNotNull { (it as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content }
+        .filter { it in items }
+        .distinct()
+    return JsonArray((listed + (items - listed.toSet()).sorted()).map(::JsonPrimitive))
+}
