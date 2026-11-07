@@ -145,10 +145,26 @@ Claude session ── bee-mcp                                           ┘     
     `Quilter`
   - durable local state in kuilt's `IndexedDbDurableStore`, so a reload or a closed laptop loses
     nothing
-  - the connection to the host: kuilt's `KtorClientLoom` (`kuilt-websocket` has a wasm build)
+  - two connections to the host, one per endpoint (§5.4)
   - an **in-page A2UI driver** that turns the replica into A2UI messages for the renderer, and the
     renderer's actions back into edits (§5.3)
 - kuilt's CRDT, Raft and WebSocket modules all build for wasmJs.
+- **Two endpoints, one identity rule each (design call).**
+  - The board runs M2's reconnect shape (A) (§8) at `/ws/board`: `KtorMeshClientLoom` spokes into
+    the host's `hostedOverlay`, a fresh fabric `PeerId` per weave, and a `Quilter` rebuilt per
+    connection from the held state.
+  - Claims run kuilt's `clusterClient` over `KtorClientLoom` (the Js engine in browsers) into
+    `serverCluster`'s `KtorRoomHost` at `/ws/claims`. `ClusterClient` owns its `Room` privately,
+    so the browser's `Quilter` needs that second socket.
+  - Raft identity is per connection, and bee's human identity sits above it.
+  - No kuilt test has dialled a real WebSocket from wasmJs yet, so Spike 4's browser smoke is the
+    first evidence.
+- **Browser identity (design call).**
+  - The person's name is asked once and kept in `localStorage["bee.human.name"]`.
+  - Every tab is its own replica, under a fresh CRDT author per page load.
+  - Only the tab holding the Web Lock `bee-board-store` writes the IndexedDB snapshot.
+  - A room screen is a named human peer opened with `?screen=<name>`, and it never proposes a
+    claim.
 - **Spike 1 is the glue (Iain: "good with the new spike").** Kotlin/wasm and the JavaScript renderer
   have to share one page: messages in, actions out. It's the newest and riskiest seam, so it goes
   first.
