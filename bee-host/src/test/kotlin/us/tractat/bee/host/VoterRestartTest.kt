@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
+import us.tractat.bee.core.ClaimTable
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
@@ -28,7 +29,7 @@ class VoterRestartTest {
         val won = rig.client(NodeId("claims-a")).claim(target, alice)
         val through = first.table.value.appliedIndex
         first.close()
-        rig.mirrored.value = us.tractat.bee.core.ClaimTable.EMPTY
+        rig.mirrored.value = ClaimTable.EMPTY
 
         val second = rig.startVoter()
         val refolded = second.table.first { it.appliedIndex >= through }

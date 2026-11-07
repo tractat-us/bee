@@ -2,6 +2,7 @@ package us.tractat.bee.host
 
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
@@ -13,6 +14,7 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -42,6 +44,36 @@ class ClaimsClientTest {
             { assertTrue(folded.retired(gone), "the learner folded an entry committed before it joined") },
             { assertEquals(voter.table.value, folded, "the learner's table is the voter's") },
             { assertEquals(rig.mirrored.value, voter.table.value, "the mirror has the voter's table") },
+        )
+        voter.close()
+    }
+
+    /**
+     * Review Focus 4: the claim reaches the voter and commits, but the commit is held on its way
+     * back, so the claimant times out and reports Unavailable. When the commit arrives, the client
+     * releases the claim it won.
+     */
+    @Test
+    fun lateCommitOfTimedOutClaimIsReleased() = runTest(timeout = 120.seconds) {
+        val rig = ClaimsRig(this)
+        val voter = rig.startVoter()
+        val node = NodeId("claims-a")
+        val a = rig.client(node)
+        val warmUp = a.claim(ClaimTarget("record:web-1:0"), alice)
+
+        val hold = rig.host.holdFor(node)
+        hold.hold()
+        val outcome = a.claim(target, alice, timeout = 1.seconds)
+        val atVoter = voter.table.value.status(target)
+        val parked = hold.parkedSends
+        hold.releaseAll()
+        val released = withTimeoutOrNull(10.seconds) { voter.table.first { it.status(target) == ClaimStatus.Free } }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(warmUp, "rig: the learner was admitted") },
+            { assertTrue(parked > 0, "rig: the hold caught the commit on its way back") },
+            { assertEquals(ClaimOutcome.Unavailable, outcome) },
+            { assertIs<ClaimStatus.Held>(atVoter, "the claim committed at the voter while the claimant waited") },
+            { assertNotNull(released, "the client released the claim it won late") },
         )
         voter.close()
     }
