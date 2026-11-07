@@ -159,21 +159,25 @@ class BoardStateTest {
         val c = ReplicaId("host-c")
         val second = SurfaceMeta("Second", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), BoardFixtures.OPENED_AT)
         val cards = buildJsonObject { put("c1", buildJsonObject { put("label", "Order") }) }
-        val deltas = listOf(
-            deltaOf(base, { it.updateData(A, SURFACE, "/answer", str("x")) }, { it.appendEntry(A, SURFACE, "/options", str("Pizza")) }),
-            deltaOf(base, { it.appendRecord(A, BoardFixtures.record(it)) }, { it.updateData(A, SURFACE, "/cards", cards) }),
-            deltaOf(
-                base,
+        // Each replica's second delta is made on its state after its first, as a live peer's is.
+        val deltas = deltasOf(
+            base,
+            listOf({ it.updateData(A, SURFACE, "/answer", str("x")) }, { it.appendEntry(A, SURFACE, "/options", str("Pizza")) }),
+            listOf({ it.appendRecord(A, BoardFixtures.record(it)) }, { it.updateData(A, SURFACE, "/cards", cards) }),
+        ) + deltasOf(
+            base,
+            listOf(
                 { it.updateComponents(B, SURFACE, listOf(BoardFixtures.root, button)) },
                 { it.updateData(B, SURFACE, "/answer", str("y")) },
             ),
-            deltaOf(base, { it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
-            deltaOf(
-                base,
+            listOf({ it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
+        ) + deltasOf(
+            base,
+            listOf(
                 { it.openSurface(c, "second", second, listOf(BoardFixtures.root), JsonObject(emptyMap())) },
                 { it.appendEntry(c, SURFACE, "/options", str("Tacos")) },
             ),
-            deltaOf(base, { it.reopenSurface(c, SURFACE) }, { it.updateData(c, SURFACE, "/order", ids("b", "a")) }),
+            listOf({ it.reopenSurface(c, SURFACE) }, { it.updateData(c, SURFACE, "/order", ids("b", "a")) }),
         )
         val expected = deltas.fold(base) { state, delta -> state.piece(delta) }
         val outcomes = permutations(deltas).map { order -> (order + order.first()).fold(base) { state, d -> state.piece(d) } }
@@ -237,12 +241,20 @@ class BoardStateTest {
         )
     }
 
-    /** One replica's delta for [writes], each run on the state the one before it left. */
-    private fun deltaOf(state: BoardState, vararg writes: (BoardState) -> Patch<BoardState>): BoardState =
-        writes.fold(state to BoardState.EMPTY) { (current, delta), write ->
-            val patch = write(current)
-            current.piece(patch) to delta.piece(patch.delta)
-        }.second
+    /**
+     * One replica's deltas, one per group of writes. Each write runs on the state the one before it
+     * left, across groups too, so the replica never mints a dot twice.
+     */
+    private fun deltasOf(state: BoardState, vararg groups: List<(BoardState) -> Patch<BoardState>>): List<BoardState> {
+        var current = state
+        return groups.map { writes ->
+            writes.fold(BoardState.EMPTY) { delta, write ->
+                val patch = write(current)
+                current = current.piece(patch)
+                delta.piece(patch.delta)
+            }
+        }
+    }
 
     private fun <T> permutations(items: List<T>): List<List<T>> =
         if (items.size <= 1) {
