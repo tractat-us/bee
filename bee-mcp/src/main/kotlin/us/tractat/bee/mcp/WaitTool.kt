@@ -63,7 +63,8 @@ object WaitTool {
         server.addTool(
             name = LIST,
             description = "Lists the action records on a surface of the shared board, without waiting. " +
-                "Pass since (a cursor) to list only the records after it.",
+                "Returns {records, cursor}. Pass a cursor a previous call returned as since to list only " +
+                "the records after it.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") { put("type", "string") }
