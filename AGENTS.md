@@ -39,7 +39,7 @@ reusable pieces after the spec, after the plan, and during execution.
 - The project name is lowercase: **bee**, even at the start of a sentence or a heading (like
   kuilt). Identifiers follow their language's own casing rules.
 - Kotlin Multiplatform + Gradle, JDK 25: in a non-interactive shell, run
-  `source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.2-tem` first.
+  `source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.5.0+8-tem` first.
 - Test methods: no `test` prefix; multi-assert tests use `assertAll()`.
 - Changes go through PRs. Never use the word "chore" in commits or PR titles.
 - `next-plan.md` and `morning-report*.md` are session scratch. They're gitignored and never
