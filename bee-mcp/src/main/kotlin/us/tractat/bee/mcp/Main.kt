@@ -7,6 +7,10 @@ import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
 import kotlinx.io.asSource
@@ -38,7 +42,9 @@ fun main() {
     }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}" }
 
-    ClearControl(identity).use { clear ->
+    // The bridge's own work (a retire on /clear) runs here; one failure must not end the rest.
+    val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    ClearControl(identity, bridgeScope).use { clear ->
         // Claude Code ends its MCP servers with a signal, not only by closing stdin (spike 3), so
         // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
         Runtime.getRuntime().addShutdownHook(Thread(clear::close, "bee-clear-control-close"))
@@ -56,6 +62,7 @@ fun main() {
             closed.await()
         }
     }
+    bridgeScope.cancel()
     logger.info { "bee-mcp ends." }
 }
 
