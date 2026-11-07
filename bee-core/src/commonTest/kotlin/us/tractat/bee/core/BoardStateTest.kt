@@ -7,16 +7,20 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import us.tractat.bee.a2ui.A2uiMessage
+import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.SurfaceFormat
+import us.tractat.bee.a2ui.diff
+import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardFixtures.A
 import us.tractat.bee.core.BoardFixtures.B
 import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.bee.core.BoardFixtures.values
-import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
-import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.JsonNode
+import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.test.assertAll
@@ -127,7 +131,8 @@ class BoardStateTest {
         assertAll(
             { assertIs<JsonNode.Leaf>(BoardFixtures.node(merged, "/order")) },
             { assertEquals(setOf(ids("c", "a", "b"), ids("b", "c", "a")), orders) },
-            { assertTrue(orders.all { (it as JsonArray).distinct().size == 3 }) },
+            // The projection shows one whole permutation, the greater encoded value.
+            { assertEquals(ids("c", "a", "b"), merged.surfaceDoc(SURFACE)!!.toSurfaceView(SURFACE).data["order"]) },
         )
     }
 
@@ -145,6 +150,106 @@ class BoardStateTest {
             { assertFailsWith<IllegalArgumentException> { state.updateData(B, SURFACE, "/answer/inner", str("x")) } },
         )
     }
+
+    @Test
+    fun deltasJoinInAnyOrderWithRepeats() {
+        // Three replicas run every mutator; their six deltas, delivered in all 720 orders with the
+        // first delivered twice, reach one state and one projection (the lattice laws).
+        val base = opened(buildJsonObject { put("order", ids("a", "b")) })
+        val c = ReplicaId("host-c")
+        val second = SurfaceMeta("Second", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), BoardFixtures.OPENED_AT)
+        val cards = buildJsonObject { put("c1", buildJsonObject { put("label", "Order") }) }
+        val deltas = listOf(
+            deltaOf(base, { it.updateData(A, SURFACE, "/answer", str("x")) }, { it.appendEntry(A, SURFACE, "/options", str("Pizza")) }),
+            deltaOf(base, { it.appendRecord(A, BoardFixtures.record(it)) }, { it.updateData(A, SURFACE, "/cards", cards) }),
+            deltaOf(
+                base,
+                { it.updateComponents(B, SURFACE, listOf(BoardFixtures.root, button)) },
+                { it.updateData(B, SURFACE, "/answer", str("y")) },
+            ),
+            deltaOf(base, { it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
+            deltaOf(
+                base,
+                { it.openSurface(c, "second", second, listOf(BoardFixtures.root), JsonObject(emptyMap())) },
+                { it.appendEntry(c, SURFACE, "/options", str("Tacos")) },
+            ),
+            deltaOf(base, { it.reopenSurface(c, SURFACE) }, { it.updateData(c, SURFACE, "/order", ids("b", "a")) }),
+        )
+        val expected = deltas.fold(base) { state, delta -> state.piece(delta) }
+        val outcomes = permutations(deltas).map { order -> (order + order.first()).fold(base) { state, d -> state.piece(d) } }
+        fun views(state: BoardState) = state.surfaces.keys.associateWith { state.surfaceDoc(it)!!.toSurfaceView(it) }
+        assertAll(
+            { assertEquals(720, outcomes.size) },
+            { assertTrue(outcomes.all { it == expected }) },
+            { assertTrue(outcomes.all { views(it) == views(expected) }) },
+            // The race between B's close and C's reopen resolves to closed.
+            { assertEquals(listOf(SURFACE), expected.closedSurfaces()) },
+            { assertEquals(listOf("x", "y").map(::str), views(expected).getValue(SURFACE).conflicts["/answer"]) },
+        )
+    }
+
+    @Test
+    fun closeAndReopenDiffToDeleteThenCreate() {
+        // The driver shows a closed surface as nothing, so closing diffs to a delete, and
+        // reopening to a fresh create of the surface as it now is.
+        val board = opened(buildJsonObject { put("answer", "pizza") })
+        val closed = board.piece { it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }
+            .piece { it.updateData(B, SURFACE, "/answer", str("tacos")) }
+        val reopened = closed.piece { it.reopenSurface(A, SURFACE) }
+        fun shown(state: BoardState) =
+            state.surfaceDoc(SURFACE)!!.takeIf { state.meta(SURFACE)!!.closedAt == null }?.toSurfaceView(SURFACE)
+        assertAll(
+            { assertEquals(listOf(A2uiMessage.DeleteSurface(SURFACE)), diff(shown(board), shown(closed))) },
+            {
+                assertEquals(
+                    listOf(
+                        A2uiMessage.CreateSurface(SURFACE, NOTIONS_CATALOG_ID),
+                        A2uiMessage.UpdateComponents(SURFACE, listOf(BoardFixtures.root)),
+                        A2uiMessage.UpdateDataModel(SURFACE, "/", buildJsonObject { put("answer", "tacos") }),
+                    ),
+                    diff(shown(closed), shown(reopened)),
+                )
+            },
+        )
+    }
+
+    @Test
+    fun slashIsTheDataModelRoot() {
+        val state = opened().piece { it.updateData(A, SURFACE, "/", buildJsonObject { put("answer", "pizza") }) }
+        assertAll(
+            { assertEquals(setOf("answer"), (BoardFixtures.node(state, "") as JsonNode.Object).map.keys) },
+            { assertFailsWith<IllegalArgumentException> { state.updateData(A, SURFACE, "/a//b", str("x")) } },
+            { assertFailsWith<IllegalArgumentException> { state.updateData(A, SURFACE, "/answer/", str("x")) } },
+            { assertFailsWith<IllegalArgumentException> { state.updateData(A, SURFACE, "/", buildJsonObject { put("", "x") }) } },
+            { assertFailsWith<IllegalArgumentException> { state.updateData(ReplicaId(""), SURFACE, "/answer", str("x")) } },
+        )
+    }
+
+    @Test
+    fun titleWithTheReservedPrefixIsSafe() {
+        val title = SurfaceFormat.STRUCTURED_PREFIX + "[not json"
+        val meta = SurfaceMeta(title, NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), BoardFixtures.OPENED_AT)
+        val state = BoardState.EMPTY.piece { it.openSurface(A, "odd", meta, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+        assertAll(
+            { assertEquals(title, state.meta("odd")!!.title) },
+            { assertEquals(listOf("odd"), state.openSurfaces()) },
+            { assertEquals(NOTIONS_CATALOG_ID, state.surfaceDoc("odd")!!.toSurfaceView("odd").catalogId) },
+        )
+    }
+
+    /** One replica's delta for [writes], each run on the state the one before it left. */
+    private fun deltaOf(state: BoardState, vararg writes: (BoardState) -> Patch<BoardState>): BoardState =
+        writes.fold(state to BoardState.EMPTY) { (current, delta), write ->
+            val patch = write(current)
+            current.piece(patch) to delta.piece(patch.delta)
+        }.second
+
+    private fun <T> permutations(items: List<T>): List<List<T>> =
+        if (items.size <= 1) {
+            listOf(items)
+        } else {
+            items.indices.flatMap { i -> permutations(items.take(i) + items.drop(i + 1)).map { listOf(items[i]) + it } }
+        }
 
     private val button = buildJsonObject {
         put("id", "go")
