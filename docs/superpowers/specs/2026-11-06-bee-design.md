@@ -59,7 +59,8 @@ and agent attached, and it's still there when they come back.
 **Non-goals for v1**
 
 - A team deployment. v1 is one person, with the host on their laptop (§5). Other browsers on the
-  same network, such as a conference-room screen, may join it.
+  same network, such as a conference-room screen, may join it once a participant admits it
+  (§5.7).
 - Peer-to-peer browser networking (WebRTC). Everyone talks through the host.
 - The phone app. It comes after v1, as a native shell around the web client (§5.5).
 - A general A2UI implementation. bee uses an existing renderer.
@@ -296,20 +297,27 @@ client core then runs natively instead of as wasm.
 
 ### 5.6 The Notions catalog
 
-bee's custom A2UI catalog, advertised through `supportedCatalogIds`. **The name "Notions" is a design
-call: in sewing, notions are the buttons, snaps and fasteners.** It starts with:
+bee's custom A2UI catalog, advertised through `supportedCatalogIds` as
+`https://tractat.us/bee/catalogs/notions/v1.json` (design call). **The name "Notions" is a design
+call: in sewing, notions are the buttons, snaps and fasteners.** It holds the basic catalog's
+components plus these:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
   (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
   hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
   `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
-- **`Poll`**: a question, options, and live per-peer answers.
+- **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
+  appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
   captures in the browser and returns a transcript as an action. Before it ships it needs a consent
   rule, because it records everyone in the room, not just the person who asked.
 
 The basic catalog (`Text`, `Card`, `Row`, `Column`, `Button`, `ChoicePicker`, …) covers the rest.
+
+Because the host can't refuse a CRDT write, the catalog's schema is enforced by the writers: the
+bridge validates a surface before writing it (§5.2), and the browser driver before rendering it
+(§5.3).
 
 ### 5.7 Letting a second screen in (Iain)
 
