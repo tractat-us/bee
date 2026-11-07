@@ -425,8 +425,19 @@ in kuilt) is the starting point.
 call).** That's deliberate. It keeps the claim API and its board mirror identical when more voters
 join later. The host votes but never claims. Browsers and bridges claim through it, which is the
 shape of kuilt's `kuilt-cluster` (`ServerCluster` voters, `clusterClient` learners that forward
-proposals with `requestId` dedup). The plan should check whether `kuilt-cluster` fits as-is before
-building a claim path of its own.
+proposals with `requestId` dedup). The kuilt peer confirmed that `clusterClient` compiles for
+wasmJs and that a single voter commits inline and never steps down. Spike 4 opens with a fit check
+of the questions still open before it builds on `kuilt-cluster`.
+
+**Claims are a state machine, and the host owns the mirror (design call).** `kuilt-cluster`'s
+`ClientSessionTable` dedups one proposer's retries, not two peers racing, so bee adds a claim
+table over the committed log:
+
+- The first committed `Claim` of a free target wins, and later ones apply as rejected.
+- A held claim carries a **fencing token**, the `(term, index)` of the log entry that granted it.
+  A `Complete` or `Release` with a stale token applies as rejected.
+- The host applies the committed log, and it's the only writer of the claims mirror and the list
+  of departed peers on the board.
 
 ### 6.4 Presence and failure
 
