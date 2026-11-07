@@ -211,9 +211,8 @@ Claude session ── bee-mcp                                           ┘     
   always goes through a claim** (§6.3), so two sessions never both act on one click.
 - **A session handles a surface by subscribing to it (design call).** Waiting on a surface is how
   a session handles it, and any session may wait on any surface.
-- **The bridge validates what it writes (design call).** The host can't refuse a CRDT write, so
-  the bridge checks a surface against the Notions schema (§5.6) before writing it, and refuses a
-  malformed one with an error that names the bad id or type.
+- **The bridge validates what it writes (design call)** against the Notions schema (§5.6), and
+  refuses a malformed surface with an error that names the bad id or type.
 - **A retired bridge re-identifies before it acts (design call).** If the bridge finds its identity
   retired (§6.4), it takes a fresh one through the `/clear` path, and refuses the board write it was
   asked for.
@@ -283,7 +282,7 @@ Claude session ── bee-mcp                                           ┘     
   routes `/`, `/ws/board` and `/ws/claims`. The host has no write route: it writes to the board
   only through its own replica.
 - **Where it runs.** Solo: on Iain's laptop. It binds loopback only unless it's started with
-  `--lan`, and then it's reachable on his network at `tractatus.local` (§5.7). For a team: on a
+  `--lan` (design call), and then it's reachable on his network at `tractatus.local` (§5.7). For a team: on a
   shared server. For an employer's hackathon on employer code, that's the hosting party's call.
 
 ### 5.5 After v1: the phone app (Iain)
@@ -323,7 +322,8 @@ bridge validates a surface before writing it (§5.2), and the browser driver bef
 
 **A browser on the local network gets a key through Bluetooth-style pairing (Iain).** A browser
 that arrives over the LAN without a key shows a six-digit code, and the board asks the current
-participants to type it in. A matching code admits the browser and gives it a key.
+participants to type it in. A matching code admits the browser and gives it a key. The flow is a
+design call:
 
 1. The keyless browser opens a pairing endpoint that carries no board or claims traffic. The host
    sends it a code and a pairing id, and the browser shows the code full screen.
@@ -339,7 +339,7 @@ participants to type it in. A matching code admits the browser and gives it a ke
 orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
 someone can see the new screen.
 
-The rest are design calls. Loopback connections need no key. A key in the URL (`?k=`) still
+The other details are design calls too. Loopback connections need no key. A key in the URL (`?k=`) still
 admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong entries void it.
 
 **This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is
