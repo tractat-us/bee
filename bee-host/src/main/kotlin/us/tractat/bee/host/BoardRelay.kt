@@ -1,7 +1,6 @@
 package us.tractat.bee.host
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,7 +48,9 @@ private val logger = KotlinLogging.logger {}
  *   stream is one every spoke can follow, since the hub's first-contact `FullState` syncs a
  *   spoke's cursor for it. A frame that leaves the host's board unchanged, a duplicate or a
  *   stale `FullState`, is not forwarded. Before #24 the relay re-broadcast its whole merged
- *   board on every change instead, so a 947 B keystroke came down as a 23 KB frame.
+ *   board on every change instead, so a 947 B keystroke came down as a 23 KB frame. A reconnect
+ *   that carries offline edits costs more than it did then: the reconnecting spoke gets two more
+ *   board-sized frames, and each other spoke one more.
  *
  * @param replica the host's CRDT author and Quilter id, fresh per boot (`host-<uuid>`): a rebooted
  *   host restarting its delta seqs under an old id would look stale to the spokes. The Quilter
@@ -101,24 +102,24 @@ class BoardRelay(
             is QuiltMessage.FullState -> message.state
             else -> return
         }
+        var ran = false
         try {
-            quilter.mutateOrSkip { board -> Patch(change).takeIf { board.piece(change) != board } }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
+            quilter.mutateOrSkip { board ->
+                ran = true
+                Patch(change).takeIf { board.piece(change) != board }
+            }
         } catch (closed: IllegalStateException) {
+            // Only the close race is caught: mutateOrSkip checks for a closed Quilter before it
+            // runs the transform, so a throw before the transform ran is that check. Anything the
+            // transform throws propagates, as the Quilter's own merge of this frame would.
+            if (ran) throw closed
             logger.debug { "${replica.value}: forward skipped, the Quilter has closed: $closed" }
-        } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) {
-            // A throw here would end the Quilter's inbound collector, and with it the host replica.
-            // The frame still merges; anti-entropy carries it on.
-            logger.warn(failure) { "${replica.value}: forward failed" }
         }
     }
 
     /** [frame] as a Quilt message, or null if it is not one; the Quilter logs and drops those itself. */
     private fun decodeOrNull(frame: Swatch): QuiltMessage<BoardState>? = try {
         frame.decode(FORMAT, messageSerializer)
-    } catch (cancelled: CancellationException) {
-        throw cancelled
     } catch (@Suppress("TooGenericExceptionCaught") undecodable: Exception) {
         logger.debug { "${replica.value}: not forwarding an undecodable frame: $undecodable" }
         null
