@@ -1,13 +1,7 @@
 package us.tractat.bee.core
 
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlin.jvm.JvmInline
 
@@ -90,14 +84,4 @@ sealed interface ClaimCommand {
         /** Reads what [encode] writes; throws [kotlinx.serialization.SerializationException] on anything else. */
         fun decode(bytes: ByteArray): ClaimCommand = json.decodeFromString(serializer(), bytes.decodeToString())
     }
-}
-
-/** [PeerIdentity] on the wire in its `toString()` form. */
-internal object PeerIdentityAsString : KSerializer<PeerIdentity> {
-    override val descriptor: SerialDescriptor =
-        PrimitiveSerialDescriptor("us.tractat.bee.core.PeerIdentity", PrimitiveKind.STRING)
-
-    override fun serialize(encoder: Encoder, value: PeerIdentity) = encoder.encodeString(value.toString())
-
-    override fun deserialize(decoder: Decoder): PeerIdentity = PeerIdentity.parse(decoder.decodeString())
 }
