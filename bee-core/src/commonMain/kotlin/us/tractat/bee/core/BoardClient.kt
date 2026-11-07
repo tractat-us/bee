@@ -33,6 +33,7 @@ import us.tractat.kuilt.quilter.QuiltMessage
 import us.tractat.kuilt.quilter.Quilter
 import us.tractat.kuilt.quilter.QuilterConfig
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -69,7 +70,8 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * connection already cancels its job under the same mutex, so a late mirror can't run; the guard
  * keeps an offline edit safe even if that ever changes.
  *
- * **Failures are state.** A failed dial, a failed pump or a failed seam close lands in
+ * **Failures are state.** A failed dial, a dial that outlasts [dialTimeout], a failed pump or a
+ * failed seam close lands in
  * [lastFailure], and a failed pump also ends its connection, so a broken mirror can't let the held
  * board drift from the replica. The next connection to go live clears it.
  *
@@ -80,6 +82,10 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * @param clock the wall clock, kept for what the client will stamp (presence, Task 7). The Quilter
  *   keeps kuilt's monotonic clock for eviction.
  * @param random the redial backoff's jitter.
+ * @param dialTimeout how long one [Loom.weave] may take. A dial that never answers (a socket
+ *   accepted and never upgraded, or one closed mid-handshake) is cancelled at this bound, recorded
+ *   as a [DialTimeoutException], and redialled on the backoff, so it can't leave the client
+ *   offline for good.
  */
 @Suppress("LongParameterList")
 class BoardClient(
@@ -91,7 +97,12 @@ class BoardClient(
     initial: BoardState = BoardState.EMPTY,
     private val config: QuilterConfig = BEE_QUILTER_CONFIG,
     random: Random = Random.Default,
+    private val dialTimeout: Duration = 5.seconds,
 ) {
+    init {
+        require(dialTimeout.isPositive()) { "dialTimeout must be positive, was $dialTimeout" }
+    }
+
     /** One connection: its seam, its Quilter, and the job they and their pumps run under. */
     internal class Connection(
         val seam: Seam,
@@ -206,14 +217,7 @@ class BoardClient(
     }
 
     private suspend fun openOrNull(): Connection? {
-        val seam = try {
-            loom.weave(rendezvous) // suspends: outside the lock
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            recordFailure(failure)
-            return null
-        }
+        val seam = weaveOrNull() ?: return null
         val connection = try {
             mutex.withLock { wire(seam).also { publish(it) } }
         } catch (failure: Throwable) {
@@ -223,6 +227,29 @@ class BoardClient(
         connection.quilter.state.pumpIn(connection, "mirror") { mirrorIfLive(connection) }
         connection.seam.state.pumpIn(connection, "tear") { if (it is SeamState.Torn) connection.ended.complete(Unit) }
         return connection
+    }
+
+    /**
+     * One dial, bounded by [dialTimeout], or null with the failure recorded. A timeout can land
+     * after [Loom.weave] has returned and before the bound sees it (kotlinx.coroutines documents
+     * the race), so a seam woven under a lost race is closed, never leaked.
+     */
+    private suspend fun weaveOrNull(): Seam? {
+        var woven: Seam? = null
+        val seam = try {
+            withTimeoutOrNull(dialTimeout) { loom.weave(rendezvous).also { woven = it } } // suspends: outside the lock
+        } catch (cancelled: CancellationException) {
+            woven?.let { withContext(NonCancellable) { closeQuietly(it) } }
+            throw cancelled
+        } catch (failure: Exception) {
+            recordFailure(failure)
+            return null
+        }
+        if (seam == null) {
+            woven?.let { withContext(NonCancellable) { closeQuietly(it) } }
+            recordFailure(DialTimeoutException(dialTimeout))
+        }
+        return seam
     }
 
     /** A fresh Quilter over [seam], seeded with the held board, on a new child job. Holds [mutex]. */
@@ -326,3 +353,6 @@ class BoardClient(
         val SEAM_CLOSE_TIMEOUT = 2.seconds
     }
 }
+
+/** A [BoardClient] dial that didn't answer within [timeout]; it was cancelled and goes round the redial. */
+class DialTimeoutException(val timeout: Duration) : Exception("dial took over $timeout")

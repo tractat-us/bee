@@ -106,3 +106,18 @@ session, and it reports problems on stderr.
 
 `BEE_RUN_DIR` moves the run directory, for the bridge and the hook alike. It's for tests. Leave it
 unset in normal use.
+
+## Local build gotchas
+
+**An edit to `bee-notions` doesn't reach a local build.** `bee-web` takes `bee-notions` as a
+`file:` npm dependency. Yarn copies it into `build/wasm/node_modules/@bee/notions` once and, while
+its version stays `0.1.0`, treats the copy as current, so a rebuild bundles the old renderer. To
+pick up the edit, from the root of your checkout:
+
+```sh
+rm build/wasm/node_modules/.yarn-integrity
+./gradlew kotlinWasmNpmInstall --rerun
+./gradlew :bee-web:wasmJsBrowserProductionWebpack --rerun
+```
+
+CI starts each run with no `build/wasm`, so it never hits this.

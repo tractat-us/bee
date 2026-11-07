@@ -2,6 +2,7 @@
 
 package us.tractat.bee.core
 
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -23,9 +24,11 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -84,6 +87,54 @@ class BoardClientLifecycleTest {
             { assertEquals("dial refused", afterRefusal?.message) },
             { assertFalse(onlineAfterRefusal) },
             { assertTrue(alex.online.value, "the backoff redialled") },
+            { assertNull(alex.lastFailure.value, "a live connection clears the failure") },
+        )
+    }
+
+    /**
+     * A dial that never answers (a socket accepted and never upgraded) is cancelled at the dial
+     * timeout and recorded, and the backoff redials. The hung first dial suspends until cancelled,
+     * so without the bound the client stays offline with no failure, for good.
+     */
+    @Test
+    fun aDialThatNeverAnswersTimesOutAndRedials() = runTest(StandardTestDispatcher()) {
+        val mesh = InMemoryLoom()
+        mesh.weave(Rendezvous.New(Pattern("board")))
+        val clock = { Instant.fromEpochMilliseconds(testScheduler.currentTime) }
+        var dials = 0
+        var hungDialCancelled = false
+        val loom = SpokeLoom(backgroundScope, "alex", Random(0), clock) { _, rendezvous ->
+            if (dials++ == 0) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    hungDialCancelled = true
+                }
+            }
+            mesh.weave(rendezvous)
+        }
+        val alex = BoardClient(
+            A, loom, Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock,
+            config = CONFIG, random = Random(0), dialTimeout = 5.seconds,
+        )
+        alex.connect()
+        advanceTimeBy(4_999.milliseconds)
+        runCurrent()
+        val failureBeforeBound = alex.lastFailure.value
+        advanceTimeBy(1.milliseconds)
+        runCurrent()
+        val failureAtBound = alex.lastFailure.value
+        val onlineAtBound = alex.online.value
+        val cancelledAtBound = hungDialCancelled
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertAll(
+            { assertNull(failureBeforeBound, "precondition: nothing fails inside the bound") },
+            { assertIs<DialTimeoutException>(failureAtBound, "the hung dial is recorded at the bound") },
+            { assertFalse(onlineAtBound, "precondition: a timed-out dial is not a connection") },
+            { assertTrue(cancelledAtBound, "the hung dial is cancelled, not left running") },
+            { assertEquals(2, dials, "the backoff redialled once") },
+            { assertTrue(alex.online.value, "the redial connected") },
             { assertNull(alex.lastFailure.value, "a live connection clears the failure") },
         )
     }
