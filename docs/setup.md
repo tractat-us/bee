@@ -10,47 +10,65 @@ So far the bridge serves `bee_wait_action` and `bee_list_actions` over an empty 
 
 ## 1. Build the bridge
 
+From the root of your bee checkout:
+
 ```sh
 source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.2-tem
 ./gradlew :bee-mcp:installDist
+BEE=$(pwd)
 ```
 
-This writes the launcher to `bee-mcp/build/install/bee-mcp/bin/bee-mcp`. The commands below call
-your checkout `$BEE`, so replace that with its absolute path.
+This writes the launcher to `$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp`. It lives under
+`build/`, so `./gradlew clean` deletes it, and every session using it loses bee until you run
+`installDist` again. The commands below use `$BEE`. In a JSON file, write the absolute path that
+`echo "$BEE"` prints.
 
 ## 2. Register the MCP server
 
-For every project:
+Pick one scope:
 
-```sh
-claude mcp add --scope user bee -- "$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp"
-```
+- **Every project (global).** This writes to your user-level Claude Code config, so every session
+  you start, in any directory, launches the bridge:
 
-Or for one project, put this in its `.mcp.json`:
+  ```sh
+  claude mcp add --scope user bee -- "$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp"
+  ```
 
-```json
-{
-  "mcpServers": {
-    "bee": {
-      "type": "stdio",
-      "command": "/absolute/path/to/bee/bee-mcp/build/install/bee-mcp/bin/bee-mcp",
-      "env": { "JAVA_HOME": "/Users/you/.sdkman/candidates/java/25.0.2-tem" }
+- **One project.** Put this in that project's `.mcp.json`:
+
+  ```json
+  {
+    "mcpServers": {
+      "bee": {
+        "type": "stdio",
+        "command": "/absolute/path/to/bee/bee-mcp/build/install/bee-mcp/bin/bee-mcp",
+        "env": { "JAVA_HOME": "/Users/you/.sdkman/candidates/java/25.0.2-tem" }
+      }
     }
   }
-}
-```
+  ```
+
+Either way:
 
 - The launcher needs a JDK 25 on `JAVA_HOME` or `PATH`. Set `env.JAVA_HOME` if Claude Code starts
   without one.
 - `BEE_SESSION_NAME` names the session on the board, as `agent:<name>#<8 hex>`. It defaults to
   the working directory's basename.
-- The bridge logs to stderr. Claude Code keeps that in its MCP log.
+- The bridge logs to stderr, never stdout, which carries the MCP protocol. Claude Code keeps that
+  log.
 
 ## 3. Install the `/clear` hook
 
 `/clear` wipes the agent's context but keeps the bridge process running. The hook tells the bridge
-to retire its identity, so the claims it held are orphaned, not silently kept (spec §5.2, A8). Add
-this to `~/.claude/settings.json`, merging it into any `hooks` you already have:
+to retire its identity, so the claims it held are orphaned, not silently kept (spec §5.2, A8).
+
+Use the same scope you chose for the server:
+
+- **Global:** `~/.claude/settings.json` applies to every session you start.
+- **One project:** use that project's `.claude/settings.json`, or `.claude/settings.local.json` to
+  keep it out of the project's git history.
+
+Merge this into the file's existing `hooks`:
 
 ```json
 {
@@ -67,18 +85,23 @@ this to `~/.claude/settings.json`, merging it into any `hooks` you already have:
 }
 ```
 
-The hook reads the event from stdin. On `"source": "clear"` it finds the session's `claude`
-process, reads the bridge's port from `~/.bee/run/<claudePid>.json` and sends `POST /retire` to
-`127.0.0.1`. For any other source it exits at once. It never writes to stdout, because a
-`SessionStart` hook's stdout goes into the session's context. It always exits 0, so a missing
-bridge never blocks a session. Its messages go to stderr.
+The hook reads the event from stdin. On `"source": "clear"`, it does this:
+
+1. It finds the session's `claude` process.
+2. It reads `~/.bee/run/<claudePid>.json`, which holds the bridge's port, bearer token and pid.
+3. It checks that the bridge is still alive.
+4. It sends `POST /retire` to `127.0.0.1` with the token.
+
+For any other source, it exits at once. A `SessionStart` hook's stdout goes into the session's
+context, so the hook never writes there. It always exits 0, so a missing bridge never blocks a
+session, and it reports problems on stderr.
 
 ## Checking it
 
 - `/mcp` in a session lists `bee` with its tools.
-- While a session runs, `~/.bee/run/` holds one `<claudePid>.json` per bridge (`{"port":N}`). The
-  bridge deletes it on exit. A bridge killed with `SIGKILL` can't, so its file stays behind, and
-  the hook then reports a dead port and carries on.
+- While a session runs, `~/.bee/run/` (mode 0700) holds one `<claudePid>.json` (mode 0600) per
+  bridge. The bridge deletes its file on exit. A bridge killed with `SIGKILL` can't, so its file
+  stays behind. The hook sees that the file's pid is dead and does nothing.
 - After `/clear`, the bridge's log shows `/clear retired agent:…; now agent:…`.
 
 `BEE_RUN_DIR` moves the run directory, for the bridge and the hook alike. It's for tests. Leave it
