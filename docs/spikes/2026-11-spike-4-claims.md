@@ -71,7 +71,7 @@ cancelling the server-side `onRoom` job in `ServerClusterSim`, which no producti
   `smoke-b`'s client scope was cancelled, and 45 s later the config still listed both learners.
 
 This bears only on the config's size, not on correctness. A dead learner's id stays in the config,
-and the leader keeps sending it entries.
+and the leader keeps replicating to it.
 
 ## The learner's id must equal the client's `NodeId`
 
@@ -80,7 +80,8 @@ The server takes a learner's `NodeId` from the roster, which `KtorClientLoom` fi
 the two differ, the voter replicates to an id the client doesn't answer to. bee has no production
 `clusterClient` yet: Task 7 builds it. Today the three test sites (`ClaimsRig.client`,
 `ClaimsSmokeTest.client` and `WasmClaimTest`) each build both from one `NodeId`. The membership
-assertions in the two-learner tests pin that the voter admits the ids the clients chose. Task 7
+assertion in `aSecondLearnerLeavesTheFirstOnTheLog` pins that the voter admits the ids the clients
+chose. Task 7
 should build the loom and the client in one function that takes a single `NodeId`, so the two can't
 differ.
 
