@@ -118,7 +118,9 @@ nothing, while `source: "clear"` retired the bridge and wrote nothing to stdout.
 - **`BridgeIdentity.retire` mints first, then reports.** A failed report propagates without
   leaving the bridge on the identity it meant to retire.
 - **`ClearControlTest` binds an ephemeral loopback port** in the required gate. The channel is
-  loopback HTTP by design (A8), and nothing in the test waits on time.
+  loopback HTTP by design (A8). Every request has a 5 s timeout. Only the hung-retire test waits
+  on the clock (a 200 ms answer bound), and it asserts an upper bound, never an exact time. The
+  coordinator is raising this test's clash with the "in-memory" gate rule with Iain.
 
 ## Open for Task 7 and Iain
 

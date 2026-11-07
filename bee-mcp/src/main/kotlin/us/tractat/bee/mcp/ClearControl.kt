@@ -45,7 +45,7 @@ private val logger = KotlinLogging.logger {}
  * The run file is `{"port":N,"token":"…","pid":<bridge pid>}`, mode 0600, in a 0700 directory.
  * Loopback alone admits other OS users and any web page that can guess the port, so a request must
  * carry `Authorization: Bearer <token>`. A browser can't send that header cross-origin without a
- * preflight, and the server never answers one. The hook checks `pid` is alive before it posts, so a
+ * preflight, and the server approves none (an `OPTIONS` gets a bare `401`). The hook checks `pid` is alive before it posts, so a
  * stale file never retires another session's bridge.
  *
  * The retire runs on [scope], a `SupervisorJob` scope the bridge owns, never on the server's
