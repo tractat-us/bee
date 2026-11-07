@@ -143,13 +143,14 @@ class ClaimsRaceTest {
         val alice = PeerIdentity.agent("alice", Random(1))
         val bob = PeerIdentity.agent("bob", Random(2))
         val a = rig.client(NodeId("claims-a"))
-        val bScope = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
+        val bJob = Job(backgroundScope.coroutineContext[Job])
+        val bScope = CoroutineScope(backgroundScope.coroutineContext + bJob)
         val b = rig.client(NodeId("claims-b"), bScope)
         val joined = listOf(a.claim(ClaimTarget("record:grace:1"), alice), b.claim(ClaimTarget("record:grace:2"), bob))
         val bothIn = voter.membership.value.learners
 
         val gone = testScheduler.currentTime
-        bScope.coroutineContext.getValue(Job).cancelAndJoin()
+        bJob.cancelAndJoin()
         val removed = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2) {
             voter.membership.first { NodeId("claims-b") !in it.learners }
         }
