@@ -461,7 +461,8 @@ table over the committed log:
 
 ## 7. bee and kuilt
 
-- **bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** It's private while it starts and
+- **bee is its own repo, `tractat-us/bee`, beside kuilt (Iain).** Its name is written in
+  lowercase everywhere, like kuilt's **(Iain)**. It's private while it starts and
   meant to be open source under **AGPL-3.0 (Iain)**. **Every outside contribution requires a
   strict CLA that assigns all rights to Iain (Iain)**, so relicensing (for example, moving a piece
   into Apache-licensed kuilt, or a separate grant to an employer) stays his to decide. kuilt may reference public `tractat-us` projects **(Iain)**,
