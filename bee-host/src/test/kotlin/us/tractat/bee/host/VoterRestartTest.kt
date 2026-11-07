@@ -27,7 +27,7 @@ class VoterRestartTest {
         val rig = ClaimsRig(this)
         val first = rig.startVoter()
         val won = rig.client(NodeId("claims-a")).claim(target, alice)
-        val through = first.table.first { it.retired(alice) }.appliedIndex
+        val through = first.table.first { it.status(target) is ClaimStatus.Held }.appliedIndex
         first.close()
         rig.mirrored.value = ClaimTable.EMPTY
 
