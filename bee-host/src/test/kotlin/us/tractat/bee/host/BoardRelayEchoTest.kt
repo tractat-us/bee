@@ -66,8 +66,10 @@ private suspend fun BoardClient.openBoard() = SURFACES.forEach { id ->
 class BoardRelayEchoTest {
     /**
      * A one-field edit reaches the other spoke, and comes back to its author, in frames the size
-     * of its delta. Before #24 the hub re-broadcast its whole merged board for every change: here
-     * that was a frame the size of the board, which the precondition makes at least ten deltas.
+     * of its delta. sam isn't the surface's author, as alex wasn't in spike 2c: an author's edit
+     * carries its whole share of the surface (kuilt#2469), which is a different cost. Before #24
+     * the hub re-broadcast its whole merged board for every change: here that was a frame the size
+     * of the board, which the precondition makes at least ten deltas.
      */
     @Test
     fun aKeystrokeComesDownAtTheSizeOfItsDeltaNotTheBoard() = runTest(StandardTestDispatcher()) {
@@ -85,18 +87,18 @@ class BoardRelayEchoTest {
         val board = star.taps.getValue(CAROL.value).down.max()
         star.taps.values.forEach { it.clear() }
 
-        alex.mutate { it.updateData(ALEX, "s0", "/note", JsonPrimitive("hello!")) }
+        sam.mutate { it.updateData(SAM, "s0", "/note", JsonPrimitive("hello!")) }
         settle(200.milliseconds)
 
         val alexTap = star.taps.getValue(ALEX.value)
         val samTap = star.taps.getValue(SAM.value)
-        val delta = alexTap.up.max()
+        val delta = samTap.up.max()
         assertAll(
             { assertTrue(board >= 10 * delta, "precondition: the board ($board B) outweighs the delta ($delta B) tenfold") },
-            { assertEquals(JsonPrimitive("hello!"), value(sam.state.value, "s0", "note"), "the edit reached sam") },
-            { assertEquals(alex.state.value, star.relay.state.value) },
-            { assertTrue(samTap.down.max() <= delta + HEADER_SLACK_BYTES, "sam's largest frame ${samTap.down.max()} B, delta $delta B: ${samTap.down}") },
+            { assertEquals(JsonPrimitive("hello!"), value(alex.state.value, "s0", "note"), "the edit reached alex") },
+            { assertEquals(sam.state.value, star.relay.state.value) },
             { assertTrue(alexTap.down.max() <= delta + HEADER_SLACK_BYTES, "alex's largest frame ${alexTap.down.max()} B, delta $delta B: ${alexTap.down}") },
+            { assertTrue(samTap.down.max() <= delta + HEADER_SLACK_BYTES, "sam's largest frame ${samTap.down.max()} B, delta $delta B: ${samTap.down}") },
         )
     }
 
