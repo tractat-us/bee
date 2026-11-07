@@ -51,10 +51,12 @@ tasks.processResources {
 // The fixture mains are test sources with no tests beside them until Task 3 adds some.
 tasks.test { failOnNoDiscoveredTests = false }
 
-// bee-web's build starts FixtureVoterMain from this classpath before its browser test. It
-// may not resolve this project's configuration while its own task runs, so this task writes
-// the resolved path to a file for it.
-tasks.register("fixtureVoterClasspath") {
+// bee-web's build starts FixtureVoterMain from this project's test runtime classpath
+// before its browser test. It may not resolve this project's configurations while its own
+// task runs, so this task writes the resolved path to a file. bee-web consumes that file
+// through the `fixtureVoterClasspath` configuration, the way this project consumes
+// bee-web's `webDistribution`.
+val writeFixtureVoterClasspath by tasks.registering {
     description = "Writes the fixture voter's runtime classpath to build/fixture-voter-classpath.txt."
     val classpath = sourceSets.test.get().runtimeClasspath
     val out = layout.buildDirectory.file("fixture-voter-classpath.txt")
@@ -62,13 +64,24 @@ tasks.register("fixtureVoterClasspath") {
     outputs.file(out)
     doLast { out.get().asFile.writeText(classpath.asPath) }
 }
+val fixtureVoterClasspath: Configuration by configurations.creating {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+}
+artifacts {
+    add(fixtureVoterClasspath.name, layout.buildDirectory.file("fixture-voter-classpath.txt")) {
+        builtBy(writeFixtureVoterClasspath)
+    }
+}
 
-// Playwright's globalSetup runs this to write fixture surfaces through a JVM BoardClient.
-// The host to write to is passed as -Pbee.e2e.host=<url>.
+// Playwright's globalSetup runs this to write the fixture surfaces through a JVM
+// BoardClient: `./gradlew :bee-host:e2eSeed -Pbee.e2e.host=<url>` runs
+// `E2eSeederMain --host <url>`. The seeder seeds every fixture by default; Task 4's
+// seeder may also take `--fixture <name>` to seed only that one.
 tasks.register<JavaExec>("e2eSeed") {
     group = "verification"
     description = "Writes the Playwright fixture surfaces onto a running host."
     classpath = sourceSets.test.get().runtimeClasspath
     mainClass = "us.tractat.bee.host.fixtures.E2eSeederMainKt"
-    providers.gradleProperty("bee.e2e.host").orNull?.let { args(it) }
+    providers.gradleProperty("bee.e2e.host").orNull?.let { args("--host", it) }
 }
