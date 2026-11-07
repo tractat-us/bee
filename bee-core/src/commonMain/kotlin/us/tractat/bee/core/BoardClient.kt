@@ -1,6 +1,5 @@
 package us.tractat.bee.core
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
@@ -21,6 +20,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import us.tractat.kuilt.core.Loom
+import us.tractat.kuilt.core.PumpVerdict
+import us.tractat.kuilt.core.pumpIn
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.core.Seam
 import us.tractat.kuilt.core.SeamState
@@ -35,7 +36,8 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-private val logger = KotlinLogging.logger {}
+// bee-core has no logging dependency (kotlin-logging is bee-host's), and Task 3 may not add one,
+// so the redial loop and the closes below fail quietly. Each comment says what's dropped.
 
 /**
  * The board's replication tuning, as kuilt's Patchwork relay: a 1 s anti-entropy backstop behind
@@ -176,7 +178,6 @@ class BoardClient(
             // mutateOrSkip checks for a closed Quilter before it runs the transform, so a throw
             // before [f] ran is that check; anything [f] throws is the caller's.
             if (ran) throw closed
-            logger.debug { "${author.value}: the live Quilter has closed; writing offline" }
             null
         }
     }
@@ -201,7 +202,7 @@ class BoardClient(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            logger.info { "${author.value}: board dial failed, retrying in $redialAfter: $failure" }
+            // Dropped: the dial failure itself. The client stays offline and redials.
             return null
         }
         val connection = try {
@@ -210,7 +211,7 @@ class BoardClient(
             withContext(NonCancellable) { closeQuietly(seam) }
             throw failure
         }
-        connection.quilter.state.collectIn(connection, "mirror") { mirror(connection) }
+        connection.quilter.state.collectIn(connection, "mirror") { mirrorIfLive(connection) }
         connection.seam.state.collectIn(connection, "tear") { if (it is SeamState.Torn) connection.ended.complete(Unit) }
         return connection
     }
@@ -251,7 +252,9 @@ class BoardClient(
      * connection**. Public for the guard's test, which drives a late emission directly.
      */
     @BoardClientTestHook
-    suspend fun mirror(connection: Connection) {
+    suspend fun mirror(connection: Connection) = mirrorIfLive(connection)
+
+    private suspend fun mirrorIfLive(connection: Connection) {
         mutex.withLock { if (live === connection) held.value = connection.quilter.state.value }
     }
 
@@ -287,11 +290,12 @@ class BoardClient(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            logger.debug { "${author.value}: closing a board seam failed: $failure" }
+            // Dropped: a failure closing a seam that is already parted. Nothing holds it.
         }
     }
 
+    // Dropped: a pump body's failure. Neither body throws anything but cancellation.
     private fun <T> StateFlow<T>.collectIn(connection: Connection, name: String, body: suspend (T) -> Unit) {
-        connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-$name")) { collect(body) }
+        pumpIn(connection.scope, onFailure = { _, _ -> PumpVerdict.CONTINUE }, name = "${connection.quilter.replica.value}-$name", body = body)
     }
 }
