@@ -54,6 +54,8 @@ default asset-size hints.
   create with the same id renders fresh (`reopenAfterDeleteRendersAgain`).
 - **`updateDataModel` with `value` omitted** deletes the value at the path, and a `Text` bound to it
   renders empty (`dataModelDeleteRemovesTheValue`).
+- **Any reported error makes `A2uiRenderer.render` throw** `A2uiRenderException` with the error
+  objects. The processor still applies the other messages in the batch (`rendererErrorsThrow`).
 - An action reaches the processor's listener as web_core's `ActionPayload`:
   `{name, surfaceId, sourceComponentId, timestamp, context, catalogId?}`. `A2uiJson.decodeAction`
   ignores the extra fields.
@@ -70,9 +72,12 @@ None against kuilt or A2UI. Three choices in the build stand in for things the p
   `build/karma-config.d/` gets a copy of `karma.config.d/`, plus `fixture.js` when the real-socket
   flag is set.
 - **The fixture voter's classpath goes through a file.** A task in `bee-web` can't resolve
-  `bee-host`'s configuration while it runs. So `:bee-host:fixtureVoterClasspath` writes the path
-  to `bee-host/build/fixture-voter-classpath.txt`. The voter reports its port on stdout as
-  `BEE_FIXTURE_VOTER_PORT=<n>`, and the build injects it as `window.__BEE_FIXTURE_VOTER_PORT__`.
+  `bee-host`'s configurations while it runs. So `bee-host` writes the resolved path to a file and
+  publishes it as its `fixtureVoterClasspath` configuration, which `bee-web` resolves. The voter
+  reports its port on stdout as `BEE_FIXTURE_VOTER_PORT=<n>`, and the build injects it as
+  `window.__BEE_FIXTURE_VOTER_PORT__`. The voter's JDK path is resolved while the build is
+  configured, because the configuration cache can't restore a provider chained on the toolchain
+  service.
 - **Playwright starts the host only once a spec exists.** Task 1 has no spec and no host `Main`.
   CI runs `npx playwright test --pass-with-no-tests` until Task 4. The host command line,
   `--port <n> --data-dir <dir>`, is fixed in `e2e/playwright.config.mjs` for Task 3 to read.
