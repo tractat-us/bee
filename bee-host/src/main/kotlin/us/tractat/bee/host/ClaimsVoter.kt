@@ -13,6 +13,7 @@ import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimTable
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.PeerKind
 import us.tractat.kuilt.cluster.ServerCluster
 import us.tractat.kuilt.cluster.serverCluster
 import us.tractat.kuilt.raft.ClusterConfig
@@ -55,8 +56,12 @@ class ClaimsVoter private constructor(
     /** The voter's live cluster configuration: which learners it replicates to. */
     internal val membership: StateFlow<ClusterConfig> get() = node.membership
 
-    /** Retires [identity] through the log: its claims are orphaned and its later commands rejected. */
+    /**
+     * Retires agent [identity] through the log: its claims are orphaned and its later commands
+     * rejected. Only agents depart (spec §6.4): a person's tabs come and go without retiring them.
+     */
     suspend fun depart(identity: PeerIdentity, reason: DepartReason) {
+        require(identity.kind == PeerKind.Agent) { "only agents depart, not $identity" }
         node.propose(ClaimCommand.encode(ClaimCommand.Depart(identity, reason)))
     }
 
