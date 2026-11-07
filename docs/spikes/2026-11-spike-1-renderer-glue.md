@@ -55,7 +55,8 @@ default asset-size hints.
 - **`updateDataModel` with `value` omitted** deletes the value at the path, and a `Text` bound to it
   renders empty (`dataModelDeleteRemovesTheValue`).
 - **Any reported error makes `A2uiRenderer.render` throw** `A2uiRenderException` with the error
-  objects. The processor still applies the other messages in the batch (`rendererErrorsThrow`).
+  objects (`rendererErrorsThrow`). The other messages in the batch still apply, because
+  `processMessagesWithErrors` catches each message's error on its own. No test pins that yet.
 - An action reaches the processor's listener as web_core's `ActionPayload`:
   `{name, surfaceId, sourceComponentId, timestamp, context, catalogId?}`. `A2uiJson.decodeAction`
   ignores the extra fields.
