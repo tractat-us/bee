@@ -212,8 +212,7 @@ jobs:
           cd e2e
           timeout 600 npm ci
           timeout 600 npx playwright install --with-deps chromium
-          # Until Task 4 adds the first spec, there is nothing to run.
-          timeout 600 npx playwright test --pass-with-no-tests
+          timeout 600 npx playwright test
 
       - name: Test count
         if: always()

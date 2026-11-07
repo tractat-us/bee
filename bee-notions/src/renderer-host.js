@@ -54,3 +54,49 @@ export function createRendererHost(rootElement, catalogs = [notionsCatalog]) {
     },
   };
 }
+
+/** The `<a2ui-surface>` showing `surfaceId` under `rootElement`, or null. */
+function surfaceElement(rootElement, surfaceId) {
+  for (const element of rootElement.querySelectorAll('a2ui-surface')) {
+    if (element.dataset.surfaceId === surfaceId) return element;
+  }
+  return null;
+}
+
+/**
+ * Subscribes to web_core's `DataModel.subscribe(path, …)` on the surface `surfaceId` shown
+ * under `rootElement`, for live shared typing (spec §5.3): a bound input such as a `TextField`
+ * writes only the renderer's local model, so bee's LiveInputs watches it.
+ *
+ * @param handler called with the path's new value as JSON (`null` when the path is absent),
+ *   each time it changes after this call, whoever changed it
+ * @returns `{ unsubscribe() }`, or `null` if no surface `surfaceId` is shown
+ */
+export function subscribeData(rootElement, surfaceId, path, handler) {
+  const dataModel = surfaceElement(rootElement, surfaceId)?.surface?.dataModel;
+  if (!dataModel) return null;
+  const subscription = dataModel.subscribe(path, (value) => handler(JSON.stringify(value ?? null)));
+  return { unsubscribe: () => subscription.unsubscribe() };
+}
+
+/**
+ * Reports focus entering and leaving a `TextField` under `rootElement`, as JSON
+ * `{surfaceId, componentId, focused}`, or `{error}` for a field it can't place. The basic
+ * catalog renders into light DOM, as `<a2ui-basic-textfield>`, so focus events reach the root
+ * with the input as their target. Focus on anything else is not a field's, and isn't reported.
+ */
+export function onTextFieldFocus(rootElement, handler) {
+  const report = (event, focused) => {
+    const field = event.target?.closest?.('a2ui-basic-textfield');
+    if (!field) return;
+    const surfaceId = field.closest('a2ui-surface')?.dataset.surfaceId;
+    const componentId = field.context?.componentModel?.id;
+    if (surfaceId && componentId) {
+      handler(JSON.stringify({ surfaceId, componentId, focused }));
+    } else {
+      handler(JSON.stringify({ error: `a TextField with surface ${surfaceId} and component ${componentId}` }));
+    }
+  };
+  rootElement.addEventListener('focusin', (event) => report(event, true));
+  rootElement.addEventListener('focusout', (event) => report(event, false));
+}
