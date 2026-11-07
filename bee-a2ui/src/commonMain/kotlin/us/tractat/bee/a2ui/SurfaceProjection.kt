@@ -23,19 +23,21 @@ import kotlin.math.abs
  * data is one leaf holding the whole array, and an append-only array is a `JsonNode.Array` whose
  * entries are leaves.
  *
- * An **ordered collection** is a data object with two members: `items`, a keyed object of items by
- * id, and `order`, an append-only array of their ids (A12, tractat-us/bee#14). An id is appended
+ * An **ordered collection** is a data object with exactly two members: `items`, a keyed object of
+ * items by id, and `order`, an append-only array of their ids (A12, tractat-us/bee#14). An id is appended
  * once and never edited, so two peers adding items at once both land. `order` may be absent, as it
  * is before the first append. The projection shows the order as a permutation of the item ids;
  * see [toSurfaceView].
  *
  * A leaf holds a `JsonValue`, which has no array or object. A leaf that holds a whole array (or an
  * object, as an array entry) holds a [JsonValue.Str] of its canonical JSON behind
- * [STRUCTURED_PREFIX]. A scalar data string never starts with that prefix, because writers refuse
- * one. **This is a persisted format**, confirmed for v1 (tractat-us/bee#14): boards on disk and on
- * the wire hold it, so changing it needs a migration. A structured `JsonValue` case, which would
- * retire the prefix, is asked for in tractat-us/kuilt#3119. Meta strings aren't data: they're
- * stored and read raw, so any title is safe.
+ * [STRUCTURED_PREFIX]. A leaf a replace cleared holds [CLEARED]. Both live in a namespace of
+ * strings starting with [RESERVED_PREFIX], and writers refuse a data string that starts with it, so
+ * no scalar is mistaken for either. **This is a persisted format**, confirmed for v1
+ * (tractat-us/bee#14): boards on disk and on the wire hold it, so changing it needs a migration. A
+ * structured `JsonValue` case, which would retire the JSON prefix, is asked for in
+ * tractat-us/kuilt#3119. Meta strings aren't data: they're stored and read raw, so any title is
+ * safe.
  *
  * bee-core's `SurfaceDoc` writes this layout through these functions, and the projection reads it
  * with them, so the format lives once.
@@ -65,6 +67,18 @@ object SurfaceFormat {
      * v1's persisted format (tractat-us/bee#14); tractat-us/kuilt#3119 asks for its replacement.
      */
     const val STRUCTURED_PREFIX = "\u0000json:"
+
+    /** Starts every string bee reserves in a data leaf. Writers refuse a data string with it. */
+    const val RESERVED_PREFIX = "\u0000"
+
+    /**
+     * What a replace writes into a leaf it clears (tractat-us/bee#14): the projection hides it,
+     * and the leaf keeps its register, so its dots never restart. Part of v1's persisted format.
+     */
+    val CLEARED: JsonValue = JsonValue.Str("\u0000cleared")
+
+    /** Whether a leaf value is [CLEARED]. */
+    fun isCleared(v: JsonValue): Boolean = v == CLEARED
 
     /**
      * The projection's total order on leaf values (design call, spec §5.3): `Null` < `Bool` <
@@ -101,7 +115,7 @@ object SurfaceFormat {
 
     private fun encodeScalar(p: JsonPrimitive): JsonValue {
         if (p.isString) {
-            require(!p.content.startsWith(STRUCTURED_PREFIX)) { "A data string starts with bee's reserved prefix." }
+            require(!p.content.startsWith(RESERVED_PREFIX)) { "A data string starts with bee's reserved prefix, U+0000." }
             return JsonValue.Str(p.content)
         }
         p.booleanOrNull?.let { return JsonValue.Bool(it) }
@@ -185,12 +199,12 @@ object SurfaceFormat {
  * several concurrent values also lists them all, in that order, in [SurfaceView.conflicts] under
  * its pointer. An append-only array shows its entries in sequence order. A whole array shows as
  * its writer wrote it: it's one leaf, so a merge can't put an id in it twice, and nothing is
- * deduped.
+ * deduped. A leaf a replace cleared is hidden; see [SurfaceFormat.CLEARED].
  *
  * An ordered collection's `order` shows each of its item ids exactly once: the order's ids in
  * sequence, each at its first occurrence, without ids that name no item, then any item the order
- * lacks, sorted by id. An item can lack its id when a peer's edit revives an item another peer
- * removed, or when its write arrived before its append. Every replica holding the same state shows
+ * lacks, sorted by id. An item can lack its id when a peer's edit lands on an item another peer
+ * cleared, or when its write arrived before its append. Every replica holding the same state shows
  * the same permutation.
  */
 fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
@@ -205,7 +219,7 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     }
     val conflicts = mutableMapOf<String, List<JsonElement>>()
     val dataNode = requireNotNull(this[SurfaceFormat.DATA] as? JsonNode.Object) { "Surface $id has no data object." }
-    val data = project(dataNode, "", conflicts) as JsonObject
+    val data = checkNotNull(project(dataNode, "", conflicts)) as JsonObject
     return SurfaceView(
         id = id,
         catalogId = catalogId,
@@ -215,27 +229,46 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     )
 }
 
-private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<String, List<JsonElement>>): JsonElement =
+/**
+ * [node] as shown, or `null` for a leaf holding only [SurfaceFormat.CLEARED], which its parent
+ * object then omits. A cleared value beside a concurrent one is dropped, so the concurrent value
+ * shows, and isn't reported as a conflict with the clear. A cleared object or array still shows,
+ * as `{}` or `[]`.
+ */
+private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<String, List<JsonElement>>): JsonElement? =
     when (node) {
         is JsonNode.Object -> {
-            val members = node.map.keys.sorted().associateWith { key ->
-                project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts)
-            }
-            JsonObject(if (isOrderedCollection(node)) members + (SurfaceFormat.ORDER to orderOf(members)) else members)
+            val members = node.map.keys.sorted().mapNotNull { key ->
+                project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts)?.let { key to it }
+            }.toMap()
+            JsonObject(if (isOrderedCollection(node, members)) members + (SurfaceFormat.ORDER to orderOf(members)) else members)
         }
         is JsonNode.Array -> JsonArray(
-            node.rga.toList().mapIndexed { index, entry -> project(entry, "$pointer/$index", conflicts) },
+            node.rga.toList().mapIndexed { index, entry ->
+                project(entry, "$pointer/$index", conflicts) ?: error("$pointer/$index: an appended entry is never cleared.")
+            },
         )
         is JsonNode.Leaf -> {
-            val values = node.register.values.sortedWith(SurfaceFormat.VALUE_ORDER)
+            val held = node.register.values
+            val values = held.filterNot(SurfaceFormat::isCleared).sortedWith(SurfaceFormat.VALUE_ORDER)
             if (values.size > 1) conflicts[pointer] = values.map(SurfaceFormat::decodeLeaf)
-            values.lastOrNull()?.let(SurfaceFormat::decodeLeaf) ?: JsonNull
+            when {
+                values.isNotEmpty() -> SurfaceFormat.decodeLeaf(values.last())
+                held.isEmpty() -> JsonNull
+                else -> null
+            }
         }
     }
 
-/** Whether [node] holds keyed `items` and an `order` that is absent or an append-only array. */
-private fun isOrderedCollection(node: JsonNode.Object): Boolean =
-    node.map[SurfaceFormat.ITEMS] is JsonNode.Object && node.map[SurfaceFormat.ORDER].let { it == null || it is JsonNode.Array }
+/**
+ * Whether [node], projected as [members], is an ordered collection: it shows exactly `items`, an
+ * object, and maybe `order`, which is stored as an append-only array. A cleared member isn't shown,
+ * so it doesn't count.
+ */
+private fun isOrderedCollection(node: JsonNode.Object, members: Map<String, JsonElement>): Boolean =
+    members[SurfaceFormat.ITEMS] is JsonObject &&
+        (members.keys - setOf(SurfaceFormat.ITEMS, SurfaceFormat.ORDER)).isEmpty() &&
+        node.map[SurfaceFormat.ORDER].let { it == null || it is JsonNode.Array }
 
 /**
  * An ordered collection's projected [members], its order made a permutation of its item ids. An
