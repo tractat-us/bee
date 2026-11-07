@@ -7,6 +7,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -54,6 +55,12 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 class ClaimsRaceTest {
+    /**
+     * Two learners claim each target at once, over [ROUNDS] rounds. Each round ends with one
+     * `Won` and one `Lost` naming the winner, and the mirror holds the winner under the winner's
+     * token. A seeded delay before each claim varies who reaches the voter first, so each client
+     * wins some rounds. At the end both learners hold the voter's table.
+     */
     @Test
     fun twoClientsRaceAndExactlyOneWins() = runTest(timeout = 300.seconds) {
         val rig = ClaimsRig(this)
@@ -62,31 +69,37 @@ class ClaimsRaceTest {
         val bob = PeerIdentity.agent("bob", Random(2))
         val a = rig.client(NodeId("claims-a"))
         val b = rig.client(NodeId("claims-b"))
+        val jitter = Random(7)
 
         val rounds = (1..ROUNDS).map { round ->
             val target = ClaimTarget("record:race:$round")
+            val (delayA, delayB) = List(2) { jitter.nextLong(JITTER_MS).milliseconds }
             val outcomes = listOf(
-                async { a.claim(target, alice) },
-                async { b.claim(target, bob) },
+                async { delay(delayA); a.claim(target, alice) },
+                async { delay(delayB); b.claim(target, bob) },
             ).awaitAll()
             val mirrored = rig.mirrored.first { it.status(target) is ClaimStatus.Held }.status(target) as ClaimStatus.Held
-            Triple(target, outcomes, mirrored)
+            outcomes to mirrored
         }
 
-        val wins = rounds.map { (_, outcomes, _) -> outcomes.count { it is ClaimOutcome.Won } }
-        val namedWinners = rounds.map { (_, outcomes, mirrored) ->
-            val winner = if (outcomes[0] is ClaimOutcome.Won) alice else bob
-            mirrored.holder == winner && (outcomes.first { it is ClaimOutcome.Won } as ClaimOutcome.Won).token == mirrored.token
+        val expected = rounds.map { (_, mirrored) ->
+            val won = ClaimOutcome.Won(mirrored.token)
+            if (mirrored.holder == alice) listOf(won, ClaimOutcome.Lost(alice)) else listOf(ClaimOutcome.Lost(bob), won)
         }
+        val winners = rounds.map { (_, mirrored) -> mirrored.holder }
+        val through = voter.table.value.appliedIndex
+        val aTable = a.table.first { it.appliedIndex >= through }
+        val bTable = b.table.first { it.appliedIndex >= through }
         rig.report(
-            "race: $ROUNDS rounds, log committed through ${voter.table.value.appliedIndex}, " +
+            "race: $ROUNDS rounds, log committed through $through, " +
                 "latencies a=${a.latencies.value.summary()} b=${b.latencies.value.summary()}, " +
-                "a folded through ${a.table.value.appliedIndex}, b through ${b.table.value.appliedIndex}, " +
-                "outcomes ${rounds.map { it.second }}",
+                "a won ${winners.count { it == alice }}, b won ${winners.count { it == bob }}",
         )
         assertAll(
-            { assertEquals(List(ROUNDS) { 1 }, wins, "exactly one Won per round") },
-            { assertEquals(List(ROUNDS) { true }, namedWinners, "the mirror names the winner and its token") },
+            { assertTrue(alice in winners && bob in winners, "rig: the jitter lets each client win some rounds") },
+            { assertEquals(expected, rounds.map { it.first }, "each round is one Won under the mirrored token and one Lost naming the winner") },
+            { assertEquals(voter.table.value, aTable, "a holds the voter's table") },
+            { assertEquals(voter.table.value, bTable, "b holds the voter's table") },
         )
         voter.close()
     }
@@ -175,6 +188,9 @@ class ClaimsRaceTest {
 
     private companion object {
         const val ROUNDS = 50
+
+        /** The spread of each claim's start, in ms: wider than one learner's commit lag over the other's. */
+        const val JITTER_MS = 200L
     }
 }
 
