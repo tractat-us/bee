@@ -39,13 +39,13 @@ The same result holds in memory and on real sockets:
 
 - `ClaimsRaceTest.aSecondLearnerLeavesTheFirstOnTheLog` (virtual time) and
   `ClaimsSmokeTest.aSecondLearnerLeavesTheFirstOnTheLogOverRealSockets` (Netty, `KtorRoomHost`,
-  CIO). After `a` claims, then `b` joins and claims, then the voter departs `b`: the voter is
+  CIO). After `a` claims, then `b` joins and claims, then the voter departs `b`: the log is
   through index 6, `a` folded through 3, `b` through 6. The voter's membership is
   `learners=[claims-b]` (`[smoke-b]` on sockets).
 - `ClaimsRaceTest.twoClientsRaceAndExactlyOneWins`: all 100 claims commit, through index 103. The
   first client wins every round at the voter, but it folded only through index 1, so it reports
-  `Unavailable` 50 times, and the second client reports `Lost`. Exactly one `Won` per round fails
-  in 47 of 50 rounds. The 3 that pass are rounds the second client happened to win.
+  `Unavailable` every time, and the second client mostly reports `Lost`. In the first recorded run,
+  "exactly one `Won` per round" failed in 47 of 50 rounds.
 
 These three tests are `@Ignore`d, with a comment, so `check` stays green. Each turns green, with no
 change to bee, once kuilt admits learners from the current membership, as `CoreLearnerAdmission`
