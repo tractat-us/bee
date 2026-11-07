@@ -41,15 +41,19 @@ data class Basis(
 
     /**
      * Whether [state], a handler's replica, has delivered everything this basis names for
-     * [surfaceId]. When it hasn't, the basis is unknown to that handler, never applicable.
+     * [surfaceId]. When it hasn't, the basis is unknown to that handler, never applicable. A
+     * replica that doesn't hold the surface yet hasn't delivered it, so the answer is `false`.
      */
     fun completeIn(state: BoardState, surfaceId: String): Boolean {
+        if (state.surfaceDoc(surfaceId) == null) return false
         val held = capture(state, surfaceId)
         val pointers = surfaceDots.keys + surfaceFloors.keys
         return pointers.all { p ->
-            surfaceDots[p].orEmpty().all { held.saw(p, it) } &&
-                covers(surfaceFloors[p] ?: VersionVector.EMPTY) { held.saw(p, it) }
-        } && recordDots.all(held::sawRecord) && covers(recordFloor, held::sawRecord)
+            val heldDots = held.surfaceDots[p].orEmpty()
+            val heldFloor = held.surfaceFloors[p] ?: VersionVector.EMPTY
+            surfaceDots[p].orEmpty().all { seen(heldDots, heldFloor, it) } &&
+                covers(surfaceFloors[p] ?: VersionVector.EMPTY, heldDots, heldFloor)
+        } && recordDots.all(held::sawRecord) && covers(recordFloor, held.recordDots, held.recordFloor)
     }
 
     companion object {
@@ -87,9 +91,16 @@ data class Basis(
 
         private fun seen(dots: Set<Dot>, floor: VersionVector, dot: Dot): Boolean = dot in dots || floor.contains(dot)
 
-        /** Whether [seen] holds for every dot at or below [floor]. */
-        private fun covers(floor: VersionVector, seen: (Dot) -> Boolean): Boolean =
-            floor.entries.all { (author, high) -> (1L..high).all { seen(Dot(author, it)) } }
+        /**
+         * Whether a replica holding [heldDots] above [heldFloor] has seen every dot at or below
+         * [floor]. Per author, the held floor answers up to its own height, and only the seqs above
+         * it are looked up.
+         */
+        private fun covers(floor: VersionVector, heldDots: Set<Dot>, heldFloor: VersionVector): Boolean =
+            floor.entries.all { (author, high) ->
+                val from = heldFloor[author]
+                high <= from || (from + 1..high).all { Dot(author, it) in heldDots }
+            }
     }
 
     /** A delivered set as its gap-free floor plus the dots above it: the same set, smaller. */
