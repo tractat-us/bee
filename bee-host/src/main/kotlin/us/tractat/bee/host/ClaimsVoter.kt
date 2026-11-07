@@ -4,6 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +44,7 @@ class ClaimsVoter private constructor(
     private val cluster: ServerCluster,
     private val node: RaftNode,
     private val tableState: MutableStateFlow<ClaimTable>,
+    private val relay: Job,
     private val job: Job,
 ) {
     val table: StateFlow<ClaimTable> = tableState.asStateFlow()
@@ -54,6 +56,9 @@ class ClaimsVoter private constructor(
 
     /** Stops the voter and its relay. The store stays as it is, for the next boot. */
     suspend fun close() {
+        // The relay first: its learners' teardown evicts them from the cluster's overlay, which
+        // throws once `cluster.close()` has closed the overlay's Quilter.
+        relay.cancelAndJoin()
         cluster.close()
         job.cancel()
     }
@@ -97,9 +102,9 @@ class ClaimsVoter private constructor(
                 }
             }
             cluster.awaitLeader()
-            voterScope.launch { cluster.start() }
+            val relay = voterScope.launch { cluster.start() }
             log.info { "claims voter up after ${clock() - booted}, log committed through ${node.commitIndex.value}" }
-            return ClaimsVoter(cluster, node, tableState, job)
+            return ClaimsVoter(cluster, node, tableState, relay, job)
         }
     }
 }
