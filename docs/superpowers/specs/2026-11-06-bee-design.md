@@ -219,9 +219,12 @@ Claude session ── bee-mcp                                           ┘     
 
 ### 5.3 The A2UI boundary, inside the page
 
-- **Pinned protocol and renderer (design call):** A2UI **v0.9.1** with the official **Lit** (Web
-  Components) renderer. Lit is stable for v0.9 and framework-free. v1.0 is a release candidate, so
-  re-pin when it lands.
+- **Pinned protocol and renderer (design call):** the official **Lit** (Web Components) renderer,
+  `@a2ui/lit` with `@a2ui/web_core`, framework-free. **The pin is a spec version.** Spike 1 pins
+  exact package versions and records which spec version they implement, and uses v1.0 only if
+  **both** packages export it. On 2026-11-06, `@a2ui/web_core@0.15.0` exports `./v1_0`, but
+  `@a2ui/lit@0.15.0` exports only `.`, `./ui`, `./0.8`, `./v0_8` and `./v0_9`, so today it's
+  **v0.9.1** (`version: "v0.9"`).
 - The in-page driver plays the A2UI server's part. It feeds the renderer `createSurface`,
   `updateComponents`, `updateDataModel` and `deleteSurface`, and receives `action`. The renderer is
   stock and never sees a CRDT.
@@ -229,14 +232,31 @@ Claude session ── bee-mcp                                           ┘     
   replaces (upserts) a value at a JSON Pointer path. The driver turns each merged CRDT change into
   those replacements, and each `action` into a CRDT edit plus an action record. Merge rules live
   only in the replica, never in the renderer.
+- **The driver diffs; it never applies deltas (design call).** `Quilter.state` is a conflated
+  `StateFlow`, so a delta can be skipped. The driver diffs the view it last rendered against the
+  current one, and replaces an array whole when its ids change. It validates each surface before
+  rendering it, and shows a placeholder naming the errors instead of an invalid one. bee builds
+  this on kuilt's public API, and it can graduate later.
+- **How a surface is stored (design call).** Each A2UI component is stored whole, as one leaf
+  holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. A
+  data path never changes type, because an object-versus-scalar conflict silently deletes the
+  losing subtree. §6.1 says which state is appended and which is edited.
 - **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
   concurrently written value, but A2UI's `updateDataModel` takes exactly one. The driver projects a
   deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
-  instead of hiding it. Spike 2 picks the rule.
-- **Open for the spike:** in v0.9, bound inputs such as a `TextField` update the renderer's *local*
-  model, and send it only on an action with `sendDataModel`. Live shared typing needs the driver to
-  observe local data-model changes (likely through `@a2ui/web_core`) or a Notions component that does.
-  Spike 2 settles this.
+  instead of hiding it.
+  - **A register keeps every concurrent value only when a write starts from the register just
+    read** (`leaf.register.set(replica, v)`). kuilt's documented `Leaf(MVRegister.empty().set(…))`
+    creates phantom conflicts, so bee never writes that way.
+  - **The winner (design call)** is the greatest value under a total order on `JsonValue`:
+    `Null` < `Bool` < `Num` < `Str`, then by value, with strings compared by UTF-16 code unit.
+    It's the same on every peer, never arrival order. The full set of values is published at
+    `/_bee/conflicts/<escaped pointer>`.
+- **Live shared typing.** In v0.9, bound inputs such as a `TextField` update the renderer's *local*
+  model, and send it only on an action with `sendDataModel`. So the driver subscribes to
+  `@a2ui/web_core`'s data model for every bound path and writes changes into the replica,
+  debounced. It holds remote changes to a path the person has focused or left dirty until they
+  leave it. Spike 2 proves this route.
 
 ### 5.4 The bee host
 
