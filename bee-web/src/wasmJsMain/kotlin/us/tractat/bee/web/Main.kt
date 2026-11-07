@@ -4,7 +4,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
@@ -48,7 +50,15 @@ fun main() {
     val actor = PeerIdentity.human(name)
     val author = ReplicaId("web-${Uuid.random()}")
     val clock = { Clock.System.now() }
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // A page whose rendering died must never go on saying "online": a coroutine that fails stops
+    // the whole page, and the page says why.
+    lateinit var scope: CoroutineScope
+    val crashed = CoroutineExceptionHandler { _, failure ->
+        scope.cancel()
+        status.textContent = "stopped"
+        problem.textContent = "The page stopped: ${failure.message ?: failure::class.simpleName}"
+    }
+    scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + crashed)
     val http = HttpClient { install(WebSockets) }
     val rendezvous = Rendezvous.Existing(
         WebSocketAdvertisement("ws://${window.location.host}$BOARD_PATH", PeerId("bee-host"), "board"),
