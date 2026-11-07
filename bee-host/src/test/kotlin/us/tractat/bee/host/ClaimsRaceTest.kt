@@ -153,7 +153,7 @@ class ClaimsRaceTest {
      */
     // Red on kuilt 0.7.0-dev.1692: a learner's own disconnect never starts the grace, because
     // ServerCluster holds each admitted room until its coroutine is cancelled and no RoomHost
-    // cancels it on a tear (spike 4 notes, kuilt#3119).
+    // cancels it on a tear (tractat-us/kuilt#3127, spike 4 notes).
     @Ignore
     @Test
     fun aLearnerGoneForTheGraceLeavesTheConfig() = runTest(timeout = 120.seconds) {
