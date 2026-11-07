@@ -40,7 +40,7 @@ this:
    not yet written. The driver shows the person's own value at a held path, and drops any
    `updateDataModel` aimed at it. When the path is released, the next diff sends what waited.
 
-The hold covers the whole path, not just the input: a `Text` bound to the same path shows the
+The hold covers the whole path, not only the input: a `Text` bound to the same path shows the
 person's own value too, because the renderer has one data model per surface. Only absolute
 bindings (`{"path": "/…"}`) are tracked. A `TextField` inside a list template binds a relative
 path, and v1 has none.
@@ -51,7 +51,10 @@ path, and v1 has none.
   the conflict test fails with the caption empty.
 - **Hold off.** The hold test fails with `Expected: "mine"`, `Received: "theirs"`.
 
-In both runs, every other test stayed green.
+With the hold off, the other four tests stayed green. With the echo filter off, the conflict test at
+first passed too, because it only checked that the conflict appeared, and it caught the brief
+moment before the echo cleared it. It now also checks that the conflict is still there 1.5 s
+later.
 
 ## The projection rule's evidence
 
@@ -127,7 +130,7 @@ Graduating the first half waits for a second consumer, as the plan says. Revisit
   --rerun`. A fresh CI checkout isn't affected. A build fix belongs to the build owner, so it's
   reported, not made here.
 - **Playwright starts `webServer` before `globalSetup`.** Locally, the seeder connected to the host
-  Playwright had just started, on its port, and the suite ran after it.
+  Playwright had started, on its port, and the suite ran after it.
 - **The host logs at DEBUG to stdout** (no `logback.xml` in `bee-host`), so Playwright's output is
   mostly Netty and Quilter noise.
 - **Signatures.** `LiveInputs` takes the renderer's root element, not the `A2uiRenderer`, because
