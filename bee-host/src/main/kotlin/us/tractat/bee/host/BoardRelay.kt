@@ -107,6 +107,10 @@ class BoardRelay(
             throw cancelled
         } catch (closed: IllegalStateException) {
             logger.debug { "${replica.value}: forward skipped, the Quilter has closed: $closed" }
+        } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) {
+            // A throw here would end the Quilter's inbound collector, and with it the host replica.
+            // The frame still merges; anti-entropy carries it on.
+            logger.warn(failure) { "${replica.value}: forward failed" }
         }
     }
 
