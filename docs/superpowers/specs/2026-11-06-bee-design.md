@@ -366,7 +366,7 @@ element would duplicate it. So a surface keeps two kinds of state apart:
 
 - **Appended content**: anything a basis must name, or a handler must reason about having seen
   (§6.2). Poll options and question revisions are appended entries in a `JsonNode.Array`, never
-  edited, and action records are appended the same way to the board's own sequence. Correcting an
+  edited, and action records are appended to the board's own `Rga`, outside any surface. Correcting an
   entry means removing it and appending a new one with a new identity.
 - **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
   stable id, with its order kept in a separate array of ids that the projection dedupes, keeping
@@ -401,7 +401,8 @@ nothing to open them.
 - Poll options and question revisions are appended entries in a `JsonNode.Array` (§6.1).
 - Each array's `Rga` mints sequence numbers on its own, so two arrays in one surface can hand out
   the same dot. So the basis keys dots by each array's JSON pointer, and never flattens them
-  through `JsonCrdt.causalDots()`.
+  through `JsonCrdt.causalDots()`. Record dots, from the board's own `Rga`, are held apart from
+  the per-pointer surface maps for the same reason.
 - A scalar leaf, or any editable keyed state, is display state that no handler may reason about.
 
 **Capturing the basis (design call):**
@@ -552,7 +553,7 @@ others, and its board-and-claims half joins them afterwards (design call).
    the newest seam and pins versions.
 2. **The board lattice and its projection** (spike 2, part 1).
 3. **The relay** (spike 2, part 2).
-4. **The browser driver: two browsers edit one surface** (spike 2, part 3). This settles the
+4. **The browser driver: two browsers edit one surface** (spike 2, part 3). This proves the
    projection and live shared typing (§5.3).
 5. **Bridge mechanics** (spike 3, first half).
 6. **Claims** (spike 4): two peers race for one card, and exactly one wins.
