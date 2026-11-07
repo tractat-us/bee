@@ -25,8 +25,9 @@ import kotlin.math.abs
  *
  * An **ordered collection** is a data object with two members: `items`, a keyed object of items by
  * id, and `order`, an append-only array of their ids (A12, tractat-us/bee#14). An id is appended
- * once and never edited, so two peers adding items at once both land. The projection shows the
- * order as a permutation of the item ids; see [toSurfaceView].
+ * once and never edited, so two peers adding items at once both land. `order` may be absent, as it
+ * is before the first append. The projection shows the order as a permutation of the item ids;
+ * see [toSurfaceView].
  *
  * A leaf holds a `JsonValue`, which has no array or object. A leaf that holds a whole array (or an
  * object, as an array entry) holds a [JsonValue.Str] of its canonical JSON behind
@@ -232,13 +233,18 @@ private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<Strin
         }
     }
 
+/** Whether [node] holds keyed `items` and an `order` that is absent or an append-only array. */
 private fun isOrderedCollection(node: JsonNode.Object): Boolean =
-    node.map[SurfaceFormat.ITEMS] is JsonNode.Object && node.map[SurfaceFormat.ORDER] is JsonNode.Array
+    node.map[SurfaceFormat.ITEMS] is JsonNode.Object && node.map[SurfaceFormat.ORDER].let { it == null || it is JsonNode.Array }
 
-/** An ordered collection's projected [members], its order made a permutation of its item ids. */
+/**
+ * An ordered collection's projected [members], its order made a permutation of its item ids. An
+ * absent order lists no ids, so the items show sorted by id. Items aren't read, so a fragment
+ * item (a card with no `label`) projects as whatever it holds.
+ */
 private fun orderOf(members: Map<String, JsonElement>): JsonArray {
     val items = (members.getValue(SurfaceFormat.ITEMS) as JsonObject).keys
-    val listed = (members.getValue(SurfaceFormat.ORDER) as JsonArray)
+    val listed = (members[SurfaceFormat.ORDER] as JsonArray? ?: JsonArray(emptyList()))
         .mapNotNull { (it as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content }
         .filter { it in items }
         .distinct()
