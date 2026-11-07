@@ -20,6 +20,11 @@ kotlin {
             api(libs.kuilt.quilter)
             api(libs.kuilt.cluster)
             api(libs.kuilt.raft)
+            // The board spoke (Task 3) is shaped like kuilt's RelaySpokeLoom: an HttpClient
+            // and a KtorMeshClientLoom. kuilt-websocket keeps ktor-client-core as
+            // `implementation`, so bee-core names it itself.
+            api(libs.kuilt.websocket)
+            api(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }
