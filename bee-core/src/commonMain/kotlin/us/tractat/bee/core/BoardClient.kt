@@ -246,7 +246,7 @@ class BoardClient(
             return null
         }
         if (seam == null) {
-            woven?.let { closeQuietly(it) }
+            woven?.let { withContext(NonCancellable) { closeQuietly(it) } }
             recordFailure(DialTimeoutException(dialTimeout))
         }
         return seam
