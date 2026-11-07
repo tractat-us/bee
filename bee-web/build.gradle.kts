@@ -86,6 +86,10 @@ dependencies {
 val karmaConfig by tasks.registering(Sync::class) {
     from("karma.config.d")
     into(karmaConfigDir)
+    // The directory's content depends on the flag: a flagged run adds fixture.js (written by
+    // wasmJsBrowserTest), which names a voter that is dead by the next run. Declaring the flag as
+    // an input re-runs this Sync when it flips, and Sync deletes files it did not copy.
+    inputs.property("realSocketTests", providers.gradleProperty("bee.realsocket.tests").map { it == "true" }.orElse(false))
 }
 
 /**
