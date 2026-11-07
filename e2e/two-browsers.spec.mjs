@@ -9,14 +9,16 @@ import { test, expect } from '@playwright/test';
 /**
  * Opens `/` as `name` with its board socket routed through a switch, and returns the page,
  * the switch and a frame log. Cutting closes the live socket. While the switch is off, a
- * redial is held unanswered, never connected to the host, and restoring connects it.
+ * redial is held unanswered, never connected to the host, and restoring connects each one the
+ * page hasn't given up on.
  */
 async function openPeer(browser, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const link = { online: true, sockets: [], waiting: [], frames: [] };
-  const connect = (ws) => {
+  const connect = (ws, onServer = () => {}) => {
     const server = ws.connectToServer();
+    onServer(server);
     ws.onMessage((m) => {
       link.frames.push({ dir: 'up', bytes: byteLength(m), at: Date.now() });
       server.send(m);
@@ -28,8 +30,15 @@ async function openPeer(browser, name) {
     link.sockets.push({ ws, server });
   };
   await page.routeWebSocket(/\/ws\/board/, (ws) => {
-    if (link.online) connect(ws);
-    else link.waiting.push(ws);
+    if (link.online) return connect(ws);
+    // Parked. Setting onClose stops Playwright forwarding the page's close to the host, so the
+    // handler forwards it itself once this socket is connected.
+    const parked = { ws, closed: false, server: null };
+    ws.onClose((code, reason) => {
+      parked.closed = true;
+      if (parked.server) parked.server.close({ code, reason }).catch(() => {});
+    });
+    link.waiting.push(parked);
   });
   await page.goto(`/?name=${name}`);
   await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
@@ -47,7 +56,9 @@ async function openPeer(browser, name) {
     },
     async restore() {
       link.online = true;
-      for (const ws of link.waiting.splice(0)) connect(ws);
+      for (const parked of link.waiting.splice(0)) {
+        if (!parked.closed) connect(parked.ws, (server) => { parked.server = server; });
+      }
       await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
     },
   };
@@ -64,6 +75,9 @@ const echo = (page, id) => surface(page, id).locator('a2ui-basic-text h5');
 
 /** The conflict caption: the only `em` in the surface (Text variant "caption"). */
 const conflict = (page, id) => surface(page, id).locator('a2ui-basic-text em');
+
+/** The renderer's root. LiveInputs marks it `data-pending` while a debounced write is outstanding. */
+const board = (page) => page.locator('#board');
 
 /** Moves focus off the field, so the page lets held remote changes through. */
 async function blur(page) {
@@ -115,8 +129,8 @@ test('concurrent typing shows one value and a conflict marker in both', async ({
   await sam.cut();
   await field(alex.page, 'conflict').fill('apple');
   await field(sam.page, 'conflict').fill('banana');
-  // Past the 150 ms debounce, so each edit is on its page's own replica before it reconnects.
-  await alex.page.waitForTimeout(500);
+  // Each edit is on its page's own replica before it reconnects: no debounced write is pending.
+  for (const peer of [alex, sam]) await expect(board(peer.page)).not.toHaveAttribute('data-pending');
   await blur(alex.page);
   await blur(sam.page);
   await alex.restore();
@@ -141,22 +155,30 @@ test('a click becomes a record with a basis', async ({ browser }) => {
   const sam = await openPeer(browser, 'sam');
   peers = [alex, sam];
   const records = (page) => page.locator('#records li[data-surface-id="records"]');
+  const press = (peer) => surface(peer.page, 'records').getByRole('button', { name: 'Press' });
 
-  await surface(alex.page, 'records').getByRole('button', { name: 'Press' }).click();
-  // The basis names what alex's replica had delivered: the one seeded /options entry, no records.
+  // The surface and the records on the board arrive in one FullState, so once the button shows,
+  // the record list is the board's: whatever other tests left there is the baseline.
+  await expect(press(alex)).toBeVisible();
+  const onBoard = await alex.page.locator('#records li').count();
+  const onSurface = await records(alex.page).count();
+
+  await press(alex).click();
+  // The basis names what alex's replica had delivered: the one seeded /options entry, and every
+  // record already on the board.
   for (const peer of [alex, sam]) {
-    await expect(records(peer.page)).toHaveCount(1, { timeout: 5_000 });
-    await expect(records(peer.page).first()).toHaveText(
-      'human:alex press on press-button, having seen /options 1, records 0',
+    await expect(records(peer.page)).toHaveCount(onSurface + 1, { timeout: 5_000 });
+    await expect(records(peer.page).last()).toHaveText(
+      `human:alex press on press-button, having seen /options 1, records ${onBoard}`,
     );
   }
 
-  await surface(sam.page, 'records').getByRole('button', { name: 'Press' }).click();
-  // sam's basis names alex's record, because sam's replica had it when sam clicked.
+  await press(sam).click();
+  // sam's basis names alex's record too, because sam's replica had it when sam clicked.
   for (const peer of [alex, sam]) {
-    await expect(records(peer.page)).toHaveCount(2, { timeout: 5_000 });
-    await expect(records(peer.page).nth(1)).toHaveText(
-      'human:sam press on press-button, having seen /options 1, records 1',
+    await expect(records(peer.page)).toHaveCount(onSurface + 2, { timeout: 5_000 });
+    await expect(records(peer.page).last()).toHaveText(
+      `human:sam press on press-button, having seen /options 1, records ${onBoard + 1}`,
     );
   }
 });
@@ -187,6 +209,26 @@ test('a remote edit never overwrites the field being typed in', async ({ browser
   await blur(alex.page);
   await expect(field(alex.page, 'hold')).toHaveValue('theirs', { timeout: 2_000 });
   await expect(conflict(alex.page, 'hold')).toHaveText('');
+});
+
+test('a field left before its edit is written keeps the edit', async ({ browser }) => {
+  const alex = await openPeer(browser, 'alex');
+  const sam = await openPeer(browser, 'sam');
+  peers = [alex, sam];
+
+  await field(alex.page, 'dirty').fill('quick');
+  // Leave the field inside the 150 ms debounce, and look 20 ms later, after the driver has
+  // re-rendered for the blur. The path is dirty, so it is still held: without that, the driver
+  // would show the board's old value over the person's unwritten edit.
+  const seen = await alex.page.evaluate(async () => {
+    const input = document.querySelector('a2ui-surface[data-surface-id="dirty"] a2ui-basic-textfield input');
+    input.blur();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return { value: input.value, pending: document.getElementById('board').hasAttribute('data-pending') };
+  });
+  expect(seen).toEqual({ value: 'quick', pending: true });
+  await expect(field(sam.page, 'dirty')).toHaveValue('quick', { timeout: 2_000 });
+  await expect(field(alex.page, 'dirty')).toHaveValue('quick');
 });
 
 test('an invalid surface shows a placeholder naming its errors', async ({ browser }) => {
