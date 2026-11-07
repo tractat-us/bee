@@ -25,7 +25,10 @@ import kotlin.math.abs
  *
  * A leaf holds a `JsonValue`, which has no array or object. A leaf that holds a whole array (or an
  * object, as an array entry) holds a [JsonValue.Str] of its canonical JSON behind
- * [STRUCTURED_PREFIX]. A scalar string never starts with that prefix, because writers refuse one.
+ * [STRUCTURED_PREFIX]. A scalar data string never starts with that prefix, because writers refuse
+ * one. This encoding is the current behaviour, and whether to keep it is a decision pending with
+ * Iain (tractat-us/bee PR 9). Meta strings aren't data: they're stored and read raw, so any title
+ * is safe.
  *
  * bee-core's `SurfaceDoc` writes this layout through these functions, and the projection reads it
  * with them, so the format lives once.
@@ -127,15 +130,35 @@ object SurfaceFormat {
     /** The JSON Pointer naming [segments], each escaped. */
     fun pointer(segments: List<String>): String = segments.joinToString("") { "/" + escapeSegment(it) }
 
+    /**
+     * The string a meta leaf shows, read raw (meta never goes through [encodeLeaf]): its greatest
+     * value under [VALUE_ORDER], or `null` when that value is JSON null.
+     *
+     * @throws IllegalArgumentException if the leaf is empty or holds something but a string or null
+     */
+    fun metaString(leaf: JsonNode.Leaf): String? =
+        when (val v = requireNotNull(leaf.register.values.maxWithOrNull(VALUE_ORDER)) { "An empty meta leaf." }) {
+            JsonValue.Null -> null
+            is JsonValue.Str -> v.value
+            else -> throw IllegalArgumentException("A meta leaf holds $v, not a string.")
+        }
+
     /** The value [leaf] shows: its greatest under [VALUE_ORDER], or `null` JSON if it holds none. */
     fun winner(leaf: JsonNode.Leaf): JsonElement =
         leaf.register.values.maxWithOrNull(VALUE_ORDER)?.let(::decodeLeaf) ?: JsonNull
 
-    /** The reference tokens of [pointer], unescaped. `""` is the root and has none. */
+    /**
+     * The reference tokens of [pointer], unescaped. `""` and `"/"` are both the root and have
+     * none: A2UI reads `"/"` as the root, so bee never uses RFC 6901's empty key.
+     *
+     * @throws IllegalArgumentException on a pointer without a leading `/`, or with an empty token
+     */
     fun segments(pointer: String): List<String> {
-        if (pointer.isEmpty()) return emptyList()
+        if (pointer.isEmpty() || pointer == "/") return emptyList()
         require(pointer.startsWith("/")) { "A JSON Pointer must start with '/': $pointer" }
-        return pointer.substring(1).split("/").map { it.replace("~1", "/").replace("~0", "~") }
+        val segments = pointer.substring(1).split("/").map { it.replace("~1", "/").replace("~0", "~") }
+        require(segments.none { it.isEmpty() }) { "A JSON Pointer has an empty token: $pointer" }
+        return segments
     }
 }
 
@@ -144,22 +167,26 @@ object SurfaceFormat {
  *
  * Every leaf shows one value, the greatest under [SurfaceFormat.VALUE_ORDER]. A data leaf holding
  * several concurrent values also lists them all, in that order, in [SurfaceView.conflicts] under
- * its pointer. An append-only array shows its entries in sequence order. A whole array shows its
- * items with repeats dropped, keeping the first, so an order array never shows an id twice.
+ * its pointer. An append-only array shows its entries in sequence order. A whole array shows as
+ * its writer wrote it: it's one leaf, so a merge can't put an id in it twice, and nothing is
+ * deduped.
  */
 fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     val meta = requireNotNull(this[SurfaceFormat.META] as? JsonNode.Object) { "Surface $id has no meta." }
-    val catalogId = requireNotNull(meta.map[SurfaceFormat.META_CATALOG_ID] as? JsonNode.Leaf) {
-        "Surface $id has no catalogId."
-    }.let(SurfaceFormat::winner)
-    val components = (this[SurfaceFormat.COMPONENTS] as? JsonNode.Object)?.map?.let { map ->
-        map.keys.sorted().associateWith { key -> SurfaceFormat.winner(map[key] as JsonNode.Leaf).jsonObject }
-    } ?: emptyMap()
+    val catalogId = requireNotNull(
+        (meta.map[SurfaceFormat.META_CATALOG_ID] as? JsonNode.Leaf)?.let(SurfaceFormat::metaString),
+    ) { "Surface $id has no catalogId." }
+    val componentMap =
+        requireNotNull(this[SurfaceFormat.COMPONENTS] as? JsonNode.Object) { "Surface $id has no components." }.map
+    val components = componentMap.keys.sorted().associateWith { key ->
+        SurfaceFormat.winner(componentMap[key] as JsonNode.Leaf).jsonObject
+    }
     val conflicts = mutableMapOf<String, List<JsonElement>>()
-    val data = this[SurfaceFormat.DATA]?.let { project(it, "", conflicts) } as? JsonObject ?: JsonObject(emptyMap())
+    val dataNode = requireNotNull(this[SurfaceFormat.DATA] as? JsonNode.Object) { "Surface $id has no data object." }
+    val data = project(dataNode, "", conflicts) as JsonObject
     return SurfaceView(
         id = id,
-        catalogId = (catalogId as JsonPrimitive).content,
+        catalogId = catalogId,
         components = components,
         data = data,
         conflicts = conflicts.toMap(),
@@ -178,10 +205,7 @@ private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<Strin
         )
         is JsonNode.Leaf -> {
             val values = node.register.values.sortedWith(SurfaceFormat.VALUE_ORDER)
-            if (values.size > 1) conflicts[pointer] = values.map { dedupe(SurfaceFormat.decodeLeaf(it)) }
-            values.lastOrNull()?.let { dedupe(SurfaceFormat.decodeLeaf(it)) } ?: JsonNull
+            if (values.size > 1) conflicts[pointer] = values.map(SurfaceFormat::decodeLeaf)
+            values.lastOrNull()?.let(SurfaceFormat::decodeLeaf) ?: JsonNull
         }
     }
-
-private fun dedupe(element: JsonElement): JsonElement =
-    if (element is JsonArray) JsonArray(element.distinct()) else element
