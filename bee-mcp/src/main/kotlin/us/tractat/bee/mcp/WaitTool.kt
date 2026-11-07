@@ -13,12 +13,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlin.time.Duration
@@ -79,26 +78,20 @@ object WaitTool {
         request: CallToolRequest,
         source: ActionSource,
         progressEvery: Duration,
-    ): CallToolResult {
-        val surfaceId = request.string("surfaceId") ?: return refusal("surfaceId is required.")
-        val timeout = when (val seconds = request.arguments?.get("timeoutSeconds")) {
-            null -> DEFAULT_TIMEOUT
-            else -> seconds.jsonPrimitive.intOrNull?.seconds
-                ?: return refusal("timeoutSeconds must be a whole number of seconds: $seconds")
-        }
-        if (timeout > MAX_TIMEOUT || !timeout.isPositive()) {
-            return refusal("timeoutSeconds must be between 1 and ${MAX_TIMEOUT.inWholeSeconds}; got ${timeout.inWholeSeconds}.")
-        }
+    ): CallToolResult = refusing {
+        val surfaceId = request.requiredString("surfaceId")
+        val cursor = request.optionalString("cursor")
+        val timeout = request.timeout()
         val progressToken = request.params.meta?.progressToken
         val result = coroutineScope {
             val ticker = progressToken?.let { launch { sendProgress(it, surfaceId, timeout, progressEvery) } }
             try {
-                source.next(surfaceId, request.string("cursor"), timeout)
+                source.next(surfaceId, cursor, timeout)
             } finally {
                 ticker?.cancel()
             }
         }
-        return CallToolResult(content = listOf(TextContent(result.toJson().toString())), structuredContent = result.toJson())
+        CallToolResult(content = listOf(TextContent(result.toJson().toString())), structuredContent = result.toJson())
     }
 
     private suspend fun ClientConnection.sendProgress(
@@ -124,10 +117,13 @@ object WaitTool {
         }
     }
 
-    private fun listActions(request: CallToolRequest, source: ActionSource): CallToolResult {
-        val surfaceId = request.string("surfaceId") ?: return refusal("surfaceId is required.")
-        val records = buildJsonObject { put("records", JsonArray(source.list(surfaceId, request.string("since")))) }
-        return CallToolResult(content = listOf(TextContent(records.toString())), structuredContent = records)
+    private fun listActions(request: CallToolRequest, source: ActionSource): CallToolResult = refusing {
+        val page = source.list(request.requiredString("surfaceId"), request.optionalString("since"))
+        val json = buildJsonObject {
+            put("records", JsonArray(page.records))
+            put("cursor", page.cursor)
+        }
+        CallToolResult(content = listOf(TextContent(json.toString())), structuredContent = json)
     }
 
     private fun WaitResult.toJson(): JsonObject = buildJsonObject {
@@ -136,8 +132,39 @@ object WaitTool {
         put("cursor", cursor)
     }
 
-    private fun CallToolRequest.string(key: String): String? =
-        (arguments?.get(key) as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+    /** A malformed argument, refused back to the caller as a tool error that names it. */
+    private class Refusal(message: String) : Exception(message)
 
-    private fun refusal(message: String) = CallToolResult(content = listOf(TextContent(message)), isError = true)
+    private inline fun refusing(block: () -> CallToolResult): CallToolResult = try {
+        block()
+    } catch (e: Refusal) {
+        CallToolResult(content = listOf(TextContent(e.message.orEmpty())), isError = true)
+    }
+
+    /** A string argument, or `null` when it's absent or JSON `null`. Any other type is refused. */
+    private fun CallToolRequest.optionalString(key: String): String? {
+        val value = arguments?.get(key)
+        return when {
+            value == null || value is JsonNull -> null
+            value is JsonPrimitive && value.isString -> value.content
+            else -> throw Refusal("$key must be a string; got $value.")
+        }
+    }
+
+    private fun CallToolRequest.requiredString(key: String): String =
+        optionalString(key) ?: throw Refusal("$key is required.")
+
+    /**
+     * `timeoutSeconds`: a JSON integer from 1 to 60, [DEFAULT_TIMEOUT] when absent. A string such as
+     * `"30"` is refused rather than read as a number, because the schema says integer.
+     */
+    private fun CallToolRequest.timeout(): Duration {
+        val value = arguments?.get("timeoutSeconds")
+        if (value == null || value is JsonNull) return DEFAULT_TIMEOUT
+        val bound = "timeoutSeconds must be a whole number from 1 to ${MAX_TIMEOUT.inWholeSeconds}"
+        val seconds = (value as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull
+            ?: throw Refusal("$bound; got $value.")
+        if (seconds !in 1..MAX_TIMEOUT.inWholeSeconds) throw Refusal("$bound; got $seconds.")
+        return seconds.seconds
+    }
 }
