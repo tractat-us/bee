@@ -40,8 +40,9 @@ import kotlin.time.Instant
 
 /**
  * The board's replication tuning, as kuilt's Patchwork relay: a 1 s anti-entropy backstop behind
- * the gossip flood and the merge echo, and a spoke that stops acking is evicted after 30 s, so a
- * reconnect's stale fabric id doesn't pin the pending-delta buffer for kuilt's default 5 minutes.
+ * the gossip flood and the relay's forward, and a spoke that stops acking is evicted after 30 s,
+ * so a reconnect's stale fabric id doesn't pin the pending-delta buffer for kuilt's default 5
+ * minutes.
  */
 val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.seconds, evictionAfter = 30.seconds)
 

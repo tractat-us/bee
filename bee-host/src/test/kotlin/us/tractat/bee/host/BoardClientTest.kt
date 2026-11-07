@@ -130,7 +130,7 @@ class BoardClientTest {
     }
 
     /**
-     * An offline edit reaches the other spoke by the merge echo, inside one anti-entropy round,
+     * An offline edit reaches the other spoke by the hub's forward, inside one anti-entropy round,
      * under the author it was minted with, and only once: a record re-applied on reconnect would
      * carry a new dot and show up twice.
      */
