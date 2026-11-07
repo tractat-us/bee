@@ -105,4 +105,4 @@ private fun describe(record: ActionRecord): String {
 }
 
 /** How many entries a basis names: everything up to the floor (gap-free from 1), plus the dots above it. */
-private fun seen(dots: Set<Dot>, floor: VersionVector): Long = floor.entries.sumOf { it.value.toLong() } + dots.size
+private fun seen(dots: Set<Dot>, floor: VersionVector): Long = floor.entries.values.sum() + dots.size
