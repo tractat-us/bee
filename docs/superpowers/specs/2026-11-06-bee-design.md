@@ -151,9 +151,9 @@ Claude session ── bee-mcp                                           ┘     
     renderer's actions back into edits (§5.3)
 - kuilt's CRDT, Raft and WebSocket modules all build for wasmJs.
 - **Two endpoints, one identity rule each (design call).**
-  - The board runs reconnect shape (A), from #2869's M2 (§8), at `/ws/board`: `KtorMeshClientLoom` spokes into
-    the host's `hostedOverlay`, a fresh fabric `PeerId` per weave, and a `Quilter` rebuilt per
-    connection from the held state.
+  - The board runs reconnect shape (A), from #2869's M2 (§8), at `/ws/board`:
+    `KtorMeshClientLoom` spokes into the host's `hostedOverlay`, a fresh fabric `PeerId` per
+    weave, and a `Quilter` rebuilt per connection from the held state.
   - Claims run kuilt's `clusterClient` over `KtorClientLoom` (the Js engine in browsers) into
     `serverCluster`'s `KtorRoomHost` at `/ws/claims`. `ClusterClient` owns its `Room` privately,
     so the browser's `Quilter` needs that second socket.
