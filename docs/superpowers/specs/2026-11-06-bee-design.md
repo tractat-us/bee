@@ -391,14 +391,27 @@ handler tell "the clicker voted before the third option was added" from "the cli
 to". **Design call:** records live in a dot-carrying sequence (kuilt `Rga`), per #2869's ruling
 that input identities come only from dot-carrying types.
 
+**Anything a basis must name is an appended `Rga` entry, never an edited leaf (design call).**
+This follows #2869's own rule, "a scalar input has no identity": its prototype appended an entry
+rather than use a register. **`MVRegister` dots stay private (Iain)**, so bee asks kuilt for
+nothing to open them.
+
+- Action records, poll options and question revisions are appended entries in a `JsonNode.Array`
+  (§6.1).
+- Each array's `Rga` mints sequence numbers on its own, so two arrays in one surface can hand out
+  the same dot. So the basis keys dots by each array's JSON pointer, and never flattens them
+  through `JsonCrdt.causalDots()`.
+- A scalar leaf, or any editable keyed state, is display state that no handler may reason about.
+
 **Capturing the basis (design call):**
 
 Every peer holds a replica, so every action takes its basis from the actor's own replica at the
 moment it acts. For a browser click, the in-page driver stamps the record from that browser's
 replica as it turns the A2UI `action` into an edit. A click can't claim to have seen something its
-browser hadn't yet received.
+browser hadn't yet received. A handler whose replica lacks a dot the basis names treats the basis
+as incomplete: unknown, never applicable.
 
-How a surface's author declares which records are theirs is open (§10).
+A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
 
 ### 6.3 Claims: exactly one
 
