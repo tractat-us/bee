@@ -51,12 +51,12 @@ class SurfaceProjectionTest {
     }
 
     @Test
-    fun wholeArrayProjectsEachIdOnce() {
+    fun wholeArrayProjectsAsWritten() {
+        // A whole array is one leaf, so a merge can't duplicate an item: repeats are the writer's.
         val base = surface(a)
-        val order = JsonArray(listOf("a", "b", "a").map(::JsonPrimitive))
-        val doc = base.piece(write(base, a, "order", SurfaceFormat.encodeLeaf(order)))
-        val view = doc.toSurfaceView("lunch")
-        assertEquals(JsonArray(listOf("a", "b").map(::JsonPrimitive)), view.data["order"])
+        val scores = JsonArray(listOf(0, 0, 1).map(::JsonPrimitive))
+        val doc = base.piece(write(base, a, "scores", SurfaceFormat.encodeLeaf(scores)))
+        assertEquals(scores, doc.toSurfaceView("lunch").data["scores"])
     }
 
     /** A surface document as bee-core lays it out: meta, one root component, empty data. */

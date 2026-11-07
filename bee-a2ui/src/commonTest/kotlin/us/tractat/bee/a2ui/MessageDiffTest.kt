@@ -1,10 +1,12 @@
 package us.tractat.bee.a2ui
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -60,9 +62,18 @@ class MessageDiffTest {
 
     @Test
     fun reopenedSurfaceEmitsCreateAfterDelete() {
-        val messages = diff(view, null) + diff(null, view)
-        assertEquals(listOf(A2uiMessage.DeleteSurface("lunch")) + diff(null, view), messages)
-        assertEquals(A2uiMessage.CreateSurface("lunch", NOTIONS_CATALOG_ID), messages[1])
+        // Edited while closed, the surface comes back as it now is, from nothing.
+        val edited = view.copy(data = buildJsonObject { put("order", ids("b")) })
+        val messages = diff(view, null) + diff(null, edited)
+        assertEquals(
+            listOf(
+                A2uiMessage.DeleteSurface("lunch"),
+                A2uiMessage.CreateSurface("lunch", NOTIONS_CATALOG_ID),
+                A2uiMessage.UpdateComponents("lunch", listOf(root, title)),
+                A2uiMessage.UpdateDataModel("lunch", "/", buildJsonObject { put("order", ids("b")) }),
+            ),
+            messages,
+        )
     }
 
     @Test
@@ -73,19 +84,50 @@ class MessageDiffTest {
 
     @Test
     fun conflictIsPublishedAndClearedUnderBee() {
-        val conflicted = view.copy(conflicts = mapOf("/answer" to listOf(JsonPrimitive("x"), JsonPrimitive("y"))))
-        val path = "/_bee"
-        assertEquals(
-            listOf(
-                A2uiMessage.UpdateDataModel(
-                    "lunch",
-                    path,
-                    buildJsonObject { put("conflicts", buildJsonObject { put("~1answer", ids("x", "y")) }) },
-                ),
-            ),
-            diff(view, conflicted),
+        val answer = mapOf("/answer" to listOf(JsonPrimitive("x"), JsonPrimitive("y")))
+        val both = answer + ("/poll/votes" to listOf(JsonPrimitive(2), JsonPrimitive(3)))
+        val conflicted = view.copy(conflicts = answer)
+        assertAll(
+            // Conflicts are keyed by the raw pointer, escaped once when it becomes a path.
+            {
+                assertEquals(
+                    listOf(
+                        A2uiMessage.UpdateDataModel(
+                            "lunch",
+                            "/_bee",
+                            buildJsonObject { put("conflicts", buildJsonObject { put("/answer", ids("x", "y")) }) },
+                        ),
+                    ),
+                    diff(view, conflicted),
+                )
+            },
+            {
+                assertEquals(
+                    listOf(A2uiMessage.UpdateDataModel("lunch", "/_bee/conflicts/~1poll~1votes", JsonArray(listOf(JsonPrimitive(2), JsonPrimitive(3))))),
+                    diff(conflicted, view.copy(conflicts = both)),
+                )
+            },
+            { assertEquals(listOf(A2uiMessage.UpdateDataModel("lunch", "/_bee/conflicts/~1answer", null)), diff(view.copy(conflicts = both), view.copy(conflicts = both - "/answer"))) },
+            { assertEquals(listOf(A2uiMessage.UpdateDataModel("lunch", "/_bee", null)), diff(conflicted, view)) },
         )
-        assertEquals(listOf(A2uiMessage.UpdateDataModel("lunch", path, null)), diff(conflicted, view))
+    }
+
+    @Test
+    fun nullIsAbsentInCreateAndInDiffs() {
+        val nulled = view.copy(data = buildJsonObject { put("poll", buildJsonObject { put("question", JsonNull); put("votes", 2) }) })
+        val created = diff(null, nulled).filterIsInstance<A2uiMessage.UpdateDataModel>().single()
+        assertAll(
+            { assertEquals(buildJsonObject { put("poll", buildJsonObject { put("votes", 2) }) }, created.value) },
+            {
+                assertEquals(
+                    listOf(
+                        A2uiMessage.UpdateDataModel("lunch", "/order", null),
+                        A2uiMessage.UpdateDataModel("lunch", "/poll/question", null),
+                    ),
+                    diff(view, nulled),
+                )
+            },
+        )
     }
 
     private fun text(id: String, text: String) = buildJsonObject {
