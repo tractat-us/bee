@@ -1,0 +1,49 @@
+#!/bin/sh
+# bee's SessionStart hook: on /clear, tell this session's bee bridge to retire its identity (A8).
+#
+# Claude Code passes the hook's JSON on stdin. When its "source" is "clear", this finds the
+# nearest ancestor whose `ps -o comm=` basename is `claude` (the bridge reads ps by the same rule,
+# ClaudeAncestry.kt), reads $BEE_RUN_DIR/<claudePid>.json (default ~/.bee/run), checks that the
+# bridge it names is alive, and POSTs /retire with the file's bearer token. Any other source
+# exits 0 silently.
+#
+# A SessionStart hook's stdout joins the session's context, so this writes nothing there.
+# It always exits 0: a missing bridge must never break the session.
+
+input=$(cat)
+source=$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+[ "$source" = "clear" ] || exit 0
+
+say() { printf 'bee-session-start-hook: %s\n' "$*" >&2; }
+
+claude_pid=""
+pid=$PPID
+while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null) || break
+    if [ "$(basename -- "$comm")" = "claude" ]; then
+        claude_pid=$pid
+        break
+    fi
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+done
+[ -n "$claude_pid" ] || { say "no claude ancestor; nothing to retire"; exit 0; }
+
+run_file="${BEE_RUN_DIR:-$HOME/.bee/run}/$claude_pid.json"
+[ -r "$run_file" ] || { say "no bridge registered for claude $claude_pid ($run_file)"; exit 0; }
+run=$(tr -d '\n' < "$run_file")
+field() { printf '%s' "$run" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([0-9a-f][0-9a-f]*\)\"\{0,1\}.*/\1/p"; }
+port=$(field port)
+token=$(field token)
+bridge_pid=$(field pid)
+[ -n "$port" ] && [ -n "$token" ] && [ -n "$bridge_pid" ] || { say "malformed run file $run_file"; exit 0; }
+# A file left by a killed bridge names a dead pid; its port may now belong to someone else.
+kill -0 "$bridge_pid" 2>/dev/null || { say "bridge $bridge_pid in $run_file is gone; nothing to retire"; exit 0; }
+
+# The token goes to curl on stdin, never on its command line, where `ps` would show it.
+if response=$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
+    curl -fsS --max-time 10 --config - -X POST "http://127.0.0.1:$port/retire" 2>&1); then
+    say "retired: $response"
+else
+    say "POST /retire on port $port failed: $response"
+fi
+exit 0
