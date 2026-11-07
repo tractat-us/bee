@@ -4,7 +4,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.kuilt.crdt.JsonCrdt
 import us.tractat.kuilt.crdt.JsonNode
@@ -67,11 +66,15 @@ internal object SurfaceDoc {
     }
 
     /**
-     * Writes [value] at [pointer] in the data model: an object as a keyed object (each key written
-     * the same way, keys it doesn't name left alone), and a scalar or a whole array as one leaf.
+     * Writes [value] at [pointer] in the data model (`""` or `"/"` is the root): an object as a
+     * keyed object, each key written the same way, and a scalar or a whole array as one leaf.
      *
-     * @throws IllegalArgumentException if a node on the way isn't an object, or the write would
-     *   change a path's type (object, append-only array, whole array, scalar)
+     * An object write merges: keys it doesn't name are left alone, never removed. That's the
+     * current behaviour, and whether an object write should replace instead is a decision pending
+     * with Iain (tractat-us/bee PR 9).
+     *
+     * @throws IllegalArgumentException if a node on the way isn't an object, a key is empty, or the
+     *   write would change a path's type (object, append-only array, whole array, scalar)
      */
     fun updateData(doc: JsonCrdt, replica: ReplicaId, pointer: String, value: JsonElement): Patch<JsonCrdt> {
         val segments = SurfaceFormat.segments(pointer)
@@ -111,13 +114,15 @@ internal object SurfaceDoc {
 
     fun meta(doc: JsonCrdt): SurfaceMeta {
         val meta = doc[SurfaceFormat.META] as JsonNode.Object
-        fun field(key: String): JsonElement = SurfaceFormat.winner(meta.map[key] as JsonNode.Leaf)
+        // Meta is read raw, never through decodeLeaf: a title may start with any characters.
+        fun field(key: String): String? = SurfaceFormat.metaString(meta.map[key] as JsonNode.Leaf)
+        fun required(key: String): String = requireNotNull(field(key)) { "Surface meta has no $key." }
         return SurfaceMeta(
-            title = field(SurfaceFormat.META_TITLE).jsonPrimitive.content,
-            catalogId = field(SurfaceFormat.META_CATALOG_ID).jsonPrimitive.content,
-            openedBy = PeerIdentity.parse(field(SurfaceFormat.META_OPENED_BY).jsonPrimitive.content),
-            openedAt = Instant.parse(field(SurfaceFormat.META_OPENED_AT).jsonPrimitive.content),
-            closedAt = (field(SurfaceFormat.META_CLOSED_AT) as? JsonPrimitive)?.takeIf { it.isString }?.let { Instant.parse(it.content) },
+            title = required(SurfaceFormat.META_TITLE),
+            catalogId = required(SurfaceFormat.META_CATALOG_ID),
+            openedBy = PeerIdentity.parse(required(SurfaceFormat.META_OPENED_BY)),
+            openedAt = Instant.parse(required(SurfaceFormat.META_OPENED_AT)),
+            closedAt = field(SurfaceFormat.META_CLOSED_AT)?.let(Instant::parse),
         )
     }
 
@@ -134,7 +139,7 @@ internal object SurfaceDoc {
 
     private fun componentId(component: JsonObject): String {
         val id = component["id"] as? JsonPrimitive
-        require(id != null && id.isString) { "A component has no string id: $component" }
+        require(id != null && id.isString && id.content.isNotEmpty()) { "A component has no string id: $component" }
         return id.content
     }
 
@@ -161,6 +166,7 @@ internal object SurfaceDoc {
         when (value) {
             is JsonObject -> {
                 val entries = value.entries.map { it.key to it.value }
+                require(entries.none { it.first.isEmpty() }) { "$at holds an object with an empty key." }
                 JsonNode.Object(
                     threadedPuts(objectMap(existing, at), replica, entries) { key, current, v ->
                         writeValue(current, replica, v, "$at/${SurfaceFormat.escapeSegment(key)}")
