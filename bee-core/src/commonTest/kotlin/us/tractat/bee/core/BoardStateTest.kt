@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package us.tractat.bee.core
 
 import kotlinx.coroutines.test.StandardTestDispatcher
