@@ -231,20 +231,41 @@ class BoardStateTest {
     fun deltasJoinInAnyOrderWithRepeats() {
         // Three replicas run every mutator; their six deltas, delivered in all 720 orders with the
         // first delivered twice, reach one state and one projection (the lattice laws).
-        val base = opened(buildJsonObject { put("order", ids("a", "b")) })
+        // A's replace of /poll races B's add to it, and A and C each add a card to one order (#14).
+        val base = addCard(
+            opened(
+                buildJsonObject {
+                    put("order", ids("a", "b"))
+                    put("poll", buildJsonObject { put("question", "Lunch?"); put("votes", 3) })
+                    put("board", buildJsonObject { put("items", JsonObject(emptyMap())) })
+                },
+            ),
+            A,
+            "c0",
+        )
         val c = ReplicaId("host-c")
         val second = SurfaceMeta("Second", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), BoardFixtures.OPENED_AT)
         val cards = buildJsonObject { put("c1", buildJsonObject { put("label", "Order") }) }
         // Each replica's second delta is made on its state after its first, as a live peer's is.
         val deltas = deltasOf(
             base,
-            listOf({ it.updateData(A, SURFACE, "/answer", str("x")) }, { it.appendEntry(A, SURFACE, "/options", str("Pizza")) }),
-            listOf({ it.appendRecord(A, BoardFixtures.record(it)) }, { it.updateData(A, SURFACE, "/cards", cards) }),
+            listOf(
+                { it.updateData(A, SURFACE, "/answer", str("x")) },
+                { it.appendEntry(A, SURFACE, "/options", str("Pizza")) },
+                { it.updateData(A, SURFACE, "/poll", buildJsonObject { put("question", "Dinner?") }) },
+            ),
+            listOf(
+                { it.appendRecord(A, BoardFixtures.record(it)) },
+                { it.updateData(A, SURFACE, "/cards", cards) },
+                { it.updateData(A, SURFACE, "/board/items/c1", card("c1")) },
+                { it.appendEntry(A, SURFACE, "/board/order", str("c1")) },
+            ),
         ) + deltasOf(
             base,
             listOf(
                 { it.updateComponents(B, SURFACE, listOf(BoardFixtures.root, button)) },
                 { it.updateData(B, SURFACE, "/answer", str("y")) },
+                { it.updateData(B, SURFACE, "/poll/comment", str("hi")) },
             ),
             listOf({ it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
         ) + deltasOf(
@@ -253,7 +274,12 @@ class BoardStateTest {
                 { it.openSurface(c, "second", second, listOf(BoardFixtures.root), JsonObject(emptyMap())) },
                 { it.appendEntry(c, SURFACE, "/options", str("Tacos")) },
             ),
-            listOf({ it.reopenSurface(c, SURFACE) }, { it.updateData(c, SURFACE, "/order", ids("b", "a")) }),
+            listOf(
+                { it.reopenSurface(c, SURFACE) },
+                { it.updateData(c, SURFACE, "/order", ids("b", "a")) },
+                { it.updateData(c, SURFACE, "/board/items/c2", card("c2")) },
+                { it.appendEntry(c, SURFACE, "/board/order", str("c2")) },
+            ),
         )
         val expected = deltas.fold(base) { state, delta -> state.piece(delta) }
         val outcomes = permutations(deltas).map { order -> (order + order.first()).fold(base) { state, d -> state.piece(d) } }
@@ -265,6 +291,9 @@ class BoardStateTest {
             // The race between B's close and C's reopen resolves to closed.
             { assertEquals(listOf(SURFACE), expected.closedSurfaces()) },
             { assertEquals(listOf("x", "y").map(::str), views(expected).getValue(SURFACE).conflicts["/answer"]) },
+            { assertEquals(setOf("question", "comment"), (BoardFixtures.node(expected, "/poll") as JsonNode.Object).map.keys) },
+            { assertEquals(setOf("c0", "c1", "c2"), cardOrder(expected).toSet()) },
+            { assertEquals(3, cardOrder(expected).size) },
         )
     }
 
