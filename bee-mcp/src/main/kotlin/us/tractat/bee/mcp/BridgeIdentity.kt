@@ -28,16 +28,15 @@ class BridgeIdentity(
     val current: StateFlow<PeerIdentity> = identity.asStateFlow()
 
     /**
-     * Mints a fresh identity, then reports the old one with [reason].
+     * Mints a fresh identity, then reports the old one with [reason], and returns the old one.
      *
      * The fresh identity is in place before [onRetire] runs, so a report that fails (it propagates)
      * never leaves the bridge acting as the identity it meant to retire.
      */
-    suspend fun retire(reason: DepartReason) {
-        mutex.withLock {
-            val old = identity.value
-            identity.value = generateSequence { PeerIdentity.agent(name, random) }.first { it != old }
-            onRetire(old, reason)
-        }
+    suspend fun retire(reason: DepartReason): PeerIdentity = mutex.withLock {
+        val old = identity.value
+        identity.value = generateSequence { PeerIdentity.agent(name, random) }.first { it != old }
+        onRetire(old, reason)
+        old
     }
 }
