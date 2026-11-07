@@ -219,7 +219,7 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     }
     val conflicts = mutableMapOf<String, List<JsonElement>>()
     val dataNode = requireNotNull(this[SurfaceFormat.DATA] as? JsonNode.Object) { "Surface $id has no data object." }
-    val data = checkNotNull(project(dataNode, "", conflicts)) as JsonObject
+    val data = checkNotNull(project(dataNode, "", conflicts, root = true)) as JsonObject
     return SurfaceView(
         id = id,
         catalogId = catalogId,
@@ -230,24 +230,32 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
 }
 
 /**
- * [node] as shown, or `null` for a leaf holding only [SurfaceFormat.CLEARED], which its parent
- * object then omits. A cleared value beside a concurrent one is dropped, so the concurrent value
- * shows, and isn't reported as a conflict with the clear. A cleared object or array still shows,
- * as `{}` or `[]`.
+ * [node] as shown, or `null` for a **husk**, which its parent object then omits. A replace never
+ * removes a node (tractat-us/bee#14), so a husk is what it leaves behind:
+ * - a leaf holding only [SurfaceFormat.CLEARED];
+ * - an append-only array with no entry left. bee creates one only by appending, so an empty one
+ *   was cleared. An empty array written as data is a leaf, not a husk, and shows as `[]`;
+ * - an object that holds keys but shows none of them, unless it's the data model's root or an
+ *   ordered collection.
+ *
+ * A cleared value beside a concurrent one is dropped, so the concurrent value shows, and isn't
+ * reported as a conflict with the clear.
  */
-private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<String, List<JsonElement>>): JsonElement? =
+private fun project(
+    node: JsonNode,
+    pointer: String,
+    conflicts: MutableMap<String, List<JsonElement>>,
+    root: Boolean = false,
+): JsonElement? =
     when (node) {
-        is JsonNode.Object -> {
-            val members = node.map.keys.sorted().mapNotNull { key ->
-                project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts)?.let { key to it }
-            }.toMap()
-            JsonObject(if (isOrderedCollection(node, members)) members + (SurfaceFormat.ORDER to orderOf(members)) else members)
+        is JsonNode.Object -> projectObject(node, pointer, conflicts, root)
+        is JsonNode.Array -> node.rga.toList().takeIf { it.isNotEmpty() }?.let { entries ->
+            JsonArray(
+                entries.mapIndexed { index, entry ->
+                    project(entry, "$pointer/$index", conflicts) ?: error("$pointer/$index: an appended entry is never cleared.")
+                },
+            )
         }
-        is JsonNode.Array -> JsonArray(
-            node.rga.toList().mapIndexed { index, entry ->
-                project(entry, "$pointer/$index", conflicts) ?: error("$pointer/$index: an appended entry is never cleared.")
-            },
-        )
         is JsonNode.Leaf -> {
             val held = node.register.values
             val values = held.filterNot(SurfaceFormat::isCleared).sortedWith(SurfaceFormat.VALUE_ORDER)
@@ -261,18 +269,40 @@ private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<Strin
     }
 
 /**
- * Whether [node], projected as [members], is an ordered collection: it shows exactly `items`, an
- * object, and maybe `order`, which is stored as an append-only array. A cleared member isn't shown,
- * so it doesn't count.
+ * [node] with its husks omitted, or `null` when it's a husk itself; see [project]. An ordered
+ * collection always shows, its `items` as `{}` when every item was cleared, so emptying a board
+ * leaves an empty board rather than none.
+ */
+private fun projectObject(
+    node: JsonNode.Object,
+    pointer: String,
+    conflicts: MutableMap<String, List<JsonElement>>,
+    root: Boolean,
+): JsonObject? {
+    val members = node.map.keys.sorted().mapNotNull { key ->
+        project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts)?.let { key to it }
+    }.toMap()
+    if (isOrderedCollection(node, members)) {
+        val shown = members + (SurfaceFormat.ITEMS to (members[SurfaceFormat.ITEMS] ?: JsonObject(emptyMap())))
+        return JsonObject(shown + (SurfaceFormat.ORDER to orderOf(shown)))
+    }
+    return JsonObject(members).takeUnless { members.isEmpty() && node.map.keys.isNotEmpty() && !root }
+}
+
+/**
+ * Whether [node], projected as [members], is an ordered collection: it stores `items` as an
+ * object and `order`, if present, as an append-only array, and it shows no other member. A
+ * husk, such as an extra object or array a replace cleared, isn't shown, so it doesn't count.
  */
 private fun isOrderedCollection(node: JsonNode.Object, members: Map<String, JsonElement>): Boolean =
-    members[SurfaceFormat.ITEMS] is JsonObject &&
-        (members.keys - setOf(SurfaceFormat.ITEMS, SurfaceFormat.ORDER)).isEmpty() &&
-        node.map[SurfaceFormat.ORDER].let { it == null || it is JsonNode.Array }
+    node.map[SurfaceFormat.ITEMS] is JsonNode.Object &&
+        node.map[SurfaceFormat.ORDER].let { it == null || it is JsonNode.Array } &&
+        (members.keys - setOf(SurfaceFormat.ITEMS, SurfaceFormat.ORDER)).isEmpty()
 
 /**
  * An ordered collection's projected [members], its order made a permutation of its item ids. An
- * absent order lists no ids, so the items show sorted by id. Items aren't read, so a fragment
+ * absent order lists no ids, so the items show sorted by id. A hidden item (a husk, so a deleted
+ * card) isn't among the members, so its id is dropped. Items aren't otherwise read, so a fragment
  * item (a card with no `label`) projects as whatever it holds.
  */
 private fun orderOf(members: Map<String, JsonElement>): JsonArray {
