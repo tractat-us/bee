@@ -8,18 +8,14 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Opens `/` as `name` with its board socket routed through a switch, and returns the page,
- * the switch and a frame log. While the switch is off, the socket is closed and every redial
- * is refused, so the page is offline; turning it on lets the next redial through.
+ * the switch and a frame log. Cutting closes the live socket. While the switch is off, a
+ * redial is held unanswered, never connected to the host, and restoring connects it.
  */
 async function openPeer(browser, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  const link = { online: true, sockets: [], frames: [] };
-  await page.routeWebSocket(/\/ws\/board/, (ws) => {
-    if (!link.online) {
-      ws.close();
-      return;
-    }
+  const link = { online: true, sockets: [], waiting: [], frames: [] };
+  const connect = (ws) => {
     const server = ws.connectToServer();
     ws.onMessage((m) => {
       link.frames.push({ dir: 'up', bytes: byteLength(m), at: Date.now() });
@@ -30,6 +26,10 @@ async function openPeer(browser, name) {
       ws.send(m);
     });
     link.sockets.push({ ws, server });
+  };
+  await page.routeWebSocket(/\/ws\/board/, (ws) => {
+    if (link.online) connect(ws);
+    else link.waiting.push(ws);
   });
   await page.goto(`/?name=${name}`);
   await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
@@ -47,6 +47,7 @@ async function openPeer(browser, name) {
     },
     async restore() {
       link.online = true;
+      for (const ws of link.waiting.splice(0)) connect(ws);
       await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
     },
   };
