@@ -27,16 +27,33 @@ value class ClaimTarget(val value: String) {
 data class ClaimToken(val term: Long, val index: Long)
 
 /**
+ * One claim proposal's identity, drawn at random by its proposer. kuilt's `LogEntry.dedupKey` can't
+ * serve: `ClusterClient.propose` draws the serial inside the call and hands it back only on success,
+ * so a proposal that timed out has no key its proposer knows.
+ */
+@Serializable
+@JvmInline
+value class ProposalId(val value: Long)
+
+/**
  * One command in the claims log. Every command is idempotent under replay: the table it folds
  * into rejects a second application of the same command, because the first changed the state the
  * second is checked against.
  */
 @Serializable
 sealed interface ClaimCommand {
-    /** Take [target]. The first committed claim of a free target wins. */
+    /**
+     * Take [target]. The first committed claim of a free target wins. [proposal] names this one
+     * proposal, so its proposer can tell it from another claim of the same target by the same
+     * identity: a person's tabs all claim as one `human:` identity (spec §5.1). The table ignores it.
+     */
     @Serializable
     @SerialName("claim")
-    data class Claim(val target: ClaimTarget, @Serializable(PeerIdentityAsString::class) val by: PeerIdentity) : ClaimCommand
+    data class Claim(
+        val target: ClaimTarget,
+        @Serializable(PeerIdentityAsString::class) val by: PeerIdentity,
+        val proposal: ProposalId,
+    ) : ClaimCommand
 
     /**
      * Give [target] back. The holder releases with its current [token]. A release with no token
@@ -68,7 +85,10 @@ sealed interface ClaimCommand {
         val token: ClaimToken,
     ) : ClaimCommand
 
-    /** The host retired [identity]: its held claims are orphaned and its later commands rejected. */
+    /**
+     * The host retired agent [identity]: its held claims are orphaned and its later commands
+     * rejected. Only agents depart (spec §6.4), so a `Depart` of a human applies as rejected.
+     */
     @Serializable
     @SerialName("depart")
     data class Depart(
