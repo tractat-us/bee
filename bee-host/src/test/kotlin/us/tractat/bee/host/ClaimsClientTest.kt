@@ -1,7 +1,9 @@
 package us.tractat.bee.host
 
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.bee.core.ClaimOutcome
@@ -150,9 +152,10 @@ class ClaimsClientTest {
 
     /**
      * A claim times out on its way up, and the caller retries. The first claim then commits first
-     * and wins. The target must end held only under a token the caller was given. Before claims
-     * carried their own id, the retry forgot the first claim, so it stayed held under a token
-     * nobody learned while the retry reported `Lost`.
+     * and wins, so the retry loses to it, and the client releases the first claim's win. Before
+     * claims carried their own id, the retry forgot the first claim, so it stayed held under a token
+     * nobody learned. The retry is told it lost to `iain`, its own identity, and the target ends
+     * free: a known wart (spike 4 notes).
      */
     @Test
     fun aClaimThatWinsAfterItsRetryStartedIsReleased() = runTest(timeout = 120.seconds) {
@@ -170,12 +173,42 @@ class ClaimsClientTest {
         val retry = a.claim(target, iain)
         delay(SETTLE)
         val after = voter.table.value.status(target)
-        val given = (retry as? ClaimOutcome.Won)?.let { ClaimStatus.Held(iain, it.token) }
         assertAll(
             { assertIs<ClaimOutcome.Won>(warm, "rig: the client was admitted") },
             { assertTrue(parked > 0, "rig: the hold caught the first claim on its way up") },
             { assertEquals(ClaimOutcome.Unavailable, first) },
-            { assertTrue(after !is ClaimStatus.Held || after == given, "held only under a token the caller has: retry $retry, target $after") },
+            { assertEquals(ClaimOutcome.Lost(iain), retry, "rig: the first claim committed first") },
+            { assertEquals(ClaimStatus.Free, after, "the first claim's win was released") },
+        )
+        voter.close()
+    }
+
+    /**
+     * The caller cancels a claim whose commit is held on its way back. When the commit arrives and
+     * it won, nobody holds that win, so the client releases it. Before cancellation abandoned the
+     * claim, it stayed held forever, and [ClaimsClient.unreleased] didn't name it either.
+     */
+    @Test
+    fun aCancelledClaimThatWinsLateIsReleased() = runTest(timeout = 120.seconds) {
+        val rig = ClaimsRig(this)
+        val voter = rig.startVoter()
+        val node = NodeId("tab-a")
+        val a = rig.client(node)
+        val warm = a.claim(ClaimTarget("record:warm:a"), iain)
+
+        val down = rig.host.holdFor(node)
+        down.hold()
+        val caller = launch { a.claim(target, iain) }
+        delay(2.seconds)
+        val atVoter = voter.table.value.status(target)
+        caller.cancelAndJoin()
+        down.releaseAll()
+        delay(SETTLE * 6)
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(warm, "rig: the client was admitted") },
+            { assertIs<ClaimStatus.Held>(atVoter, "rig: the claim won at the voter before the cancel") },
+            { assertEquals(ClaimStatus.Free, voter.table.value.status(target), "the cancelled claim's win was released") },
+            { assertEquals(emptySet(), a.unreleased.value) },
         )
         voter.close()
     }
