@@ -57,7 +57,7 @@ three paths broke exactly-once:
   stayed held under a token the caller never learned, and the retry reported `Lost`.
 
 Now each `Claim` carries a random `ProposalId`. The client judges a claim only at the first
-committed entry with that id, so a duplicate entry changes nothing. A claim reported `Unavailable`
+committed entry with that id, so a duplicate entry can't change its verdict. A claim reported `Unavailable`
 is released only if its own entry won, with that entry's token. The release retries, up to five
 times, until the table shows the target no longer held under that token. `ClaimsClient.unreleased`
 names any the retries couldn't free.
