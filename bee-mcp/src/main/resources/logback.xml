@@ -13,7 +13,8 @@
     </appender>
 
     <logger name="io.modelcontextprotocol" level="WARN"/>
-    <logger name="FeatureRegistry" level="WARN"/>
+    <!-- The SDK names its registries' loggers outside its package, one per feature kind. -->
+    <logger name="FeatureRegistry[Tool]" level="WARN"/>
 
     <root level="INFO">
         <appender-ref ref="STDERR"/>
