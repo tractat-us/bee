@@ -13,7 +13,7 @@ So far the bridge serves `bee_wait_action` and `bee_list_actions` over an empty 
 From the root of your bee checkout:
 
 ```sh
-source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.2-tem
+source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.5.0+8-tem
 ./gradlew :bee-mcp:installDist
 BEE=$(pwd)
 ```
@@ -42,7 +42,7 @@ Pick one scope:
       "bee": {
         "type": "stdio",
         "command": "/absolute/path/to/bee/bee-mcp/build/install/bee-mcp/bin/bee-mcp",
-        "env": { "JAVA_HOME": "/Users/you/.sdkman/candidates/java/25.0.2-tem" }
+        "env": { "JAVA_HOME": "/Users/you/.sdkman/candidates/java/25.0.5.0+8-tem" }
       }
     }
   }
