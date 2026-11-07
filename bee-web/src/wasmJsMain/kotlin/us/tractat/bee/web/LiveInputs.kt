@@ -50,7 +50,10 @@ external object NotionsLive : JsAny {
  *   renders what waited.
  *
  * Only absolute bindings are tracked (`{"path": "/…"}`). A `TextField` inside a list template binds
- * a relative path, and v1 has none.
+ * a relative path, and v1 has none; one that turns up is reported through [onProblem], as is a
+ * surface the renderer can't be watched on, so a field that loses live typing or its hold says so.
+ *
+ * While any debounced write is outstanding, [root] carries a `data-pending` attribute.
  *
  * Everything here runs on the page's one JS thread, so its state needs no lock.
  */
@@ -77,6 +80,7 @@ class LiveInputs(
 
     init {
         NotionsLive.onTextFieldFocus(root) { json -> onFocus(Json.parseToJsonElement(json).jsonObject) }
+        showPending()
     }
 
     /** Runs [render], the driver's own write into the renderer; changes it causes are not the person's. */
@@ -103,13 +107,22 @@ class LiveInputs(
     fun track(view: SurfaceView) {
         fieldPaths.keys.removeAll { it.first == view.id }
         view.components.forEach { (componentId, component) ->
-            boundPath(component)?.let { fieldPaths[view.id to componentId] = it }
+            val path = boundPath(component) ?: return@forEach
+            if (path.startsWith("/")) {
+                fieldPaths[view.id to componentId] = path
+            } else {
+                onProblem("Field $componentId on ${view.id} binds the relative path $path; live typing doesn't follow it.")
+            }
         }
         val paths = fieldPaths.filterKeys { it.first == view.id }.values.toSet()
         subscriptions.keys.filter { it.surfaceId == view.id && it.path !in paths }.forEach { unsubscribe(it) }
         paths.map { Bound(view.id, it) }.filter { it !in subscriptions }.forEach { bound ->
-            NotionsLive.subscribeData(root, bound.surfaceId, bound.path) { json -> onChange(bound, json) }
-                ?.let { subscriptions[bound] = it }
+            val subscription = NotionsLive.subscribeData(root, bound.surfaceId, bound.path) { json -> onChange(bound, json) }
+            if (subscription == null) {
+                onProblem("Live typing is off for ${bound.path} on ${bound.surfaceId}: the renderer shows no such surface.")
+            } else {
+                subscriptions[bound] = subscription
+            }
         }
     }
 
@@ -136,24 +149,29 @@ class LiveInputs(
             write(bound, value)
             if (pending[bound] === coroutineContext[Job]) {
                 pending.remove(bound)
+                showPending()
                 release(bound)
             }
         }
+        showPending()
+    }
+
+    private fun showPending() {
+        if (pending.isEmpty()) root.removeAttribute("data-pending") else root.setAttribute("data-pending", "${pending.size}")
     }
 
     private suspend fun write(bound: Bound, value: JsonElement) {
         try {
-            client.mutateOrSkip { state ->
-                state.surfaceDoc(bound.surfaceId)?.let { state.updateData(author, bound.surfaceId, bound.path, value) }
-            }
+            client.mutate { it.updateData(author, bound.surfaceId, bound.path, value) }
         } catch (refused: IllegalArgumentException) {
-            // updateData refuses a write that would change the path's type. The edit stays on the
-            // page only, and the person is told.
+            // updateData refuses a write to a surface the board doesn't hold, or one that would
+            // change the path's type. The edit stays on the page only, and the person is told.
             onProblem("Couldn't save ${bound.path} on ${bound.surfaceId}: ${refused.message}")
         }
     }
 
     private fun onFocus(event: JsonObject) {
+        event["error"]?.let { return onProblem("The hold is off for a field: ${it.jsonPrimitive.content}") }
         val surfaceId = event.getValue("surfaceId").jsonPrimitive.content
         val path = fieldPaths[surfaceId to event.getValue("componentId").jsonPrimitive.content] ?: return
         val bound = Bound(surfaceId, path)
@@ -172,11 +190,10 @@ class LiveInputs(
     }
 
     private companion object {
-        /** The absolute data path a `TextField`'s `value` binds, or null. */
+        /** The data path a `TextField`'s `value` binds, absolute or not, or null if it binds none. */
         fun boundPath(component: JsonObject): String? {
             if ((component["component"] as? JsonPrimitive)?.content != "TextField") return null
-            val path = ((component["value"] as? JsonObject)?.get("path") as? JsonPrimitive)?.content
-            return path?.takeIf { it.startsWith("/") }
+            return ((component["value"] as? JsonObject)?.get("path") as? JsonPrimitive)?.content
         }
     }
 }
