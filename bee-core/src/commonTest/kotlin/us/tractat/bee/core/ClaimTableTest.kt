@@ -151,7 +151,7 @@ class ClaimTableTest {
     @Test
     fun commandsRoundTripTheirWireForm() {
         val commands = listOf(
-            ClaimCommand.Claim(target, alice, ProposalId(-7)),
+            ClaimCommand.Claim(target, alice, ProposalId("node-a", 3, 7)),
             ClaimCommand.Release(target, alice, null),
             ClaimCommand.Release(target, alice, ClaimToken(2, 9)),
             ClaimCommand.Reassign(target, to = iain, by = bob),
@@ -194,6 +194,6 @@ class ClaimTableTest {
     }
 
     private companion object {
-        val P = ProposalId(0)
+        val P = ProposalId("node-a", 0, 1)
     }
 }
