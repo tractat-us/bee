@@ -1,7 +1,22 @@
+import org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstallTask
+
 plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinSerialization) apply false
+}
+
+// bee-web takes bee-notions as a `file:` npm dependency, which Yarn copies into
+// build/wasm/node_modules. While the lockfile stays the same, Yarn's integrity check calls that
+// copy current, so an edit to bee-notions never reached the install. Track its sources as an
+// input, and drop the integrity file before a rerun so Yarn copies them again. bee-web's
+// bundle and browser-test tasks track the same sources (bee-web/build.gradle.kts).
+tasks.withType<KotlinNpmInstallTask>().configureEach {
+    inputs.files(fileTree("bee-notions") { exclude("node_modules/**") })
+        .withPropertyName("beeNotions")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    val yarnIntegrity = nodeModules.file(".yarn-integrity")
+    doFirst { yarnIntegrity.get().asFile.delete() }
 }
 
 // -Pbee.realsocket.tests=true turns on each task's one real-socket smoke. Forward it to
