@@ -101,6 +101,7 @@ class BoardState internal constructor(
         components: List<JsonObject>,
         data: JsonObject,
     ): Patch<BoardState> {
+        requireReplica(replica)
         require(surfaces[id] == null) { "Surface $id already exists; reopen it instead." }
         return surfacePatch(replica, id, SurfaceDoc.open(replica, meta, components, data))
     }
@@ -113,6 +114,10 @@ class BoardState internal constructor(
     fun closeSurface(replica: ReplicaId, id: String, at: Instant): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setClosedAt(it, replica, at) }
 
+    /**
+     * Reopens surface [id] with its content and records. A close and a reopen that race resolve to
+     * closed, on every peer: the projection's order puts a `closedAt` time above JSON null.
+     */
     fun reopenSurface(replica: ReplicaId, id: String): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setClosedAt(it, replica, null) }
 
@@ -131,6 +136,7 @@ class BoardState internal constructor(
         writeSurface(replica, id) { SurfaceDoc.appendEntry(it, replica, path, value) }
 
     fun appendRecord(replica: ReplicaId, record: ActionRecord): Patch<BoardState> {
+        requireReplica(replica)
         require(surfaces[record.surfaceId] != null) { "No surface ${record.surfaceId} on the board." }
         val (_, op) = records.insertAt(replica, records.size, record)
         return Patch(EMPTY.copy(records = Rga.empty<ActionRecord>().apply(op)))
@@ -163,9 +169,15 @@ class BoardState internal constructor(
         surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }
 
     private fun writeSurface(replica: ReplicaId, id: String, write: (JsonCrdt) -> Patch<JsonCrdt>): Patch<BoardState> {
+        requireReplica(replica)
         val doc = requireNotNull(surfaces[id]) { "No surface $id on the board." }.withReplica(replica)
         return surfacePatch(replica, id, write(doc).delta)
     }
+
+    // ReplicaId("") is Rga's HEAD sentinel and a deserialized doc's placeholder; minting under it
+    // would collide with both.
+    private fun requireReplica(replica: ReplicaId) =
+        require(replica.value.isNotEmpty()) { "A board write needs a real replica, not ReplicaId(\"\")." }
 
     private fun surfacePatch(replica: ReplicaId, id: String, docDelta: JsonCrdt): Patch<BoardState> =
         Patch(EMPTY.copy(surfaces = surfaces.put(replica, id, docDelta).delta))
@@ -214,12 +226,16 @@ private object BoardStateSerializer : KSerializer<BoardState> {
     private val departed by lazy { GSet.serializer(Departure.serializer()) }
     private val claims by lazy { LWWMap.serializer(String.serializer(), ClaimView.serializer()) }
 
-    override val descriptor: SerialDescriptor = buildClassSerialDescriptor("us.tractat.bee.core.BoardState") {
-        element("surfaces", buildClassSerialDescriptor("us.tractat.bee.core.BoardState.Surfaces"))
-        element("records", buildClassSerialDescriptor("us.tractat.bee.core.BoardState.Records"))
-        element("presence", buildClassSerialDescriptor("us.tractat.bee.core.BoardState.Presence"))
-        element("departed", buildClassSerialDescriptor("us.tractat.bee.core.BoardState.Departed"))
-        element("claims", buildClassSerialDescriptor("us.tractat.bee.core.BoardState.Claims"))
+    // TODO(Task 3): round-trip the board through CBOR, the Quilter's default format. bee-core's
+    // test classpath has no CBOR, so only JSON is tested here.
+    override val descriptor: SerialDescriptor by lazy {
+        buildClassSerialDescriptor("us.tractat.bee.core.BoardState") {
+            element("surfaces", surfaces.descriptor)
+            element("records", records.descriptor)
+            element("presence", presence.descriptor)
+            element("departed", departed.descriptor)
+            element("claims", claims.descriptor)
+        }
     }
 
     override fun serialize(encoder: Encoder, value: BoardState) = encoder.encodeStructure(descriptor) {
