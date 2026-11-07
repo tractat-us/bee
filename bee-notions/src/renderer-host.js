@@ -81,15 +81,21 @@ export function subscribeData(rootElement, surfaceId, path, handler) {
 
 /**
  * Reports focus entering and leaving a `TextField` under `rootElement`, as JSON
- * `{surfaceId, componentId, focused}`. The basic catalog renders into light DOM, so focus
- * events reach the root with the input as their target.
+ * `{surfaceId, componentId, focused}`, or `{error}` for a field it can't place. The basic
+ * catalog renders into light DOM, as `<a2ui-basic-textfield>`, so focus events reach the root
+ * with the input as their target. Focus on anything else is not a field's, and isn't reported.
  */
 export function onTextFieldFocus(rootElement, handler) {
   const report = (event, focused) => {
     const field = event.target?.closest?.('a2ui-basic-textfield');
-    const surfaceId = field?.closest('a2ui-surface')?.dataset.surfaceId;
-    const componentId = field?.context?.componentModel?.id;
-    if (surfaceId && componentId) handler(JSON.stringify({ surfaceId, componentId, focused }));
+    if (!field) return;
+    const surfaceId = field.closest('a2ui-surface')?.dataset.surfaceId;
+    const componentId = field.context?.componentModel?.id;
+    if (surfaceId && componentId) {
+      handler(JSON.stringify({ surfaceId, componentId, focused }));
+    } else {
+      handler(JSON.stringify({ error: `a TextField with surface ${surfaceId} and component ${componentId}` }));
+    }
   };
   rootElement.addEventListener('focusin', (event) => report(event, true));
   rootElement.addEventListener('focusout', (event) => report(event, false));
