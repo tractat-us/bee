@@ -1,11 +1,13 @@
 package us.tractat.bee.a2ui
 
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class A2uiJsonTest {
     @Test
@@ -54,6 +56,11 @@ class A2uiJsonTest {
                 )
             },
         )
+    }
+
+    @Test
+    fun jsonNullIsNotASecondSpellingOfDelete() {
+        assertFailsWith<IllegalArgumentException> { A2uiMessage.UpdateDataModel("s1", "/n", JsonNull) }
     }
 
     @Test

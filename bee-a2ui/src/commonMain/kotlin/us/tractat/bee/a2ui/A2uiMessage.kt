@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -27,8 +28,15 @@ sealed interface A2uiMessage {
 
     data class UpdateComponents(override val surfaceId: String, val components: List<JsonObject>) : A2uiMessage
 
-    /** Sets the value at [path], or deletes it when [value] is null (v0.9.1 omits `value`). */
-    data class UpdateDataModel(override val surfaceId: String, val path: String, val value: JsonElement?) : A2uiMessage
+    /**
+     * Sets the value at [path], or deletes it when [value] is null (v0.9.1 omits `value`).
+     * Kotlin `null` is the one spelling of delete: a [JsonNull] value is refused.
+     */
+    data class UpdateDataModel(override val surfaceId: String, val path: String, val value: JsonElement?) : A2uiMessage {
+        init {
+            require(value !is JsonNull) { "UpdateDataModel at $path: pass null to delete, not JsonNull." }
+        }
+    }
 
     data class DeleteSurface(override val surfaceId: String) : A2uiMessage
 }
