@@ -151,7 +151,7 @@ Claude session ── bee-mcp                                           ┘     
     renderer's actions back into edits (§5.3)
 - kuilt's CRDT, Raft and WebSocket modules all build for wasmJs.
 - **Two endpoints, one identity rule each (design call).**
-  - The board runs M2's reconnect shape (A) (§8) at `/ws/board`: `KtorMeshClientLoom` spokes into
+  - The board runs reconnect shape (A), from #2869's M2 (§8), at `/ws/board`: `KtorMeshClientLoom` spokes into
     the host's `hostedOverlay`, a fresh fabric `PeerId` per weave, and a `Quilter` rebuilt per
     connection from the held state.
   - Claims run kuilt's `clusterClient` over `KtorClientLoom` (the Js engine in browsers) into
@@ -363,9 +363,9 @@ write-once: it has insert, remove and compact, but no update, so two concurrent 
 element would duplicate it. So a surface keeps two kinds of state apart:
 
 - **Appended content**: anything a basis must name, or a handler must reason about having seen
-  (§6.2). Action records, poll options and question revisions are appended entries in a
-  `JsonNode.Array`, never edited. Correcting one means removing it and appending a new entry with
-  a new identity.
+  (§6.2). Poll options and question revisions are appended entries in a `JsonNode.Array`, never
+  edited, and action records are appended the same way to the board's own sequence. Correcting an
+  entry means removing it and appending a new one with a new identity.
 - **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
   stable id, with its order kept in a separate array of ids that the projection dedupes, keeping
   the first occurrence. No basis names it.
@@ -396,8 +396,7 @@ This follows #2869's own rule, "a scalar input has no identity": its prototype a
 rather than use a register. **`MVRegister` dots stay private (Iain)**, so bee asks kuilt for
 nothing to open them.
 
-- Action records, poll options and question revisions are appended entries in a `JsonNode.Array`
-  (§6.1).
+- Poll options and question revisions are appended entries in a `JsonNode.Array` (§6.1).
 - Each array's `Rga` mints sequence numbers on its own, so two arrays in one surface can hand out
   the same dot. So the basis keys dots by each array's JSON pointer, and never flattens them
   through `JsonCrdt.causalDots()`.
