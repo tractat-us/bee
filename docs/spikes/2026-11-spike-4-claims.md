@@ -60,8 +60,10 @@ Now each `Claim` carries a `ProposalId`: the proposer's Raft `NodeId`, a random 
 once per client, and a per-client serial. kuilt keeps a `NodeId` unique across the cluster and bee
 mints a fresh one per dial, so ids are unique by construction. The incarnation covers a reused
 `NodeId`, since a client folds the log from index 1 and meets every claim an earlier client under
-that id made. The client judges a claim only at the first committed entry with its id and the
-claim's own target and identity, so a duplicate entry can't change the client's verdict. A claim
+that id made. That holds only if no two clients under one `NodeId` draw the same incarnation, so
+their `Random`s must not be seeded from the `NodeId`. The client judges a claim only at the first
+committed entry with its id, so a duplicate entry can't change the client's verdict. An entry whose
+target or identity doesn't match the claim that id names is ignored too. A claim
 reported `Unavailable`, or cancelled by its caller, is released only if its own entry won, with
 that entry's token. The release retries, up to five times, until the table shows the target no
 longer held under that token. `ClaimsClient.unreleased` names any the retries couldn't free.

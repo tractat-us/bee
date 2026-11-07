@@ -207,6 +207,7 @@ internal class ClaimsRig(private val test: TestScope, val store: DurableStore = 
     val raftConfig = RaftConfig(expectVirtualTime = true, random = Random(6))
     val host = InMemoryClaimsHost(test.testScheduler, clock)
     val mirrored = MutableStateFlow(ClaimTable.EMPTY)
+    private var clientSeeds = 0
 
     suspend fun startVoter(scope: CoroutineScope = test.backgroundScope, host: RoomHost = this.host): ClaimsVoter =
         ClaimsVoter.start(scope, host, store, raftConfig, { mirrored.value = it }, clock)
@@ -220,7 +221,8 @@ internal class ClaimsRig(private val test: TestScope, val store: DurableStore = 
             raftConfig = raftConfig,
             clock = clock,
         )
-        return ClaimsClient(cluster, node, clock, scope, Random(node.value.hashCode()))
+        // One seed per client in this rig, never from the node: a reused node must draw a new incarnation.
+        return ClaimsClient(cluster, node, clock, scope, Random(++clientSeeds))
     }
 
     fun report(line: String) = System.err.println("[claims-spike] $line")

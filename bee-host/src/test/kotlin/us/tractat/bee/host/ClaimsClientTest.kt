@@ -201,11 +201,13 @@ class ClaimsClientTest {
         val caller = launch { a.claim(target, iain) }
         delay(2.seconds)
         val atVoter = voter.table.value.status(target)
+        val stillWaiting = caller.isActive
         caller.cancelAndJoin()
         down.releaseAll()
         delay(SETTLE * 6)
         assertAll(
             { assertIs<ClaimOutcome.Won>(warm, "rig: the client was admitted") },
+            { assertTrue(stillWaiting, "rig: the hold kept the claim waiting until the cancel") },
             { assertIs<ClaimStatus.Held>(atVoter, "rig: the claim won at the voter before the cancel") },
             { assertEquals(ClaimStatus.Free, voter.table.value.status(target), "the cancelled claim's win was released") },
             { assertEquals(emptySet(), a.unreleased.value) },

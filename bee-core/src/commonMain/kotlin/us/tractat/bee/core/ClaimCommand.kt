@@ -29,7 +29,8 @@ data class ClaimToken(val term: Long, val index: Long)
 /**
  * One claim proposal's identity, unique by construction: the proposer's Raft [node] id, which kuilt
  * keeps unique across the cluster and bee mints fresh per dial, a random [incarnation] drawn once
- * per client, and a per-client [serial]. The incarnation guards a reused [node]: a client folds the
+ * per client, and a per-client [serial]. The incarnation guards a reused [node], as long as no two
+ * clients under it draw the same one (`ClaimsClient`'s `random`): a client folds the
  * log from index 1, so it meets every claim an earlier client under that id ever made.
  *
  * kuilt's `LogEntry.dedupKey` can't serve: `ClusterClient.propose` draws the serial inside the call

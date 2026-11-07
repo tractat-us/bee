@@ -59,7 +59,8 @@ sealed interface ClaimOutcome {
  *
  * @param node the `clientNodeId` [cluster] was built with. It makes each [ProposalId] unique across
  *   the cluster.
- * @param random draws this client's [ProposalId.incarnation], once.
+ * @param random draws this client's [ProposalId.incarnation], once. Two clients under one [node]
+ *   must draw different incarnations, so don't seed it from [node].
  */
 class ClaimsClient(
     private val cluster: ClusterClient,
