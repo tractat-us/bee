@@ -18,6 +18,7 @@ import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.bee.core.BoardFixtures.view
 import us.tractat.kuilt.crdt.JsonNode
+import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,7 +96,7 @@ class ReplaceSemanticsTest {
         val ab = onA.piece(onB)
         assertAll(
             { assertEquals(ab, onB.piece(onA)) },
-            { assertEquals(listOf(str("Tacos")), (view(ab).data.getValue("poll") as JsonObject)["options"]) },
+            { assertEquals(JsonArray(listOf(str("Tacos"))), (view(ab).data.getValue("poll") as JsonObject)["options"]) },
         )
     }
 
