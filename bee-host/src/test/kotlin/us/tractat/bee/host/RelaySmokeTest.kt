@@ -54,7 +54,7 @@ class RelaySmokeTest {
                     WebSocketAdvertisement("ws://127.0.0.1:${host.port}${BoardRelay.PATH}", PeerId("bee-host"), "board"),
                 )
                 fun client(author: ReplicaId) =
-                    BoardClient(author, SpokeLoom(http, scope, author.value, Random.Default, clock), rendezvous, scope, clock)
+                    BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock), rendezvous, scope, clock)
                 val alex = client(ReplicaId("web-alex"))
                 val sam = client(ReplicaId("web-sam"))
                 alex.connect()

@@ -19,11 +19,14 @@ data class HostConfig(
          * Reads `--port <n>` and `--data-dir <dir>`, the form Playwright starts the host with.
          * Without `--data-dir` the data lives in `<home>/.bee/host`.
          *
-         * @throws IllegalArgumentException on an unknown flag, a flag without a value, or a bad port
+         * @throws IllegalArgumentException on an unknown or repeated flag, a flag without a value, or a bad port
          */
         fun fromArgs(args: List<String>, home: Path): HostConfig {
             require(args.size % 2 == 0) { "Every flag takes a value: ${args.joinToString(" ")}" }
-            val flags = args.chunked(2).associate { (flag, value) -> flag to value }
+            val pairs = args.chunked(2).map { (flag, value) -> flag to value }
+            val repeated = pairs.groupBy { it.first }.filterValues { it.size > 1 }.keys
+            require(repeated.isEmpty()) { "Repeated flags: ${repeated.joinToString()}" }
+            val flags = pairs.toMap()
             val unknown = flags.keys - setOf("--port", "--data-dir")
             require(unknown.isEmpty()) { "Unknown flags: ${unknown.joinToString()}. bee-host takes --port <n> and --data-dir <dir>." }
             val port = flags["--port"]?.let { requireNotNull(it.toIntOrNull()?.takeIf { p -> p in 0..65535 }) { "Not a port: $it" } }

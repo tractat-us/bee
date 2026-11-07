@@ -2,7 +2,7 @@ package us.tractat.bee.core
 
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import us.tractat.kuilt.core.Loom
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
@@ -34,6 +34,7 @@ import kotlin.uuid.Uuid
  *   `BoardClientTest.reconnectLeaksNoGossipCoroutines` pins it.
  *
  * @param scope runs each spoke's gossip loops; the caller owns it.
+ * @param random mints each weave's peer id and seeds its gossip.
  * @param dial opens the base spoke under the given peer id. The public constructor dials a real
  *   WebSocket; tests dial an in-memory connection into an in-memory hub.
  */
@@ -46,11 +47,12 @@ class SpokeLoom(
     private val dial: suspend (PeerId, Rendezvous) -> Seam,
 ) : Loom {
     /**
-     * Dials the hub over [httpClient], which must have Ktor's `WebSockets` plugin installed. The
-     * caller owns [httpClient] and [scope].
+     * Dials the hub over [httpClient], which must have Ktor's `WebSockets` plugin installed, with
+     * each spoke's read loop on [dispatcher]. The caller owns [httpClient] and [scope].
      */
     constructor(
         httpClient: HttpClient,
+        dispatcher: CoroutineDispatcher,
         scope: CoroutineScope,
         peerName: String,
         random: Random,
@@ -60,11 +62,11 @@ class SpokeLoom(
         peerName = peerName,
         random = random,
         clock = clock,
-        dial = { id, rendezvous -> KtorMeshClientLoom(httpClient, Dispatchers.Default, id).weave(rendezvous) },
+        dial = { id, rendezvous -> KtorMeshClientLoom(httpClient, dispatcher, id).weave(rendezvous) },
     )
 
     override suspend fun weave(rendezvous: Rendezvous): Seam {
-        val base = dial(PeerId("$peerName-${Uuid.random()}"), rendezvous)
+        val base = dial(PeerId("$peerName-${Uuid.fromByteArray(random.nextBytes(Uuid.SIZE_BYTES))}"), rendezvous)
         // Zero jitter, as kuilt's RelaySpokeLoom: a spoke's only neighbour is the hub, so jitter
         // only opens a window after connecting in which a broadcast has no flood target.
         return GossipSeam(base = base, random = random, clock = clock, jitter = Duration.ZERO..Duration.ZERO)

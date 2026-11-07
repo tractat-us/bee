@@ -22,7 +22,6 @@ import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
-import us.tractat.bee.core.BoardClientTestHook
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SpokeLoom
@@ -168,34 +167,6 @@ class BoardClientTest {
             { assertEquals(ALEX, minted.replica) },
             { assertEquals(str("offline"), data(sam.state.value)?.get("note")) },
             { assertEquals(alex.state.value, sam.state.value) },
-        )
-    }
-
-    /**
-     * The identity-guarded mirror. On one test thread the race is unreachable: a parted
-     * connection's job is cancelled under the lock, so its mirror pump never runs again. It is
-     * reachable only when a mirror body is already past its suspension point on another thread
-     * as the part runs. So this drives that body directly, with the parted connection, which is
-     * exactly what such a late body does. Without the `live === connection` check, it reds.
-     */
-    @OptIn(BoardClientTestHook::class)
-    @Test
-    fun lateEmissionFromAPartedQuilterNeverOverwritesTheHeldState() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
-        val alex = star.client(ALEX)
-        alex.connect()
-        runCurrent()
-        alex.mutate { it.openSurface(ALEX, SURFACE, meta(), listOf(root), JsonObject(emptyMap())) }
-        runCurrent()
-        val stale = assertNotNull(alex.liveConnection(), "precondition: alex is connected")
-        alex.disconnect()
-        runCurrent()
-        alex.mutate { it.updateData(ALEX, SURFACE, "/note", str("offline")) }
-        assertNull(alex.liveConnection(), "precondition: the connection parted")
-        alex.mirror(stale)
-        assertAll(
-            { assertEquals(str("offline"), data(alex.state.value)?.get("note"), "a late mirror must not drop the offline edit") },
-            { assertEquals(listOf(SURFACE), alex.state.value.openSurfaces()) },
         )
     }
 

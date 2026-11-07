@@ -15,7 +15,6 @@ import us.tractat.kuilt.core.pumpIn
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.gossip.hostedOverlay
-import us.tractat.kuilt.quilter.MonotonicMillis
 import us.tractat.kuilt.quilter.QuiltMessage
 import us.tractat.kuilt.quilter.Quilter
 import us.tractat.kuilt.quilter.QuilterConfig
@@ -45,14 +44,13 @@ private val logger = KotlinLogging.logger {}
  *   the loop stops. The cost: each echo is the whole board.
  *
  * @param replica the host's CRDT author and Quilter id, fresh per boot (`host-<uuid>`): a rebooted
- *   host restarting its delta seqs under an old id would look stale to the spokes.
- * @param clock the Quilter's eviction clock.
+ *   host restarting its delta seqs under an old id would look stale to the spokes. The Quilter
+ *   keeps kuilt's monotonic clock for eviction.
  */
 class BoardRelay(
     hub: Seam,
     scope: CoroutineScope,
     val replica: ReplicaId,
-    clock: () -> Instant,
     initial: BoardState = BoardState.EMPTY,
     config: QuilterConfig = BEE_QUILTER_CONFIG,
 ) : AutoCloseable {
@@ -63,22 +61,15 @@ class BoardRelay(
         messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
         scope = scope,
         config = config,
-        clock = MonotonicMillis { clock().toEpochMilliseconds() },
     )
 
     /** The host's merged board. */
     val state: StateFlow<BoardState> = quilter.state
 
-    /** Everyone connected through the hub, the host included. */
-    val peers: StateFlow<Set<PeerId>> = hub.peers
-
     init {
-        var echoed: BoardState? = null
-        state.pumpIn(scope, onFailure = ::report, name = "${replica.value}-merge-echo") { merged ->
-            if (merged == echoed) return@pumpIn
-            echoed = merged
-            echo()
-        }
+        // StateFlow emits only distinct values, and the echo's write leaves the state equal, so
+        // an echo never sets off another.
+        state.pumpIn(scope, onFailure = ::report, name = "${replica.value}-merge-echo") { echo() }
     }
 
     /** Applies [f]'s patch to the host's board and broadcasts it. [f] names [replica] as author. */
@@ -117,7 +108,7 @@ class BoardRelay(
             config: QuilterConfig = BEE_QUILTER_CONFIG,
         ): BoardRelay {
             val hub = scope.hostedOverlay(PeerId(replica.value), source, dispatcher, random, clock)
-            return BoardRelay(hub, scope, replica, clock, initial, config)
+            return BoardRelay(hub, scope, replica, initial, config)
         }
     }
 }
