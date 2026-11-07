@@ -39,6 +39,9 @@ fun main() {
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}" }
 
     ClearControl(identity).use { clear ->
+        // Claude Code ends its MCP servers with a signal, not only by closing stdin (spike 3), so
+        // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
+        Runtime.getRuntime().addShutdownHook(Thread(clear::close, "bee-clear-control-close"))
         clear.start()
         val server = Server(
             Implementation(name = "bee", version = "0.1.0"),

@@ -18,6 +18,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -56,8 +57,14 @@ class ClearControl(
         logger.info { "ClearControl on 127.0.0.1:$port, run file $runFile" }
     }
 
-    /** Stops serving and deletes the run file, unless a later bridge has since claimed it. */
+    private val closed = AtomicBoolean(false)
+
+    /**
+     * Stops serving and deletes the run file, unless a later bridge has since claimed it.
+     * Idempotent, because both the bridge's normal exit and its shutdown hook call it.
+     */
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         server.stop(0)
         runFile?.takeIf { it.exists() && portIn(it) == port }?.deleteIfExists()
     }
