@@ -2,6 +2,9 @@
 
 **Date:** 2026-11-06 · **Status:** draft for approval · **Owner:** Iain Keddie
 
+**Amended 2026-11-06 by the [v1 plan](../plans/2026-11-06-bee-v1.md#spec-amendments).** Its
+amendments A1–A14, its decisions and Iain's LAN pairing ruling are folded into the sections below.
+
 Decisions are marked **(Iain)** when they came from Iain in the design conversation, and
 **(design call)** when the writer made them. Push back on any design call.
 
