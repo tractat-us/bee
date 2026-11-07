@@ -56,11 +56,15 @@ three paths broke exactly-once:
 - **A retry.** It forgot the claim it retried. When that first claim committed and won, the target
   stayed held under a token the caller never learned, and the retry reported `Lost`.
 
-Now each `Claim` carries a random `ProposalId`. The client judges a claim only at the first
-committed entry with that id, so a duplicate entry can't change its verdict. A claim reported `Unavailable`
-is released only if its own entry won, with that entry's token. The release retries, up to five
-times, until the table shows the target no longer held under that token. `ClaimsClient.unreleased`
-names any the retries couldn't free.
+Now each `Claim` carries a `ProposalId`: the proposer's Raft `NodeId`, a random incarnation drawn
+once per client, and a per-client serial. kuilt keeps a `NodeId` unique across the cluster and bee
+mints a fresh one per dial, so ids are unique by construction. The incarnation covers a reused
+`NodeId`, since a client folds the log from index 1 and meets every claim an earlier client under
+that id made. The client judges a claim only at the first committed entry with its id and the
+claim's own target and identity, so a duplicate entry can't change the client's verdict. A claim
+reported `Unavailable`, or cancelled by its caller, is released only if its own entry won, with
+that entry's token. The release retries, up to five times, until the table shows the target no
+longer held under that token. `ClaimsClient.unreleased` names any the retries couldn't free.
 
 kuilt's `LogEntry.dedupKey` couldn't serve as the id. `ClusterClient.propose` draws the serial
 inside the call and returns it only on success, so a claim that timed out has no key its proposer
@@ -70,10 +74,24 @@ knows.
 |---|---|---|
 | `aTabThatTimedOutNeverReleasesAnotherTabsWin` | red: the target ends `Free` | green |
 | `aTimeoutNeverReleasesAnEarlierWin` | red: the target ends `Free` | green |
-| `aClaimThatWinsAfterItsRetryStartedIsReleased` | red: the retry got `Lost(iain)`, the target is held under token `(1, 4)` | green |
+| `aClaimThatWinsAfterItsRetryStartedIsReleased` | red: the retry got `Lost(iain)`, the target is held under token `(1, 4)` | green: `Lost(iain)`, then `Free` |
+| `aCancelledClaimThatWinsLateIsReleased` | red, with cancellation not abandoning: held under `(1, 4)` | green |
 
 The release's retry has no test that tells it from a single attempt. The in-memory rig can hold a
-send but not drop it, and a held release still lands once let go.
+send but not drop it, and a held release still lands once let go. Nor does any test pin the
+target-and-identity check in the client's judgement: with ids unique by construction, no rig makes
+two claims share one.
+
+**A known wart:** a caller that retries a timed-out claim can be told `Lost(iain)`, that it lost to
+itself, when its first claim committed first. The client then releases that first win, so the
+target ends `Free`. The caller has to claim again.
+
+**Duplicate entries aren't handled yet** (bee#23). `ClaimTable` folds every entry, so a second
+entry carrying the same `Claim`, committed after that claim's `Release`, wins again under a token
+nobody holds. No duplicate arrives on `0.7.0-dev.1692` within one incarnation, but kuilt's
+forwarding contract allows one: `ClientIdentity.Auto` leaves it to the consumer's
+`ClientSessionTable`. Production needs that table folded on `entry.dedupKey`, with a session-close
+hook to keep it bounded, which ties to kuilt#3127.
 
 ## Who may depart
 
@@ -172,15 +190,16 @@ where `0.7.0-dev.1690` committed one per admission (103 entries).
 - `bee-core`: `ClaimCommand` (JSON on the wire, identities in their `toString()` form),
   `ClaimTable` (immutable, folds `Entry`, `Internal` and `Install`), `ClaimsClient`.
 - `bee-host`: `ClaimsVoter` over `DurableStoreRaftStorage`, and a real `FixtureVoterMain`.
-- Green: `ClaimTableTest` (13), `ClaimsClientTest` (6, including
+- Green: `ClaimTableTest` (13), `ClaimsClientTest` (7, including
   `lateCommitOfTimedOutClaimIsReleased`, which reds when the late release is disabled),
   `ClaimsRaceTest` (2 of 3, the third `@Ignore`d above), `VoterRestartTest` (2), `ClaimsSmokeTest`
   (2) and `WasmClaimTest`.
 
 ### Where the code departs from the plan's interfaces
 
-- `ClaimsClient(cluster, clock, scope, random)` takes a scope, because it collects the committed
-  stream. It takes a `Random` for each claim's `ProposalId`.
+- `ClaimsClient(cluster, node, clock, scope, random)` takes a scope, because it collects the
+  committed stream. It takes the cluster's `clientNodeId` and a `Random` for the incarnation, both
+  for each claim's `ProposalId`.
 - `ClaimCommand.Claim` carries a `ProposalId`, which the table ignores.
 - `ClaimOutcome` adds `Retired`: the claimant was retired when its claim committed.
 - `release` and `complete` return whether they applied, and `reassign` returns the new token or
