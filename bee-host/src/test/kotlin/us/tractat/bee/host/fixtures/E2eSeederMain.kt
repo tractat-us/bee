@@ -62,8 +62,15 @@ fun main(args: Array<String>) {
         require(name in E2E_FIXTURES) { "No fixture $name; there are ${E2E_FIXTURES.joinToString()}" }
         listOf(name)
     } ?: E2E_FIXTURES
-    runBlocking { seed(URI(host), fixtures) }
-    // Ktor's CIO engine leaves non-daemon threads behind.
+    // Ktor's CIO engine leaves non-daemon threads behind, so the process exits explicitly either
+    // way: a failed seed must end globalSetup, never hang it.
+    @Suppress("TooGenericExceptionCaught")
+    try {
+        runBlocking { seed(URI(host), fixtures) }
+    } catch (failure: Throwable) {
+        failure.printStackTrace()
+        exitProcess(1)
+    }
     exitProcess(0)
 }
 
@@ -82,8 +89,9 @@ private suspend fun seed(host: URI, fixtures: List<String>) {
         val writer = client(author).apply { connect() }
         withTimeout(30.seconds) { writer.online.first { it } }
         for (id in fixtures) {
-            writer.mutateOrSkip { state ->
-                if (state.surfaceDoc(id) != null) return@mutateOrSkip null
+            // The host is fresh per run, so a surface already there is a mistake, and openSurface
+            // refuses it.
+            writer.mutate { state ->
                 val meta = SurfaceMeta("Fixture $id", NOTIONS_CATALOG_ID, PeerIdentity.human("e2e"), clock())
                 val components = if (id == MALFORMED) malformedComponents() else components()
                 state.openSurface(author, id, meta, components, buildJsonObject { put("note", "") })
