@@ -5,10 +5,11 @@
 // The host's command line (`--port <n> --data-dir <dir>`) is fixed here, for Task 3's
 // HostConfig to read.
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** A port free on loopback now. The host binds it a moment later. */
 async function freePort() {
@@ -30,10 +31,15 @@ process.env.BEE_E2E_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'bee-e2e-'));
 const port = Number(process.env.BEE_E2E_PORT);
 const baseURL = `http://127.0.0.1:${port}`;
 
+// Until Task 4 adds the first spec there is nothing to test, and until Task 3 there is no
+// host Main to start, so the host and the seeder stay off while no spec exists.
+const here = dirname(fileURLToPath(import.meta.url));
+const hasSpecs = readdirSync(here).some((f) => f.endsWith('.spec.mjs'));
+
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.mjs',
-  globalSetup: './global-setup.mjs',
+  globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -43,12 +49,12 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
+  webServer: hasSpecs ? {
     command: `../bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR}`,
     url: `${baseURL}/`,
     reuseExistingServer: false,
     timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
-  },
+  } : undefined,
 });
