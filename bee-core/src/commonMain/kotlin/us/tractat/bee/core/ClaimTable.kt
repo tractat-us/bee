@@ -44,6 +44,14 @@ sealed interface ClaimStatus {
  *   spike 4 notes say why).
  *
  * A rejected command still advances [appliedIndex]: every committed index is accounted for.
+ *
+ * **It relies on each proposal reaching the log at most once.** It folds every entry, so a second
+ * entry carrying the same `Claim`, committed after that claim's `Release`, wins the target again
+ * under a token nobody holds. No duplicate arrives on kuilt `0.7.0-dev.1692` within one incarnation,
+ * but kuilt's forwarding contract allows one (`ClientIdentity.Auto`: the consumer's
+ * `ClientSessionTable` skips it). Production needs kuilt's `ClientSessionTable` folded on
+ * `entry.dedupKey`, with a session-close hook so it stays bounded (tractat-us/kuilt#3127). Tracked
+ * as bee#23.
  */
 class ClaimTable private constructor(
     private val claims: Map<ClaimTarget, ClaimStatus>,
@@ -68,15 +76,25 @@ class ClaimTable private constructor(
     val retiredIdentities: Map<PeerIdentity, DepartReason> get() = departed
 
     /** The table after [committed]. An index at or below [appliedIndex] changes nothing. */
-    fun fold(committed: Committed): ClaimTable = when (committed) {
-        is Committed.Entry -> if (committed.entry.index <= appliedIndex) this else apply(committed.entry)
-        is Committed.Internal -> if (committed.index <= appliedIndex) this else copy(appliedIndex = committed.index)
-        is Committed.Install -> decode(committed.snapshot.state)
+    fun fold(committed: Committed): ClaimTable = applied(committed).table
+
+    /**
+     * The table after [committed], with the command it applied: decoded once, for a folder that
+     * acts on its own commands. The command is null for anything but a new entry, and for an entry
+     * that doesn't decode, which applies as rejected.
+     */
+    fun applied(committed: Committed): Applied = when (committed) {
+        is Committed.Entry -> if (committed.entry.index <= appliedIndex) Applied(this, null) else apply(committed.entry)
+        is Committed.Internal -> Applied(if (committed.index <= appliedIndex) this else copy(appliedIndex = committed.index), null)
+        is Committed.Install -> Applied(decode(committed.snapshot.state), null)
     }
+
+    /** A fold's result: the next [table], and the [command] that entry carried, if it decoded. */
+    data class Applied(val table: ClaimTable, val command: ClaimCommand?)
 
     fun encode(): ByteArray = json.encodeToString(Encoded.serializer(), toEncoded()).encodeToByteArray()
 
-    private fun apply(entry: LogEntry): ClaimTable {
+    private fun apply(entry: LogEntry): Applied {
         val command = try {
             ClaimCommand.decode(entry.command)
         } catch (_: SerializationException) {
@@ -86,7 +104,7 @@ class ClaimTable private constructor(
         }
         val token = ClaimToken(entry.term, entry.index)
         val next = command?.let { applyCommand(it, token) } ?: this
-        return next.copy(appliedIndex = entry.index)
+        return Applied(next.copy(appliedIndex = entry.index), command)
     }
 
     private fun applyCommand(command: ClaimCommand, token: ClaimToken): ClaimTable? = when (command) {
