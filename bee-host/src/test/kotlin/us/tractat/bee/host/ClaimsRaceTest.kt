@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTable
@@ -41,6 +43,8 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -78,6 +82,37 @@ class ClaimsRaceTest {
         assertAll(
             { assertEquals(List(ROUNDS) { 1 }, wins, "exactly one Won per round") },
             { assertEquals(List(ROUNDS) { true }, namedWinners, "the mirror names the winner and its token") },
+        )
+        voter.close()
+    }
+
+    /**
+     * Fit check, spike 4 Step 1: a learner keeps receiving the committed log after a second
+     * learner is admitted. The voter's `Depart` after both joined must reach both tables.
+     */
+    @Test
+    fun aSecondLearnerLeavesTheFirstOnTheLog() = runTest(timeout = 120.seconds) {
+        val rig = ClaimsRig(this)
+        val voter = rig.startVoter()
+        val alice = PeerIdentity.agent("alice", Random(1))
+        val bob = PeerIdentity.agent("bob", Random(2))
+        val a = rig.client(NodeId("claims-a"))
+        val first = a.claim(ClaimTarget("record:fit:1"), alice)
+        val b = rig.client(NodeId("claims-b"))
+        val second = b.claim(ClaimTarget("record:fit:2"), bob)
+        voter.depart(bob, DepartReason.Crashed)
+        val through = voter.table.value.appliedIndex
+        val aSaw = withTimeoutOrNull(10.seconds) { a.table.first { it.appliedIndex >= through } }
+        val bSaw = withTimeoutOrNull(10.seconds) { b.table.first { it.appliedIndex >= through } }
+        rig.report(
+            "two learners: voter through $through, a folded through ${a.table.value.appliedIndex}, " +
+                "b through ${b.table.value.appliedIndex}; outcomes $first, $second",
+        )
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(first, "a's claim, before b joined") },
+            { assertIs<ClaimOutcome.Won>(second, "b's claim") },
+            { assertNotNull(bSaw, "the newest learner folds the log") },
+            { assertNotNull(aSaw, "the first learner still folds the log after the second joined") },
         )
         voter.close()
     }
