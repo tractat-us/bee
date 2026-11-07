@@ -48,7 +48,6 @@ fun main() {
             ServerOptions(capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
         )
         WaitTool.register(server, NoActions)
-        addHoldForSpike3(server)
         runBlocking {
             val transport = StdioServerTransport(System.`in`.asSource().buffered(), protocolOut.asSink().buffered())
             val closed = CompletableDeferred<Unit>()
@@ -58,50 +57,6 @@ fun main() {
         }
     }
     logger.info { "bee-mcp ends." }
-}
-
-// TEMPORARY (spike 3 Step 3): a diagnostic hold, removed before the PR.
-private fun addHoldForSpike3(server: Server) {
-    server.addTool(
-        name = "bee_hold",
-        description = "Diagnostic: holds for `seconds`, sending progress every 10 s when `progress` is true.",
-        inputSchema = io.modelcontextprotocol.kotlin.sdk.types.ToolSchema(
-            properties = kotlinx.serialization.json.buildJsonObject {
-                put("seconds", kotlinx.serialization.json.buildJsonObject { put("type", kotlinx.serialization.json.JsonPrimitive("integer")) })
-                put("progress", kotlinx.serialization.json.buildJsonObject { put("type", kotlinx.serialization.json.JsonPrimitive("boolean")) })
-            },
-            required = listOf("seconds"),
-        ),
-    ) { request ->
-        val seconds = request.arguments!!["seconds"].toString().trim('"').toLong()
-        val progress = request.arguments?.get("progress")?.toString()?.trim('"') != "false"
-        val token = request.params.meta?.progressToken
-        val start = System.nanoTime()
-        logger.info { "bee_hold start seconds=$seconds progress=$progress token=$token meta=${request.params.meta?.json}" }
-        try {
-            var held = 0L
-            while (held < seconds) {
-                val step = minOf(10L, seconds - held)
-                kotlinx.coroutines.delay(step * 1000)
-                held += step
-                if (progress && token != null) {
-                    notification(
-                        io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification(
-                            io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams(token, held.toDouble(), seconds.toDouble(), "holding"),
-                        ),
-                    )
-                }
-                logger.info { "bee_hold held=$held" }
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            logger.info { "bee_hold cancelled after ${(System.nanoTime() - start) / 1_000_000} ms" }
-            throw e
-        }
-        logger.info { "bee_hold returns after ${(System.nanoTime() - start) / 1_000_000} ms" }
-        io.modelcontextprotocol.kotlin.sdk.types.CallToolResult(
-            content = listOf(io.modelcontextprotocol.kotlin.sdk.types.TextContent("held $seconds s")),
-        )
-    }
 }
 
 /** `$BEE_SESSION_NAME`, else the working directory's basename (spec §5.2). */
