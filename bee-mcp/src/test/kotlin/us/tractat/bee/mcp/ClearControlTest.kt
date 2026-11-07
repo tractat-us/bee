@@ -56,6 +56,7 @@ class ClearControlTest {
         clear.start()
         val written = Json.parseToJsonElement(runFile.readText()).jsonObject["port"]?.jsonPrimitive?.int
         clear.close()
+        clear.close() // the shutdown hook closes again; that's harmless
 
         assertAll(
             { assertEquals(clear.port, written) },
