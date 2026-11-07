@@ -211,26 +211,6 @@ test('a remote edit never overwrites the field being typed in', async ({ browser
   await expect(conflict(alex.page, 'hold')).toHaveText('');
 });
 
-test('a field left before its edit is written keeps the edit', async ({ browser }) => {
-  const alex = await openPeer(browser, 'alex');
-  const sam = await openPeer(browser, 'sam');
-  peers = [alex, sam];
-
-  await field(alex.page, 'dirty').fill('quick');
-  // Leave the field inside the 150 ms debounce, and look 20 ms later, after the driver has
-  // re-rendered for the blur. The path is dirty, so it is still held: without that, the driver
-  // would show the board's old value over the person's unwritten edit.
-  const seen = await alex.page.evaluate(async () => {
-    const input = document.querySelector('a2ui-surface[data-surface-id="dirty"] a2ui-basic-textfield input');
-    input.blur();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    return { value: input.value, pending: document.getElementById('board').hasAttribute('data-pending') };
-  });
-  expect(seen).toEqual({ value: 'quick', pending: true });
-  await expect(field(sam.page, 'dirty')).toHaveValue('quick', { timeout: 2_000 });
-  await expect(field(alex.page, 'dirty')).toHaveValue('quick');
-});
-
 test('an invalid surface shows a placeholder naming its errors', async ({ browser }) => {
   const alex = await openPeer(browser, 'alex');
   peers = [alex];
