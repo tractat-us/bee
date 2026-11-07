@@ -70,7 +70,7 @@ class SurfaceProjectionTest {
             put("text", "Lunch?")
         }
         val components = ORMap.empty<String, JsonNode>().piece {
-            it.put(replica, "root", leaf(replica, JsonValue.Str(SurfaceFormat.canonical(root))))
+            it.put(replica, "root", leaf(replica, SurfaceFormat.encodeLeaf(root)))
         }
         return JsonCrdt.empty(replica)
             .piece { it.set(SurfaceFormat.META, JsonNode.Object(meta)) }

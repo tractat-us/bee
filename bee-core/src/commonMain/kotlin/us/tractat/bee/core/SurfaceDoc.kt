@@ -54,7 +54,7 @@ internal object SurfaceDoc {
         val existing = doc[SurfaceFormat.COMPONENTS]
         val map = objectMap(existing, "/${SurfaceFormat.COMPONENTS}")
         val delta = threadedPuts(map, replica, components.map { componentId(it) to it }) { _, current, component ->
-            leafFrom(current, replica, JsonValue.Str(SurfaceFormat.canonical(component)))
+            leafFrom(current, replica, SurfaceFormat.encodeLeaf(component))
         }
         return doc.set(SurfaceFormat.COMPONENTS, JsonNode.Object(delta))
     }

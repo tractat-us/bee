@@ -193,7 +193,7 @@ internal object BoardFixtures {
 
     /** Every value the leaf at [pointer] holds, decoded. */
     fun values(state: BoardState, pointer: String): Set<JsonElement> =
-        (node(state, pointer) as JsonNode.Leaf).register.values.map(SurfaceDoc.Format::decodeLeaf).toSet()
+        (node(state, pointer) as JsonNode.Leaf).register.values.map(SurfaceFormat::decodeLeaf).toSet()
 
     /** The dots of the entries of the append-only array at [pointer], in sequence order. */
     fun entryDots(state: BoardState, pointer: String): List<Dot> =
