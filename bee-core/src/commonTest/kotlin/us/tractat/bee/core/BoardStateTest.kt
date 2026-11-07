@@ -186,7 +186,7 @@ class BoardStateTest {
                         buildJsonObject {
                             put("question", "Lunch?")
                             put("votes", 3)
-                            put("meta", buildJsonObject { put("by", "a"); put("at", "noon") })
+                            put("meta", buildJsonObject { put("by", "a"); put("at", "noon"); put("note", "x") })
                         },
                     )
                     put("board", buildJsonObject { put("items", JsonObject(emptyMap())) })
