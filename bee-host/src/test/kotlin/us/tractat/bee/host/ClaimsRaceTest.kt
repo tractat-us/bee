@@ -204,7 +204,7 @@ internal class ClaimsRig(private val test: TestScope, val store: DurableStore = 
             raftConfig = raftConfig,
             clock = clock,
         )
-        return ClaimsClient(cluster, clock, scope)
+        return ClaimsClient(cluster, clock, scope, Random(node.value.hashCode()))
     }
 
     fun report(line: String) = System.err.println("[claims-spike] $line")
@@ -215,17 +215,21 @@ internal class ClaimsRig(private val test: TestScope, val store: DurableStore = 
  * [loomFor] becomes one admitted [Room], so each learner is its own room, as on `/ws/claims`.
  * kuilt's `LoomRoomHost` hosts a single room, and `InMemoryRoomFabric` offers no `RoomHost`.
  *
- * Each dial's server-to-client sends go through a [HoldableConnection], so a test can hold a
- * commit's way back to a learner ([holdFor]).
+ * Each dial's sends go through a [HoldableConnection] in each direction, so a test can hold a
+ * commit's way back to a learner ([holdFor]) or a learner's proposal on its way up ([holdUpFor]).
  */
 internal class InMemoryClaimsHost(private val dispatcher: CoroutineContext, private val clock: () -> Instant) : RoomHost {
     private class Link(val server: Connection, val remote: PeerId)
 
     private val pending = Channel<Link>(Channel.UNLIMITED)
     private val holds = mutableMapOf<NodeId, HoldableConnection>()
+    private val upHolds = mutableMapOf<NodeId, HoldableConnection>()
 
     /** The latest link to [node]'s server-to-client direction. */
     fun holdFor(node: NodeId): HoldableConnection = holds.getValue(node)
+
+    /** The latest link to [node]'s client-to-server direction: its proposals and acks. */
+    fun holdUpFor(node: NodeId): HoldableConnection = upHolds.getValue(node)
 
     fun loomFor(node: NodeId): Loom = object : Loom {
         override suspend fun weave(rendezvous: Rendezvous): Seam {
@@ -233,7 +237,9 @@ internal class InMemoryClaimsHost(private val dispatcher: CoroutineContext, priv
             val held = HoldableConnection(serverEnd)
             holds[node] = held
             pending.send(Link(held, PeerId(node.value)))
-            return identified(clientEnd, PeerId(node.value), SERVER, dispatcher)
+            val up = HoldableConnection(clientEnd)
+            upHolds[node] = up
+            return identified(up, PeerId(node.value), SERVER, dispatcher)
         }
     }
 
