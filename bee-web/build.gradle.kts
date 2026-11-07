@@ -86,7 +86,8 @@ val karmaConfig by tasks.registering(Sync::class) {
 abstract class FixtureVoterService : BuildService<FixtureVoterService.Params>, AutoCloseable {
     interface Params : BuildServiceParameters {
         val javaExecutable: Property<String>
-        val classpath: ConfigurableFileCollection
+        /** A file holding the voter's classpath, written by `:bee-host:fixtureVoterClasspath`. */
+        val classpathFile: RegularFileProperty
         val mainClass: Property<String>
         val logFile: RegularFileProperty
     }
@@ -98,7 +99,7 @@ abstract class FixtureVoterService : BuildService<FixtureVoterService.Params>, A
         val started = ProcessBuilder(
             parameters.javaExecutable.get(),
             "-cp",
-            parameters.classpath.asPath,
+            parameters.classpathFile.get().asFile.readText(),
             parameters.mainClass.get(),
         ).redirectErrorStream(true).start()
         process = started
@@ -132,23 +133,24 @@ abstract class FixtureVoterService : BuildService<FixtureVoterService.Params>, A
 }
 
 val realSocketTests = providers.gradleProperty("bee.realsocket.tests").orNull == "true"
-if (realSocketTests) evaluationDependsOn(":bee-host")
 
 tasks.named("wasmJsBrowserTest") {
     dependsOn(karmaConfig)
     if (realSocketTests) {
-        val hostTestClasspath = project(":bee-host").extensions
-            .getByType<SourceSetContainer>()["test"].runtimeClasspath
+        // bee-host writes its test runtime classpath to a file: this project may not
+        // resolve another project's configuration while its own task runs.
+        dependsOn(":bee-host:fixtureVoterClasspath")
+        val classpathFile = rootProject.layout.projectDirectory.file("bee-host/build/fixture-voter-classpath.txt")
         val voter = gradle.sharedServices.registerIfAbsent("beeFixtureVoter", FixtureVoterService::class) {
             parameters.javaExecutable = javaToolchains
                 .launcherFor { languageVersion = JavaLanguageVersion.of(25) }
                 .map { it.executablePath.asFile.absolutePath }
-            parameters.classpath.from(hostTestClasspath)
+            parameters.classpathFile = classpathFile
             parameters.mainClass = "us.tractat.bee.host.fixtures.FixtureVoterMainKt"
             parameters.logFile = layout.buildDirectory.file("fixture-voter.log")
         }
         usesService(voter)
-        inputs.files(hostTestClasspath)
+        inputs.file(classpathFile)
         val fixtureJs = karmaConfigDir.map { it.file("fixture.js").asFile }
         val portJs = layout.buildDirectory.file("fixture-voter-port.js").map { it.asFile }
         doFirst {

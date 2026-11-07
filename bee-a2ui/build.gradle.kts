@@ -15,7 +15,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(project.dependencies.platform(libs.kuilt.bom))
+            // api: consumers of this module get the kuilt versions with it.
+            api(project.dependencies.platform(libs.kuilt.bom))
             api(libs.kuilt.crdt)
             api(libs.kotlinx.serialization.json)
         }

@@ -48,6 +48,21 @@ tasks.processResources {
     from(webDistribution) { into("web") }
 }
 
+// The fixture mains are test sources with no tests beside them until Task 3 adds some.
+tasks.test { failOnNoDiscoveredTests = false }
+
+// bee-web's build starts FixtureVoterMain from this classpath before its browser test. It
+// may not resolve this project's configuration while its own task runs, so this task writes
+// the resolved path to a file for it.
+tasks.register("fixtureVoterClasspath") {
+    description = "Writes the fixture voter's runtime classpath to build/fixture-voter-classpath.txt."
+    val classpath = sourceSets.test.get().runtimeClasspath
+    val out = layout.buildDirectory.file("fixture-voter-classpath.txt")
+    inputs.files(classpath)
+    outputs.file(out)
+    doLast { out.get().asFile.writeText(classpath.asPath) }
+}
+
 // Playwright's globalSetup runs this to write fixture surfaces through a JVM BoardClient.
 // The host to write to is passed as -Pbee.e2e.host=<url>.
 tasks.register<JavaExec>("e2eSeed") {
