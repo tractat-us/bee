@@ -50,8 +50,9 @@ sealed interface ClaimOutcome {
  * this client. Each claim carries its own [ProposalId], and the client judges a claim only at the
  * first committed entry carrying that id. So another tab claiming as the same `human:` identity
  * (spec §5.1), an earlier win, or a retry is never mistaken for it. A late win of a claim reported
- * [ClaimOutcome.Unavailable] is released with that entry's token, retried until the table shows the
- * target no longer held under it ([unreleased] names any the retries couldn't free).
+ * [ClaimOutcome.Unavailable], or cancelled by its caller, is released with that entry's token,
+ * retried until the table shows the target no longer held under it ([unreleased] names any the
+ * retries couldn't free).
  *
  * It collects [cluster]'s committed stream, so it must be the stream's only collector, and is
  * built before the client's first join (the stream has no replay).
