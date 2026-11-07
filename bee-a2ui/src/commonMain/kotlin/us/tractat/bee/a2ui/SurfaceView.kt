@@ -22,12 +22,11 @@ data class SurfaceView(
     /**
      * The data model the renderer holds: [data], plus the conflicts published at
      * `/_bee/conflicts/<escaped pointer>` (spec §5.3). `_bee` is absent when nothing conflicts.
+     * Each conflict is keyed by its raw pointer; escaping it is the path's job, once.
      */
     fun dataModel(): JsonObject {
         if (conflicts.isEmpty()) return data
-        val published = JsonObject(
-            conflicts.keys.sorted().associate { SurfaceFormat.escapeSegment(it) to JsonArray(conflicts.getValue(it)) },
-        )
+        val published = JsonObject(conflicts.keys.sorted().associateWith { JsonArray(conflicts.getValue(it)) })
         return JsonObject(data + (SurfaceFormat.RESERVED_DATA_KEY to JsonObject(mapOf("conflicts" to published))))
     }
 }
