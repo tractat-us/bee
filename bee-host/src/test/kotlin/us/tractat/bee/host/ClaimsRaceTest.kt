@@ -106,9 +106,17 @@ class ClaimsRaceTest {
         val bSaw = withTimeoutOrNull(10.seconds) { b.table.first { it.appliedIndex >= through } }
         rig.report(
             "two learners: voter through $through, a folded through ${a.table.value.appliedIndex}, " +
-                "b through ${b.table.value.appliedIndex}; outcomes $first, $second",
+                "b through ${b.table.value.appliedIndex}; outcomes $first, $second; " +
+                "voter membership ${voter.membership.value}",
         )
         assertAll(
+            {
+                assertEquals(
+                    setOf(NodeId("claims-a"), NodeId("claims-b")),
+                    voter.membership.value.learners,
+                    "both learners are in the voter's configuration",
+                )
+            },
             { assertIs<ClaimOutcome.Won>(first, "a's claim, before b joined") },
             { assertIs<ClaimOutcome.Won>(second, "b's claim") },
             { assertNotNull(bSaw, "the newest learner folds the log") },

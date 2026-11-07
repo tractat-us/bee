@@ -15,6 +15,7 @@ import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.kuilt.cluster.ServerCluster
 import us.tractat.kuilt.cluster.serverCluster
+import us.tractat.kuilt.raft.ClusterConfig
 import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.RaftConfig
@@ -48,6 +49,9 @@ class ClaimsVoter private constructor(
     private val job: Job,
 ) {
     val table: StateFlow<ClaimTable> = tableState.asStateFlow()
+
+    /** The voter's live cluster configuration: which learners it replicates to. */
+    internal val membership: StateFlow<ClusterConfig> get() = node.membership
 
     /** Retires [identity] through the log: its claims are orphaned and its later commands rejected. */
     suspend fun depart(identity: PeerIdentity, reason: DepartReason) {
