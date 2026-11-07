@@ -63,10 +63,24 @@ describes becomes real.
   `admitLearner`'s `finally` calls `overlay.evict`, and the overlay's `Quilter` is already closed:
   `IllegalStateException: Quilter(…#overlay-dir) is closed`. Under `runTest` that fails the test.
   `ClaimsVoter.close()` cancels and joins the relay before it closes the cluster.
+- **A refused dial ends a `clusterClient`'s reconnect loop with an uncaught exception.** With the
+  voter stopped, the loop's next `SeamRoomFactory.join` throws `ConnectException: Connection
+  refused` out of `buildClusterClient`'s reconnect coroutine, and nothing retries. It reached the
+  next test as `UncaughtExceptionsBeforeTest`. This bears on Review Focus 4, where the host is down
+  when someone acts. I saw it once, at teardown, and didn't chase it further. The smoke now closes
+  its clients before it stops the voter.
 - **No in-memory multi-connection `RoomHost`.** `LoomRoomHost` hosts one room, and `KtorRoomHost`'s
   constructor over a `Loom` is internal. The deterministic tests carry `InMemoryClaimsHost`
   (in `ClaimsRaceTest.kt`), which gives every dial its own room, as `/ws/claims` does, and holds a
   dial's server-to-client sends through `HoldableConnection`.
+
+## A bee build finding
+
+A local run with `-Pbee.realsocket.tests=true` leaves `bee-web/build/karma-config.d/fixture.js`
+behind, and `:bee-web:karmaConfig` stays `UP-TO-DATE` on the next run without the flag. So the next
+`check` loads a dead voter's port, and `WasmClaimTest` fails with `Unavailable` instead of skipping.
+CI starts clean, so it doesn't see this. Deleting the file works around it. The fix belongs in
+`bee-web/build.gradle.kts`, which Task 6 doesn't own.
 
 ## Measurements
 

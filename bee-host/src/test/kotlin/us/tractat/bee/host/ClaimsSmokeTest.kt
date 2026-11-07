@@ -6,7 +6,9 @@ import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -79,13 +81,17 @@ class ClaimsSmokeTest {
     private fun smoke(body: suspend (FixtureVoter, CoroutineScope) -> Unit) {
         assumeTrue("real-socket smoke: pass -Pbee.realsocket.tests=true", System.getProperty("bee.realsocket.tests") == "true")
         runBlocking(Dispatchers.Default) {
-            val scope = CoroutineScope(coroutineContext + SupervisorJob())
-            val voter = startFixtureVoter(scope, Files.createTempDirectory("bee-claims-smoke").toFile())
+            val voterScope = CoroutineScope(coroutineContext + SupervisorJob())
+            val clientScope = CoroutineScope(coroutineContext + SupervisorJob())
+            val voter = startFixtureVoter(voterScope, Files.createTempDirectory("bee-claims-smoke").toFile())
             try {
-                withTimeout(60.seconds) { body(voter, scope) }
+                withTimeout(60.seconds) { body(voter, clientScope) }
             } finally {
+                // Clients first: a client's reconnect loop that dials a stopped voter ends with an
+                // uncaught ConnectException, which the next runTest in this JVM reports as its own.
+                clientScope.coroutineContext[Job]!!.cancelAndJoin()
                 voter.stop()
-                scope.cancel()
+                voterScope.cancel()
             }
         }
     }
