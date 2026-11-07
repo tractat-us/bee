@@ -179,20 +179,43 @@ Claude session ── bee-mcp                                           ┘     
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
   `Poll` counts people and agents, not tabs.
+- **The identity format (design call).** An agent is `agent:<name>#<8 hex>`, fresh per bridge
+  identity, where `name` is `$BEE_SESSION_NAME`, else the working directory's basename. A human is
+  `human:<name>`, the same across tabs and devices. Only agents depart (§6.4).
+- **CRDT authors are not peer identities (design call).** A replica writes as `web-<uuid>` per page
+  load, `mcp-<uuid>` per bridge process, or `host-<uuid>` per host boot.
 - **`/clear` is a departure (design call).** A stdio MCP server normally survives `/clear`, but the
   agent has lost its context, so its claims should not stay live. A `SessionStart` hook with
   `source=clear` tells the bridge to retire its identity and take a fresh one. The old identity's
   claims become orphaned (§6.4). Spike 3 verifies that the bridge does survive `/clear` and that
   the hook fires.
-- Exposes tools for: reading the board; opening, updating and closing surfaces; reading and
-  answering action records; claiming and releasing work; and posting presence ("working on X").
-  The exact tool list is left to the plan.
-- **Waiting without polling (design call):** a tool that blocks until a matching action record
-  arrives, with a timeout. This is the replacement for reading `state_dir/events`.
+- **The `/clear` channel (design call).** At start, the bridge writes `~/.bee/run/<claudePid>.json`
+  (`{"port":N}`) and serves `POST /retire` on loopback. `claudePid` is the nearest ancestor process
+  named `claude`. The `SessionStart` hook finds the same pid by the same rule and POSTs to it.
+- **The tools (design call).** Every writing tool's description starts "Puts … on the shared
+  board, visible to everyone attached", so sharing is always an explicit act (§9).
+  - Board: `bee_board`, `bee_surface_open`, `bee_surface_update`, `bee_surface_close`,
+    `bee_board_clear`.
+  - Records: `bee_wait_action`, `bee_list_actions`, `bee_action_done`.
+  - Claims and presence: `bee_claim`, `bee_release`, `bee_presence`.
+- **Waiting without polling, bounded (design call).** `bee_wait_action` holds until a matching
+  action record arrives, and returns within 45 s, or a caller-chosen time up to 60 s. It returns
+  `{record?, timedOut, cursor}`, and sends progress notifications while it holds.
+  `bee_list_actions(since)` reads without blocking. This is the replacement for reading
+  `state_dir/events`. Bounded waits make a long hold unnecessary, so Spike 3 doesn't measure a
+  30-minute one **(Iain: dropped)**.
 - **Records are addressed to a surface, never to a session instance (design call).** Session
   identities are fresh each time, so a record addressed to one would wait forever once that session
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
   always goes through a claim** (§6.3), so two sessions never both act on one click.
+- **A session handles a surface by subscribing to it (design call).** Waiting on a surface is how
+  a session handles it, and any session may wait on any surface.
+- **The bridge validates what it writes (design call).** The host can't refuse a CRDT write, so
+  the bridge checks a surface against the Notions schema (§5.6) before writing it, and refuses a
+  malformed one with an error that names the bad id or type.
+- **A retired bridge re-identifies before it acts (design call).** If the bridge finds its identity
+  retired (§6.4), it takes a fresh one through the `/clear` path, and refuses the board write it was
+  asked for.
 
 ### 5.3 The A2UI boundary, inside the page
 
