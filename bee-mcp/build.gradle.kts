@@ -27,4 +27,5 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kuilt.test)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mcp.kotlin.sdk.client)
 }
