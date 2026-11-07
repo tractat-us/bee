@@ -63,7 +63,7 @@ class ClaimsSmokeTest {
         val b = client(scope, voter, NodeId("smoke-b"))
         val second = b.claim(ClaimTarget("record:smoke:2"), bob)
         voter.voter.depart(bob, DepartReason.Crashed)
-        val through = voter.voter.table.value.appliedIndex
+        val through = voter.voter.table.first { it.retired(bob) }.appliedIndex
         val aSaw = withTimeoutOrNull(10.seconds) { a.table.first { it.appliedIndex >= through } }
         System.err.println(
             "[claims-spike] real sockets, two learners: voter through $through, a through ${a.table.value.appliedIndex}, " +
@@ -74,22 +74,6 @@ class ClaimsSmokeTest {
             { assertIs<ClaimOutcome.Won>(second) },
             { assertNotNull(aSaw, "the first learner still folds the log after the second joined") },
         )
-    }
-
-    // TEMPORARY diagnostic, removed before the PR is ready: does a client-side close start the grace?
-    @Test
-    fun diagGoneLearnerOverRealSockets() = smoke { voter, scope ->
-        val bob = PeerIdentity.agent("bob", Random(2))
-        val a = client(scope, voter, NodeId("smoke-a"))
-        a.claim(target, alice)
-        val bJob = Job(scope.coroutineContext[Job])
-        val b = client(CoroutineScope(scope.coroutineContext + bJob), voter, NodeId("smoke-b"))
-        b.claim(ClaimTarget("record:smoke:2"), bob)
-        System.err.println("[claims-spike] diag before close: ${voter.voter.membership.value}")
-        val closedAt = Clock.System.now()
-        bJob.cancelAndJoin()
-        val removed = withTimeoutOrNull(45.seconds) { voter.voter.membership.first { NodeId("smoke-b") !in it.learners } }
-        System.err.println("[claims-spike] diag after ${Clock.System.now() - closedAt}: removed=$removed now=${voter.voter.membership.value}")
     }
 
     private fun smoke(body: suspend (FixtureVoter, CoroutineScope) -> Unit) {

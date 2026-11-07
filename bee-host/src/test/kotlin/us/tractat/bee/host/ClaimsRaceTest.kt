@@ -105,7 +105,8 @@ class ClaimsRaceTest {
         val b = rig.client(NodeId("claims-b"))
         val second = b.claim(ClaimTarget("record:fit:2"), bob)
         voter.depart(bob, DepartReason.Crashed)
-        val through = voter.table.value.appliedIndex
+        // The Depart's own index: `depart` returns before the voter's fold reaches it.
+        val through = voter.table.first { it.retired(bob) }.appliedIndex
         val aSaw = withTimeoutOrNull(10.seconds) { a.table.first { it.appliedIndex >= through } }
         val bSaw = withTimeoutOrNull(10.seconds) { b.table.first { it.appliedIndex >= through } }
         rig.report(
