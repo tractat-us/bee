@@ -364,6 +364,36 @@ test('postMessage from another frame is ignored', async ({ browser }) => {
   await iain.context.close();
 });
 
+// The brainstorming loop's stop script kills its companion with SIGTERM. A companion stopped so
+// closes its own surface before it ends, so the board keeps no open, dead Sketch.
+test('a companion stopped with SIGTERM closes its surface', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const own = mkdtempSync(join(tmpdir(), 'bee-e2e-stopped-'));
+  const ownScreens = join(own, 'content');
+  const ownState = join(own, 'state');
+  mkdirSync(ownScreens, { recursive: true });
+  writeFileSync(join(ownScreens, 'stopping.html'), '<h2>About to stop</h2>');
+  const stopping = spawn(companionBin, ['--screen-dir', ownScreens, '--state-dir', ownState, '--frame-template', template], {
+    env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${port}` },
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  const exited = new Promise((resolve) => stopping.on('exit', (code, signal) => resolve(code ?? signal)));
+  const kept = join(ownState, 'bee-companion.json');
+  await expect.poll(() => existsSync(kept), { timeout: 60_000 }).toBe(true);
+  const ownSurface = JSON.parse(readFileSync(kept, 'utf8')).surface;
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('/?name=sol');
+  const shown = page.frameLocator(`a2ui-surface[data-surface-id="${ownSurface}"] bee-sketch iframe`);
+  await expect(shown.locator('h2')).toHaveText('About to stop', { timeout: 15_000 });
+
+  stopping.kill('SIGTERM');
+  await exited;
+  // A closed surface leaves the page; an open one would stay, its companion gone.
+  await expect(page.locator(`a2ui-surface[data-surface-id="${ownSurface}"]`)).toHaveCount(0, { timeout: 5_000 });
+  await context.close();
+});
+
 // A companion whose adapter fails ends, and says so in state_dir, as the companion server does:
 // it never goes on advertising itself. A second companion, on its own directories, loses its
 // screen directory, so its first listing fails. It writes nothing to the board before that.
