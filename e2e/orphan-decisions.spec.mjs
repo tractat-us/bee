@@ -2,9 +2,6 @@
 // the host (agent.mjs). zed opens a surface and waits on it; iain's click on it becomes zed's
 // record, and zed is killed holding it. After the learner grace the host departs zed, which
 // orphans the claim, and opens its decision: a `Poll` offering ada.
-//
-// The decision draws only once the page has the `Poll` component, which PR #70 (Task 11a,
-// `task/11a-poll-board`) adds. Until then the suite skips itself, saying so.
 import { test, expect } from '@playwright/test';
 import { startAgent } from './agent.mjs';
 
@@ -21,8 +18,6 @@ test.beforeAll(async ({ browser }) => {
   const laptop = await context.newPage();
   await laptop.goto('/?name=iain');
   await expect(laptop.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
-  const hasPoll = await laptop.evaluate(() => customElements.get('bee-poll') !== undefined);
-  test.skip(!hasPoll, 'The page has no Poll component yet: it arrives with PR #70 (Task 11a, task/11a-poll-board).');
 
   const zed = await startAgent('zed');
   const ada = await startAgent('ada');
