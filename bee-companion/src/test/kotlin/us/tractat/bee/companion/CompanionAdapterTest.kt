@@ -161,15 +161,21 @@ class CompanionAdapterTest {
     fun waitingScreenClosesTheSurface() = runTest(timeout = 120.seconds) {
         val rig = rig(this).apply { start() }
         rig.screen("mockup.html", "<p>mockup</p>")
-        rig.companion()
+        val companion = rig.companion()
         val browser = rig.browser()
         rig.shows(browser) { "mockup" in it }
 
         rig.screen("waiting-2.html", "<p>Continuing in terminal...</p>")
         val state = withTimeout(WAIT) { browser.client.state.first { CompanionAdapter.SURFACE in it.closedSurfaces() } }
+        // A click on the closed surface, by a browser that saw it close: no screen takes clicks now.
+        rig.click(browser, "after", "After", 1_706_000_101)
+        withTimeout(WAIT) {
+            while (companion.reports.none { it["type"] == JsonPrimitive("click-dropped") } && rig.lines().isEmpty()) delay(100)
+        }
         assertAll(
             { assertEquals(emptyList(), state.openSurfaces()) },
             { assertTrue("mockup" in sketchHtml(state)!!, "the closed surface keeps its last sketch") },
+            { assertEquals(emptyList(), rig.lines(), "the click on the closed surface was dropped") },
         )
         rig.close()
     }
