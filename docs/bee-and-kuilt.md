@@ -51,9 +51,9 @@ Everything that makes it a board for people and their agents:
   to WebAssembly, so any browser can join with nothing installed. Its driver turns the board into
   messages for the stock A2UI renderer, and turns clicks back into edits. A2UI is the open format
   bee uses to describe what goes on screen.
-- **The bridge** (`bee-mcp`). One per Claude session. It holds that session's copy of the board.
-  Once Task 7 of the plan lands, it also gives the agent its tools: draw on the board, wait for a
-  click, claim the work.
+- **The bridge** (`bee-mcp`). One per Claude session. Today it handles the session's lifecycle,
+  including `/clear`. Task 7 of the plan gives it that session's copy of the board and the agent's
+  tools: draw on the board, wait for a click, claim the work.
 - **The host** (`bee-host`). The one piece that's always on. It relays changes between everyone,
   keeps a copy on disk, casts the vote on claims, and serves the web page.
 - **The shared core** (`bee-core` and `bee-a2ui`). The board's shape, the records of who clicked
