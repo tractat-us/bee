@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -120,7 +121,7 @@ class ClaimsLinkLossTest {
         val (learner, kill) = learner(rig, node)
         val won = learner.claim(target, ada)
         val entries = listOf(entry(ada, node))
-        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, { emptySet() }, voter::depart, clock = rig.clock)
+        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, emptyFlow(), { emptySet() }, voter::depart, clock = rig.clock)
             .start(backgroundScope)
 
         val killedAt = testScheduler.currentTime
@@ -150,7 +151,7 @@ class ClaimsLinkLossTest {
         val (first, killFirst) = learner(rig, old)
         first.claim(ClaimTarget("record:web-1:1"), ada)
         var entries = listOf(entry(ada, old))
-        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, { emptySet() }, voter::depart, clock = rig.clock)
+        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, emptyFlow(), { emptySet() }, voter::depart, clock = rig.clock)
             .start(backgroundScope)
 
         killFirst()
