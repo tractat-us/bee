@@ -47,7 +47,7 @@ object WhiteboardGuide {
 
     private val SKETCH = Example(
         name = "Sketch: diagrams and mockups",
-        components = """[{"id":"root","component":"Sketch","title":"Login flow","html":"<svg viewBox='0 0 220 60' width='100%'>""" +
+        components = """[{"id":"root","component":"Sketch","title":"Login flow","html":"<svg viewBox='0 0 220 60' width='100%' font-family='system-ui,sans-serif' font-size='14'>""" +
             """<rect x='5' y='15' width='80' height='30' rx='6' fill='#def'/><text x='45' y='35' text-anchor='middle'>Login</text>""" +
             """<path d='M85 30h45' stroke='#333'/><rect x='130' y='15' width='80' height='30' rx='6' fill='#dfd'/>""" +
             """<text x='170' y='35' text-anchor='middle'>Home</text></svg>""" +
@@ -55,7 +55,8 @@ object WhiteboardGuide {
         data = null,
         note = "The tool for a diagram, flow or mockup: any HTML, CSS, inline SVG and script, sandboxed with no " +
             "network (data: images only). A click on a data-choice element asks the viewer \"Send <its text>?\"; " +
-            "Send records \"choice\" with {choice, text}. Redraw by updating the whole html.",
+            "Send records \"choice\" with {choice, text}. Keep diagrams compact: nodes in one or two rows, a viewBox " +
+            "just tall enough for them. Redraw by updating the whole html.",
     )
 
     private val FIELD = Example(
