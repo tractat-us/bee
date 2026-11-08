@@ -185,6 +185,18 @@ class WaitToolTest {
         )
     }
 
+    /** A blank surfaceId reads the session's own surfaces, as an absent one does, not a surface named `""`. */
+    @Test
+    fun aBlankSurfaceReadsTheBoardScope() = runTest {
+        source.append("poll", record("vote"))
+        val client = connect()
+
+        client.wait(mapOf("surfaceId" to ""))
+        client.call(WaitTool.LIST, mapOf("surfaceId" to "  ")).page()
+
+        assertEquals(listOf(ActionScope.Board, ActionScope.Board), source.scopes)
+    }
+
     private suspend fun TestScope.connect(): Client {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val server = Server(
