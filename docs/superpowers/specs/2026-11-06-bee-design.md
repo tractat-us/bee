@@ -225,11 +225,20 @@ Claude session ── bee-mcp                                           ┘     
   proposed again until it commits. Board writes still go ahead.
 - **A claim of the bridge's own that no caller received is given back and claimed again, never
   taken over (Iain's ruling).** A late win, a claim whose link died after the voter appended it, or
-  one whose release couldn't commit leaves the target held under the bridge's identity. The next
-  wait that reaches it marks it as being given back, releases it, and claims the record again under
-  a fresh token. A release of the old token still on its way then finds a different token and is
-  rejected, so it can't free a record a wait has returned. A claim the bridge handed to a caller is
-  passed over; one another wait holds is waited out.
+  one whose release couldn't commit leaves the target held under the bridge's identity. The bridge
+  sweeps each claims link's table as it catches up, so such a claim is given back on the next link
+  even if no wait reaches that surface again (bee#31): it's marked as being given back and
+  released, queued until the release commits. The sweep passes over a claim the bridge handed to a
+  caller (a wait's record, or a `bee_claim` win), one a wait has in hand, and any target with a
+  claim in flight, whose win isn't in anyone's hands yet. A wait that reaches such a claim first
+  follows the same rule, then claims the record again under a fresh token. A release of the old
+  token still on its way then finds a different token and is rejected, so it can't free a record a
+  wait has returned. A claim the bridge handed to a caller is passed over; one another wait has in
+  hand, or whose target has a claim in flight, is waited out.
+  **Not yet excluded: a claim reassigned to this identity.** The sweep tells a claim nobody here
+  received only by the bridge's own record, so it would give back a `Reassign` of an orphan to
+  this session (§6.4) as if it were a stranded late win. Nothing proposes `Reassign` before plan
+  Task 11, which must add the provenance that tells the two apart.
 - **`bee_board` reports the board and the session's claims link.** `open`, `closed`, `attached`
   (who is present, from presence), `departed`, `claimViews` (the host's claims mirror, by target)
   and `claims`, which is `online` or `offline` for this session's link.
