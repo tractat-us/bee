@@ -1,7 +1,9 @@
 [versions]
-# Kotlin, Ktor, coroutines, serialization and atomicfu follow kuilt origin/main (280de6b49).
+# Kotlin, coroutines, serialization and atomicfu follow kuilt origin/main (280de6b49).
 kotlin = "2.4.20"
-ktor = "3.5.2"
+# Ktor runs ahead of kuilt (3.5.2): 3.6.1 delivers a WebSocket's last frame, such as the host's
+# 1009, before Netty closes (KTOR-9987, KTOR-10035; bee#58).
+ktor = "3.6.1"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.12.0"
 atomicfu = "0.33.0"
