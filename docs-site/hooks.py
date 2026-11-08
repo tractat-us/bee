@@ -22,8 +22,12 @@ from mkdocs.structure.files import File, Files
 from mkdocs.structure.pages import Page
 
 
-def _github_unique(id: str, ids) -> str:
-    """A repeated heading's anchor, as GitHub spells it: `x`, `x-1`, `x-2`."""
+def _github_unique(id: str, ids, counters=None) -> str:
+    """A repeated heading's anchor, as GitHub spells it: `x`, `x-1`, `x-2`.
+
+    Markdown 3.11 passes a third argument, a cache of suffixes taken; the loop
+    below does not need it.
+    """
     base, n = id, 0
     while id in ids or not id:
         n += 1
