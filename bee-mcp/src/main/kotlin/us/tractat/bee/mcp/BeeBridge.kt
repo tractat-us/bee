@@ -218,7 +218,7 @@ class BeeBridge(
     suspend fun clear(): List<String> {
         beforeWrite()
         val state = board.value
-        val open = state.openSurfaces().filter { state.meta(it)?.openedBy?.kind != PeerKind.Host }
+        val open = state.openSurfaces().filter { requireNotNull(state.meta(it)) { "Open surface $it has no meta." }.openedBy.kind != PeerKind.Host }
         open.forEach { id -> client.mutate { it.closeSurface(author, id, clock()) } }
         return open
     }

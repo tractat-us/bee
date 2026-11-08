@@ -188,7 +188,9 @@ Claude session ── bee-mcp                                           ┘     
   own surfaces, join requests (§5.7) and orphan decisions (§6.4), as `host:bee-host`, a third kind
   (Iain, 2026-11-08, bee#71). It's a label, and no new gate rests on it (§5.7). It keeps
   `bee_board_clear` off the host's surfaces, so clearing never strands a pairing device. Snapshots
-  from before it name the host `agent:bee-host#00000000`, which still reads as the host.
+  from before it name the host `agent:bee-host#00000000`, which still reads as the host. Upgrading
+  the host to the `host:` kind needs running bridges and companions restarted and pages reloaded,
+  because older readers can't parse `host:`.
 - **CRDT authors are not peer identities (design call).** A replica writes as `web-<uuid>` per page
   load, `mcp-<uuid>` per bridge process, or `host-<uuid>` per host boot.
 - **`/clear` is a departure (design call).** A stdio MCP server normally survives `/clear`, but the
@@ -378,6 +380,14 @@ design call:
    non-loopback connection that has no valid key. Keys live in the host's memory, so a host restart
    re-pairs every LAN device.
 
+**The host handles admit records without a claim (Iain, 2026-11-08, bee#72).** It is their only
+handler, and the voter never claims, so exactly-once holds by construction: the host handles each
+record once per boot, and a pairing never outlives the boot that opened it. The bridge refuses
+`bee_wait_action` and `bee_list_actions` on a pairing surface the host opened (`bee-pair-`, `host:`, §5.2), so no
+session takes an admit record and the code a person typed into it. That refusal is a visibility
+rule for well-behaved agents, not an access gate: it keys on a declared kind, and the host doesn't
+rely on it.
+
 **Only human peers may admit a device (Iain: humans only, for now).** This departs from the
 orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
 someone can see the new screen.
@@ -491,6 +501,9 @@ browser hadn't yet received. A handler whose replica lacks a dot the basis names
 as incomplete: unknown, never applicable.
 
 A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
+The exception is a pairing surface the host opened. The host handles its records itself, without a
+claim, as their only handler, and the bridge refuses a wait or a list on it (§5.7, bee#72). Orphan
+decisions are host-opened too and stay open to every participant (§6.4).
 
 ### 6.3 Claims: exactly one
 

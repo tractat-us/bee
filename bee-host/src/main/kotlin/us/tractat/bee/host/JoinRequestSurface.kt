@@ -15,6 +15,7 @@ import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PairingEnd
+import us.tractat.bee.core.PairingSurfaces
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.RecordId
 import us.tractat.bee.core.SurfaceMeta
@@ -138,7 +139,7 @@ class JoinRequestSurface(
         const val ADMIT_BUTTON: String = "admit-button"
         const val CODE_FIELD: String = "code-field"
 
-        private const val PREFIX = "bee-pair-"
+        private const val PREFIX = PairingSurfaces.PREFIX
         private const val TITLE = "A device wants to join"
         private const val CODE_KEY = "code"
         private const val STATUS_KEY = "status"

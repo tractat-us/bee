@@ -28,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.put
+import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
@@ -37,9 +38,11 @@ import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
+import us.tractat.bee.core.SurfaceMeta
 import us.tractat.bee.host.BoardStar
 import us.tractat.bee.host.ClaimsRig
 import us.tractat.bee.host.ClaimsVoter
@@ -148,6 +151,67 @@ class BeeToolsTest {
         assertAll(
             { assertEquals(listOf("one"), cleared.getValue("closed").jsonArray.map { it.jsonPrimitive.content }) },
             { assertEquals(listOf(request), after.openSurfaces(), "the join request stays open") },
+        )
+        rig.close()
+    }
+
+    /**
+     * An agent can't wait on or list a join request. The host handles its admit records without a
+     * claim, so a record an agent took would hand it the code a person typed (bee#72).
+     */
+    @Test
+    fun waitAndListRefuseAJoinRequest() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        val request = rig.joinRequest()
+        browser.state.first { request in it.openSurfaces() }
+        browser.mutate { state ->
+            val admit = ActionRecord(
+                surfaceId = request,
+                componentId = JoinRequestSurface.ADMIT_BUTTON,
+                actor = PeerIdentity.human("iain"),
+                name = JoinRequestSurface.ADMIT_ACTION,
+                context = buildJsonObject { put("code", "000000") },
+                basis = Basis.capture(state, request),
+                at = kotlin.time.Instant.fromEpochMilliseconds(0),
+            )
+            state.appendRecord(ReplicaId("web-iain"), admit)
+        }
+        ada.client.state.first { it.records(request).isNotEmpty() }
+
+        val waited = ada.call(WaitTool.WAIT, mapOf("surfaceId" to request, "timeoutSeconds" to 1))
+        val listed = ada.call(WaitTool.LIST, mapOf("surfaceId" to request))
+        val control = ada.call(WaitTool.LIST, mapOf("surfaceId" to "none"))
+        assertAll(
+            { assertTrue(waited.isError == true && "the host's" in waited.text(), "wait: ${waited.text()}") },
+            { assertTrue(listed.isError == true && "the host's" in listed.text(), "list: ${listed.text()}") },
+            { assertEquals(null, control.isError, "control: listing any other surface still works") },
+        )
+        rig.close()
+    }
+
+    /**
+     * The refusal is for pairing surfaces only: an orphan decision is host-opened too, and every
+     * participant answers it (spec §6.4), so an agent can still wait on it and list it.
+     */
+    @Test
+    fun waitAndListDoNotRefuseAHostOpenedOrphanDecision() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        val decision = "${OrphanDecision.PREFIX}record:x:1"
+        val meta = SurfaceMeta("Orphaned claim", NOTIONS_CATALOG_ID, PeerIdentity.host("bee-host"), kotlin.time.Instant.fromEpochMilliseconds(0))
+        browser.mutate { it.openSurface(ReplicaId("web-iain"), decision, meta, validSurface(), JsonObject(emptyMap())) }
+        browser.mutate { it.appendRecord(ReplicaId("web-iain"), click(it, decision, "go")) }
+        ada.client.state.first { it.records(decision).isNotEmpty() }
+
+        val listed = ada.call(WaitTool.LIST, mapOf("surfaceId" to decision))
+        val waited = ada.call(WaitTool.WAIT, mapOf("surfaceId" to decision, "timeoutSeconds" to 1))
+        assertAll(
+            { assertEquals(null, listed.isError, "list: ${listed.text()}") },
+            { assertEquals(null, waited.isError, "wait: ${waited.text()}") },
+            { assertTrue("\"timedOut\":false" in waited.text().replace(" ", ""), "wait returns the record: ${waited.text()}") },
         )
         rig.close()
     }

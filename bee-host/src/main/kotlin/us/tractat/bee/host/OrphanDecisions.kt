@@ -78,7 +78,7 @@ class OrphanDecisions(
             // Only agents are offered: a person has no release path in v1, so a claim reassigned to
             // one would be held for good. This filters for liveness, like `Departures`; the table still
             // commits any `Reassign`.
-            val peers = present().filter { it.kind == PeerKind.Agent && it !in retired && it != JoinRequestSurface.HOST }
+            val peers = present().filter { it.kind == PeerKind.Agent && it !in retired }
             orphans.forEach { orphan -> isolated(OrphanDecision.surfaceId(orphan.target)) { decide(orphan, peers) } }
         }
         relay.state.value.openSurfaces()
