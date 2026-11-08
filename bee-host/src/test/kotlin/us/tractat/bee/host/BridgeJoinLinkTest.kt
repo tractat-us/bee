@@ -141,7 +141,7 @@ class BridgeJoinLinkTest {
         ).first()
 
         /** The claims link once one proves itself, or the gate's refusal of it. */
-        suspend fun claimsOutcome(): Any = merge(claims.link.filterNotNull(), flow { emit(claimsRefused.await()) }).first()
+        suspend fun claimsOutcome(): Any = merge<Any>(claims.link.filterNotNull(), flow { emit(claimsRefused.await()) }).first()
     }
 
     private companion object {
