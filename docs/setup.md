@@ -151,6 +151,10 @@ What to expect:
 - **A host restart forgets every key.** A device that can't reconnect after one shows **Pair this
   screen again**.
 - **A key belongs to one browser tab.** A new tab on the same device pairs again.
+- **The host answers only to its own names**: `localhost`, the address a device used, and the
+  network name it logs. Reached by any other name, it refuses, which stops a website from reaching
+  it through a name of its own. If your network knows this machine by another name, add it with
+  `--host-name <name>`.
 - **A device on the network keeps no copy of the board.** A plain-HTTP page can't take the browser
   lock that guards the board's local copy, so it relies on the host for everything
   ([#39](https://github.com/tractat-us/bee/pull/39)).
