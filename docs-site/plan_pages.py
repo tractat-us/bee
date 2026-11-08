@@ -255,11 +255,19 @@ def render_dependencies() -> str:
     out = [
         "A solid arrow points from what must finish to what waits on it. A dotted arrow points from a part to the item it belongs to. "
         "Colour shows status; a node with a GitHub link opens it.\n",
-        "```mermaid\nflowchart LR",
+        "```mermaid\nflowchart TD",
     ]
-    for id in _plan["order"]:
-        item = _plan["items"][id]
-        out.append(f'    {_mermaid_id(id)}["{_mermaid_text(item["title"])}"]:::{_mermaid_id(item["status"])}')
+    # One box per group of ids, so the graph reads as plan, bee, kuilt, outside.
+    groups = {"task": "The v1 plan", "bee": "bee PRs and issues", "kuilt": "kuilt", "out": "Outside the code"}
+    for prefix, label in groups.items():
+        ids = [id for id in _plan["order"] if id.split("-")[0] == prefix]
+        if not ids:
+            continue
+        out.append(f'    subgraph {prefix}_group["{label}"]')
+        for id in ids:
+            item = _plan["items"][id]
+            out.append(f'        {_mermaid_id(id)}["{_mermaid_text(item["title"])}"]:::{_mermaid_id(item["status"])}')
+        out.append("    end")
     for id in _plan["order"]:
         item = _plan["items"][id]
         for dep in item.get("depends_on", []):
