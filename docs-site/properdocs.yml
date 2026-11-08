@@ -143,7 +143,7 @@ nav:
       - Home: index.md
       - Setup: setup.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
-      # bee and kuilt: a page another change adds goes here.
+      - bee and kuilt: bee-and-kuilt.md
       - Spikes:
           - Renderer glue: spikes/2026-11-spike-1-renderer-glue.md
           - A CRDT behind A2UI: spikes/2026-11-spike-2-crdt-behind-a2ui.md
