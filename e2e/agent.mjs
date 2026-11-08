@@ -56,7 +56,7 @@ export async function startAgent(name) {
     if (message.error) waiting.reject(new Error(`${name}: ${JSON.stringify(message.error)}`));
     else waiting.resolve(message.result);
   });
-  const exited = new Promise((resolve) => child.on('exit', resolve));
+  const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve({ code, signal })));
   child.on('exit', (code, signal) => {
     for (const [id, { method }] of [...pending]) {
       const waiting = settle(id);
@@ -105,15 +105,33 @@ export async function startAgent(name) {
       await exited;
     },
     /**
-     * Ends the session the way Claude Code does when it closes normally, and resolves once the
-     * bridge has exited: `stdin` closes the transport, `SIGTERM` signals the process. The bridge
-     * departs itself as left on the way out.
+     * Ends the session without a crash and resolves, once the bridge has exited, to
+     * `{ code, signal, ms }`: how it exited and how long after the first signal. `how` is:
+     * - `stdin`: closes the stdio transport, so the bridge's MCP session ends.
+     * - a signal name such as `SIGTERM`: sends just that signal.
+     * - `claude-exit`: SIGINT, then SIGKILL 400 ms later if the bridge is still running. This
+     *   copies public reports of Claude Code's `/exit`, not a measurement of it: SIGINT, SIGTERM
+     *   about 100 ms later, SIGKILL about 400 ms after that. It skips the SIGTERM and kills at
+     *   400 ms, a little sooner than the reported ~500 ms. A `signal` of `SIGKILL` means the
+     *   bridge missed that deadline.
+     * The bridge departs itself as left on each way out.
      */
     async end(how = 'stdin') {
       killed = true;
+      const started = performance.now();
+      let deadline;
       if (how === 'stdin') child.stdin.end();
-      else child.kill(how);
-      await exited;
+      else if (how === 'claude-exit') {
+        child.kill('SIGINT');
+        deadline = setTimeout(() => {
+          if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL');
+        }, 400);
+      } else child.kill(how);
+      const { code, signal } = await exited;
+      clearTimeout(deadline);
+      return { code, signal, ms: Math.round(performance.now() - started) };
     },
+    /** The bridge's last stderr lines, for a failure message. */
+    said,
   };
 }
