@@ -7,7 +7,7 @@ kotlinx-serialization = "1.12.0"
 atomicfu = "0.33.0"
 kotlinLogging = "8.0.6"
 logback = "1.6.6"
-# kuilt publish run 1693, kuilt commit e6044eb42: kuilt#3130, the learner admission ends on a roster leave.
+# kuilt publish run 1696, kuilt commit 758a0fe6b: kuilt#3136 (CausalMap), on #3132 (LatticeDotFun).
 kuilt = "0.7.0-dev.1696"
 mcp = "0.16.0"
 kotlinx-browser = "0.5.0"
