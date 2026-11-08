@@ -83,6 +83,8 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true
+      # A language-* class on each block, so llms.txt keeps the fence's language.
+      pygments_lang_class: true
   - pymdownx.inlinehilite
   # base_path resolves against the working directory, so every build runs from
   # the repo root. A missing include fails the build.
