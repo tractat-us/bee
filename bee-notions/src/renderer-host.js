@@ -6,13 +6,10 @@
 // (`version: "v0.9"`). See docs/spikes/2026-11-spike-1-renderer-glue.md.
 import { MessageProcessor, injectBasicCatalogStyles } from '@a2ui/web_core/v0_9';
 // Registers <a2ui-surface>, as a side effect of importing the Lit entry point.
-import { basicCatalog } from '@a2ui/lit/v0_9';
+import '@a2ui/lit/v0_9';
+import { NOTIONS_CATALOG_ID, notionsCatalog } from './catalog.js';
 
-export const NOTIONS_CATALOG_ID = 'https://tractat.us/bee/catalogs/notions/v1.json';
-
-// The Notions catalog: the basic catalog's components, under bee's own id. Sketch, Board
-// and Poll join it in later tasks.
-export const notionsCatalog = basicCatalog.derive({ catalogId: NOTIONS_CATALOG_ID });
+export { NOTIONS_CATALOG_ID, notionsCatalog };
 
 /**
  * Mounts a renderer under `rootElement`.
