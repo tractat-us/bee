@@ -23,8 +23,8 @@ import kotlin.time.Duration.Companion.seconds
  * its opener and that opener's "working on…" line, and a badge per claim on it; and the attached
  * strip, [strip].
  *
- * - **Cards hold the renderer's surfaces.** The renderer mounts each `<a2ui-surface>` where [slot]
- *   says, inside its card under [root], so a surface and its header are one element on the page.
+ * - **Cards hold the renderer's surfaces.** The renderer mounts each `<a2ui-surface>` through [place],
+ *   inside its card under [root], so a surface and its header are one element on the page.
  *   A card is made by whichever comes first, the renderer or the board's view.
  * - **A placeholder joins its card.** [BoardDriver] puts an invalid surface's placeholder in
  *   [root]; the chrome moves it into that surface's card as soon as it appears.
@@ -42,8 +42,12 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         observeChildren(root) { adoptPlaceholders() }
     }
 
-    /** Where surface [surfaceId]'s renderer output goes: its card's body. */
-    fun slot(surfaceId: String): Element = card(surfaceId).body
+    /** Puts surface [surfaceId]'s renderer [element] in its card's body. */
+    fun place(surfaceId: String, element: Element) {
+        slot(surfaceId).appendChild(element)
+    }
+
+    private fun slot(surfaceId: String): Element = card(surfaceId).body
 
     /** Shows [board] and its live presence from [roster] as they change, until [scope] ends. */
     fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence): Job = scope.launch {

@@ -249,7 +249,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         val onProblem: (String) -> Unit = { problem.textContent = it }
         val inputs = LiveInputs(root, client, author, scope, onProblem)
         val chrome = BoardChrome(root, shell.peers)
-        BoardDriver(client, A2uiRenderer(root, chrome::slot), root, author, actor, inputs, clock, onProblem).start(scope)
+        BoardDriver(client, A2uiRenderer(root, chrome::place), root, author, actor, inputs, clock, onProblem).start(scope)
         HistoryStrip(client, author, document.body!!, onProblem).start(scope)
         val presence = Presence(client, author, emptyFlow(), clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
         chrome.start(scope, client.state, presence.roster)
