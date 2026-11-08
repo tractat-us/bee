@@ -34,7 +34,7 @@ This is the shortest path from a clone to a Claude session and you sharing one b
     It listens on port 8233 (`--port <n>` changes it), answers only this machine, and logs
     `bee host on http://127.0.0.1:8233/`. Without `--data-dir` it keeps the board in
     `~/.bee/host`. A fresh directory gives you a fresh board, and a restart on the same directory
-    brings the board back. `--lan` lets other devices on your network reach it; see
+    brings the board back, with every key the host handed out. `--lan` lets other devices on your network reach it; see
     [Showing the board on another screen](#showing-the-board-on-another-screen).
 
 3. Open `http://localhost:8233/?name=<you>` in a browser. The board is empty and says
@@ -231,8 +231,26 @@ one code at a time, and can ask for a new one every ten seconds. All devices tog
 `--join-requests-per-hour <n>`.
 
 The join link carries a key (`?k=…`), so a device that opens it skips the code. The page moves
-the key out of the address bar as it loads. Anyone holding the link gets in until the host stops,
-so share it only with people you'd admit anyway.
+the key out of the address bar as it loads. Anyone holding the link gets in, across host restarts,
+until you make a new link, so share it only with people you'd admit anyway.
+
+### Cutting a device off
+
+The host keeps its keys in its data dir, in a file named `keys` that only you can read. A
+restart on the same data dir keeps the same join link, and every paired device stays paired.
+Taking access away is a restart with a flag:
+
+| To | Run | What happens |
+|---|---|---|
+| Stop the join link working | `bee-up --new-link` (or `bee-host --new-link`) | The host prints a new link, and the old one no longer admits. Paired devices keep their keys. |
+| Cut off everyone | `bee-up --forget-devices` (or `bee-host --forget-devices`) | Every paired device's key stops working, and so does the join link. The host prints a new link. Each device pairs again or takes the new link. |
+
+`--forget-devices` makes a new link too, because a device that came in by the link, and every
+bridge on another machine, holds the link's key, not one of its own. Forgetting only the paired
+devices would leave those connected.
+
+With a host already running, `bee-up` restarts it with the flag. The board itself survives either
+one.
 
 What to expect:
 
@@ -241,8 +259,8 @@ What to expect:
   say in the room.
 - **Your own machine needs no code** at `http://localhost:8233/`. Opened by its network name, it
   counts as another device and pairs like one.
-- **A host restart forgets every key.** A device that can't reconnect after one shows **Pair this
-  screen again**.
+- **A host restart keeps every key.** A paired tab left open reconnects on its own. After
+  `--forget-devices` it can't, and shows **Pair this screen again**.
 - **A key belongs to one browser tab.** A new tab on the same device pairs again.
 - **The host answers only to its own names**: `localhost`, the address a device used, and the
   network name it logs. Reached by any other name, it refuses, which stops a website from reaching
@@ -274,11 +292,13 @@ can't read stops the bridge at start-up, with a message that names `BEE_HOST`.
 
 What to expect:
 
-- **The key is in their config, and admits whoever holds it until the host stops.** Treat the
-  config like the link itself. The bridge's log names the host and says "with a join key"; it
+- **The key is in their config, and admits whoever holds it until you make a new link.** Treat
+  the config like the link itself. The bridge's log names the host and says "with a join key"; it
   never prints the key, not even when a dial fails and the failure names the URL it dialled.
-- **A host restart needs a new link.** The old key no longer admits, so the bridge is refused.
-  Send the new link, and have them update `BEE_HOST` and restart the bridge from `/mcp`.
+- **A host restart keeps the link.** Their bridge redials on its own, with the same `BEE_HOST`.
+- **After `--new-link` or `--forget-devices`, the old key no longer admits**, so their bridge is
+  refused ([Cutting a device off](#cutting-a-device-off)). Send the new link, and have them update
+  `BEE_HOST` and restart the bridge from `/mcp`.
 - **If their machine can't find yours by name**, swap the name for your machine's IP address and
   keep the `?k=…`: `http://192.168.1.5:8233/?k=…`. Some office networks don't pass `.local`
   names between laptops. The host answers to the address a device used.

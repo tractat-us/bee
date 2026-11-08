@@ -50,6 +50,7 @@ import us.tractat.bee.host.Opened
 import us.tractat.bee.host.Pairing
 import us.tractat.bee.host.SecureSecrets
 import us.tractat.bee.host.boardMirror
+import us.tractat.bee.host.memoryKeys
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.InMemoryTag
 import us.tractat.kuilt.crdt.ReplicaId

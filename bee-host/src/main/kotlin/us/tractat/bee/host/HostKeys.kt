@@ -125,7 +125,7 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
             when (reset) {
                 KeyReset.Keep -> {}
                 KeyReset.NewLink -> logger.info { "A new join link: the old one no longer admits. Paired devices keep their keys." }
-                KeyReset.ForgetDevices -> logger.info { "Forgot ${found?.devices?.size ?: 0} paired devices and the join link: every device pairs again, or takes the new link." }
+                KeyReset.ForgetDevices -> logger.info { "Forgot every device: the join link, and the keys of ${found?.devices?.size ?: 0} paired. Each device pairs again, or takes the new link." }
             }
             return HostKeys(store, kept)
         }
