@@ -62,12 +62,15 @@ private const val BOARD_PATH = "/ws/board"
 private const val KEY_STORAGE = "bee.lan.key"
 
 /** How this page may reach the host's board (spec §5.7). */
-private sealed interface Access {
+internal sealed interface Access {
+    /** The page may dial the board now. */
+    sealed interface Admitted : Access
+
     /** The page came from this machine: the host needs no key from it. */
-    data object Loopback : Access
+    data object Loopback : Admitted
 
     /** The page holds [key], from a join link's `?k=` or from pairing. */
-    data class Keyed(val key: String) : Access
+    data class Keyed(val key: String) : Admitted
 
     /** The page came over the network with no key: it pairs before it sees anything. */
     data object NeedsPairing : Access
@@ -109,10 +112,14 @@ fun main() {
     val screen = params.get(PairingWire.SCREEN_PARAM)?.isNotBlank() == true
     val http = HttpClient { install(WebSockets) }
     when (val access = accessOf(params)) {
-        Access.Loopback, is Access.Keyed -> startBoard(http, actor, screen, access)
-        Access.NeedsPairing -> pair(params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, screen, Access.Keyed(key)) }
+        is Access.Admitted -> startBoard(http, actor, viewerOf(params), screen, access)
+        Access.NeedsPairing -> pair(params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, viewerOf(params), screen, Access.Keyed(key)) }
     }
 }
+
+/** Who views this page, by the `?name=` it was opened with. */
+private fun viewerOf(params: URLSearchParams): Viewer =
+    params.get("name")?.takeIf { it.isNotBlank() }?.let(Viewer::Named) ?: Viewer.Unnamed
 
 private fun actorOf(params: URLSearchParams): PeerIdentity {
     val screen = params.get(PairingWire.SCREEN_PARAM)?.takeIf { it.isNotBlank() }
@@ -150,7 +157,7 @@ private fun socketUrl(path: String, query: String): String {
 
 private fun param(name: String, value: String): String = "$name=${encodeURIComponent(value)}"
 
-private fun encodeURIComponent(value: String): String = js("encodeURIComponent(value)")
+internal fun encodeURIComponent(value: String): String = js("encodeURIComponent(value)")
 
 /**
  * Shows the pairing code full screen until a person types it on the board, then hands the key to
@@ -217,7 +224,7 @@ private fun endedText(reason: PairingEnd): String = when (reason) {
 }
 
 @OptIn(ExperimentalUuidApi::class)
-private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, access: Access) {
+private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, screen: Boolean, access: Access.Admitted) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
     // Who views this page, for a Notion that marks the viewer's own choice (bee-notions' Poll).
     root.setAttribute("data-viewer", actor.toString())
@@ -240,7 +247,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, a
     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + crashed)
     val query = when (access) {
         is Access.Keyed -> param(PairingWire.KEY_PARAM, access.key)
-        else -> ""
+        Access.Loopback -> ""
     }
     val rendezvous = Rendezvous.Existing(WebSocketAdvertisement(socketUrl(BOARD_PATH, query), PeerId("bee-host"), "board"))
     scope.launch {
@@ -261,6 +268,8 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, a
         val onProblem: (String) -> Unit = { problem.textContent = it }
         val inputs = LiveInputs(root, client, author, scope, onProblem)
         val chrome = BoardChrome(root, shell.peers)
+        // A room screen has no person to bring a session, and its key is the room's own: never shown.
+        if (!screen) chrome.addToHint(BringYourClaude(shell, McpCommand.of(window.location.origin, access, viewer)).opener())
         val answering = if (screen) {
             OrphanAnswering.Refused
         } else {

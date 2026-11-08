@@ -129,6 +129,53 @@
     }
     #status[data-online="true"]::before { background: var(--acting); }
 
+    /* Bring your Claude: a quiet control in the bar, and its panel in the flow under the bar. */
+    #bring-claude-toggle, .bring-claude-open, #bring-claude-copy, #bring-claude-close {
+      flex: none;
+      padding: 2px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.85em;
+      cursor: pointer;
+    }
+    #bring-claude-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+    #bring-claude {
+      order: 1;
+      width: calc(100% - 32px);
+      max-width: 848px;
+      margin: 12px auto 0;
+      padding: 12px 16px;
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      background: var(--card);
+    }
+    #bring-claude[hidden] { display: none; }
+    #bring-claude p { margin: 6px 0; }
+    .bring-claude-head { display: flex; align-items: center; justify-content: space-between; }
+    #bring-claude-close { padding: 0 9px; font-size: 1.1em; line-height: 1.4; }
+    .bring-claude-line { display: flex; align-items: flex-start; gap: 8px; }
+    #bring-claude-command {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      font: 1rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+      user-select: all;
+    }
+    #bring-claude-copy { align-self: center; font-size: 0.95em; }
+    #bring-claude-copied { min-height: 1.45em; color: var(--acting); font-size: 0.9em; }
+    #bring-claude-then code, .bring-claude-unnamed {
+      font-size: 0.92em;
+    }
+    .bring-claude-unnamed { color: var(--muted); }
+    .bring-claude-offer { display: block; margin-top: 10px; }
+
     #problem {
       order: 1;
       margin: 12px 16px 0;

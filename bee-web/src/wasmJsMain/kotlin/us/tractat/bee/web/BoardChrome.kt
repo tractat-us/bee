@@ -65,6 +65,11 @@ class BoardChrome(private val root: Element, private val strip: Element) {
 
     private fun slot(surfaceId: String): Element = card(surfaceId).body
 
+    /** Ends the empty-board hint with [extra], on a line of its own. */
+    fun addToHint(extra: Element) {
+        hint.appendChild(extra)
+    }
+
     /**
      * Shows [board] and its live presence from [roster] as they change, until [scope] ends, and
      * the empty-board hint while the board is empty and [online].

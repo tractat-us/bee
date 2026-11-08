@@ -6,8 +6,8 @@ import org.w3c.dom.Element
 /**
  * The page around the board, made once the page may show the board (after pairing, if it pairs):
  *
- * - a bar above it, with the attached strip ([peers], `#peers`) and whether the page is online
- *   ([status], `#status`);
+ * - a bar above it ([bar], `#bar`), with the attached strip ([peers], `#peers`) and whether the
+ *   page is online ([status], `#status`);
  * - [problem] (`#problem`), under the bar, shown only when it says something;
  * - a collapsed "Details" (`#details`) after the board, holding what the page knows for debugging:
  *   whether this tab keeps the board ([store], `#store`) and every action record ([records],
@@ -16,6 +16,7 @@ import org.w3c.dom.Element
  * The board itself is index.html's `#board`, where [BoardChrome] puts a card per surface.
  */
 class PageShell private constructor(
+    val bar: Element,
     val peers: Element,
     val status: Element,
     val problem: Element,
@@ -35,7 +36,7 @@ class PageShell private constructor(
             details.appendChild(document.createElement("summary").also { it.textContent = "Details" })
             val store = details.appendChild(element("p", "store")) as Element
             val records = details.appendChild(element("ol", "records")) as Element
-            return PageShell(peers, status, problem, store, records)
+            return PageShell(bar, peers, status, problem, store, records)
         }
 
         private fun element(tag: String, id: String): Element = document.createElement(tag).also { it.id = id }
