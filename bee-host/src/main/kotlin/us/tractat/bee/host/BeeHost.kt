@@ -95,21 +95,19 @@ class BeeHost private constructor(
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 endpoints = mountEndpoints(pairing, PeerAddress.DIRECT, joinRequests, clock)
             }
-            val source = endpoints.board
-            val claimsHost = endpoints.claims
             server.start(wait = false)
             try {
                 val bound = server.engine.resolvedConnectors().first().port
                 val relay = BoardRelay.hosted(
                     scope = scope,
-                    source = source,
+                    source = endpoints.board,
                     dispatcher = Dispatchers.Default,
                     replica = ReplicaId("host-${Uuid.random()}"),
                     clock = clock,
                 )
                 val voter = ClaimsVoter.start(
                     scope,
-                    claimsHost,
+                    endpoints.claims,
                     config.dataDir.resolve("claims").toFile(),
                     RaftConfig(),
                     boardMirror(relay),
