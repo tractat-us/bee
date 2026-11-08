@@ -101,7 +101,7 @@ class SiteRule(names: Set<String>) {
  * Installed on the application, not on chosen routes, so a route added later, anywhere, is behind
  * it too: the board and claims sockets, `/pair`, `/board-id` and the page alike.
  *
- * Workaround for kuilt#TODO, which asks kuilt's server looms for a handshake check of their own.
+ * Workaround for kuilt#3146, which asks kuilt's server looms for a handshake check of their own.
  */
 fun Application.installSiteGate(rule: SiteRule, arrivals: ArrivalAddress) {
     install(
