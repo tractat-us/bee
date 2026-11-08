@@ -19,9 +19,11 @@ kit="$out/$name"
 
 # jdeps can't trace every reflective load in Ktor, Netty and Logback, so this list is generous:
 # a missing module only fails at run time, on the coworker's laptop.
+# --no-watch-fs: file-system watching can miss a source change and ship a stale page bundle
+# (tractat-us/bee#102), and a kit is the build nobody checks before handing it on.
 modules=java.base,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.sql,java.xml,jdk.crypto.ec,jdk.httpserver,jdk.management,jdk.unsupported,jdk.zipfs
 
-(cd "$root" && JAVA_HOME=$java_home ./gradlew :bee-host:installDist :bee-mcp:installDist --console=plain -q)
+(cd "$root" && JAVA_HOME=$java_home ./gradlew :bee-host:installDist :bee-mcp:installDist --no-watch-fs --console=plain -q)
 rm -rf "$kit" "$out/$name.zip"
 mkdir -p "$kit"
 "$java_home/bin/jlink" --add-modules "$modules" --strip-debug --no-header-files --no-man-pages \
