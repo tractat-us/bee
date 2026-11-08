@@ -1,9 +1,12 @@
 package us.tractat.bee.companion
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import us.tractat.bee.companion.CompanionRig.Companion.WAIT
 import us.tractat.bee.companion.CompanionRig.Companion.sketchHtml
 import us.tractat.kuilt.test.assertAll
@@ -49,8 +52,46 @@ class SketchSurfaceTest {
         val reason = (refusal["reason"] as? JsonPrimitive)?.content.orEmpty()
         assertAll(
             { assertTrue("limit of $budget bytes" in reason, "the refusal states the limit: $reason") },
-            { assertTrue("small" in sketchHtml(onBoard)!!, "the board still shows the screen before it") },
-            { assertEquals(1, CompanionAdapter.screensShown(onBoard), "nothing of the refused screen was written") },
+            { assertTrue("small" in sketchHtml(onBoard)!!, "none of the refused screen's html was written") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A refused screen still ends the screen before it: its events are cleared, a click made on it
+     * afterwards is dropped, and the events file says the new screen was refused, so the agent
+     * reads that instead of a click on a screen it moved past.
+     *
+     * The clicking browser goes offline before the refused screen is pushed, so its click is on
+     * the screen before by construction.
+     */
+    @Test
+    fun refusedScreenEndsTheScreenBefore() = runTest(timeout = 120.seconds) {
+        val rig = CompanionRig(this, Files.createTempDirectory("w8-sketch-"), maxFrameBytes = LIMIT)
+        rig.start()
+        rig.screen("small.html", "<p>small</p>")
+        val companion = rig.companion()
+        val browser = rig.browser()
+        rig.shows(browser) { "small" in it }
+        rig.click(browser, "a", "A", 1_706_000_101)
+        rig.eventLines(1)
+        browser.client.disconnect()
+        withTimeout(WAIT) { browser.client.online.first { !it } }
+
+        rig.screen("huge.html", "<p>" + "x".repeat(4 * LIMIT) + "</p>")
+        withTimeout(WAIT) { while (companion.reports.none { it["file"] == JsonPrimitive("huge.html") }) delay(100) }
+        rig.click(browser, "stale", "Stale", 1_706_000_102)
+        browser.client.connect()
+        // The stale click reached the companion, which handled it one way or the other.
+        withTimeout(WAIT) {
+            while (companion.reports.none { it["type"] == JsonPrimitive("click-dropped") } && rig.lines().none { "stale" in it }) delay(100)
+        }
+        val lines = rig.lines().map { Json.parseToJsonElement(it).jsonObject }
+        assertAll(
+            { assertEquals(1, lines.size, "one line, the refusal: $lines") },
+            { assertEquals(JsonPrimitive("screen-refused"), lines.first()["type"]) },
+            { assertEquals(JsonPrimitive("huge.html"), lines.first()["file"]) },
+            { assertTrue("limit of" in lines.first()["reason"].toString(), "it says why: ${lines.first()}") },
         )
         rig.close()
     }
