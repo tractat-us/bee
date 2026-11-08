@@ -1,8 +1,12 @@
 // `Sketch`: agent-written HTML in a sandboxed frame (spec §5.6, plan Task 8). Invariant: the
 // HTML runs only inside `<iframe sandbox="allow-scripts">`, never with allow-same-origin, under a
-// CSP that allows no network, and the page acts only on messages whose source is that frame, and
-// on a choice only while the viewer's click is fresh. The page's own CSP (bee-host's PAGE_CSP)
-// keeps the frame from navigating to a URL.
+// CSP that allows no fetch, socket, image or frame load, and the page acts only on messages whose
+// source is that frame, and on a choice only while the viewer's click is fresh. The page's own
+// CSP (bee-host's PAGE_CSP) keeps the frame from navigating to a URL.
+//
+// Not covered: WebRTC sits outside CSP, so a sketch can still reach the network through an
+// `RTCPeerConnection` (ICE to a STUN or TURN server it names), and the browser may resolve a DNS
+// name a sketch hints at (bee#49). The helper deletes the WebRTC constructors, best-effort.
 //
 // A click on a `[data-choice]` element inside it reaches the board as the A2UI action `choice`,
 // with context `{choice, text}`. The frame reports it in the MCP Apps (SEP-1865) View-to-Host
@@ -11,7 +15,10 @@ import { A2uiLitElement } from '@a2ui/lit/v0_9';
 import { DynamicStringSchema, TextApi } from '@a2ui/web_core/v0_9';
 import { sketchHelper } from './sketch-helper.js';
 
-/** No network, no frames, no forms: only the inline script and styles the sketch carries, and data: images. */
+/**
+ * No fetch, socket, frame or form loads: only the inline script and styles the sketch carries, and
+ * data: images. CSP doesn't govern WebRTC or DNS hints, so this isn't "no network" (bee#49).
+ */
 export const SKETCH_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:";
 
@@ -23,8 +30,20 @@ export const CHOICE_ACTION = 'choice';
 
 const CHOICE_META = 'us.tractat.bee/choice';
 
-/** The least time between two choices from one frame: faster than a person clicks twice. */
+/**
+ * The least time between two `ui/message`s from one frame, refused ones included: faster than a
+ * person clicks twice. A frame that posts faster than this gets nothing through.
+ */
 const CHOICE_GAP_MS = 250;
+
+/**
+ * How long a gesture on the page itself explains the page's user activation: Chromium's
+ * transient activation lasts about this long.
+ */
+const PAGE_GESTURE_MS = 5_000;
+
+/** The gestures that activate a page, as the page itself sees them. */
+const PAGE_GESTURES = ['pointerdown', 'keydown'];
 
 /**
  * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
@@ -62,8 +81,12 @@ export class SketchElement extends A2uiLitElement {
     super();
     this.frame = null;
     this.shown = null;
-    this.lastChoiceAt = -Infinity;
+    this.lastMessageAt = -Infinity;
+    this.lastPageGestureAt = -Infinity;
     this.onMessage = (event) => this.receive(event);
+    this.onPageGesture = () => {
+      this.lastPageGestureAt = performance.now();
+    };
   }
 
   /** Light DOM, as the basic catalog's elements render. */
@@ -74,10 +97,14 @@ export class SketchElement extends A2uiLitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('message', this.onMessage);
+    // Capture, so no handler on the page can hide a gesture from it. A gesture inside the
+    // sketch's frame (cross-origin) never reaches these listeners.
+    for (const type of PAGE_GESTURES) window.addEventListener(type, this.onPageGesture, { capture: true });
   }
 
   disconnectedCallback() {
     window.removeEventListener('message', this.onMessage);
+    for (const type of PAGE_GESTURES) window.removeEventListener(type, this.onPageGesture, { capture: true });
     super.disconnectedCallback();
   }
 
@@ -130,15 +157,27 @@ export class SketchElement extends A2uiLitElement {
   /**
    * Whether a `ui/message` now is the viewer's: a choice is recorded as theirs, so the sketch may
    * not send one on its own. A click inside the frame activates this page too (user activation
-   * reaches every ancestor), so `isActive` holds only for a few seconds after a real gesture. One
-   * choice per CHOICE_GAP_MS per frame keeps a sketch from flooding the board inside that window.
+   * reaches every ancestor), so `isActive` holds only for a few seconds after a real gesture.
+   *
+   * Activation is page-wide, so a gesture on the page itself (typing in another surface's field)
+   * would open the same window to a sketch posting in the background. A gesture the page saw in
+   * the last PAGE_GESTURE_MS explains the activation, so the choice is refused; one inside the
+   * frame never reaches the page's listeners. The cost: a choice made within that time of typing
+   * on the page is refused too.
+   *
+   * Every message counts toward the CHOICE_GAP_MS limit, refused or not, so a frame that posts
+   * faster than a person clicks gets nothing through.
+   *
+   * Not covered: a sketch that posts while the viewer presses on the frame but not on a choice
+   * (selecting text, say) is taken as the viewer's choice.
    */
   mayChoose() {
-    if (!navigator.userActivation?.isActive) return false;
     const now = performance.now();
-    if (now - this.lastChoiceAt < CHOICE_GAP_MS) return false;
-    this.lastChoiceAt = now;
-    return true;
+    const sincePrevious = now - this.lastMessageAt;
+    this.lastMessageAt = now;
+    if (sincePrevious < CHOICE_GAP_MS) return false;
+    if (!navigator.userActivation?.isActive) return false;
+    return now - this.lastPageGestureAt >= PAGE_GESTURE_MS;
   }
 
   /** Answers request [id] (a notification, with no id, gets none). The frame's origin is opaque: '*'. */
