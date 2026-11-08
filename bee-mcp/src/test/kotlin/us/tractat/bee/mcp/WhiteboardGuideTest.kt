@@ -49,12 +49,11 @@ class WhiteboardGuideTest {
         // Control: the rig refuses a surface the validator can't pass, so a green result above means something.
         val rootless = WhiteboardGuide.EXAMPLES.first().let { it.copy(components = it.components.replace("\"root\"", "\"top\"")) }
         val refused = ada.call(BeeTools.OPEN, rootless.args("control"))
+        val each = opened.map { (example, result) -> { assertEquals(null, result.isError, "${example.name}: ${result.text()}") } }
         assertAll(
-            opened.map { (example, result) -> { assertEquals(null, result.isError, "${example.name}: ${result.text()}") } } +
-                listOf(
-                    { assertEquals(ids, ada.client.state.value.openSurfaces().sorted(), "every example is on the board") },
-                    { assertTrue(refused.isError == true, "control: a rootless surface is refused: ${refused.text()}") },
-                ),
+            *each.toTypedArray(),
+            { assertEquals(ids, ada.client.state.value.openSurfaces().sorted(), "every example is on the board") },
+            { assertTrue(refused.isError == true, "control: a rootless surface is refused: ${refused.text()}") },
         )
         rig.close()
     }
