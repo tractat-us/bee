@@ -99,12 +99,14 @@ jobs:
           BUILD_INPUTS=false
           while IFS= read -r file; do
             [ -z "$file" ] && continue
-            if [[ "$file" == *.md ]]; then
+            # lychee.toml configures the links job, so it counts as a docs input.
+            if [[ "$file" == *.md ]] || [[ "$file" == lychee.toml ]]; then
               DOCS_INPUTS=true
             fi
             # The docs site builds in its own workflow, docs-site.yml, never in Gradle.
             if ! { [[ "$file" == *.md ]] || [[ "$file" == docs/* ]] \
               || [[ "$file" == docs-site/* ]] || [[ "$file" == .github/workflows/docs-site.yml ]] \
+              || [[ "$file" == lychee.toml ]] \
               || [[ "$file" == LICENSE ]] || [[ "$file" == .gitignore ]]; }; then
               BUILD_INPUTS=true
             fi
