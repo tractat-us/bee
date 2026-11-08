@@ -162,3 +162,54 @@ test('a sketch that fits its own Send under a resting pointer records nothing un
 
   for (const surfaceId of ['lure', 'below']) await agent.call('bee_surface_close', { surfaceId });
 });
+
+// The companion's frame template pins its root to the frame (`html, body { height: 100%;
+// overflow: hidden }`) and scrolls inside `.main`, so its root and body are always the frame's
+// height. The frame fits what it holds instead: the header, and what `.main` holds.
+test('a screen pinned to its frame, scrolling inside, fits what it holds', async ({ page }) => {
+  const pinned = '<style>*{box-sizing:border-box;margin:0;padding:0} html, body { height: 100%; overflow: hidden }' +
+    ' body { display: flex; flex-direction: column } .header { height: 42px; flex-shrink: 0 }' +
+    ' .main { flex: 1; overflow-y: auto } #frame-content { padding: 2rem; min-height: 100% }</style>' +
+    '<div class="header">Header</div><div class="main"><div id="frame-content"><div id="box" style="height:200px">Pinned</div></div></div>';
+  await openSketch('pinned', pinned);
+  await open(page, 'pat');
+  await expect(frame(page, 'pinned').locator('body')).toContainText('Pinned', { timeout: 15_000 });
+  // 42px of header, 2rem of padding either side, 200px of content.
+  await expect.poll(() => inner(page, 'pinned'), { timeout: 5_000 }).toBe(42 + 64 + 200);
+  await resize(page, 'pinned', 300);
+  await expect.poll(() => inner(page, 'pinned'), { timeout: 5_000 }).toBe(42 + 64 + 300);
+  await agent.call('bee_surface_close', { surfaceId: 'pinned' });
+});
+
+// A fit re-arms only the Sends it moved: a sketch above the one that fits keeps its Send armed.
+test('a fit leaves armed the Send of a sketch above it', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1600 });
+  await openSketch('above', `${NO_MARGIN}<div style="height:150px">Above</div>`);
+  await openSketch('fitter', `${NO_MARGIN}<div id="box" style="height:150px">The fitter</div>`);
+  await open(page, 'lee');
+  await expect(frame(page, 'fitter').locator('body')).toContainText('The fitter', { timeout: 15_000 });
+  await propose(page, 'above', 'kept');
+  await expect(send(page, 'above')).toBeEnabled();
+
+  await resize(page, 'fitter', 300);
+  await expect.poll(() => inner(page, 'fitter'), { timeout: 5_000, intervals: [5] }).toBe(300);
+  expect(await send(page, 'above').isEnabled()).toBe(true);
+  for (const surfaceId of ['above', 'fitter']) await agent.call('bee_surface_close', { surfaceId });
+});
+
+// A document whose height follows the frame's turns every fit around; the frame stops refitting.
+test('a frame whose document follows its height stops refitting', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSketch('swing', `${NO_MARGIN}<div style="height:calc(1000px - 100vh)">Swing</div>`);
+  await open(page, 'kim');
+  await expect(frame(page, 'swing').locator('body')).toContainText('Swing', { timeout: 15_000 });
+  await page.waitForTimeout(1_500);
+  const fits = await iframe(page, 'swing').evaluate((f) => new Promise((resolve) => {
+    let count = 0;
+    const seen = new MutationObserver(() => { count += 1; });
+    seen.observe(f, { attributes: true, attributeFilter: ['style'] });
+    setTimeout(() => { seen.disconnect(); resolve(count); }, 1_000);
+  }));
+  expect(fits).toBe(0);
+  await agent.call('bee_surface_close', { surfaceId: 'swing' });
+});
