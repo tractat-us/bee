@@ -63,6 +63,13 @@ class Presence(
                 delay(EVERY)
             }
         }
+        // A fresh node is posted at once: the old node's removal must find the new one named.
+        scope.launch(CoroutineName("presence-${author.value}-claims")) {
+            claimsNodes.collect { node ->
+                claimsNode.value = node
+                post()
+            }
+        }
     }
 
     /** Sets what this peer shows, and posts it at once. */
