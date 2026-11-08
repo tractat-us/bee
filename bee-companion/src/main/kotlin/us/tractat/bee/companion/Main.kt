@@ -151,7 +151,8 @@ fun main(args: Array<String>) {
             // A graceful stop (SIGTERM) closes the surface. A crash can't, and leaves it open. The
             // brainstorming stop script will send that SIGTERM once the plugin starts bee-companion
             // in the companion server's place; it doesn't reach this process yet.
-            Runtime.getRuntime().addShutdownHook(Thread({ closeOnStop(adapter) }, "bee-companion-close"))
+            // Then it leaves, so the board shows it left, not crashed.
+            Runtime.getRuntime().addShutdownHook(Thread({ closeOnStop(adapter); leaveOnStop(bridge) }, "bee-companion-close"))
             bridge.announce()
             adapter.start(this).join()
         }
@@ -179,6 +180,29 @@ private fun closeOnStop(adapter: CompanionAdapter) {
         return
     }
     if (acknowledged != true) logger.warn { "The host didn't acknowledge closing ${adapter.surface} within $STOP_BOUND; it may stay open." }
+}
+
+/**
+ * How long a stopping companion waits for its `Depart(Left)` to commit, after closing its surface:
+ * bee-mcp's bound. Both waits run long only on a host that's gone, when the stop script's SIGKILL
+ * may end this one first, and the host departs the companion `Crashed`.
+ */
+private val LEAVE_BOUND = 1.seconds
+
+/** Departs [bridge]'s identity as left as the process ends, waiting at most [LEAVE_BOUND]. */
+private fun leaveOnStop(bridge: BeeBridge) {
+    val committed = try {
+        runBlocking { bridge.leave(LEAVE_BOUND) }
+    } catch (failure: Exception) {
+        // The top of the hook's thread: a cancellation reaching here is a failure like any other.
+        logger.warn(failure) { "Leaving the board as ${bridge.self} failed; the host will depart it as crashed." }
+        return
+    }
+    if (committed) {
+        logger.info { "Left the board as ${bridge.self}." }
+    } else {
+        logger.warn { "${bridge.self}'s Depart(Left) didn't commit within $LEAVE_BOUND; the host will depart it as crashed." }
+    }
 }
 
 /**
