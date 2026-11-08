@@ -34,10 +34,10 @@ A few ideas sit under those jobs, and each is worth naming once.
   such as a poll or a set of cards, is a *surface*, and each surface is one of kuilt's `JsonCrdt`
   documents. The clicks waiting to be handled are a kuilt `Rga`, an ordered list that merges the
   same way.
-- **Exactly one winner.** When an agent says "I'll take this card", there must be one winner, and
+- **Exactly one winner.** When someone says "I'll take this card", there must be one winner, and
   merging can't promise that: two peers that can't see each other can both claim the same card.
   So a *claim* goes through a vote instead. kuilt's *Raft* puts every claim into one agreed order,
-  and bee gives the card to the first claim in that order. Today the bee host is the only voter.
+  and bee gives the card to the first claim in that order. In v1 the bee host is the only voter.
   Browsers and Claude sessions are *learners*: they follow the agreed order and send their claims
   to the voter, which never claims anything itself.
 - **Who's here.** Presence, the list of who's attached right now, is a kuilt `EphemeralMap`. Each
@@ -104,9 +104,9 @@ all: it's the renderer's side of the page.
 
 ## Why the line sits where it does
 
-Several of the pieces bee needs have nothing to do with boards. Exactly-once claims, a voter that never
-claims for itself, records of a click that remember what the clicker could see, surfaces stored
-as JSON on a CRDT: another app could want any of them.
+Several of the pieces bee needs have nothing to do with boards. Exactly-once claims, a voter
+that never claims for itself, records of a click that remember what the clicker could see,
+surfaces stored as JSON on a CRDT: another app could want any of them.
 
 So bee builds each one first, because bee is where it's needed, and builds it without leaning on
 anything bee-specific. Once a piece has proven itself in bee, it moves to kuilt through a kuilt
@@ -131,7 +131,7 @@ Two gaps show the loop.
   every claim through a proxy of its own. Instead it chose to fix kuilt first
   ([kuilt#3120](https://github.com/tractat-us/kuilt/issues/3120)), and the fix shipped in kuilt
   `0.7.0-dev.1692`. A follow-up gap, a learner that had gone never being removed
-  ([kuilt#3127](https://github.com/tractat-us/kuilt/issues/3127)), shipped in `0.7.0-dev.1693`.
+  ([kuilt#3127](https://github.com/tractat-us/kuilt/issues/3127)), was fixed in `0.7.0-dev.1693`.
   bee took it by changing its kuilt version and nothing else
   ([bee#26](https://github.com/tractat-us/bee/pull/26)). The
   [spike notes](spikes/2026-11-spike-4-claims.md) tell the whole story.
@@ -165,9 +165,9 @@ worktrees have no checkout beside them, so they always build against the release
 ## A paused kuilt project bee borrows from
 
 [kuilt#2869](https://github.com/tractat-us/kuilt/issues/2869) explores shared workspaces for
-people and agents. It's paused, and bee is separate from
-it. bee borrows its rule for records: a result keeps a record of what it was based on, so a click
-can never later look as though it saw something it hadn't. The plan's
+people and agents. It's paused, and bee is separate from it. bee borrows its rule for records: a
+result keeps a record of what it was based on, so a click can never later look as though it saw
+something it hadn't. The plan's
 [checkpoint](superpowers/plans/2026-11-06-bee-v1.md#kuilt2869-checkpoint-after-the-plan) lists what
 bee took and what kuilt#2869 might take back, and the spec's
 [section on it](superpowers/specs/2026-11-06-bee-design.md#8-bee-and-kuilt2869) says why the two
