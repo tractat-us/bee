@@ -544,7 +544,10 @@ table over the committed log:
     `Reassign` to a retired agent.
   - `target`, `holder` and `token`: the orphaning the surface is open for now.
   - `rounds/<token>/answers`: each answerer's option id, keyed by peer identity. The `Poll` binds
-    the current orphaning's answers, so an answer to an earlier orphaning neither shows nor counts.
+    the current orphaning's answers, so an answer to an earlier orphaning doesn't show. Its
+    proposal isn't fenced, though: a `Reassign` or a token-less `Release` names no orphaning, so a
+    stale answer processed after the target is orphaned again applies to the current orphaning
+    (tractat-us/bee#83).
 
   An answer is the action `answer` with context `{option}`. The answerer's own client proposes the
   `Reassign` or `Release`, and "Wait" proposes nothing. The host proposes nothing but `Depart`. A
