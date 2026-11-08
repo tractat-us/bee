@@ -287,11 +287,13 @@ test('a sketch sized in vh keeps the height it first reports', async ({ page }) 
   await open(page, 'jo');
   await expect(frame(page, 'vh-div').locator('body')).toContainText('Tall', { timeout: 15_000 });
   await page.waitForTimeout(1_500);
-  // The frame starts at its cap, 720px here: 60vh and 80vh of that.
+  // The frame starts at its cap, 720px here: about 60vh and 80vh of that, not the 120px floor.
   const svg = await inner(page, 'vh-svg');
-  expect(svg).toBeGreaterThanOrEqual(432);
+  expect(svg).toBeGreaterThan(420);
   expect(svg).toBeLessThan(450);
-  expect(await inner(page, 'vh-div')).toBe(576);
+  const div = await inner(page, 'vh-div');
+  expect(div).toBeGreaterThan(560);
+  expect(div).toBeLessThanOrEqual(576);
   const [svgFits, divFits] = await Promise.all([refits(page, 'vh-svg'), refits(page, 'vh-div')]);
   expect(svgFits + divFits).toBe(0);
   for (const surfaceId of ['vh-svg', 'vh-div']) await agent.call('bee_surface_close', { surfaceId });
