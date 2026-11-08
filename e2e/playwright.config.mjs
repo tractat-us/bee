@@ -52,7 +52,12 @@ export default defineConfig({
     baseURL,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // WebKit on demand, one project per run, since a spec's beforeAll owns the shared board:
+    // `BEE_E2E_WEBKIT=1 npx playwright test --project=webkit sketch.spec.mjs`. CI installs Chromium only.
+    ...(process.env.BEE_E2E_WEBKIT ? [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }] : []),
+  ],
   webServer: hasSpecs ? {
     // `--host-name bee-lan.test`: second-screen.spec.mjs reaches the host by that name, which the
     // host refuses as a rebinding name otherwise (bee#45).

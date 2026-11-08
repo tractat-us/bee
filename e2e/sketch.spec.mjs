@@ -85,6 +85,15 @@ const sketchIframe = (page) => page.locator(`a2ui-surface[data-surface-id="${sur
 const sketchFrame = (page) => page.frameLocator(`a2ui-surface[data-surface-id="${surfaceId}"] bee-sketch iframe`);
 const companionRecords = (page) => page.locator(`#records li[data-surface-id="${surfaceId}"]`);
 
+/** The page's own bar under a sketch, showing the choice it proposes (bee#60). */
+const proposal = (page, surface = surfaceId) =>
+  page.locator(`a2ui-surface[data-surface-id="${surface}"] bee-sketch .bee-proposal`);
+
+/** Sends the sketch's proposal, with a click on the page's own Send button. */
+async function confirm(page, surface = surfaceId) {
+  await proposal(page, surface).getByRole('button', { name: 'Send', exact: true }).click();
+}
+
 function eventLines() {
   return existsSync(eventsFile) ? readFileSync(eventsFile, 'utf8').split('\n').filter(Boolean) : [];
 }
@@ -99,6 +108,8 @@ test('a sketch click lands as a record with a basis', async ({ browser }) => {
   const before = await companionRecords(alex.page).count();
 
   await alex.frame.locator('[data-choice="a"]').click();
+  await expect(proposal(alex.page)).toContainText('Option A');
+  await confirm(alex.page);
   // The actor is the person, the component is the sketch, and the basis names the screen alex saw.
   await expect(companionRecords(alex.page)).toHaveCount(before + 1, { timeout: 5_000 });
   await expect(companionRecords(alex.page).last()).toHaveText(/^human:alex choice on root, having seen \/screens [1-9]\d*, records \d+$/);
@@ -111,12 +122,58 @@ test('click inside the sketch reaches the events file', async ({ browser }) => {
   await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
 
   await sam.frame.locator('[data-choice="b"]').click();
+  await confirm(sam.page);
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   const event = JSON.parse(eventLines()[0]);
   expect(Object.keys(event)).toEqual(['type', 'choice', 'text', 'timestamp']);
   expect(event).toMatchObject({ type: 'click', choice: 'b', text: 'Option B' });
   expect(Math.abs(event.timestamp - Date.now() / 1000)).toBeLessThan(60);
   await sam.context.close();
+});
+
+// A sketch only proposes (bee#60): the page shows the proposal under that sketch and records it
+// only when the viewer clicks the page's own Send. A later proposal replaces the earlier one.
+test('a later proposal replaces the earlier one and Send records it once', async ({ browser }) => {
+  pushScreen('replace.html', options.replace('Which layout?', 'Replace layout?'));
+  const pat = await openBoard(browser, 'pat', 'Replace layout?');
+  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
+
+  await pat.frame.locator('[data-choice="a"]').click();
+  await expect(proposal(pat.page)).toContainText('Option A');
+  await pat.frame.locator('[data-choice="b"]').click();
+  await expect(proposal(pat.page)).toContainText('Option B');
+  await expect(proposal(pat.page)).not.toContainText('Option A');
+  // A proposal never records itself.
+  await pat.page.waitForTimeout(1_500);
+  expect(eventLines()).toEqual([]);
+
+  await confirm(pat.page);
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  await expect(proposal(pat.page)).toBeHidden();
+  await pat.page.waitForTimeout(1_500);
+  expect(eventLines().map((l) => JSON.parse(l))).toMatchObject([{ choice: 'b', text: 'Option B' }]);
+  await pat.context.close();
+});
+
+test('a dismissed proposal records nothing and clears the selection', async ({ browser }) => {
+  pushScreen('dismiss.html', options.replace('Which layout?', 'Dismiss layout?'));
+  const dee = await openBoard(browser, 'dee', 'Dismiss layout?');
+  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
+
+  await dee.frame.locator('[data-choice="a"]').click();
+  await expect(dee.frame.locator('.option.selected')).toHaveCount(1);
+  await proposal(dee.page).getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await expect(proposal(dee.page)).toBeHidden();
+  await expect(dee.frame.locator('.option.selected')).toHaveCount(0);
+  await dee.page.waitForTimeout(1_500);
+  expect(eventLines()).toEqual([]);
+
+  // Control: the sketch still takes a choice after a dismissal.
+  await dee.frame.locator('[data-choice="b"]').click();
+  await confirm(dee.page);
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'b', text: 'Option B' });
+  await dee.context.close();
 });
 
 test('sketch cannot reach the parent DOM or the network', async ({ browser }) => {
@@ -204,139 +261,32 @@ test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
   await located.context.close();
 });
 
-// A choice is recorded as the viewer's, so a sketch can't make one by itself: only right after a
-// real click. Every message from a frame counts toward one per 250 ms, so a click followed by a
-// burst makes one choice; forgeries spaced wider than that are what the next test covers.
+// A sketch that posts by itself, at load and through the companion's page API, only proposes:
+// the proposal shows on the page and records nothing until the viewer sends it.
 test('a sketch that posts at load creates no record', async ({ browser }) => {
   test.setTimeout(60_000);
-  // Every Playwright read of the page (a locator, a count) activates it for 5 s, as a gesture
-  // would; a real page isn't. So the sketch posts its forgeries, every 100 ms, only from 8 s to
-  // 10.5 s after it loads, and the test leaves the page alone meanwhile. It posts ten more right
-  // after the helper sends a real click's choice.
   pushScreen('auto.html', '<h2>Auto poster</h2>' +
     '<div class="options"><div class="option" id="real" data-choice="real">Real</div></div><script>' +
     'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 900, method: "ui/message", params: ' +
     '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
-    'setTimeout(() => { let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 25) clearInterval(t); }, 100); }, 8000);' +
-    'document.getElementById("real").addEventListener("click", () => setTimeout(() => { for (let i = 0; i < 10; i++) forge("burst"); }, 0));' +
+    'brainstorm.choice("helper"); let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 25) clearInterval(t); }, 100);' +
     '</' + 'script>');
   const kit = await openBoard(browser, 'kit', 'Auto poster');
   const before = await companionRecords(kit.page).count();
-  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
-  await kit.page.waitForTimeout(12_000);
+  await expect(proposal(kit.page)).toContainText('auto');
+  await kit.page.waitForTimeout(4_000);
   expect(eventLines()).toEqual([]);
   expect(await companionRecords(kit.page).count()).toBe(before);
 
-  // Control: a real click goes through, once, though it sends eleven messages.
+  // Control: a real click, sent, goes through once.
   await kit.frame.locator('[data-choice="real"]').click();
+  await expect(proposal(kit.page)).toContainText('Real');
+  await confirm(kit.page);
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   await kit.page.waitForTimeout(1_500);
   expect(await companionRecords(kit.page).count()).toBe(before + 1);
   expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
   await kit.context.close();
-});
-
-// Activation is page-wide: typing in another surface's field activates the page as a click in the
-// sketch does. A sketch that posts in the background, spaced wider than the rate limit, would get
-// its forgeries through while the viewer types. The page saw that gesture, so it refuses them.
-test('a keypress on the page while a sketch posts creates no record', async ({ browser }) => {
-  test.setTimeout(60_000);
-  // As above, Playwright's own reads activate the page for 5 s: the sketch forges every 300 ms
-  // only from 8 s to 14 s after it loads, and the keypress lands at about 9 s.
-  pushScreen('typing-poster.html', '<h2>Typing poster</h2>' +
-    '<div class="options"><div class="option" data-choice="real">Real</div></div><script>' +
-    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 901, method: "ui/message", params: ' +
-    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
-    'setTimeout(() => { let n = 0; const t = setInterval(() => { forge("typed"); if (++n >= 20) clearInterval(t); }, 300); }, 8000);' +
-    '</' + 'script>');
-  const ada = await openBoard(browser, 'ada', 'Typing poster');
-  const before = await companionRecords(ada.page).count();
-  // Another surface's field, from the fixtures global-setup seeded; no other test reads its note.
-  const field = ada.page.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input');
-  await field.focus();
-  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
-  await ada.page.waitForTimeout(8_500);
-  await ada.page.keyboard.press('x');
-  await ada.page.waitForTimeout(6_000);
-  expect(eventLines()).toEqual([]);
-  expect(await companionRecords(ada.page).count()).toBe(before);
-
-  // Control: the keypress didn't block the sketch for good. A real click, past the 5 s, goes through.
-  await ada.frame.locator('[data-choice="real"]').click();
-  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
-  expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
-  await field.fill('');
-  await ada.context.close();
-});
-
-// The page's gestures are the page's, not one sketch's: a sketch mounted right after a keypress
-// (an agent draws just after the viewer typed) is as unexplained as one already showing.
-test('a sketch mounted just after a keypress on the page creates no record', async ({ browser }) => {
-  test.setTimeout(60_000);
-  // A waiting screen closes the companion's surface, so the page opens with no sketch on it.
-  const closed = companion.lines.filter((l) => l.includes('screen-closed')).length;
-  pushScreen('waiting-mount.html', '<p>Continuing in terminal...</p>');
-  await expect.poll(() => companion.lines.filter((l) => l.includes('screen-closed')).length, { timeout: 10_000 }).toBe(closed + 1);
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto('/?name=moe');
-  await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
-  await expect(sketchIframe(page)).toHaveCount(0);
-  const before = await companionRecords(page).count();
-  const field = page.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input');
-  await field.focus();
-
-  // The keypress, then at once a screen that reopens the surface: a new <bee-sketch> mounts well
-  // inside the keypress's 5 s, and forges a choice at load and every 400 ms for 2 s after.
-  await page.keyboard.press('x');
-  pushScreen('mount-poster.html', '<h2>Mount poster</h2>' +
-    '<div class="options"><div class="option" data-choice="real">Real</div></div><script>' +
-    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 902, method: "ui/message", params: ' +
-    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
-    'forge("mounted"); let n = 0; const t = setInterval(() => { forge("mounted"); if (++n >= 5) clearInterval(t); }, 400);' +
-    '</' + 'script>');
-  await expect(sketchFrame(page).locator('h2')).toHaveText('Mount poster', { timeout: 4_000 });
-  await page.waitForTimeout(6_000);
-  expect(eventLines()).toEqual([]);
-  expect(await companionRecords(page).count()).toBe(before);
-
-  // Control: the new sketch takes a real click, past the keypress's 5 s.
-  await sketchFrame(page).locator('[data-choice="real"]').click();
-  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
-  expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
-  await field.fill('');
-  await context.close();
-});
-
-/** Dispatches pointer events of `pointerType` on the page itself, outside every sketch, in order. */
-async function pagePointer(page, pointerType, pointerId, types) {
-  await page.evaluate(({ pointerType, pointerId, types }) => {
-    for (const type of types) document.body.dispatchEvent(new PointerEvent(type, { pointerType, pointerId, bubbles: true }));
-  }, { pointerType, pointerId, types });
-}
-
-// Only a gesture that activates the page explains its activation: a touch that becomes a scroll
-// (pointerdown, then pointercancel) doesn't, so a tap in the sketch just after it is the viewer's.
-// A touch tap on the page does, and the refused choice clears the sketch's selection, so the
-// viewer sees it didn't land. The events are synthetic: the page's listeners count them as real.
-test('a touch scroll on the page leaves a tap in the sketch its choice', async ({ browser }) => {
-  test.setTimeout(60_000);
-  pushScreen('touch.html', options.replace('Which layout?', 'Touch layout?'));
-  const tess = await openBoard(browser, 'tess', 'Touch layout?');
-  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
-
-  await pagePointer(tess.page, 'touch', 41, ['pointerdown', 'pointercancel']);
-  await tess.frame.locator('[data-choice="a"]').click();
-  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
-  expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'a' });
-
-  // Control: a touch tap on the page refuses the next choice, and the sketch drops its selection.
-  await pagePointer(tess.page, 'touch', 42, ['pointerdown', 'pointerup']);
-  await tess.frame.locator('[data-choice="b"]').click();
-  await expect(tess.frame.locator('.option.selected')).toHaveCount(0, { timeout: 5_000 });
-  await tess.page.waitForTimeout(1_500);
-  expect(eventLines()).toHaveLength(1);
-  await tess.context.close();
 });
 
 test('postMessage from another frame is ignored', async ({ browser }) => {
@@ -356,30 +306,33 @@ test('postMessage from another frame is ignored', async ({ browser }) => {
     document.body.appendChild(other);
   }, forged);
   await iain.page.waitForTimeout(1_500);
+  // Neither one proposes anything under the sketch.
+  await expect(proposal(iain.page)).toBeHidden();
 
   // Control: a real click from the sketch itself goes through, after the forgeries.
   await iain.frame.locator('[data-choice="a"]').click();
+  await confirm(iain.page);
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'a', text: 'Option A' });
   await iain.context.close();
 });
 
-// A click inside one sketch activates the page, and no listener on the page sees it: the frame is
-// cross-origin. So a second sketch, posting in the background, would get its forgeries through on
-// that click, under its own rate limit. The click focuses the frame it lands in, and only that
-// frame's choice counts.
-test('a click in one sketch gives another sketch no choice', async ({ browser }) => {
+// bee#60: a click in sketch A activates the page, and in Chromium a sandboxed frame can take focus
+// without a gesture. So sketch B, taking focus back within 50 ms of every click and posting
+// every 300 ms, got its choices recorded as the viewer's when the page accepted a choice on
+// activation and focus. Now a sketch only proposes: B's proposal shows under B, A's under A, and
+// neither is recorded until the viewer clicks the page's own Send under it.
+test('a sketch that steals focus during a click in another sketch records nothing', async ({ browser }) => {
   test.setTimeout(120_000);
-  // The forger, on the shared companion's surface: as above, Playwright's own reads activate the
-  // page for 5 s, so it forges every 300 ms only from 10 s to 25 s after it loads. It tallies the
-  // page's answers, which the test reads only at the end.
-  pushScreen('forger.html', '<h2>Forger</h2><pre id="tally">{}</pre><script>' +
-    'const tally = { accepted: 0, refused: 0 };' +
-    'addEventListener("message", (e) => { if (e.data?.id !== 903) return;' +
-    '  tally[e.data.error ? "refused" : "accepted"]++; document.getElementById("tally").textContent = JSON.stringify(tally); });' +
-    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 903, method: "ui/message", params: ' +
-    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
-    'setTimeout(() => { let n = 0; const t = setInterval(() => { forge("forged"); if (++n >= 50) clearInterval(t); }, 300); }, 10000);' +
+  // The thief, on the shared companion's surface. It tallies the page's answers.
+  pushScreen('thief.html', '<h2>Thief</h2><input id="grab"><pre id="tally">{}</pre><script>' +
+    'const tally = { sent: 0, accepted: 0, refused: 0 };' +
+    'const show = () => { document.getElementById("tally").textContent = JSON.stringify(tally); };' +
+    'addEventListener("message", (e) => { if (e.data?.id !== 903) return; tally[e.data.error ? "refused" : "accepted"]++; show(); });' +
+    'const forge = (choice) => { tally.sent++; show(); parent.postMessage({ jsonrpc: "2.0", id: 903, method: "ui/message", params: ' +
+    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*"); };' +
+    'const grab = setInterval(() => { window.focus(); document.getElementById("grab").focus(); }, 50);' +
+    'let n = 0; const t = setInterval(() => { forge("stolen"); if (++n >= 100) { clearInterval(t); clearInterval(grab); } }, 300);' +
     '</' + 'script>');
   // The chooser: a second companion's sketch, on its own directories, with a real choice.
   const own = mkdtempSync(join(tmpdir(), 'bee-e2e-chooser-'));
@@ -399,37 +352,46 @@ test('a click in one sketch gives another sketch no choice', async ({ browser })
   const ownLines = () => (existsSync(ownEvents) ? readFileSync(ownEvents, 'utf8').split('\n').filter(Boolean) : []);
   // The chooser stops even when an assertion fails, or it outlives the host, redialling.
   try {
-    await chooseInOneSketch(browser, ownSurface, ownLines);
+    await chooseBesideAThief(browser, ownSurface, ownLines);
   } finally {
     chooser.kill('SIGTERM');
     await exited;
   }
 });
 
-/** Opens the board as bo, waits out Playwright's activation, and clicks a choice in the chooser's sketch. */
-async function chooseInOneSketch(browser, ownSurface, ownLines) {
+/** Opens the board as bo and makes a choice in the chooser's sketch while the thief runs. */
+async function chooseBesideAThief(browser, ownSurface, ownLines) {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto('/?name=bo');
-  await expect(sketchFrame(page).locator('h2')).toHaveText('Forger', { timeout: 15_000 });
-  const forgerShownAt = Date.now();
+  await expect(sketchFrame(page).locator('h2')).toHaveText('Thief', { timeout: 15_000 });
   const chooserFrame = page.frameLocator(`a2ui-surface[data-surface-id="${ownSurface}"] bee-sketch iframe`);
   await expect(chooserFrame.locator('h2')).toHaveText('Chooser layout?', { timeout: 15_000 });
-  // Precondition: the last read's activation ends before the forger starts.
-  expect(Date.now() - forgerShownAt).toBeLessThan(4_000);
-  await page.waitForTimeout(forgerShownAt + 11_500 - Date.now());
-  // Control: the forger alone gets nothing through.
-  expect(eventLines()).toEqual([]);
 
-  await chooserFrame.locator('[data-choice="b"]').click();
-  await expect.poll(ownLines, { timeout: 10_000 }).toHaveLength(1);
-  await page.waitForTimeout(5_500);
+  // Three real clicks in A, a second apart: each one opens the thief's window.
+  for (const choice of ['a', 'b', 'b']) {
+    await chooserFrame.locator(`[data-choice="${choice}"]`).click();
+    await page.waitForTimeout(1_000);
+  }
+  await page.waitForTimeout(2_000);
+  // The thief's posts reach no record (red in Chromium on the old acceptance path).
   expect(eventLines()).toEqual([]);
-  expect(JSON.parse(ownLines()[0])).toMatchObject({ choice: 'b', text: 'Option B' });
-  // Control: the forger kept posting through the click's activation, and every one was refused.
+  // Nor does the chooser's click, which waits for Send (red in every engine on the old path).
+  expect(ownLines()).toEqual([]);
+  // Each proposal shows under the sketch that made it.
+  await expect(proposal(page, ownSurface)).toContainText('Option B');
+  await expect(proposal(page, ownSurface)).not.toContainText('stolen');
+  await expect(proposal(page)).toContainText('stolen');
+
+  await confirm(page, ownSurface);
+  await expect.poll(ownLines, { timeout: 10_000 }).toHaveLength(1);
+  await page.waitForTimeout(3_000);
+  expect(eventLines()).toEqual([]);
+  expect(ownLines().map((l) => JSON.parse(l))).toMatchObject([{ choice: 'b', text: 'Option B' }]);
+  // Control: the thief kept posting through every click, and none was taken.
   const tally = JSON.parse(await sketchFrame(page).locator('#tally').textContent());
   expect(tally.accepted).toBe(0);
-  expect(tally.refused).toBeGreaterThanOrEqual(15);
+  expect(tally.sent).toBeGreaterThanOrEqual(20);
   await context.close();
 }
 
