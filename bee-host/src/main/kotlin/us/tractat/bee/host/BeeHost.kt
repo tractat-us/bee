@@ -140,7 +140,7 @@ class BeeHost private constructor(
  */
 internal fun hostOrphanDecisions(scope: CoroutineScope, relay: BoardRelay, clock: () -> Instant): OrphanDecisions {
     val roster = LivePresence(relay.state, clock, scope) { failure -> orphanLog.warn(failure) { "orphan decisions: the roster missed a board change" } }
-    return OrphanDecisions(relay, { roster.live().map { it.identity } }, clock)
+    return OrphanDecisions(relay, { roster.peers().keys.toList() }, clock)
 }
 
 private val orphanLog = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
