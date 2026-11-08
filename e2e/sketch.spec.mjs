@@ -253,9 +253,13 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
   await page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
 
-  // Control: once Send has stayed put and the pointer has really moved on it, a click sends. (Send
-  // came to rest under a still pointer, so it waits for that move: see sketch-fit.spec.mjs.)
-  await page.mouse.move(at.x + 1, at.y);
+  // Control: once Send has stayed put and the pointer has left it and come back, a click sends.
+  // (Send came to rest under a still pointer, so it waits for the pointer to leave: see
+  // sketch-fit.spec.mjs.)
+  const off = { x: at.x, y: at.y + 80 };
+  expect(await page.evaluate(under, off)).not.toBe('bee-proposal-send');
+  await page.mouse.move(off.x, off.y);
+  await page.mouse.move(at.x, at.y);
   await expect(send).toBeEnabled();
   await page.mouse.down();
   await page.mouse.up();

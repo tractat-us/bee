@@ -59,6 +59,33 @@ const resize = (page, id, px) => frame(page, id).locator('#box').evaluate((box, 
 
 const under = (page, at) => page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className, at);
 
+/** Moves the pointer off Send, 80px down, and back onto it at [at]: the pointer arriving on Send. */
+async function leaveAndReturn(page, at) {
+  const off = { x: at.x, y: at.y + 80 };
+  expect(await under(page, off)).not.toBe('bee-proposal-send');
+  await page.mouse.move(off.x, off.y);
+  await page.mouse.move(at.x, at.y);
+}
+
+/** Counts, from now on, each time sketch [id]'s Send is disabled; `disabledCount` reads it. */
+const countDisables = (page, id) => send(page, id).evaluate((button) => {
+  window.beeDisables = 0;
+  new MutationObserver(() => { if (button.disabled) window.beeDisables += 1; })
+    .observe(button, { attributes: true, attributeFilter: ['disabled'] });
+});
+const disabledCount = (page) => page.evaluate(() => window.beeDisables);
+
+/** Waits two frames, so the resize observers of any layout change so far have run. */
+const settled = (page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
+/** How many times sketch [id]'s frame is refitted in the next second. */
+const refits = (page, id) => iframe(page, id).evaluate((f) => new Promise((resolve) => {
+  let count = 0;
+  const seen = new MutationObserver(() => { count += 1; });
+  seen.observe(f, { attributes: true, attributeFilter: ['style'] });
+  setTimeout(() => { seen.disconnect(); resolve(count); }, 1_000);
+}));
+
 test('a short sketch gets a short frame, one that grows gets a taller one, and a tall one is capped', async ({ page }) => {
   await openSketch('fit-short', '<p>One line.</p>');
   await openSketch('fit-mid', `${NO_MARGIN}<div id="box" style="height:360px">A 360px diagram</div>`);
@@ -113,8 +140,8 @@ test('a sketch that fits its frame to slide another sketch\'s Send back under th
   await page.waitForTimeout(1_500);
   await expect(records(page, 'target')).toHaveCount(0);
 
-  // Control: once Send has stayed put and the pointer has really moved on it, a click sends.
-  await page.mouse.move(at.x + 1, at.y);
+  // Control: once Send has stayed put and the pointer has left it and come back, a click sends.
+  await leaveAndReturn(page, at);
   await expect(send(page, 'target')).toBeEnabled();
   await page.mouse.down();
   await page.mouse.up();
@@ -126,9 +153,10 @@ test('a sketch that fits its frame to slide another sketch\'s Send back under th
 // A sketch can learn where a resting pointer is (a frame grown over it hears `pointerover` with
 // its coordinates, in Chromium), then fit its frame so its own Send lands there, and wait out the
 // arming. A moving frame under a still pointer delivers only boundary events, never a
-// `pointermove`, so Send stays disarmed until the pointer really moves on it: the click the
-// person meant for whatever was there records nothing.
-test('a sketch that fits its own Send under a resting pointer records nothing until the pointer moves', async ({ page }) => {
+// `pointermove`, so Send stays disarmed until the pointer leaves it: the click the person meant
+// for whatever was there records nothing. A resting hand's tremor moves the pointer a pixel or
+// two, on Send, and that isn't the pointer arriving there either.
+test('a sketch that fits its own Send under a resting pointer records nothing until the pointer leaves and returns', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1600 });
   await openSketch('lure', `${NO_MARGIN}<div id="box" style="height:150px">The lure</div>`);
   await openSketch('below', `${NO_MARGIN}<div style="height:300px">What the person meant to click</div>`);
@@ -153,8 +181,19 @@ test('a sketch that fits its own Send under a resting pointer records nothing un
   await page.waitForTimeout(1_500);
   await expect(records(page, 'lure')).toHaveCount(0);
 
-  // Control: a real move on Send arms it, and the same click sends.
+  // A tremor while Send re-arms, and another after it has, then the click: nothing.
+  await resize(page, 'lure', 251);
   await page.mouse.move(at.x + 1, at.y);
+  await page.waitForTimeout(600);
+  await page.mouse.move(at.x + 2, at.y + 1);
+  expect(await under(page, { x: at.x + 2, y: at.y + 1 })).toBe('bee-proposal-send');
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(1_500);
+  await expect(records(page, 'lure')).toHaveCount(0);
+
+  // Control: the pointer leaves Send and comes back, and the same click sends.
+  await leaveAndReturn(page, at);
   await expect(send(page, 'lure')).toBeEnabled();
   await page.mouse.down();
   await page.mouse.up();
@@ -197,19 +236,123 @@ test('a fit leaves armed the Send of a sketch above it', async ({ page }) => {
   for (const surfaceId of ['above', 'fitter']) await agent.call('bee_surface_close', { surfaceId });
 });
 
+// On a page taller than the window the body changes size with every fit, and still a fit
+// re-arms only the Sends it moved.
+test('a fit leaves armed the Send of a sketch above it on a page taller than the window', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await openSketch('above-tall', `${NO_MARGIN}<div style="height:150px">Above</div>`);
+  await openSketch('fitter-tall', `${NO_MARGIN}<div id="box" style="height:150px">The fitter</div>`);
+  await openSketch('filler-tall', `${NO_MARGIN}<div style="height:1000px">Filler</div>`);
+  await open(page, 'ash');
+  await expect(frame(page, 'filler-tall').locator('body')).toContainText('Filler', { timeout: 15_000 });
+  await expect.poll(() => inner(page, 'fitter-tall'), { timeout: 5_000 }).toBe(150);
+  // Precondition: the page is taller than the window.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
+  await propose(page, 'above-tall', 'kept');
+  await expect(send(page, 'above-tall')).toBeEnabled();
+  const bodyBefore = await page.evaluate(() => document.body.getBoundingClientRect().height);
+  await countDisables(page, 'above-tall');
+
+  await resize(page, 'fitter-tall', 300);
+  await expect.poll(() => inner(page, 'fitter-tall'), { timeout: 5_000, intervals: [5] }).toBe(300);
+  await settled(page);
+  // Precondition: the fit resized the body.
+  expect(await page.evaluate(() => document.body.getBoundingClientRect().height)).toBe(bodyBefore + 150);
+  expect(await disabledCount(page)).toBe(0);
+  expect(await send(page, 'above-tall').isEnabled()).toBe(true);
+  for (const surfaceId of ['above-tall', 'fitter-tall', 'filler-tall']) await agent.call('bee_surface_close', { surfaceId });
+});
+
 // A document whose height follows the frame's turns every fit around; the frame stops refitting.
+// Its script sets its height on every resize, as a sketch that lays itself out to its window
+// would, so the helper reports each one and the page's own damping is what stops it.
 test('a frame whose document follows its height stops refitting', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
-  await openSketch('swing', `${NO_MARGIN}<div style="height:calc(1000px - 100vh)">Swing</div>`);
+  await openSketch('swing', `${NO_MARGIN}<div id="s">Swing</div><script>` +
+    'const f = () => { document.getElementById("s").style.height = (1000 - innerHeight) + "px"; };' +
+    'f(); addEventListener("resize", f);</' + 'script>');
   await open(page, 'kim');
   await expect(frame(page, 'swing').locator('body')).toContainText('Swing', { timeout: 15_000 });
   await page.waitForTimeout(1_500);
-  const fits = await iframe(page, 'swing').evaluate((f) => new Promise((resolve) => {
-    let count = 0;
-    const seen = new MutationObserver(() => { count += 1; });
-    seen.observe(f, { attributes: true, attributeFilter: ['style'] });
-    setTimeout(() => { seen.disconnect(); resolve(count); }, 1_000);
-  }));
-  expect(fits).toBe(0);
+  expect(await refits(page, 'swing')).toBe(0);
   await agent.call('bee_surface_close', { surfaceId: 'swing' });
+});
+
+// Content sized in `vh` follows the frame's height, so each fit would shrink it and the next
+// report, down to the floor. A frame's own resize reports nothing, so it keeps its first fit.
+test('a sketch sized in vh keeps the height it first reports', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSketch('vh-svg', `${NO_MARGIN}<svg style="height:60vh"></svg>`);
+  await openSketch('vh-div', `${NO_MARGIN}<div style="height:80vh">Tall</div>`);
+  await open(page, 'jo');
+  await expect(frame(page, 'vh-div').locator('body')).toContainText('Tall', { timeout: 15_000 });
+  await page.waitForTimeout(1_500);
+  // The frame starts at its cap, 720px here: 60vh and 80vh of that.
+  const svg = await inner(page, 'vh-svg');
+  expect(svg).toBeGreaterThanOrEqual(432);
+  expect(svg).toBeLessThan(450);
+  expect(await inner(page, 'vh-div')).toBe(576);
+  const [svgFits, divFits] = await Promise.all([refits(page, 'vh-svg'), refits(page, 'vh-div')]);
+  expect(svgFits + divFits).toBe(0);
+  for (const surfaceId of ['vh-svg', 'vh-div']) await agent.call('bee_surface_close', { surfaceId });
+});
+
+// A press already on Send when its proposal changes was meant for the old one. Held while Send
+// re-arms, then slid off Send and back, it still can't send the new one.
+test('a press held on Send while its proposal changes records nothing', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSketch('held', `${NO_MARGIN}<div style="height:150px">Held</div>`);
+  await open(page, 'ty');
+  await expect(frame(page, 'held').locator('body')).toContainText('Held', { timeout: 15_000 });
+  await propose(page, 'held', 'first');
+  await expect(send(page, 'held')).toBeEnabled();
+  const box = await send(page, 'held').boundingBox();
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await propose(page, 'held', 'second');
+  await page.waitForTimeout(700);
+  await leaveAndReturn(page, at);
+  await expect(send(page, 'held')).toBeEnabled();
+  await page.mouse.up();
+  await page.waitForTimeout(1_500);
+  await expect(records(page, 'held')).toHaveCount(0);
+
+  // Control: a fresh click sends the proposal shown.
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(records(page, 'held')).toHaveCount(1, { timeout: 10_000 });
+  await agent.call('bee_surface_close', { surfaceId: 'held' });
+});
+
+// A touch held on Send while it re-arms is a pointer resting on it, so Send waits for it to leave.
+// Lifting the touch leaves Send, and the next clean tap sends.
+test('a touch held on Send across its arming leaves it usable once lifted', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'A held touch is driven over CDP');
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 1280, height: 1000 } });
+  const page = await context.newPage();
+  try {
+    await openSketch('touch', `${NO_MARGIN}<div style="height:150px">Touch</div>`);
+    await open(page, 'ro');
+    await expect(frame(page, 'touch').locator('body')).toContainText('Touch', { timeout: 15_000 });
+    await propose(page, 'touch', 'first');
+    await expect(send(page, 'touch')).toBeEnabled();
+    const box = await send(page, 'touch').boundingBox();
+    const at = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await propose(page, 'touch', 'second');
+    // Precondition: Send re-armed under the held touch.
+    await expect(send(page, 'touch')).toBeDisabled();
+    await page.waitForTimeout(700);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(1_000);
+    await expect(records(page, 'touch')).toHaveCount(0);
+
+    await page.touchscreen.tap(at.x, at.y);
+    await expect(records(page, 'touch')).toHaveCount(1, { timeout: 10_000 });
+  } finally {
+    await context.close();
+    await agent.call('bee_surface_close', { surfaceId: 'touch' });
+  }
 });
