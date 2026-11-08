@@ -50,3 +50,40 @@ test('a page from another origin cannot open the board socket', async ({ page })
   await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
   expect(await dial(page, board)).toBe('refused');
 });
+
+// bee#54: an `<img>` sends no `Origin`, so only its Fetch Metadata tells the host another site
+// sent it. Admitted, it would hold a pairing slot and, after the dwell, post its `?screen=` text
+// to the board as a join request. Chromium may cut such a response short itself (ORB) where Safari
+// doesn't, so the host's 403 is what this test reads, not only the empty board.
+test('a page from another origin cannot open a pairing channel as an image', async ({ browser, page }) => {
+  const context = await browser.newContext();
+  try {
+    const laptop = await context.newPage();
+    await laptop.goto('/?name=iain');
+    await expect(laptop.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
+    const request = (screen) =>
+      laptop.locator('a2ui-surface[data-surface-id^="bee-pair-"]').filter({ hasText: `"${screen}"` });
+    /** Loads `/pair` as an image on `page`, and returns the host's status for it. */
+    const image = async (screen) => {
+      const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/pair');
+      await page.evaluate(
+        (src) => document.body.append(Object.assign(new Image(), { src })),
+        `http://127.0.0.1:${port}/pair?screen=${screen}`,
+      );
+      return (await answered).status();
+    };
+
+    // The control: the board's own page loads the same image, and its request reaches the board.
+    await page.goto('/');
+    expect(await image('own-image')).toBe(200);
+    await expect(request('own-image')).toHaveCount(1, { timeout: 15_000 });
+
+    await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
+    expect(await image('elsewhere-image')).toBe(403);
+    // Well past the dwell, after which an admitted channel posts its request.
+    await laptop.waitForTimeout(6_000);
+    await expect(request('elsewhere-image')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
