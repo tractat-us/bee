@@ -42,21 +42,21 @@ class ClaimsLinkLossTest {
     private val b = NodeId("mcp-b-1")
     private val at = Instant.fromEpochMilliseconds(42)
 
-    private fun config(vararg learners: NodeId) = ClusterConfig(voters = setOf(host), learners = learners.toSet())
+    private fun config(learners: Set<NodeId>) = ClusterConfig(voters = setOf(host), learners = learners)
 
     private fun lost(node: NodeId) = PartitionEvent.PeerLost(PeerId(node.value), at)
 
     /** A learner the voter drops is that node's lost claims link, stamped by the clock. */
     @Test
     fun aLearnerLeavingTheConfigIsALostLink() = runTest {
-        val events = claimsLinkLoss(flowOf(config(a, b), config(a)), clock = { at }).toList()
+        val events = claimsLinkLoss(flowOf(config(setOf(a, b)), config(setOf(a))), clock = { at }).toList()
         assertEquals(listOf(lost(b)), events)
     }
 
     /** Learners joining lose nothing, and the first config is a baseline, not a loss of everything before it. */
     @Test
     fun learnersJoiningLoseNothing() = runTest {
-        val events = claimsLinkLoss(flowOf(config(a), config(a, b), config(a, b)), clock = { at }).toList()
+        val events = claimsLinkLoss(flowOf(config(setOf(a)), config(setOf(a, b)), config(setOf(a, b))), clock = { at }).toList()
         assertEquals(emptyList(), events)
     }
 
@@ -67,7 +67,7 @@ class ClaimsLinkLossTest {
     @Test
     fun aLearnerIsLostOnce() = runTest {
         val c = NodeId("mcp-c-1")
-        val events = claimsLinkLoss(flowOf(config(a, b), config(a), config(a, c), config(c)), clock = { at }).toList()
+        val events = claimsLinkLoss(flowOf(config(setOf(a, b)), config(setOf(a)), config(setOf(a, c)), config(setOf(c))), clock = { at }).toList()
         assertEquals(listOf(lost(b), lost(a)), events)
     }
 
@@ -75,7 +75,7 @@ class ClaimsLinkLossTest {
     @Test
     fun aLearnerMadeAVoterIsNotLost() = runTest {
         val promoted = ClusterConfig(voters = setOf(host, a), learners = emptySet())
-        val events = claimsLinkLoss(flowOf(config(a), promoted, config()), clock = { at }).toList()
+        val events = claimsLinkLoss(flowOf(config(setOf(a)), promoted, config(emptySet())), clock = { at }).toList()
         assertEquals(listOf(lost(a)), events)
     }
 
