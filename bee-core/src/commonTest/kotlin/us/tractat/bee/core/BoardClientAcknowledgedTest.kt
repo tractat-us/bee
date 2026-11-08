@@ -204,11 +204,12 @@ class BoardClientAcknowledgedTest {
         val tornAt = currentTime
         alex.online.first { !it }
         runCurrent()
-        val endedAtTheTear = acknowledged.isCompleted && currentTime < tornAt + SLOW_UPLINK
+        val endedAtTheTear = acknowledged.isCompleted && currentTime < tornAt + SLOW_UPLINK.inWholeMilliseconds
+        val result = acknowledged.await()
         assertAll(
             { assertTrue(openBeforeTheTear, "precondition: the wait is open before the tear") },
             { assertTrue(endedAtTheTear, "the wait ended with the connection, before the write could land") },
-            { assertFalse(acknowledged.await(), "a connection that ended is not an acknowledgement") },
+            { assertFalse(result, "a connection that ended is not an acknowledgement") },
         )
     }
 
