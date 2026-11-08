@@ -145,7 +145,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         fun emptyHint(): Element = element("p", HINT_CLASS).also { hint ->
             hint.appendChild(element("strong", "bee-empty-title").also { it.textContent = "Nothing on the board yet." })
             hint.appendChild(element("span", "bee-empty-how").also { how ->
-                how.appendChild(document.createTextNode("Everyone here, and their Claude sessions, sees and draws on this one board. Ask yours to draw on it: try "))
+                how.appendChild(document.createTextNode("The people here and their Claude sessions all share this board. Ask your session to draw on it: try "))
                 how.appendChild(element("code", "bee-empty-prompt").also { it.textContent = "/mcp__bee__whiteboard" })
                 how.appendChild(document.createTextNode("."))
             })
