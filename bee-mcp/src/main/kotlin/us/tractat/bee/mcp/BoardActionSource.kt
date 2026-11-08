@@ -18,6 +18,8 @@ import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
+import us.tractat.bee.core.CompanionSurfaces
+import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PairingSurfaces
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PeerKind
@@ -193,7 +195,7 @@ class BoardActionSource internal constructor(
         val passed = decode(since)
         val state = bridge.board.value
         refuseJoinRequests(state, scope)
-        val fresh = recordsIn(state, scope).filter { (id, _) -> id.dot !in passed }
+        val fresh = recordsIn(state, scope, granted = emptySet()).filter { (id, _) -> id.dot !in passed }
         return ActionPage(
             records = fresh.map { (id, record) -> json(id, record, token = null, basisComplete = record.basis.completeIn(state, record.surfaceId)) },
             cursor = encode(passed + fresh.map { it.first.dot }),
@@ -202,38 +204,42 @@ class BoardActionSource internal constructor(
 
     /**
      * The first record in [scope] not in [passed], or in it but reassigned to this session since,
-     * suspending until one arrives. A board-wide wait reads the whole board on each change, so a
-     * surface opened after the wait began is in it as soon as its first record arrives.
+     * suspending until one arrives. A board-wide wait reads the board on each change, so a surface
+     * this bridge opened after the wait began is in it as soon as its first record arrives.
      */
     private suspend fun nextCandidate(scope: ActionScope, passed: Set<Dot>): Pair<RecordId, ActionRecord> =
         bridge.board.combine(bridge.reassignedToSelf) { state, granted -> candidate(state, scope, passed, granted) }.filterNotNull().first()
 
     private fun candidate(state: BoardState, scope: ActionScope, passed: Set<Dot>, granted: Set<ClaimTarget>) =
-        recordsIn(state, scope).firstOrNull { (id, _) -> id.dot !in passed || target(id) in granted }
+        recordsIn(state, scope, granted).firstOrNull { (id, _) -> id.dot !in passed || target(id) in granted }
             ?.also { refuseJoinRequests(state, scope) }
 
     /**
-     * The records in [scope], in sequence order. The board-wide scope leaves out every surface a
-     * one-surface wait refuses ([refuseJoinRequests]), and a pairing surface whose opener hasn't
-     * reached this replica yet. A record left out isn't passed, so it can't be lost: a later read
-     * takes it in if its surface's opener turns out not to be the host.
+     * The records in [scope], in sequence order. The board-wide scope is this session's own: the
+     * records on surfaces this bridge process opened ([BeeBridge.opened]), and any a person
+     * reassigned to this session ([granted]). It never takes in a surface another handler owns by
+     * name ([HANDLED_ELSEWHERE]). So two sessions waiting board-wide never take each other's
+     * clicks, and a null cursor replays only records pending on the session's own surfaces.
+     *
+     * A record left out isn't passed, so it isn't lost: a one-surface wait still takes it. A
+     * surface whose meta hasn't reached this replica is left out until it does, so a pairing
+     * surface is never taken in before its opener is known.
      */
-    private fun recordsIn(state: BoardState, scope: ActionScope): List<Pair<RecordId, ActionRecord>> = when (scope) {
-        is ActionScope.Surface -> state.records(scope.id)
-        ActionScope.Board -> state.records().filter { (_, record) -> mayActOn(state, record.surfaceId) }
-    }
-
-    /** Whether a board-wide wait or list takes in [surfaceId]: anything but a pairing surface not known to be someone else's. */
-    private fun mayActOn(state: BoardState, surfaceId: String): Boolean =
-        !PairingSurfaces.isPairing(surfaceId) || state.meta(surfaceId)?.openedBy?.let { it.kind != PeerKind.Host } == true
+    private fun recordsIn(state: BoardState, scope: ActionScope, granted: Set<ClaimTarget>): List<Pair<RecordId, ActionRecord>> =
+        when (scope) {
+            is ActionScope.Surface -> state.records(scope.id)
+            ActionScope.Board -> state.records().filter { (id, record) ->
+                HANDLED_ELSEWHERE.none(record.surfaceId::startsWith) && (bridge.opened(state, record.surfaceId) || target(id) in granted)
+            }
+        }
 
     /**
      * Refuses a one-surface wait or list on a pairing surface the host opened, such as a join
      * request (spec §6.2, bee#72). The host handles its records itself, without a claim, as their
      * only handler, so an agent has no business with them, and a record it took would hand it the
      * code a person typed. Other surfaces the host opens, such as an orphan decision, stay open to
-     * every participant. The board-wide scope is never refused: it leaves these surfaces out
-     * ([recordsIn]).
+     * every participant. The board-wide scope is never refused: it takes in only this session's own
+     * surfaces ([recordsIn]).
      *
      * This is a visibility rule for agents, not an access gate in bee#68's sense: it keys on the
      * kind the surface's opener declares, and only a well-behaved bridge keeps it. A board writer
@@ -252,6 +258,13 @@ class BoardActionSource internal constructor(
     private data class Won(val id: RecordId, val record: ActionRecord, val by: PeerIdentity, val token: ClaimToken, val reassigned: Boolean)
 
     companion object {
+        /**
+         * Surface-id prefixes whose records another handler owns, which a board-wide scope never
+         * takes in: the host's pairing surfaces (§5.7), the orphan decisions each participant's
+         * page answers without a claim (§6.4), and the brainstorming companion's (§3).
+         */
+        private val HANDLED_ELSEWHERE = listOf(PairingSurfaces.PREFIX, OrphanDecision.PREFIX, CompanionSurfaces.PREFIX)
+
         /** How long a wait backs off after a claim found no quorum. */
         val RETRY: Duration = 500.milliseconds
 

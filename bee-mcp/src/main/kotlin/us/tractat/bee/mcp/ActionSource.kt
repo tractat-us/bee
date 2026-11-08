@@ -40,9 +40,10 @@ sealed interface ActionScope {
     data class Surface(val id: String) : ActionScope
 
     /**
-     * The records on every surface this session may act on: every surface but those a [Surface]
-     * wait or list refuses, the host's pairing surfaces. It takes in surfaces opened after the
-     * wait began.
+     * The records on this session's own surfaces: those its bridge process opened, under its
+     * identity now or one it held before a `/clear`, including surfaces opened after the wait
+     * began. Never another session's surfaces, the companion's, an orphan decision or a pairing
+     * surface, whose records other handlers take (spec §5.2).
      */
     data object Board : ActionScope
 }
