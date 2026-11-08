@@ -6,7 +6,6 @@ import io.modelcontextprotocol.kotlin.sdk.types.GetPromptRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -115,7 +114,7 @@ class WhiteboardGuideTest {
     private fun WhiteboardGuide.Example.args(id: String): Map<String, Any?> = mapOf(
         "surfaceId" to id,
         "title" to name,
-        "components" to Json.parseToJsonElement(components).jsonArray as JsonArray,
+        "components" to Json.parseToJsonElement(components).jsonArray,
         "data" to (data?.let { Json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())),
     )
 }
