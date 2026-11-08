@@ -21,10 +21,13 @@ import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
+import us.tractat.bee.core.askBoardId
+import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
@@ -66,9 +69,12 @@ fun main() {
     val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val http = HttpClient(CIO) { install(WebSockets) }
     val author = ReplicaId("mcp-${Uuid.random()}")
+    // The bridge's replica starts empty, so it belongs to the first board the host names; both
+    // its sockets name that board from then on, and a wiped host refuses them (bee#46).
+    val pin = BoardPin.learnedFrom { http.askBoardId(host) }
     val board = BoardClient(
         author,
-        SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock),
+        SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock).pinnedTo(pin),
         Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
         bridgeScope,
         clock,
@@ -78,7 +84,7 @@ fun main() {
     val claims = ClaimsConnection(
         scope = bridgeScope,
         nextNode = { NodeId("mcp-${Uuid.random()}") },
-        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, linkScope, clock, random) },
+        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
         onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )

@@ -19,6 +19,9 @@ import kotlinx.serialization.json.putJsonObject
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardPin
+import us.tractat.bee.core.askBoardId
+import us.tractat.bee.core.pinnedTo
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.SurfaceMeta
@@ -82,8 +85,9 @@ private suspend fun seed(host: URI, fixtures: List<String>) {
     val rendezvous = Rendezvous.Existing(
         WebSocketAdvertisement("ws://${host.host}:${host.port}${BoardRelay.PATH}", PeerId("bee-host"), "board"),
     )
+    val board = BoardPin.learnedFrom { http.askBoardId("http://${host.host}:${host.port}") }
     fun client(author: ReplicaId) =
-        BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock), rendezvous, scope, clock)
+        BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock).pinnedTo(board), rendezvous, scope, clock)
     try {
         val author = ReplicaId("e2e-seeder-${Uuid.random()}")
         val writer = client(author).apply { connect() }
