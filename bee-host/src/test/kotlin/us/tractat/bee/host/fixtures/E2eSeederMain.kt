@@ -20,6 +20,7 @@ import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.askBoardId
 import us.tractat.bee.core.pinnedTo
 import us.tractat.bee.core.PeerIdentity
@@ -87,7 +88,7 @@ private suspend fun seed(host: URI, fixtures: List<String>, flags: Map<String, S
     val rendezvous = Rendezvous.Existing(
         WebSocketAdvertisement("ws://${host.host}:${host.port}${BoardRelay.PATH}", PeerId("bee-host"), "board"),
     )
-    val board = BoardPin.learnedFrom { http.askBoardId("http://${host.host}:${host.port}") }
+    val board = BoardPin.learnedFrom { http.askBoardId(HostAddress.parse("http://${host.host}:${host.port}")) }
     fun client(author: ReplicaId) =
         BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock).pinnedTo(board), rendezvous, scope, clock)
     try {

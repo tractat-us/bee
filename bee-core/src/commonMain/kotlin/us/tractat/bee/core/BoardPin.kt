@@ -45,18 +45,16 @@ class BoardPin private constructor(pinned: BoardId?, private val ask: suspend ()
 }
 
 /**
- * The board the host at [hostUrl] keeps, as it names it at [BoardId.PATH]. [hostUrl] is the
- * host's root, `ws://host:port` or `http://host:port`; a WebSocket scheme is asked over HTTP.
+ * The board the host at [host] keeps, as it names it at [BoardId.PATH], over [HostAddress.http].
+ * That path is open to every caller, so the ask carries no key.
  *
  * @throws IllegalStateException if the host answers, but names no board
  */
-suspend fun HttpClient.askBoardId(hostUrl: String): BoardId {
-    val response = get(hostUrl.replaceFirst(WEBSOCKET_SCHEME, "http") + BoardId.PATH)
-    check(response.status == HttpStatusCode.OK) { "The host at $hostUrl didn't name its board: ${response.status}" }
+suspend fun HttpClient.askBoardId(host: HostAddress): BoardId {
+    val response = get(host.http + BoardId.PATH)
+    check(response.status == HttpStatusCode.OK) { "The host at $host didn't name its board: ${response.status}" }
     return BoardId(response.bodyAsText().trim())
 }
-
-private val WEBSOCKET_SCHEME = Regex("^ws")
 
 /**
  * This loom, with every socket it dials naming [pin]'s board: `?board=<id>` on the

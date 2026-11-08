@@ -4,9 +4,11 @@ Two pieces join a Claude Code session to bee: the **bridge** (`bee-mcp`, an MCP 
 **`SessionStart` hook** that tells the bridge when you `/clear`. You install both yourself, in your
 own Claude Code settings. The bridge doesn't write to `~/.claude`.
 
-The bridge gives a session 11 tools: `bee_board`, `bee_presence`, `bee_surface_open`,
+The bridge gives a session 12 tools: `bee_board`, `bee_presence`, `bee_surface_open`,
 `bee_surface_update`, `bee_surface_close`, `bee_board_clear`, `bee_wait_action`,
-`bee_list_actions`, `bee_action_done`, `bee_claim` and `bee_release`.
+`bee_list_actions`, `bee_action_done`, `bee_claim`, `bee_release` and `bee_examples`. It also briefs the session
+on how to share the board, and offers a `whiteboard` prompt; see
+[Whiteboard with a session](#whiteboard-with-a-session).
 
 Want a board running in five minutes? Start with [Run a board](#run-a-board). The numbered steps
 after it set bee up for every session you start.
@@ -178,6 +180,28 @@ it was on and which the host keeps now, and exits with status 2, so `/mcp` shows
 failed. Restart it from `/mcp` to join the new board. An open browser tab reloads onto the new
 board by itself.
 
+## Whiteboard with a session
+
+To use the board as a whiteboard with the people in the room, type this in the session:
+
+```text
+/mcp__bee__whiteboard login-flow
+```
+
+Keep the topic to one word: Claude Code may pass only the first word of what follows the
+command. For a longer topic, say it in your next message. Leave the topic off and the session
+asks, on the board, what to work on.
+
+The session draws the topic, keeps the board current as you talk, and reacts to clicks and typing
+on the board. It stops when someone says done, when nobody has the board open, or after about
+10 minutes with no clicks.
+
+Nothing else needs installing. The bridge sends every session a short briefing as it connects:
+look before drawing, one surface per topic, leave other people's surfaces alone, and wait for
+clicks on anything interactive. Claude Code cuts that briefing at 4096 characters, so it carries
+only the rules and two examples; `bee_examples` returns an example of every component that
+renders. All three texts live in `bee-mcp/src/main/kotlin/us/tractat/bee/mcp/WhiteboardGuide.kt`.
+
 ## Showing the board on another screen
 
 A phone, a tablet or a meeting-room screen can show the board with nothing installed. By default
@@ -227,3 +251,36 @@ What to expect:
 - **A device on the network keeps no copy of the board.** A plain-HTTP page can't take the browser
   lock that guards the board's local copy, so it relies on the host for everything
   ([#39](https://github.com/tractat-us/bee/pull/39)).
+
+## An agent on another machine
+
+A teammate's Claude session, on their own laptop, can join your board. The bridge takes the host's
+join link as its `BEE_HOST`.
+
+1. Start the host with `--lan`, as above, and copy the join link it logs:
+   `http://<your machine>.local:8233/?k=…`.
+2. Send your teammate the link. They build the bridge and register it, as in
+   [steps 1 and 2](#1-build-the-bridge), and add the link, pasted whole, to the bridge's `env`:
+
+    ```json
+    "env": { "BEE_HOST": "http://tractatus.local:8233/?k=…", "BEE_SESSION_NAME": "sam" }
+    ```
+
+3. They start a session. It joins your board as `agent:sam#…`, and you both see it in
+   `bee_presence`.
+
+`BEE_HOST` also takes `ws://host:port`, `wss://`, `http://host:port/` and `https://`. A value it
+can't read stops the bridge at start-up, with a message that names `BEE_HOST`.
+
+What to expect:
+
+- **The key is in their config, and admits whoever holds it until the host stops.** Treat the
+  config like the link itself. The bridge's log names the host and says "with a join key"; it
+  never prints the key, not even when a dial fails and the failure names the URL it dialled.
+- **A host restart needs a new link.** The old key no longer admits, so the bridge is refused.
+  Send the new link, and have them update `BEE_HOST` and restart the bridge from `/mcp`.
+- **If their machine can't find yours by name**, swap the name for your machine's IP address and
+  keep the `?k=…`: `http://192.168.1.5:8233/?k=…`. Some office networks don't pass `.local`
+  names between laptops. The host answers to the address a device used.
+- **Plain HTTP, no encryption.** As with any device on the network, anyone who can watch the
+  traffic can read the board, and the key.

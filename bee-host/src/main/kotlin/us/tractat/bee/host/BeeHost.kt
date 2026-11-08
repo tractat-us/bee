@@ -102,7 +102,13 @@ class BeeHost private constructor(
          * [HostConfig.dataDir]. Background work runs on [scope]. [Departures] reads a crash off
          * the claims voter: a node it drops after the learner grace ([claimsLinkLoss], bee#28).
          */
-        suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost {
+        suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost = start(scope, config, PeerAddress.DIRECT)
+
+        /**
+         * [start], with the socket gate reading each call's peer from [peers]: a test's way to
+         * have a dial on a loopback socket count as one from another machine, which a key must admit.
+         */
+        internal suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress): BeeHost {
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
             // Task 10: keys live in this host's memory, so a restart re-pairs every LAN device.
@@ -111,7 +117,7 @@ class BeeHost private constructor(
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), PeerAddress.DIRECT, ArrivalAddress.DIRECT, desk)
+                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk)
             }
             server.start(wait = false)
             try {

@@ -219,6 +219,8 @@ private fun endedText(reason: PairingEnd): String = when (reason) {
 @OptIn(ExperimentalUuidApi::class)
 private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, access: Access) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
+    // Who views this page, for a Notion that marks the viewer's own choice (bee-notions' Poll).
+    root.setAttribute("data-viewer", actor.toString())
     val shell = PageShell.around(root)
     val status = shell.status
     val problem = shell.problem
@@ -268,7 +270,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, a
         BoardDriver(client, A2uiRenderer(root, chrome::place), root, author, actor, inputs, answering, clock, onProblem).start(scope)
         HistoryStrip(client, author, document.body!!, onProblem).start(scope)
         val presence = Presence(client, author, emptyFlow(), clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
-        chrome.start(scope, client.state, presence.roster)
+        chrome.start(scope, client.state, presence.roster, client.online)
         launch { presence.update(actor, status = null, lastActedAt = clock(), waiting = false) }
         if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
         reloadOnAnotherBoard(scope, client, pin)

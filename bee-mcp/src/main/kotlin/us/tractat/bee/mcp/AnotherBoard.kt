@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardPin
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.askBoardId
 
 private val logger = KotlinLogging.logger {}
@@ -36,7 +37,7 @@ suspend fun awaitAnotherBoard(lastFailure: Flow<Throwable?>, pin: BoardPin, ask:
         .first()
 
 /** The board the host at [host] names, or null if it can't be asked: [awaitAnotherBoard]'s ask. */
-suspend fun HttpClient.boardNamedOrNull(host: String): BoardId? = try {
+suspend fun HttpClient.boardNamedOrNull(host: HostAddress): BoardId? = try {
     askBoardId(host)
 } catch (cancelled: CancellationException) {
     throw cancelled
