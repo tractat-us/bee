@@ -11,6 +11,8 @@ import kotlinx.serialization.json.JsonObject
  * @property data the data model, one winner per leaf
  * @property conflicts every leaf holding concurrent values, keyed by its JSON Pointer into [data],
  *   listing all of them in [SurfaceFormat.VALUE_ORDER], winner last
+ * @property appended the JSON Pointer of every append-only array in [data]. It shows as a JSON
+ *   array like a whole array does, so this is the one place the two kinds stay apart (§6.1)
  */
 data class SurfaceView(
     val id: String,
@@ -18,6 +20,7 @@ data class SurfaceView(
     val components: Map<String, JsonObject>,
     val data: JsonObject,
     val conflicts: Map<String, List<JsonElement>>,
+    val appended: Set<String>,
 ) {
     /**
      * The data model the renderer holds: [data], plus the conflicts published at

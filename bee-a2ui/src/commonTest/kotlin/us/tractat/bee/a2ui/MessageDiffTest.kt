@@ -26,6 +26,7 @@ class MessageDiffTest {
             put("order", ids("a", "b"))
         },
         conflicts = emptyMap(),
+        appended = emptySet(),
     )
 
     @Test

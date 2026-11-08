@@ -100,6 +100,7 @@ class NotionActionsTest {
             putJsonObject("answers") { put("human:sam", "dinner") }
         },
         conflicts = emptyMap(),
+        appended = emptySet(),
     )
 
     private fun board() = SurfaceView(
@@ -127,6 +128,7 @@ class NotionActionsTest {
             }
         },
         conflicts = emptyMap(),
+        appended = emptySet(),
     )
 
     private fun action(component: String, name: String, vararg context: Pair<String, String>) = A2uiAction(

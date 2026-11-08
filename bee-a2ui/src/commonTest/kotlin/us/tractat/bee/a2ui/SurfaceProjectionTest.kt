@@ -11,6 +11,7 @@ import us.tractat.kuilt.crdt.JsonValue
 import us.tractat.kuilt.crdt.MVRegister
 import us.tractat.kuilt.crdt.ORMap
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.crdt.Rga
 import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
@@ -57,6 +58,23 @@ class SurfaceProjectionTest {
         val scores = JsonArray(listOf(0, 0, 1).map(::JsonPrimitive))
         val doc = base.piece(write(base, a, "scores", SurfaceFormat.encodeLeaf(scores)))
         assertEquals(scores, doc.toSurfaceView("lunch").data["scores"])
+    }
+
+    /** Both kinds of array show as JSON arrays; only the append-only one is named in `appended` (bee#81). */
+    @Test
+    fun appendedNamesOnlyTheAppendOnlyArrays() {
+        val base = surface(a)
+        val whole = base.piece(write(base, a, "scores", SurfaceFormat.encodeLeaf(JsonArray(listOf(JsonPrimitive(1))))))
+        val (_, op) = Rga.empty<JsonNode>().insertAt(a, 0, leaf(a, JsonValue.Str("Redis")))
+        val data = (whole[SurfaceFormat.DATA] as JsonNode.Object).map
+        val options = JsonNode.Array(Rga.empty<JsonNode>().apply(op))
+        val doc = whole.piece(whole.set(SurfaceFormat.DATA, JsonNode.Object(data.put(a, "options", options).delta)))
+        val view = doc.toSurfaceView("lunch")
+        assertAll(
+            { assertEquals(setOf("/options"), view.appended) },
+            { assertEquals(JsonArray(listOf(JsonPrimitive("Redis"))), view.data["options"]) },
+            { assertEquals(JsonArray(listOf(JsonPrimitive(1))), view.data["scores"], "control: the whole array shows too") },
+        )
     }
 
     /** A surface document as bee-core lays it out: meta, one root component, empty data. */

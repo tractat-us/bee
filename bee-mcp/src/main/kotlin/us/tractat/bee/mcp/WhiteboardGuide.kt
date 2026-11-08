@@ -42,8 +42,11 @@ object WhiteboardGuide {
      */
     const val CLAUDE_CODE_TEXT_LIMIT = 4096
 
-    /** One cheat-sheet entry: a surface's [components] and [data] as JSON text, and what it's for. */
-    data class Example(val name: String, val components: String, val data: String?, val note: String)
+    /**
+     * One cheat-sheet entry: a surface's [components], [data] and [append] as JSON text, and what
+     * it's for. [append] maps each pointer to the entries appended there, as `bee_surface_open` takes it.
+     */
+    data class Example(val name: String, val components: String, val data: String?, val append: String?, val note: String)
 
     private val SKETCH = Example(
         name = "Sketch: diagrams and mockups",
@@ -53,6 +56,7 @@ object WhiteboardGuide {
             """<text x='170' y='35' text-anchor='middle'>Home</text></svg>""" +
             """<button data-choice='sso'>Use SSO</button> <button data-choice='pw'>Keep passwords</button>"}]""",
         data = null,
+        append = null,
         note = "The tool for a diagram, flow or mockup: any HTML, CSS, inline SVG and script, sandboxed with no " +
             "network (data: images only). A click on a data-choice element asks the viewer \"Send <its text>?\"; " +
             "Send records \"choice\" with {choice, text}. Redraw by updating the whole html.",
@@ -65,6 +69,7 @@ object WhiteboardGuide {
             """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"submit","context":{"idea":{"path":"/idea"}}}}},""" +
             """{"id":"send-label","component":"Text","text":"Send"}]""",
         data = """{"idea":""}""",
+        append = null,
         note = "Typing reaches /idea live for everyone (bee_board shows it); Send's record carries it in its " +
             "context. Variant longText is a paragraph box. Only TextField syncs live: CheckBox, ChoicePicker, " +
             "Slider (give it a max) and DateTimeInput hold each viewer's own value, which reaches you only in " +
@@ -80,6 +85,7 @@ object WhiteboardGuide {
             name = "Text, with Markdown",
             components = """[{"id":"root","component":"Text","text":"**Goal:** one login for web and phone.\n- SSO first\n- passkeys later"}]""",
             data = null,
+            append = null,
             note = "The default body variant renders Markdown; variant h1 to h5 or caption shows the text as it is.",
         ),
         Example(
@@ -89,14 +95,18 @@ object WhiteboardGuide {
                 """{"id":"yes","component":"Button","child":"yes-label","action":{"event":{"name":"ship","context":{"day":"friday"}}}},""" +
                 """{"id":"yes-label","component":"Text","text":"Ship it"}]""",
             data = null,
+            append = null,
             note = "A click records name \"ship\" with that context. Row lays children across, Card wraps one child, " +
                 "and Tabs, List and Divider work too: a container names its children by id, never inline.",
         ),
         Example(
             name = "Poll",
             components = """[{"id":"root","component":"Poll","question":{"path":"/question"},"options":{"path":"/options"},"answers":{"path":"/answers"}}]""",
-            data = """{"question":["Which first?"],"options":["SSO","Passkeys"],"answers":{}}""",
-            note = "The last entry of question shows. Each person's answer lands at /answers/<peer>, so one person " +
+            data = """{"answers":{}}""",
+            append = """{"/question":["Which first?"],"/options":["SSO","Passkeys"]}""",
+            note = "Question revisions and options go in append, never data, so a vote's basis names the options " +
+                "its voter saw; the last question shows. Add an option with bee_surface_update append " +
+                "{\"/options\": [\"Passwords\"]}. Each person's answer lands at /answers/<peer>, so one person " +
                 "counts once, and records \"answer\" with context {option}.",
         ),
         Example(
@@ -104,6 +114,7 @@ object WhiteboardGuide {
             components = """[{"id":"root","component":"Board","columns":{"path":"/columns"},"cards":{"path":"/cards"}}]""",
             data = """{"columns":{"items":{"todo":{"title":"To do"},"done":{"title":"Done"}},"order":["todo","done"]},""" +
                 """"cards":{"items":{"c1":{"label":"Draft the API","column":"todo"}},"order":["c1"]}}""",
+            append = null,
             note = "People drag cards between columns; each drop moves the card and records \"drop\" with " +
                 "{card, column}. Add a card by writing /cards/items/<id> and a new /cards/order.",
         ),
@@ -112,7 +123,8 @@ object WhiteboardGuide {
     private const val SURFACES =
         "A surface is a flat list of components, one with id \"root\"; containers name their children by id. " +
             "A property binds to the surface's data with {\"path\": \"/…\"}; bee_surface_update writes data by " +
-            "JSON Pointer, as {\"/idea\": \"new text\"}, and upserts components by id. Each entry opens as it " +
+            "JSON Pointer, as {\"/idea\": \"new text\"}, upserts components by id, and with append adds entries " +
+            "that are never rewritten, as a Poll's options are. Each entry opens as it " +
             "stands with bee_surface_open."
 
     /** The server's `instructions`: the rules and the [ESSENTIAL] examples, within [CLAUDE_CODE_TEXT_LIMIT]. */
@@ -188,6 +200,7 @@ object WhiteboardGuide {
 
     private fun Example.render(): String {
         val dataPart = data?.let { "\n  data: $it" }.orEmpty()
-        return "- $name. $note\n  components: $components$dataPart"
+        val appendPart = append?.let { "\n  append: $it" }.orEmpty()
+        return "- $name. $note\n  components: $components$dataPart$appendPart"
     }
 }

@@ -61,7 +61,7 @@ class WhiteboardGuideTest {
 
         val tool = ada.mcp.listTools(options = options).tools.single { it.name == WhiteboardGuide.EXAMPLES_TOOL }
         val result = ada.call(WhiteboardGuide.EXAMPLES_TOOL, emptyMap())
-        val missing = WhiteboardGuide.EXAMPLES.filter { it.components !in result.text() || (it.data ?: "") !in result.text() }
+        val missing = WhiteboardGuide.EXAMPLES.filter { e -> listOfNotNull(e.components, e.data, e.append).any { it !in result.text() } }
         assertAll(
             { assertEquals(null, result.isError, result.text()) },
             { assertEquals(emptyList(), missing.map { it.name }, "cheat-sheet entries missing from the result") },
@@ -90,15 +90,18 @@ class WhiteboardGuideTest {
         rig.close()
     }
 
-    /** The updates the cheat-sheet describes apply: a field's text by pointer, and a card added to the Board. */
+    /** The updates the cheat-sheet describes apply: a field's text by pointer, a card added to the Board, an option appended to the Poll. */
     @Test
     fun theCheatSheetsUpdatesApply() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
         val field = WhiteboardGuide.EXAMPLES.single { "TextField" in it.components }
         val board = WhiteboardGuide.EXAMPLES.single { "\"Board\"" in it.components }
+        val poll = WhiteboardGuide.EXAMPLES.single { "\"Poll\"" in it.components }
         ada.call(BeeTools.OPEN, field.args("field"))
         ada.call(BeeTools.OPEN, board.args("board"))
+        ada.call(BeeTools.OPEN, poll.args("poll"))
+        val option = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "poll", "append" to Json.parseToJsonElement("""{"/options": ["Passwords"]}""")))
 
         val typed = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "field", "data" to Json.parseToJsonElement("""{"/idea": "new text"}""")))
         val added = ada.call(
@@ -117,6 +120,11 @@ class WhiteboardGuideTest {
             { assertEquals("new text", boardData.getValue("field").getValue("idea").jsonPrimitive.content) },
             { assertEquals(setOf("c1", "c2"), cards.getValue("items").jsonObject.keys) },
             { assertEquals(listOf("c1", "c2"), cards.getValue("order").jsonArray.map { it.jsonPrimitive.content }) },
+            { assertEquals(null, option.isError, option.text()) },
+            {
+                val options = boardData.getValue("poll").getValue("options").jsonArray.map { it.jsonPrimitive.content }
+                assertEquals(listOf("SSO", "Passkeys", "Passwords"), options)
+            },
         )
         rig.close()
     }
@@ -184,5 +192,6 @@ class WhiteboardGuideTest {
         "title" to name,
         "components" to Json.parseToJsonElement(components).jsonArray,
         "data" to (data?.let { Json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())),
+        "append" to (append?.let { Json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())),
     )
 }

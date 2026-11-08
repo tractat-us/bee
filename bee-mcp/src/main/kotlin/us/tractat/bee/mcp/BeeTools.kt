@@ -60,10 +60,12 @@ object BeeTools {
         server.addTool(
             name = OPEN,
             description = "Puts a new surface $SHARED. Takes surfaceId, title, components (A2UI v0.9 components " +
-                "from the Notions catalog, one with id \"root\") and an optional data object. A malformed surface " +
-                "is refused, naming the bad id or type, and the board is unchanged. Notions adds Poll, which binds " +
-                "question, options and answers by {\"path\": \"/…\"}: question and options are arrays (options as " +
-                "strings or {id, label}), and answers an object keyed by peer, which each answer writes. It also adds " +
+                "from the Notions catalog, one with id \"root\"), an optional data object, and an optional append, " +
+                "which maps a JSON Pointer to the entries appended there, each its own entry a vote can name. A " +
+                "malformed surface is refused, naming the bad id or type, and the board is unchanged. Notions adds " +
+                "Poll, which binds question, options and answers by {\"path\": \"/…\"}: question revisions and " +
+                "options go in append, never data (options as strings or {id, label}), and answers is an object " +
+                "keyed by peer, which each answer writes. It also adds " +
                 "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +
                 "owner?} and a card {label, column}; a drop moves a card to another column. Each answer or drop is " +
                 "also an action record.",
@@ -72,28 +74,32 @@ object BeeTools {
                 putJsonObject("title") { put("type", "string") }
                 putJsonObject("components") { put("type", "array"); putJsonObject("items") { put("type", "object") } }
                 putJsonObject("data") { put("type", "object") }
+                appendProperty()
             },
         ) { request ->
             tool {
                 val id = request.string("surfaceId")
-                bridge.open(id, request.string("title"), request.objects("components"), request.objectOrEmpty("data"))
+                bridge.open(id, request.string("title"), request.objects("components"), request.objectOrEmpty("data"), request.appends())
                 answer(buildJsonObject { put("opened", id) })
             }
         }
         server.addTool(
             name = UPDATE,
-            description = "Puts changes to a surface $SHARED: components upserted by id, and data written at " +
-                "JSON Pointers (data maps each pointer to its value). Refused, with the board unchanged, if the " +
-                "result would be malformed.",
+            description = "Puts changes to a surface $SHARED: components upserted by id, data written at " +
+                "JSON Pointers (data maps each pointer to its value), and entries appended (append maps each pointer " +
+                "to an array of new entries). An appended entry, like a Poll's option, is never rewritten. Refused, " +
+                "with the board unchanged, if the result would be malformed.",
             inputSchema = schema(required = listOf("surfaceId")) {
                 putJsonObject("surfaceId") { put("type", "string") }
                 putJsonObject("components") { put("type", "array"); putJsonObject("items") { put("type", "object") } }
                 putJsonObject("data") { put("type", "object"); put("description", "Pointer to value, e.g. {\"/count\": 2}.") }
+                appendProperty()
             },
         ) { request ->
             tool {
                 val id = request.string("surfaceId")
-                bridge.update(id, request.objectsOrEmpty("components"), request.objectOrEmpty("data").entries.map { it.key to it.value })
+                val data = request.objectOrEmpty("data").entries.map { it.key to it.value }
+                bridge.update(id, request.objectsOrEmpty("components"), data, request.appends())
                 answer(buildJsonObject { put("updated", id) })
             }
         }
@@ -241,6 +247,22 @@ object BeeTools {
             .map { it as? JsonObject ?: throw IllegalArgumentException("$key must be an array of objects; got $it.") }
 
     private fun CallToolRequest.objectsOrEmpty(key: String): List<JsonObject> = if (arg(key) == null) emptyList() else objects(key)
+
+    /** The `append` argument both surface writes take: a pointer to the entries appended there. */
+    private fun kotlinx.serialization.json.JsonObjectBuilder.appendProperty() = putJsonObject(APPEND) {
+        put("type", "object")
+        put("description", "Pointer to entries appended, e.g. {\"/options\": [\"Tacos\"]}.")
+    }
+
+    /** [APPEND]'s entries, one pair per entry, in order: `{"/options": ["a", "b"]}` is two. */
+    private fun CallToolRequest.appends(): List<Pair<String, JsonElement>> =
+        objectOrEmpty(APPEND).entries.flatMap { (pointer, entries) ->
+            val array = entries as? JsonArray
+                ?: throw IllegalArgumentException("$APPEND maps each pointer to an array of entries; $pointer has $entries.")
+            array.map { pointer to it }
+        }
+
+    private const val APPEND = "append"
 
     private fun CallToolRequest.objectOrEmpty(key: String): JsonObject = when (val v = arg(key)) {
         null -> JsonObject(emptyMap())

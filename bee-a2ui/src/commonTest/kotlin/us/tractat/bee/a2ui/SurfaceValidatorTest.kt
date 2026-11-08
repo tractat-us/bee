@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -95,12 +96,47 @@ class SurfaceValidatorTest {
         )
     }
 
+    /**
+     * A Poll's options and question must be appended (bee#81). Data there is named, whether a
+     * whole array or a scalar; an appended path or an empty one is fine. Rendering doesn't check
+     * it, so an older Poll still shows.
+     */
+    @Test
+    fun appendErrorsNameAPollBindingWrittenAsData() {
+        val poll = component("root", SurfaceValidator.POLL) {
+            listOf("question", "options", "answers").forEach { key -> putJsonObject(key) { put("path", "/$key") } }
+        }
+        val data = buildJsonObject {
+            put("question", "Which cache?")
+            put("options", JsonArray(listOf(JsonPrimitive("Redis"))))
+            putJsonObject("answers") {}
+        }
+        val asData = view(poll).copy(data = data)
+        assertAll(
+            {
+                assertEquals(
+                    listOf(
+                        "Component \"root\" is a Poll whose options at /options isn't appended: put it in append, not data, " +
+                            "so a vote's basis can name each entry.",
+                        "Component \"root\" is a Poll whose question at /question isn't appended: put it in append, not data, " +
+                            "so a vote's basis can name each entry.",
+                    ),
+                    SurfaceValidator.appendErrors(asData),
+                )
+            },
+            { assertEquals(emptyList(), SurfaceValidator.appendErrors(asData.copy(appended = setOf("/options", "/question")))) },
+            { assertEquals(emptyList(), SurfaceValidator.appendErrors(view(poll)), "nothing bound yet is fine") },
+            { assertEquals(emptyList(), SurfaceValidator.errors(asData), "rendering still passes it") },
+        )
+    }
+
     private fun view(vararg components: JsonObject) = SurfaceView(
         id = "s",
         catalogId = NOTIONS_CATALOG_ID,
         components = components.associateBy { (it["id"] as JsonPrimitive).content },
         data = JsonObject(emptyMap()),
         conflicts = emptyMap(),
+        appended = emptySet(),
     )
 
     private fun component(id: String, type: String, more: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) =
