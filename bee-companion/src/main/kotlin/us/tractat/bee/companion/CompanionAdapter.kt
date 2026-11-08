@@ -29,7 +29,9 @@ import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.BoardWriteTooLarge
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
+import us.tractat.bee.core.CompanionSurfaces
 import us.tractat.bee.core.SurfaceMeta
+import us.tractat.bee.mcp.ActionScope
 import us.tractat.bee.mcp.ActionSource
 import us.tractat.bee.mcp.BeeBridge
 import us.tractat.bee.mcp.BoardActionSource
@@ -286,7 +288,7 @@ class CompanionAdapter(
         var cursor: String? = null
         while (true) {
             val result = try {
-                actions.next(surface, cursor, WAIT)
+                actions.next(ActionScope.Surface(surface), cursor, WAIT)
             } catch (refused: BridgeRefusal) {
                 // Retired mid-wait (the host lost this companion's link): it acts under a fresh
                 // identity now, and its orphaned claims wait for a participant to decide.
@@ -401,7 +403,7 @@ class CompanionAdapter(
 
     companion object {
         /** Every companion's surface id starts so; a random id follows, one per companion. */
-        const val SURFACE_PREFIX = "companion-"
+        const val SURFACE_PREFIX = CompanionSurfaces.PREFIX
         private const val SURFACE_ID_BYTES = 6
 
         /** The action a `Sketch` reports a `[data-choice]` click as (bee-notions/src/sketch.js). */

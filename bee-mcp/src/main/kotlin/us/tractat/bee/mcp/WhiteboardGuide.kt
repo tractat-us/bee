@@ -126,7 +126,7 @@ object WhiteboardGuide {
         |- Change a surface someone else opened only when asked. Never bee_board_clear a board others use. bee_surface_close your own when settled; anyone can reopen it from the history strip.
         |- Before you work a Board card, bee_claim card:<surfaceId>/<cardId>; bee_release it if you stop. A lost claim names its holder: leave that work to them.
         |- People at the browser can't type into your terminal. When you ask them something, give them a way to answer on the board: a Button per option, or a TextField and a Send Button.
-        |- After drawing anything interactive, loop bee_wait_action on that surface, keeping one cursor per surface and passing it back each call; timedOut only means call again. Each record arrives claimed for you with a token: act on it, then bee_action_done with its recordId and token. While people are talking, pass timeoutSeconds 20: a message typed in your terminal waits until the wait returns.
+        |- After drawing anything interactive, loop bee_wait_action with no surfaceId and timeoutSeconds 20: one wait covers all your own surfaces, including ones you open later. Pass back the cursor it returned each call; timedOut only means call again. A message typed in your terminal waits until the wait returns, hence the short timeout. Each record names its surfaceId and arrives claimed for you with a token: act on it, then bee_action_done with its recordId and token. Other sessions' surfaces stay out of your wait; pass a surfaceId only to handle one of theirs you were asked to.
         |- bee_list_actions is a glance only: its records carry no token and are not claimed. Never act on a listed record; handle records only from bee_wait_action.
         |- A refused write names the bad id or type and changes nothing: fix it and resend.
         |
@@ -154,7 +154,7 @@ object WhiteboardGuide {
             |1. Call bee_board to see what is up and who is here, set your bee_presence status, and call $EXAMPLES_TOOL for every component that renders.
             |2. $start
             |3. Keep the board current as the conversation moves: update your surfaces in place as things are decided, open a new surface for a new topic, close the ones that are settled. When you ask a question, put the way to answer on the board too: Buttons for the options, or a field and a Send button.
-            |4. Put a Done button on your main surface. Then loop: bee_wait_action on your interactive surfaces with timeoutSeconds 20, act on each record, bee_action_done it, and redraw. Re-read bee_board now and then for what others changed.
+            |4. Put a Done button on your main surface. Then loop: bee_wait_action with no surfaceId (all your surfaces) and timeoutSeconds 20, passing back the cursor it returned, act on each record, bee_action_done it, and redraw. Re-read bee_board now and then for what others changed.
             |5. Stop when someone clicks Done or says, here or on the board, that they are done; when bee_board shows no person attached; or when no record has arrived for about 10 minutes. Leave a short summary surface of what was decided, clear your bee_presence status, and say here that you have stopped.
         """.trimMargin()
     }

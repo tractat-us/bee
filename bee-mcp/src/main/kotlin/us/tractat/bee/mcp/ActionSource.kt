@@ -5,7 +5,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.time.Duration
 
 /**
- * Where `bee_wait_action` and `bee_list_actions` read a surface's action records from.
+ * Where `bee_wait_action` and `bee_list_actions` read action records from: one surface's, or the
+ * whole board's ([ActionScope]).
  *
  * Task 7 supplies the board-backed source, which claims each record before returning it. Task 5
  * only fixes the shape, so the tools and their bounds can be proved against a fake.
@@ -15,15 +16,36 @@ import kotlin.time.Duration
  */
 interface ActionSource {
     /**
-     * Holds until a record on [surfaceId] arrives after [cursor], or [timeout] passes.
+     * Holds until a record in [scope] arrives after [cursor], or [timeout] passes.
      *
      * Returns within [timeout]: the bound belongs to the source, because only the source knows the
      * cursor to hand back when nothing came.
      */
-    suspend fun next(surfaceId: String, cursor: String?, timeout: Duration): WaitResult
+    suspend fun next(scope: ActionScope, cursor: String?, timeout: Duration): WaitResult
 
-    /** The records on [surfaceId] after [since] (all of them when `null`), without blocking. */
-    fun list(surfaceId: String, since: String?): ActionPage
+    /** The records in [scope] after [since] (all of them when `null`), without blocking. */
+    fun list(scope: ActionScope, since: String?): ActionPage
+}
+
+/** [ActionSource.next] on the one surface [surfaceId]. */
+suspend fun ActionSource.next(surfaceId: String, cursor: String?, timeout: Duration): WaitResult =
+    next(ActionScope.Surface(surfaceId), cursor, timeout)
+
+/** [ActionSource.list] on the one surface [surfaceId]. */
+fun ActionSource.list(surfaceId: String, since: String?): ActionPage = list(ActionScope.Surface(surfaceId), since)
+
+/** Which records a wait or a list reads. */
+sealed interface ActionScope {
+    /** The records on surface [id] alone. */
+    data class Surface(val id: String) : ActionScope
+
+    /**
+     * The records on this session's own surfaces: those its bridge process opened, under its
+     * identity now or one it held before a `/clear`, including surfaces opened after the wait
+     * began. Never another session's surfaces, the companion's, an orphan decision or a pairing
+     * surface, whose records other handlers take (spec §5.2).
+     */
+    data object Board : ActionScope
 }
 
 /**
@@ -42,17 +64,17 @@ data class WaitResult(val record: JsonObject?, val timedOut: Boolean, val cursor
 data class ActionPage(val records: List<JsonObject>, val cursor: String)
 
 /**
- * The source the bridge runs with until Task 7 joins it to the board: no surface ever has a record,
+ * The source the bridge runs with until Task 7 joins it to the board: no scope ever has a record,
  * so every wait times out at its bound and every list is empty.
  */
 object NoActions : ActionSource {
-    override suspend fun next(surfaceId: String, cursor: String?, timeout: Duration): WaitResult {
+    override suspend fun next(scope: ActionScope, cursor: String?, timeout: Duration): WaitResult {
         delay(timeout)
         return WaitResult(record = null, timedOut = true, cursor = cursor ?: START)
     }
 
-    override fun list(surfaceId: String, since: String?): ActionPage = ActionPage(emptyList(), since ?: START)
+    override fun list(scope: ActionScope, since: String?): ActionPage = ActionPage(emptyList(), since ?: START)
 
-    /** The cursor of a caller that has seen nothing on the surface. */
+    /** The cursor of a caller that has seen nothing yet. */
     const val START = "0"
 }

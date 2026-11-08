@@ -28,6 +28,13 @@ class BridgeIdentity(
     val current: StateFlow<PeerIdentity> = identity.asStateFlow()
 
     /**
+     * Every identity this bridge process has acted as, [current] among them: the surfaces any of
+     * them opened are still this process's (spec §5.2, a board-wide wait).
+     */
+    @Volatile var held: Set<PeerIdentity> = setOf(identity.value)
+        private set
+
+    /**
      * Mints a fresh identity, then reports the old one with [reason], and returns the old one.
      *
      * The fresh identity is in place before [onRetire] runs, so a report that fails (it propagates)
@@ -35,7 +42,10 @@ class BridgeIdentity(
      */
     suspend fun retire(reason: DepartReason): PeerIdentity = mutex.withLock {
         val old = identity.value
-        identity.value = generateSequence { PeerIdentity.agent(name, random) }.first { it != old }
+        val fresh = generateSequence { PeerIdentity.agent(name, random) }.first { it != old }
+        // Held before it's current, so the current identity is always among those held.
+        held = held + fresh
+        identity.value = fresh
         onRetire(old, reason)
         old
     }

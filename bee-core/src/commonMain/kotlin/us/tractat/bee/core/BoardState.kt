@@ -222,10 +222,11 @@ class BoardState internal constructor(
 
     fun meta(id: String): SurfaceMeta? = surfaces[id]?.let(SurfaceDoc::meta)
 
+    /** Every record on the board, whatever its surface, in sequence order. */
+    fun records(): List<Pair<RecordId, ActionRecord>> = records.entries().map { (id, record) -> RecordId(id.dot) to record }
+
     /** Surface [surfaceId]'s records, in sequence order. */
-    fun records(surfaceId: String): List<Pair<RecordId, ActionRecord>> = records.entries()
-        .filter { it.second.surfaceId == surfaceId }
-        .map { (id, record) -> RecordId(id.dot) to record }
+    fun records(surfaceId: String): List<Pair<RecordId, ActionRecord>> = records().filter { it.second.surfaceId == surfaceId }
 
     /** The mirrored view of claim [target], or null if the host never mirrored it. */
     fun claimView(target: ClaimTarget): ClaimView? = claims[target.value]

@@ -118,7 +118,7 @@ class WaitToolTest {
             "string timeout" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "timeoutSeconds" to "30")),
             "object timeout" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "timeoutSeconds" to buildJsonObject { put("s", 30) })),
             "number cursor" to (WaitTool.WAIT to mapOf("surfaceId" to "s1", "cursor" to 3)),
-            "no surface" to (WaitTool.WAIT to emptyMap()),
+            "number surface" to (WaitTool.WAIT to mapOf("surfaceId" to 7)),
             "number since" to (WaitTool.LIST to mapOf("surfaceId" to "s1", "since" to 1)),
         )
 
@@ -130,7 +130,7 @@ class WaitToolTest {
             { assertTrue("timeoutSeconds" in messages.getValue("string timeout").text()) },
             { assertTrue("timeoutSeconds" in messages.getValue("object timeout").text()) },
             { assertTrue("cursor" in messages.getValue("number cursor").text()) },
-            { assertTrue("surfaceId" in messages.getValue("no surface").text()) },
+            { assertTrue("surfaceId" in messages.getValue("number surface").text()) },
             { assertTrue("since" in messages.getValue("number since").text()) },
             { assertEquals(0, source.waits) },
             { assertEquals(0L, currentTime) },
@@ -157,6 +157,44 @@ class WaitToolTest {
             { assertEquals(emptyList(), empty.first) },
             { assertEquals(0L, currentTime) },
         )
+    }
+
+    /** Without surfaceId, a wait and a list read the whole board; with it, that one surface still. */
+    @Test
+    fun omittingTheSurfaceReadsTheWholeBoard() = runTest {
+        source.append("poll", record("vote"))
+        val client = connect()
+
+        launch { source.appendAfter(5.seconds, "kanban", record("drag")) }
+        val first = client.wait(emptyMap())
+        val second = client.wait(mapOf("cursor" to first.cursor))
+        val listed = client.call(WaitTool.LIST, emptyMap()).page()
+        val onePoll = client.call(WaitTool.LIST, mapOf("surfaceId" to "poll")).page()
+
+        assertAll(
+            { assertEquals(record("vote"), first.record) },
+            { assertEquals(record("drag"), second.record, "the wait took in the other surface's record") },
+            { assertEquals(listOf(record("vote"), record("drag")), listed.first) },
+            { assertEquals(listOf(record("vote")), onePoll.first, "control: a surfaceId still narrows the list") },
+            {
+                assertEquals(
+                    listOf(ActionScope.Board, ActionScope.Board, ActionScope.Board, ActionScope.Surface("poll")),
+                    source.scopes,
+                )
+            },
+        )
+    }
+
+    /** A blank surfaceId reads the session's own surfaces, as an absent one does, not a surface named `""`. */
+    @Test
+    fun aBlankSurfaceReadsTheBoardScope() = runTest {
+        source.append("poll", record("vote"))
+        val client = connect()
+
+        client.wait(mapOf("surfaceId" to ""))
+        client.call(WaitTool.LIST, mapOf("surfaceId" to "  ")).page()
+
+        assertEquals(listOf<ActionScope>(ActionScope.Board, ActionScope.Board), source.scopes)
     }
 
     private suspend fun TestScope.connect(): Client {
@@ -205,25 +243,33 @@ class WaitToolTest {
     private data class Waited(val record: JsonObject?, val timedOut: Boolean, val cursor: String)
 }
 
-/** Records per surface, with the cursor as the count of records seen. */
+/** Records in arrival order, with the cursor as the count of records seen in the scope. */
 private class FakeActionSource : ActionSource {
-    private val records = MutableStateFlow(mapOf<String, List<JsonObject>>())
+    private val records = MutableStateFlow(listOf<Pair<String, JsonObject>>())
     var waits = 0
         private set
 
-    fun append(surfaceId: String, record: JsonObject) =
-        records.update { it + (surfaceId to it[surfaceId].orEmpty() + record) }
+    /** Every scope a wait or a list was asked for, in order. */
+    val scopes = mutableListOf<ActionScope>()
+
+    fun append(surfaceId: String, record: JsonObject) = records.update { it + (surfaceId to record) }
 
     suspend fun appendAfter(delay: Duration, surfaceId: String, record: JsonObject) {
         kotlinx.coroutines.delay(delay)
         append(surfaceId, record)
     }
 
-    override suspend fun next(surfaceId: String, cursor: String?, timeout: Duration): WaitResult {
+    private fun List<Pair<String, JsonObject>>.inScope(scope: ActionScope): List<JsonObject> = when (scope) {
+        is ActionScope.Surface -> filter { it.first == scope.id }.map { it.second }
+        ActionScope.Board -> map { it.second }
+    }
+
+    override suspend fun next(scope: ActionScope, cursor: String?, timeout: Duration): WaitResult {
         waits++
+        scopes += scope
         val seen = cursor?.toInt() ?: 0
         val record = withTimeoutOrNull(timeout) {
-            records.first { it[surfaceId].orEmpty().size > seen }.getValue(surfaceId)[seen]
+            records.first { it.inScope(scope).size > seen }.inScope(scope)[seen]
         }
         return when (record) {
             null -> WaitResult(record = null, timedOut = true, cursor = seen.toString())
@@ -231,8 +277,9 @@ private class FakeActionSource : ActionSource {
         }
     }
 
-    override fun list(surfaceId: String, since: String?): ActionPage {
-        val all = records.value[surfaceId].orEmpty()
+    override fun list(scope: ActionScope, since: String?): ActionPage {
+        scopes += scope
+        val all = records.value.inScope(scope)
         return ActionPage(all.drop(since?.toInt() ?: 0), cursor = all.size.toString())
     }
 }
