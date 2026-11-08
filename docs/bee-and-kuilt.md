@@ -132,8 +132,8 @@ Two gaps show the loop.
   ([kuilt#3120](https://github.com/tractat-us/kuilt/issues/3120)), and the fix shipped in kuilt
   `0.7.0-dev.1692`. A follow-up gap, a learner that had gone never being removed
   ([kuilt#3127](https://github.com/tractat-us/kuilt/issues/3127)), was fixed in `0.7.0-dev.1693`.
-  bee took it by changing its kuilt version and nothing else
-  ([bee#26](https://github.com/tractat-us/bee/pull/26)). The
+  bee took it by changing its kuilt version and re-enabling the test that proves it, with no
+  other code change ([bee#26](https://github.com/tractat-us/bee/pull/26)). The
   [spike notes](spikes/2026-11-spike-4-claims.md) tell the whole story.
 - **Removing a key lost its history.** In kuilt's JSON CRDT, deleting a key and writing it again
   could reuse identities other copies had already seen, so a concurrent edit could silently erase
