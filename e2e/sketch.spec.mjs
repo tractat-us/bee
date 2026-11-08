@@ -143,7 +143,9 @@ test('a later proposal replaces the earlier one and Send records it once', async
   await pat.frame.locator('[data-choice="b"]').click();
   await expect(proposal(pat.page)).toContainText('Option B');
   await expect(proposal(pat.page)).not.toContainText('Option A');
-  // A proposal never records itself.
+  // A proposal never records itself, nor does a click a script dispatches on Send.
+  await pat.page.waitForTimeout(1_500);
+  await proposal(pat.page).locator('.bee-proposal-send').evaluate((send) => send.click());
   await pat.page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
 
@@ -174,6 +176,22 @@ test('a dismissed proposal records nothing and clears the selection', async ({ b
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'b', text: 'Option B' });
   await dee.context.close();
+});
+
+// A proposal belongs to the screen that made it: a new screen drops it unsent, so the viewer
+// can't send the old screen's choice as if made on the new one.
+test('a new screen drops the proposal the old one made', async ({ browser }) => {
+  pushScreen('stale.html', options.replace('Which layout?', 'Stale layout?'));
+  const ray = await openBoard(browser, 'ray', 'Stale layout?');
+  await ray.frame.locator('[data-choice="a"]').click();
+  await expect(proposal(ray.page)).toContainText('Option A');
+
+  pushScreen('fresh.html', options.replace('Which layout?', 'Fresh layout?'));
+  await expect(ray.frame.locator('h2')).toHaveText('Fresh layout?', { timeout: 15_000 });
+  await expect(proposal(ray.page)).toBeHidden();
+  await ray.page.waitForTimeout(1_500);
+  expect(eventLines()).toEqual([]);
+  await ray.context.close();
 });
 
 test('sketch cannot reach the parent DOM or the network', async ({ browser }) => {
@@ -385,6 +403,13 @@ async function chooseBesideAThief(browser, ownSurface, ownLines) {
 
   await confirm(page, ownSurface);
   await expect.poll(ownLines, { timeout: 10_000 }).toHaveLength(1);
+  // The thief swaps its proposal every 300 ms, so its Send never arms: clicks on the spot where
+  // it sits, as a viewer's click on its way would land, record nothing.
+  const send = await proposal(page).getByRole('button', { name: 'Send', exact: true }).boundingBox();
+  for (let i = 0; i < 5; i++) {
+    await page.mouse.click(send.x + send.width / 2, send.y + send.height / 2);
+    await page.waitForTimeout(150);
+  }
   await page.waitForTimeout(3_000);
   expect(eventLines()).toEqual([]);
   expect(ownLines().map((l) => JSON.parse(l))).toMatchObject([{ choice: 'b', text: 'Option B' }]);
