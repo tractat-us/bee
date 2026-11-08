@@ -98,6 +98,8 @@ order:
   - kuilt-3148
   - kuilt-3149
   - kuilt-3150
+  - bee-42-hand-check
+  - bee-auto-close
   - out-cla
   - out-kuilt-references
 
@@ -834,6 +836,25 @@ items:
       - { title: "kuilt#3150", url: "https://github.com/tractat-us/kuilt/issues/3150" }
 
   # ── Outside the code ─────────────────────────────────────────────────
+  bee-42-hand-check:
+    kind: outside
+    title: "Pair a real phone over the LAN"
+    status: waiting-on-iain
+    summary: "The e2e never binds off loopback, so mDNS, the macOS firewall, Wi-Fi isolation and mobile Safari or Chrome are unproven."
+    started: "2026-11-08T17:26Z"
+    links:
+      - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
+      - { title: "Steps: Showing the board on another screen", url: "../setup.md#showing-the-board-on-another-screen" }
+
+  bee-auto-close:
+    kind: outside
+    title: "Turn off auto-close in bee's settings"
+    status: waiting-on-iain
+    summary: "Settings, General, Issues; a UI toggle only, to match the rest of tractat-us."
+    started: "2026-11-08T17:26Z"
+    links:
+      - { title: "Ruling on bee#6", url: "https://github.com/tractat-us/bee/issues/6#issuecomment-6724665300" }
+
   out-cla:
     kind: outside
     title: "Contributor agreement text and a signing check"
