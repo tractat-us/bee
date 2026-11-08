@@ -65,5 +65,21 @@ data class PeerIdentity(val kind: PeerKind, val name: String, val instance: Stri
     }
 }
 
-/** Why the host retired an agent identity (a committed `Depart`). */
-enum class DepartReason { Crashed, Quiet, Cleared }
+/**
+ * Why an agent identity was retired (a committed `Depart`, spec §6.4). The host judges [Crashed]
+ * and [Quiet]; the bridge itself proposes [Cleared] and [Left]. Only the host's two say something
+ * went wrong.
+ */
+enum class DepartReason {
+    /** Its claims link is gone, with no goodbye: the voter dropped its node. */
+    Crashed,
+
+    /** It hadn't acted for the quiet timeout, so the host declared it dead. */
+    Quiet,
+
+    /** Its session ran `/clear`, so the bridge took a fresh identity. */
+    Cleared,
+
+    /** Its session ended normally (stdin closed, or the signal Claude Code ends its MCP servers with). */
+    Left,
+}
