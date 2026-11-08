@@ -1,7 +1,7 @@
 // `Sketch`: agent-written HTML in a sandboxed frame (spec §5.6, plan Task 8). Invariant: the
 // HTML runs only inside `<iframe sandbox="allow-scripts">`, never with allow-same-origin, under a
 // CSP that allows no fetch, socket, image or frame load, and the page acts only on messages whose
-// source is that frame, and on a choice only while the viewer's click is fresh. The page's own
+// source is that frame, and on a choice only while the viewer's click in that frame is fresh. The page's own
 // CSP (bee-host's PAGE_CSP) keeps the frame from navigating to a URL.
 //
 // Not covered: WebRTC sits outside CSP, so a sketch can still reach the network through an
@@ -187,6 +187,11 @@ export class SketchElement extends A2uiLitElement {
    * or tapping on the page is refused too. The frame gets the refusal as an error, and its helper
    * drops the selection, so the viewer sees the choice didn't land.
    *
+   * A gesture inside another sketch's frame activates the page too, and reaches no listener here.
+   * It focuses that sketch's `<iframe>`, though, so only the frame that has focus may choose. The
+   * focus is read from the frame's own root, which is the document unless a catalog component
+   * holds the sketch in its shadow root.
+   *
    * Every message counts toward the CHOICE_GAP_MS limit, refused or not, so a frame that posts
    * faster than a person clicks gets nothing through.
    *
@@ -199,6 +204,7 @@ export class SketchElement extends A2uiLitElement {
     this.lastMessageAt = now;
     if (sincePrevious < CHOICE_GAP_MS) return false;
     if (!navigator.userActivation?.isActive) return false;
+    if (this.frame.getRootNode().activeElement !== this.frame) return false;
     return now - lastPageGestureAt >= PAGE_GESTURE_MS;
   }
 
