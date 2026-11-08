@@ -213,12 +213,20 @@ Claude session ── bee-mcp                                           ┘     
   `bee_list_actions(since)` reads without blocking. This is the replacement for reading
   `state_dir/events`. Bounded waits make a long hold unnecessary, so Spike 3 doesn't measure a
   30-minute one **(Iain: dropped)**.
+- **Without a `surfaceId`, a wait or a list covers the whole board (design call).** A whiteboard
+  agent keeps several surfaces up and reacts to whatever a person does on any of them, so it
+  can't know which one to wait on. Both tools then read every surface the session may act on,
+  including surfaces opened after the wait began. They leave out only the host's pairing surfaces
+  (§5.7). The cursor is the set of record ids the caller has passed, not a position, and a record
+  id is a CRDT dot, unique across authors and stable across a host restart. So a board-wide cursor
+  never skips or repeats a record, and any cursor resumes a wait in either scope. It grows with
+  the board's records, which v1 accepts.
 - **Records are addressed to a surface, never to a session instance (design call).** Session
   identities are fresh each time, so a record addressed to one would wait forever once that session
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
   always goes through a claim** (§6.3), so two sessions never both act on one click.
 - **A session handles a surface by subscribing to it (design call).** Waiting on a surface is how
-  a session handles it, and any session may wait on any surface.
+  a session handles it, and any session may wait on any surface, or on all of them at once.
 - **The bridge validates what it writes (design call)** against the Notions schema (§5.6), and
   refuses a malformed surface with an error that names the bad id or type.
 - **A retired bridge re-identifies before it acts (design call).** If the bridge finds its identity
@@ -383,8 +391,9 @@ design call:
 **The host handles admit records without a claim (Iain, 2026-11-08, bee#72).** It is their only
 handler, and the voter never claims, so exactly-once holds by construction: the host handles each
 record once per boot, and a pairing never outlives the boot that opened it. The bridge refuses
-`bee_wait_action` and `bee_list_actions` on a pairing surface the host opened (`bee-pair-`, `host:`, §5.2), so no
-session takes an admit record and the code a person typed into it. That refusal is a visibility
+`bee_wait_action` and `bee_list_actions` on a pairing surface the host opened (`bee-pair-`, `host:`, §5.2), and
+leaves such surfaces out of a board-wide wait or list (§5.2), so no session takes an admit record and the code a
+person typed into it. That refusal is a visibility
 rule for well-behaved agents, not an access gate: it keys on a declared kind, and the host doesn't
 rely on it.
 
