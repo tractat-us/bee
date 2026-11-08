@@ -69,9 +69,10 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  *
  * **A board too large to sync stops, and says so** (bee#65). No payload over [maxPayloadBytes]
  * reaches the wire ([BoundedSeam]): the first one refused ends its connection, lands in [tooLarge]
- * and [lastFailure], and is logged. The client then dials again only once the held board changes,
- * since resending the same board would be refused the same way. The next connection to settle
- * clears [tooLarge].
+ * and [lastFailure], and is logged. The client then dials again only once the held board's
+ * `FullState`, measured locally, could fit, since a board that fits no better would be refused the
+ * same way. A presence post doesn't count as a change. The next connection to settle clears
+ * [tooLarge].
  *
  * **Identities.** Every edit names [author] through the transform (`it.openSurface(author, …)`):
  * it is the stable CRDT author for this process, online or offline. The Quilter's own replica id
@@ -148,7 +149,7 @@ class BoardClient(
     private val _online = MutableStateFlow(false)
     private val _link = MutableStateFlow<String?>(null)
     private val _lastFailure = MutableStateFlow<Throwable?>(null)
-    private val _tooLarge = MutableStateFlow<BoardTooLarge?>(null)
+    private val _tooLarge = MutableStateFlow<BoardSyncTooLarge?>(null)
     private val wanted = MutableStateFlow(false)
     private var live: Connection? = null
     private var connections = 0
@@ -167,7 +168,7 @@ class BoardClient(
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
 
     /** Why the board can't sync, if it can't: a frame it would send is over the link's bound. */
-    val tooLarge: StateFlow<BoardTooLarge?> = _tooLarge.asStateFlow()
+    val tooLarge: StateFlow<BoardSyncTooLarge?> = _tooLarge.asStateFlow()
 
     private val driver: Job = scope.launch(CoroutineName("board-client-${author.value}")) {
         wanted.collectLatest { if (it) stayConnected() }
@@ -236,23 +237,49 @@ class BoardClient(
 
     private suspend fun stayConnected() {
         while (true) {
-            val connection = openOrNull()
-            if (connection != null) {
-                try {
-                    connection.ended.await()
-                } finally {
-                    withContext(NonCancellable) { end(connection) }
-                }
-                if (connection.settled) attempt = 0
-                if (connection.seam.refused.isCompleted) awaitChangeFrom(held.value)
-            }
+            openOrNull()?.let { ride(it) }
             delay(backoff.delay(attempt++))
         }
     }
 
-    /** Suspends until the held board is no longer [refused]: the same board would be refused again. */
-    private suspend fun awaitChangeFrom(refused: BoardState) {
-        held.first { it != refused }
+    /**
+     * Waits out [connection] and ends it. If its seam refused a payload over the bound, says why
+     * the board can't sync, then waits until the board could fit: a board that fits no better
+     * would be refused the same way.
+     */
+    private suspend fun ride(connection: Connection) {
+        try {
+            connection.ended.await()
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) { end(connection) }
+            throw cancelled
+        }
+        val parted = withContext(NonCancellable) { end(connection) }
+        if (connection.settled) attempt = 0
+        val refusal = connection.seam.refusal() ?: return
+        report(refusal)
+        awaitRoom(parted, refusal.limit)
+    }
+
+    /** Says why the board can't sync. */
+    private fun report(refusal: BoardSyncTooLarge) {
+        _tooLarge.value = refusal
+        recordFailure(refusal)
+        log.warn { "${author.value}: ${refusal.message}; dialling again once the board could fit." }
+    }
+
+    /**
+     * Suspends until the held board's `FullState` could fit [limit], measured from [parted], the
+     * board as its connection parted, so an edit made while that connection closed is seen. Only
+     * a change a presence post can't make is measured: a post every [Presence.EVERY] never shrinks
+     * the board, and measuring it would cost a full encode each time (bee#65).
+     */
+    private suspend fun awaitRoom(parted: BoardState, limit: Int) {
+        var board = parted
+        while (fullStateBytes(author, board) > limit) {
+            val measured = board.withoutPresence()
+            board = held.first { it.withoutPresence() != measured }
+        }
     }
 
     private suspend fun openOrNull(): Connection? {
@@ -265,22 +292,13 @@ class BoardClient(
         }
         connection.quilter.state.pumpIn(connection, "mirror") { mirrorIfLive(connection) }
         connection.seam.state.pumpIn(connection, "tear") { if (it is SeamState.Torn) connection.ended.complete(Unit) }
-        connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-refused")) {
-            refuse(connection, connection.seam.refused.await())
-        }
+        // Synchronous with the refusal, so neither a cancelled scope nor [settle] can come between.
+        connection.seam.refused.invokeOnCompletion { connection.ended.complete(Unit) }
         connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-settle")) {
             delay(settleAfter)
             settle(connection)
         }
         return connection
-    }
-
-    /** Ends [connection], whose seam refused a payload over the bound, and says why the board can't sync. */
-    private fun refuse(connection: Connection, refusal: BoardTooLarge) {
-        _tooLarge.value = refusal
-        recordFailure(refusal)
-        log.warn { "${author.value}: ${refusal.message}; dialling again once the board changes." }
-        connection.ended.complete(Unit)
     }
 
     /** Marks [connection] settled, if it is still live, so its tear resets the backoff. */
@@ -357,12 +375,20 @@ class BoardClient(
     /** The live connection, for the guard's test. */
     internal suspend fun liveConnection(): Connection? = mutex.withLock { live }
 
-    /** Ends [connection]: parts it if it's still live, then stops its job and closes its seam. */
-    private suspend fun end(connection: Connection) {
-        mutex.withLock { partLocked(connection) }
+    /**
+     * Ends [connection]: parts it if it's still live, then stops its job and closes its seam.
+     * Returns the held board as it stood at the parting, before the close, which can take up to
+     * [SEAM_CLOSE_TIMEOUT].
+     */
+    private suspend fun end(connection: Connection): BoardState {
+        val parted = mutex.withLock {
+            partLocked(connection)
+            held.value
+        }
         connection.job.cancelAndJoin()
         connection.quilter.close()
         closeQuietly(connection.seam)
+        return parted
     }
 
     /**
@@ -420,9 +446,10 @@ class BoardClient(
 
 /**
  * The board can't sync: the client would have sent a frame of [bytes] bytes, over the link's bound
- * of [limit], and sent nothing instead.
+ * of [limit], and sent nothing instead. Not a write refused for its size: the board took the
+ * write, and it's the board as a whole that can't reach the link.
  */
-class BoardTooLarge(val bytes: Int, val limit: Int) :
+class BoardSyncTooLarge(val bytes: Int, val limit: Int) :
     Exception("can't sync: board too large ($bytes bytes to send, over the link's bound of $limit)")
 
 /** A [BoardClient] dial that didn't answer within [timeout]; it was cancelled and goes round the redial. */
