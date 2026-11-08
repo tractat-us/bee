@@ -8,8 +8,8 @@ same thing, and the board outlives any one peer. See `README.md` for the plain-l
 and `docs/superpowers/specs/` for the design.
 
 **Status: v1 under construction.** It is built against the approved spec and plan in
-`docs/superpowers/` (epic #6); Tasks 1-10 are merged and Task 11 remains. Don't scaffold code
-ahead of the plan. Build and test with `timeout 600 ./gradlew check`.
+`docs/superpowers/`. Epic #6 and `docs/project/plan.yaml` track which tasks have landed. Don't
+scaffold code ahead of the plan. Build and test with `timeout 600 ./gradlew check`.
 
 ## bee and kuilt
 
