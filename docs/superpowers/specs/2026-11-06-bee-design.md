@@ -164,6 +164,8 @@ Claude session ── bee-mcp                                           ┘     
   - The person's name is asked once and kept in `localStorage["bee.human.name"]`.
   - Every tab is its own replica, under a fresh CRDT author per page load.
   - Only the tab holding the Web Lock `bee-board-store` writes the IndexedDB snapshot.
+  - Each tab posts its person's presence (§6.4) with no claims node, so a person shows as attached
+    and is never departed. A person with several tabs shows once.
   - A room screen is a named human peer opened with `?screen=<name>`, and it never proposes a
     claim.
 - **Spike 1 is the glue (Iain: "good with the new spike").** Kotlin/wasm and the JavaScript renderer
