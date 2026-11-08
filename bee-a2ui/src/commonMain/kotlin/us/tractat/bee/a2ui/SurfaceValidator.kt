@@ -13,14 +13,18 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object SurfaceValidator {
     /**
-     * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog.
-     * `Sketch`, `Board` and `Poll` join this set in the tasks that add them to
-     * `bee-notions/src/renderer-host.js`, so it always matches what the renderer can draw.
+     * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog plus
+     * `Sketch` (`bee-notions/src/catalog.js`). `Board` and `Poll` join this set in the task that
+     * adds them there, so it always matches what the renderer can draw.
      */
     val NOTIONS_COMPONENT_TYPES: Set<String> = setOf(
         "Text", "Image", "Icon", "Video", "AudioPlayer", "Row", "Column", "List", "Card", "Tabs",
         "Modal", "Divider", "Button", "TextField", "CheckBox", "ChoicePicker", "Slider", "DateTimeInput",
+        SKETCH,
     )
+
+    /** Agent-written HTML in a sandboxed frame (spec §5.6): properties `html` and `title?`. */
+    const val SKETCH = "Sketch"
 
     private const val ROOT_ID = "root"
 
@@ -41,7 +45,12 @@ object SurfaceValidator {
 
     private fun typeErrors(id: String, component: JsonObject): List<String> {
         val type = component["component"]?.stringOrNull() ?: return listOf("Component \"$id\" has no type.")
-        return if (type in NOTIONS_COMPONENT_TYPES) emptyList() else listOf("Component \"$id\" has unknown type \"$type\".")
+        return when {
+            type !in NOTIONS_COMPONENT_TYPES -> listOf("Component \"$id\" has unknown type \"$type\".")
+            // The frame's whole content: without it the renderer has nothing to sandbox.
+            type == SKETCH && component["html"] == null -> listOf("Component \"$id\" is a Sketch with no html.")
+            else -> emptyList()
+        }
     }
 
     /**
