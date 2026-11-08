@@ -39,11 +39,17 @@ export const CHOICE_ACTION = 'choice';
 const CHOICE_META = 'us.tractat.bee/choice';
 
 /**
- * How long Send stays disabled after a proposal appears or changes. The sketch decides when its
- * proposal changes, so without this it could swap the text, or slide the bar in, under a viewer's
- * click already on its way. Browsers hold their own permission prompts' buttons about as long.
+ * How long Send stays disabled after a proposal appears or changes, or after Send moves. The
+ * sketch decides when its proposal changes, and it can scroll the page (scrollIntoView reaches
+ * the parent in Chromium), so without this it could swap the text, or slide Send, under a
+ * viewer's click already on its way. It's also how long a key press on Send is ignored after Send
+ * takes focus. Browsers hold their own permission prompts' buttons about as long.
  */
 const SEND_ARM_MS = 500;
+
+/** Whether two `DOMRect`s are the same box. */
+const sameRect = (a, b) =>
+  !!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
 /**
  * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
@@ -85,7 +91,15 @@ export class SketchElement extends A2uiLitElement {
     /** The choice the frame proposes, `{id, choice, text, at}`, or null. Never on the board. */
     this.proposal = null;
     this.armTimer = null;
+    /** Send's box when arming last began: Send arms only if it's still there. */
+    this.armRect = null;
+    /** When Send last took focus, for the key press that follows Tab out of a sketch. */
+    this.focusedAt = -Infinity;
     this.onMessage = (event) => this.receive(event);
+    // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
+    // a change in the size of the bar, this sketch or the page.
+    this.onMove = () => { if (this.proposal) this.arm(); };
+    this.resizes = new ResizeObserver(this.onMove);
   }
 
   /** Light DOM, as the basic catalog's elements render. */
@@ -96,10 +110,18 @@ export class SketchElement extends A2uiLitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('message', this.onMessage);
+    window.addEventListener('scroll', this.onMove, true);
+    window.addEventListener('resize', this.onMove);
+    this.resizes.observe(this);
+    this.resizes.observe(document.body);
+    if (this.bar) this.resizes.observe(this.bar);
   }
 
   disconnectedCallback() {
     window.removeEventListener('message', this.onMessage);
+    window.removeEventListener('scroll', this.onMove, true);
+    window.removeEventListener('resize', this.onMove);
+    this.resizes.disconnect();
     this.drop();
     super.disconnectedCallback();
   }
@@ -121,8 +143,11 @@ export class SketchElement extends A2uiLitElement {
       this.frame = frame;
       this.bar = this.createBar();
       frame.after(this.bar);
+      this.resizes.observe(this.bar);
     }
     this.frame.title = String(props.title ?? 'Sketch');
+    this.bar.querySelector('.bee-proposal-from').textContent = this.frame.title;
+    this.bar.setAttribute('aria-label', `${this.frame.title}: its choice`);
     const doc = sketchDocument(props.html ?? '');
     if (doc !== this.shown) {
       // A proposal belongs to the screen that made it: a new screen's viewer never saw it.
@@ -133,16 +158,18 @@ export class SketchElement extends A2uiLitElement {
   }
 
   /**
-   * The page's own bar under the frame: the proposal's text, as text, and Send and Dismiss. It's
-   * outside the frame, so no sketch can reach it, and under its own frame, so a proposal is
-   * always shown with the sketch that made it.
+   * The page's own bar under the frame: the sketch's title, the proposal's text, as text, and Send
+   * and Dismiss. It's outside the frame, so no sketch can reach it, and joined to the bottom of its
+   * own frame, so a proposal is always shown with the sketch that made it.
    */
   createBar() {
     const bar = document.createElement('div');
     bar.className = 'bee-proposal';
     bar.setAttribute('role', 'group');
-    bar.setAttribute('aria-label', "This sketch's choice");
-    bar.style.cssText = 'display:none;align-items:center;gap:0.5rem;padding:0.5rem 0;overflow-wrap:anywhere';
+    bar.style.cssText = 'display:none;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;' +
+      'overflow-wrap:anywhere;border:1px solid #8888;border-top:3px solid #888;border-radius:0 0 6px 6px';
+    const from = document.createElement('strong');
+    from.className = 'bee-proposal-from';
     const label = document.createElement('span');
     label.className = 'bee-proposal-text';
     const send = document.createElement('button');
@@ -155,9 +182,18 @@ export class SketchElement extends A2uiLitElement {
     dismiss.textContent = 'Dismiss';
     // Only a real gesture counts: `isTrusted` is false for any event a script dispatched, and a
     // sketch's script can't reach the page to dispatch one anyway.
-    send.addEventListener('click', (event) => { if (event.isTrusted) this.send(); });
+    send.addEventListener('click', (event) => {
+      if (!event.isTrusted) return;
+      // Tab out of a sketch lands on its Send, so a key press meant for the sketch would send it.
+      // A keyboard activation (detail 0) counts once Send has had focus for SEND_ARM_MS.
+      if (event.detail === 0 && performance.now() - this.focusedAt < SEND_ARM_MS) return;
+      this.send();
+    });
+    send.addEventListener('focus', () => { this.focusedAt = performance.now(); });
+    // A held key repeats: only a fresh press may send.
+    send.addEventListener('keydown', (event) => { if (event.repeat) event.preventDefault(); });
     dismiss.addEventListener('click', (event) => { if (event.isTrusted) this.dismiss(); });
-    bar.append(label, send, dismiss);
+    bar.append(from, label, send, dismiss);
     return bar;
   }
 
@@ -182,29 +218,50 @@ export class SketchElement extends A2uiLitElement {
 
   /**
    * Shows [choice] as this sketch's proposal, in place of any earlier one, which is answered as
-   * replaced. It records nothing: only the viewer's Send does. Send is disabled for SEND_ARM_MS
-   * after every change, and the bar never takes focus, so a keypress meant for something else
-   * can't send it.
+   * replaced. It records nothing: only the viewer's Send does. Send re-arms (see `arm`) on every
+   * change, and a key press on Send counts only once Send has had focus for SEND_ARM_MS, so a
+   * click or key press meant for something else can't send it.
    */
   propose(id, choice, text) {
     if (this.proposal) this.reply(this.proposal.id, { error: { code: -32001, message: 'Replaced by a later choice.' } });
-    this.proposal = { id, choice, text, at: performance.now() };
+    this.proposal = { id, choice, text };
     const label = this.bar.querySelector('.bee-proposal-text');
     const shown = document.createElement('em');
     shown.textContent = text || choice;
     label.replaceChildren('Send ', shown, '?');
-    const send = this.bar.querySelector('.bee-proposal-send');
-    send.disabled = true;
-    clearTimeout(this.armTimer);
-    this.armTimer = setTimeout(() => { send.disabled = false; }, SEND_ARM_MS);
     this.bar.style.display = 'flex';
+    this.arm();
   }
 
-  /** The viewer's Send: records the proposal shown, as theirs, and answers the frame. */
+  /**
+   * Disables Send, and enables it SEND_ARM_MS later only if Send is still where it was when
+   * arming began; otherwise arming starts again. A sketch can't move Send under a click on its way.
+   */
+  arm() {
+    const send = this.bar.querySelector('.bee-proposal-send');
+    send.disabled = true;
+    this.armRect = send.getBoundingClientRect();
+    clearTimeout(this.armTimer);
+    this.armTimer = setTimeout(() => {
+      if (sameRect(send.getBoundingClientRect(), this.armRect)) send.disabled = false;
+      else this.arm();
+    }, SEND_ARM_MS);
+  }
+
+  /**
+   * The viewer's Send: records the proposal shown, as theirs, and answers the frame. Send must be
+   * armed, and still where it was armed: a move whose scroll or resize event hasn't fired yet
+   * re-arms it here instead.
+   */
   send() {
     const proposal = this.proposal;
-    if (!proposal || performance.now() - proposal.at < SEND_ARM_MS) return;
-    this.context?.dispatchAction({ event: { name: CHOICE_ACTION, context: { choice: proposal.choice, text: proposal.text } } });
+    const button = this.bar.querySelector('.bee-proposal-send');
+    if (!proposal || button.disabled) return;
+    if (!sameRect(button.getBoundingClientRect(), this.armRect)) {
+      this.arm();
+      return;
+    }
+    this.context.dispatchAction({ event: { name: CHOICE_ACTION, context: { choice: proposal.choice, text: proposal.text } } });
     this.reply(proposal.id, { result: {} });
     this.drop();
   }
@@ -226,7 +283,7 @@ export class SketchElement extends A2uiLitElement {
   /** Answers request [id] (a notification, with no id, gets none). The frame's origin is opaque: '*'. */
   reply(id, outcome) {
     if (id === undefined || id === null) return;
-    this.frame?.contentWindow?.postMessage({ jsonrpc: '2.0', id, ...outcome }, '*');
+    this.frame.contentWindow.postMessage({ jsonrpc: '2.0', id, ...outcome }, '*');
   }
 }
 SketchElement.tagName = 'bee-sketch';
