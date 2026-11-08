@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -30,6 +31,7 @@ import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.core.PeerId
@@ -76,8 +78,10 @@ private sealed interface Access {
  *   shows its code full screen, and dials the board only once a person typing the code there gives
  *   it a key (§5.7).
  *
- * The CRDT author is fresh per page load, `web-<uuid>`. The page shows whether it is online, and
- * why not, and lists the board's action records with what each one's basis saw.
+ * The CRDT author is fresh per page load, `web-<uuid>`. The page shows each open surface as a card,
+ * who is attached ([BoardChrome]), and whether it is online, and why not; its person shows as
+ * attached too, through its own presence, which names no claims node. Under "Details" it lists
+ * the board's action records with what each one's basis saw.
  *
  * The page starts from this browser's copy of the board ([BrowserStore]), for the board the host
  * names at [BoardId.PATH]. The copy holds what a tab did while the host was down: close that tab,
@@ -205,10 +209,11 @@ private fun endedText(reason: PairingEnd): String = when (reason) {
 @OptIn(ExperimentalUuidApi::class)
 private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
-    val status = document.body!!.appendElement("p", "status")
-    val problem = document.body!!.appendElement("p", "problem")
-    val store = document.body!!.appendElement("p", "store")
-    val records = document.body!!.appendElement("ol", "records")
+    val shell = PageShell.around(root)
+    val status = shell.status
+    val problem = shell.problem
+    val store = shell.store
+    val records = shell.records
 
     val author = ReplicaId("web-${Uuid.random()}")
     val clock = { Clock.System.now() }
@@ -243,8 +248,12 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         )
         val onProblem: (String) -> Unit = { problem.textContent = it }
         val inputs = LiveInputs(root, client, author, scope, onProblem)
-        BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, clock, onProblem).start(scope)
+        val chrome = BoardChrome(root, shell.peers)
+        BoardDriver(client, A2uiRenderer(root, chrome::slot), root, author, actor, inputs, clock, onProblem).start(scope)
         HistoryStrip(client, author, document.body!!, onProblem).start(scope)
+        val presence = Presence(client, author, emptyFlow(), clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
+        chrome.start(scope, client.state, presence.roster)
+        launch { presence.update(actor, status = null, lastActedAt = clock(), waiting = false) }
         if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
         reloadOnAnotherBoard(scope, client, pin)
 
@@ -255,7 +264,10 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
                     failure != null -> "offline: ${failure.message ?: failure::class.simpleName}"
                     else -> "offline"
                 }
-            }.collect { status.textContent = it }
+            }.collect {
+                status.textContent = it
+                status.setAttribute("data-online", client.online.value.toString())
+            }
         }
         scope.launch { client.state.collect { showRecords(records, it) } }
         client.connect()
