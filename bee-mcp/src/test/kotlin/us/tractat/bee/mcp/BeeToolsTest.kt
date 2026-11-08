@@ -36,6 +36,7 @@ import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
+import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.host.BoardStar
 import us.tractat.bee.host.ClaimsRig
 import us.tractat.bee.host.ClaimsVoter
@@ -337,6 +338,17 @@ internal class Session(
 
     /** The live link's Raft node. */
     suspend fun node(): NodeId = link().node
+
+    /** The claims node this session's own posted presence names now. */
+    fun postedClaimsNode(): NodeId? = ownEntry(client.state.value)?.claimsNode
+
+    /** Suspends until this session's own posted presence names [node]. */
+    suspend fun awaitPostedClaimsNode(node: NodeId) {
+        client.state.first { ownEntry(it)?.claimsNode == node }
+    }
+
+    private fun ownEntry(state: BoardState): PresenceEntry? =
+        state.presence.entries.values.mapNotNull { it.value }.singleOrNull { it.identity == bridge.self }
 
     suspend fun call(name: String, arguments: Map<String, Any?>): CallToolResult =
         mcp.callTool(name, arguments, options = RequestOptions(timeout = 5.minutes))
