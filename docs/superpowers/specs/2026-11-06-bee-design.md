@@ -367,6 +367,33 @@ design call:
 orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
 someone can see the new screen.
 
+**The rule checks the kind a record declares, not a verified person (design call, bee#64).**
+Nothing ties a record's actor to the connection that wrote it (bee#60). So any board writer can
+enter a code as a person: every process on the host's machine, every keyed device, and an agent
+driving a real browser. The code is the real proof: only the new screen shows it, so a forged
+admit still needs someone who can see that screen. The rule stops a well-behaved agent, never a
+hostile process on the host's machine, which already holds what an admit grants, since loopback
+needs no key. "Admitted by <name>" names the declared actor.
+
+- `Pairing.attempt` enforces the declared-kind check (`Attempt.NotHuman`, `PairingTest`).
+- No new gate may rest on peer kind until actors are attested. Review holds that until the type
+  below exists.
+- **Open (bee#64), before a second person or a keyed agent attaches:** a keyed connection's actor
+  must match the identity its key was minted for. That's generic, so it's tractat-us/kuilt#3149:
+  the relay attests each record's author by its connection. `Pairing.attempt` then takes the attested
+  type, so a declared identity no longer compiles there. Loopback stays trusted, because the host
+  can't tell a person's browser from a process on its own machine.
+
+Rejected for v1 (bee#64):
+
+- **A host-served admit page with a CSRF-bound token, or a cookie set at page load.** Any local
+  process can fetch the page and replay its token, and an agent can drive the page in a browser.
+- **The #60 page-confirm.** The admit button is already page-owned UI, and this forgery is a
+  hand-written record, not a confused deputy.
+- **WebAuthn user verification on admit.** It alone stops a driven browser, but enrolment needs
+  its own trusted channel, and a room screen has no authenticator. Revisit it if bee runs
+  untrusted code on the host's machine.
+
 The other details are design calls too. Loopback connections need no key. A key in the URL
 (`?k=`) still admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong
 entries void it.

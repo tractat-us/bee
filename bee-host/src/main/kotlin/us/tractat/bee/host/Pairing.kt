@@ -131,7 +131,8 @@ private val logger = KotlinLogging.logger {}
  * before [maxWrong] wrong ones, mints a [DeviceKey], and [admits] holds it from then on.
  *
  * - **Only a person admits** (Iain: humans only, for now). An agent's entry is refused before its
- *   code is compared, so it neither spends a try nor learns whether it matched.
+ *   code is compared, so it neither spends a try nor learns whether it matched. The kind is the
+ *   one the record declares, never attested, so this stops a well-behaved agent only (§5.7, bee#64).
  * - **Codes and keys are compared in constant time**, so a timing side channel can't walk them.
  * - **Keys live in memory only.** A new host process re-pairs every device.
  * - **One address can't crowd out the others.** An address has at most one pairing waiting, and
