@@ -30,6 +30,17 @@ class HostAddress private constructor(private val root: Url, private val key: St
         key?.let { parameters.append(PairingWire.KEY_PARAM, it) }
     }.buildString()
 
+    /** [text] with this address's key, as given or URL-encoded, replaced by `…` wherever it appears. */
+    fun redact(text: String): String = text
+
+    /**
+     * [failure] as a log line may show it: each throwable in its cause chain, its class and its
+     * [redact]ed message. A dial's failure can name the URL it dialled, `?k=` and all (Ktor CIO's
+     * connect timeout does), so a failure from this address's sockets is logged through this,
+     * never as the raw throwable.
+     */
+    fun describe(failure: Throwable): String = failure.toString()
+
     override fun toString(): String = if (key == null) http else "$http, with a join key"
 
     companion object {

@@ -77,6 +77,9 @@ class HostAddressTest {
             "http://h:8233/#k=$KEY",
             "http://h:8233/?x=1",
             "http://h:8233/?k=",
+            "http://h:8233/?k",
+            "http://h:8233/?",
+            "http://h:8233?",
             "http://h:8233/?k=a&k=b",
             "",
         )
@@ -89,6 +92,38 @@ class HostAddressTest {
         val failures = listOf("http://h:8233/board?k=$KEY", "ftp://h:8233/?k=$KEY", "http://h:8233/?k=$KEY&x=1", "http://h:8233/?k=$KEY&k=$KEY")
             .map { assertFailsWith<IllegalArgumentException> { HostAddress.parse(it) } }
         assertAll(*failures.map { failure -> { assertFalse(KEY in failure.message.orEmpty(), failure.message) } }.toTypedArray())
+    }
+
+    /** A connect timeout's message names the URL it dialled, key and all: what a log line shows of it holds no key. */
+    @Test
+    fun aDialFailureIsDescribedWithoutTheKey() {
+        val host = HostAddress.parse("http://tractatus.local:8233/?k=$KEY")
+        val dialled = host.socket("/ws/claims")
+        val failure = IllegalStateException(
+            "The claims link failed",
+            RuntimeException("Connect timeout has expired [url=$dialled, connect_timeout=unknown ms]"),
+        )
+        val described = host.describe(failure)
+        assertAll(
+            { assertFalse(KEY in described, described) },
+            { assertTrue("The claims link failed" in described, described) },
+            { assertTrue("Connect timeout has expired [url=ws://tractatus.local:8233/ws/claims?k=…" in described, described) },
+        )
+    }
+
+    @Test
+    fun anEncodedKeyIsRedactedAsWrittenAndAsDecoded() {
+        val host = HostAddress.parse("http://h:8233/?k=a%2Bb")
+        assertAll(
+            { assertEquals("ws://h:8233/ws/board?k=…", host.redact(host.socket("/ws/board"))) },
+            { assertEquals("key …", host.redact("key a+b")) },
+        )
+    }
+
+    @Test
+    fun aKeylessAddressRedactsNothing() {
+        val host = HostAddress.parse("http://h:8233")
+        assertEquals("url=ws://h:8233/ws/board", host.redact("url=${host.socket("/ws/board")}"))
     }
 
     private companion object {
