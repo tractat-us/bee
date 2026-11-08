@@ -1,11 +1,13 @@
 package us.tractat.bee.host
 
+import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PeerKind
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -52,17 +54,48 @@ sealed interface Opened {
         override fun toString(): String = "Ticket(id=$id, code=…, expiresAt=$expiresAt)"
     }
 
-    /** No pairing: the device may ask again later. The wire says only [us.tractat.bee.core.PairingEnd.Busy]. */
-    sealed interface Refused : Opened
+    /** No pairing: the device may ask again later. [wire] is what the device is told. */
+    sealed interface Refused : Opened {
+        val wire: PairingEnd
+    }
 
     /** [Pairing.MAX_PENDING] pairings are already waiting. */
-    data object Busy : Refused
+    data object Busy : Refused {
+        override val wire = PairingEnd.Busy
+    }
+
+    /** The [PairingBudget] is spent: as many pairings opened in its window as it allows. */
+    data object OverBudget : Refused {
+        override val wire = PairingEnd.Busy
+    }
 
     /** A pairing from this address is already waiting. */
-    data object AlreadyPairing : Refused
+    data object AlreadyPairing : Refused {
+        override val wire = PairingEnd.TooSoon
+    }
 
     /** This address opened a pairing less than [Pairing.COOLDOWN] ago. */
-    data object TooSoon : Refused
+    data object TooSoon : Refused {
+        override val wire = PairingEnd.TooSoon
+    }
+}
+
+/**
+ * At most [requests] pairings open in any [per], from every limited address together. Each one
+ * counts when it opens, whether or not its request reaches the board, so it bounds the join
+ * requests written to the board in that window.
+ */
+data class PairingBudget(val requests: Int, val per: Duration = 1.hours) {
+    init {
+        require(requests >= 1) { "A pairing budget allows at least one request: $requests" }
+        require(per.isPositive()) { "A pairing budget's window is positive: $per" }
+    }
+
+    companion object {
+        /** Join requests an hour, by default. */
+        const val DEFAULT_PER_HOUR: Int = 30
+        val DEFAULT: PairingBudget = PairingBudget(DEFAULT_PER_HOUR)
+    }
 }
 
 /** What one typed entry did to a pairing. */
@@ -98,10 +131,14 @@ sealed interface Attempt {
  * - **Codes and keys are compared in constant time**, so a timing side channel can't walk them.
  * - **Keys live in memory only.** A new host process re-pairs every device.
  * - **One address can't crowd out the others.** An address has at most one pairing waiting, and
- *   opens at most one per [cooldown]; past that, only [MAX_PENDING] wait at once. A loopback
- *   address is never limited: it reaches the board without a key, so it has nothing to pair for.
- *   An address is not an identity, though: a device that answers on many addresses gets a turn on
- *   each.
+ *   opens at most one per [cooldown]; past that, only [MAX_PENDING] wait at once. An address is
+ *   not an identity, though: a device that answers on many addresses gets a turn on each.
+ * - **The total is bounded.** All limited addresses together open at most [budget]'s worth of
+ *   pairings in its window, so however many addresses a device has, it writes at most that many
+ *   join requests to the board in that time. The budget is shared, so such a device can spend it
+ *   and hold off everyone else's pairing until the window rolls on; the join link still admits.
+ * - A loopback address is never limited: it reaches the board without a key, so it has nothing to
+ *   pair for.
  *
  * Every method is synchronous and thread-safe; [clock] and [secrets] are its only inputs.
  */
@@ -111,6 +148,7 @@ class Pairing(
     private val ttl: Duration = TTL,
     private val maxWrong: Int = MAX_WRONG,
     private val cooldown: Duration = COOLDOWN,
+    private val budget: PairingBudget = PairingBudget.DEFAULT,
 ) {
     private class Pending(val from: String, val code: String, val expiresAt: Instant, val wrong: Int)
 
@@ -125,25 +163,33 @@ class Pairing(
 
     /** When each limited address last opened a pairing, within the last [cooldown]. */
     private val lastOpened = mutableMapOf<String, Instant>()
+
+    /** When each limited pairing within the last [PairingBudget.per] opened, oldest first. */
+    private val budgetSpent = ArrayDeque<Instant>()
     private val keys = mutableListOf<DeviceKey>()
 
     /** Opens a pairing for a keyless device at address [from], or says why not ([Opened.Refused]). */
     fun open(from: String): Opened = synchronized(lock) {
         val now = clock()
         lastOpened.values.removeIf { now >= it + cooldown }
+        while (budgetSpent.firstOrNull()?.let { now >= it + budget.per } == true) budgetSpent.removeFirst()
         // An expired pairing holds no place, though it stays pending until its timer ends it.
         val live = pending.values.filter { now < it.expiresAt }
         val limited = !isLoopback(from)
         when {
             limited && live.any { it.from == from } -> Opened.AlreadyPairing
             limited && from in lastOpened -> Opened.TooSoon
+            limited && budgetSpent.size >= budget.requests -> Opened.OverBudget
             live.size >= MAX_PENDING -> Opened.Busy
             else -> {
                 val id = secrets.pairingId()
                 check(id !in pending) { "pairing id $id minted twice" }
                 val ticket = Opened.Ticket(id, secrets.code(), now + ttl)
                 pending[id] = Pending(from, ticket.code, ticket.expiresAt, wrong = 0)
-                if (limited) lastOpened[from] = now
+                if (limited) {
+                    lastOpened[from] = now
+                    budgetSpent.addLast(now)
+                }
                 ticket
             }
         }
@@ -194,7 +240,7 @@ class Pairing(
 
         /**
          * Pairings waiting at once, from every address together. It caps concurrent requests on
-         * the board, not how many open over time: that is [COOLDOWN] and [DWELL]'s job.
+         * the board, not how many open over time: that is [COOLDOWN], [DWELL] and [PairingBudget]'s job.
          */
         const val MAX_PENDING: Int = 3
 
@@ -202,7 +248,7 @@ class Pairing(
         val COOLDOWN: Duration = 10.seconds
 
         /**
-         * How long a device holds its pairing socket open before its request goes on the board. A
+         * How long a device stays on its pairing channel before its request goes on the board. A
          * device that dials and drops writes nothing there, so a loop of them leaves no surfaces.
          */
         val DWELL: Duration = 3.seconds

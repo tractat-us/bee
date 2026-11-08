@@ -133,7 +133,9 @@ so. A code lasts two minutes, and three wrong codes void it. The device then off
 The code field shows dots, and what you type stays on your screen until you press **Admit**.
 
 A device's request reaches the board a few seconds after it shows its code. One device can have
-one code at a time, and can ask for a new one every ten seconds.
+one code at a time, and can ask for a new one every ten seconds. All devices together can ask
+30 times an hour; past that, a device is told to try again later. Change the number with
+`--join-requests-per-hour <n>`.
 
 The join link carries a key (`?k=…`), so a device that opens it skips the code. The page moves
 the key out of the address bar as it loads. Anyone holding the link gets in until the host stops,

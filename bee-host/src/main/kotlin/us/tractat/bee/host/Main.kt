@@ -13,7 +13,7 @@ import java.nio.file.Path
 
 private val logger = KotlinLogging.logger {}
 
-/** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--lan]`. */
+/** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--join-requests-per-hour <n>] [--lan]`. */
 fun main(args: Array<String>) {
     val config = HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

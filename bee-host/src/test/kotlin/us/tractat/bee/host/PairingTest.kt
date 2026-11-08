@@ -10,6 +10,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
@@ -201,6 +202,37 @@ class PairingTest {
         assertAll(
             { opened.forEach { assertIs<Opened.Ticket>(it) } },
             { assertEquals(Opened.Busy, past) },
+        )
+    }
+
+    /**
+     * However many addresses ask, together they open at most the budget's worth of pairings in its
+     * window, ended or not. The window slides: each pairing frees its place an hour after it opened.
+     */
+    @Test
+    fun theBudgetBoundsPairingsAcrossEveryAddress() {
+        val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), budget = PairingBudget(3))
+        val spent = List(3) {
+            assertIs<Opened.Ticket>(budgeted.open(fresh())).also { ticket ->
+                budgeted.end(ticket.id)
+                advance(1.minutes)
+            }
+        }
+        val overBudget = budgeted.open(fresh())
+        val loopback = budgeted.open("127.0.0.1")
+        // The first pairing opened 3 minutes ago; its place frees an hour after it opened.
+        advance(1.hours - 3.minutes - 1.milliseconds)
+        val justBefore = budgeted.open(fresh())
+        advance(1.milliseconds)
+        val afterTheFirstFrees = budgeted.open(fresh())
+        val thenSpentAgain = budgeted.open(fresh())
+        assertAll(
+            { assertEquals(3, spent.size) },
+            { assertEquals(Opened.OverBudget, overBudget) },
+            { assertIs<Opened.Ticket>(loopback, "loopback spends no budget") },
+            { assertEquals(Opened.OverBudget, justBefore) },
+            { assertIs<Opened.Ticket>(afterTheFirstFrees) },
+            { assertEquals(Opened.OverBudget, thenSpentAgain) },
         )
     }
 

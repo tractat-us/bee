@@ -89,7 +89,7 @@ class BeeHost private constructor(
             val stores = HostStores.onDisk(config.dataDir)
             val boardId = CompletableDeferred<BoardId>()
             // Task 10: keys live in this host's memory, so a restart re-pairs every LAN device.
-            val pairing = Pairing(clock, SecureSecrets(SecureRandom()))
+            val pairing = Pairing(clock, SecureSecrets(SecureRandom()), budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints

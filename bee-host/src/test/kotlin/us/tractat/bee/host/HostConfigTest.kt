@@ -37,4 +37,14 @@ class HostConfigTest {
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--lan", "yes"), home) } },
         )
     }
+
+    @Test
+    fun joinRequestsPerHourSetsThePairingBudget() {
+        assertAll(
+            { assertEquals(PairingBudget(5), HostConfig.fromArgs(listOf("--join-requests-per-hour", "5"), home).pairingBudget) },
+            { assertEquals(PairingBudget(30), HostConfig.fromArgs(emptyList(), home).pairingBudget, "30 by default") },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--join-requests-per-hour", "0"), home) } },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--join-requests-per-hour", "many"), home) } },
+        )
+    }
 }

@@ -1,6 +1,8 @@
 package us.tractat.bee.host
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.sse.SSE
+import io.ktor.client.plugins.sse.sse
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
@@ -12,10 +14,9 @@ import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
-import io.ktor.websocket.Frame
 import io.ktor.websocket.close
-import io.ktor.websocket.readText
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingWire
@@ -55,7 +56,12 @@ class LanKeyGateTest {
                 }
             }
         }
-        test(createClient { install(WebSockets) })
+        test(
+            createClient {
+                install(WebSockets)
+                install(SSE)
+            },
+        )
     }
 
     @Test
@@ -115,16 +121,15 @@ class LanKeyGateTest {
         )
     }
 
-    /** The page and the pairing socket are what a keyless device needs, so both stay open to it. */
+    /** The page and the pairing channel are what a keyless device needs, so both stay open to it. */
     @Test
     fun pageAndPairingNeedNoKey() = gated { client ->
         val page = client.get("/") { header(TEST_PEER, LAN) }.status
         var shown: PairingMessage? = null
         var pending = false
-        client.webSocket(PairingWire.PATH, request = { header(TEST_PEER, LAN) }) {
-            shown = Json.decodeFromString(PairingMessage.serializer(), (incoming.receive() as Frame.Text).readText())
+        client.sse(PairingWire.PATH, request = { header(TEST_PEER, LAN) }) {
+            shown = Json.decodeFromString(PairingMessage.serializer(), requireNotNull(incoming.first().data))
             pending = pairing.isPending(PairingId((shown as PairingMessage.Code).pairing))
-            close()
         }
         val code = assertIs<PairingMessage.Code>(shown)
         assertAll(

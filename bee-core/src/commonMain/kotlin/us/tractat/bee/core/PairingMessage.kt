@@ -5,8 +5,9 @@ import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 /**
- * What the host sends a keyless device down the pairing socket (spec §5.7), as JSON text frames.
- * The socket carries these and nothing else: no board state, no presence, no claims.
+ * What the host sends a keyless device on the pairing channel (spec §5.7), as the JSON data of
+ * server-sent events. The channel carries these and nothing else: no board state, no presence, no
+ * claims.
  */
 @Serializable
 sealed interface PairingMessage {
@@ -34,18 +35,21 @@ enum class PairingEnd {
     /** Three wrong codes were typed. */
     Voided,
 
-    /** Too many devices are pairing at once; try again shortly. */
+    /** The host is pairing as many devices as it will for now; try again later. */
     Busy,
+
+    /** This device asked too soon after its last code, or while one was still waiting; wait a moment. */
+    TooSoon,
 }
 
 /** The pairing wire's coordinates, shared by the host and the page. */
 object PairingWire {
-    /** The pairing socket's route. */
-    const val PATH: String = "/ws/pair"
+    /** The pairing channel's route: a server-sent event stream, not a WebSocket. */
+    const val PATH: String = "/pair"
 
     /** The query parameter carrying a device key, on the page's URL and on every socket it dials. */
     const val KEY_PARAM: String = "k"
 
-    /** The query parameter naming a room screen (A7), on the page's URL and the pairing socket. */
+    /** The query parameter naming a room screen (A7), on the page's URL and the pairing channel. */
     const val SCREEN_PARAM: String = "screen"
 }

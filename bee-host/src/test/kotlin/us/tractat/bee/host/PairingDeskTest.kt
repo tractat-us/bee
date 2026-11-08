@@ -3,6 +3,7 @@
 package us.tractat.bee.host
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -20,15 +21,19 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One device's pairing as the socket serves it (spec §5.7), on the in-memory relay under virtual
  * time, with the production [Pairing.DWELL], [Pairing.COOLDOWN] and [Pairing.TTL]. A [Session]
- * stands in for the socket: what the desk sends it, and a `left` its owner completes to hang up.
+ * stands in for the channel: what the desk sends it, and the job serving it, which hanging up
+ * cancels, as Netty cancels the call when a device goes.
  */
 class PairingDeskTest {
-    private class Session(val sent: MutableList<PairingMessage>, val left: CompletableDeferred<Unit>)
+    private class Session(val sent: MutableList<PairingMessage>) {
+        lateinit var serving: Job
+    }
 
     private class Rig(val test: TestScope, val star: BoardStar, val pairing: Pairing, val desk: PairingDesk) {
         val board: BoardState get() = star.relay.state.value
@@ -38,14 +43,14 @@ class PairingDeskTest {
         val requests: List<String> get() = (board.openSurfaces() + board.closedSurfaces()).filter { it.startsWith("bee-pair-") }
 
         fun dial(address: String): Session {
-            val session = Session(mutableListOf(), CompletableDeferred()).also { dialled += it }
-            test.backgroundScope.launch { desk.serve(Device(address, screen = null), session.left) { session.sent += it } }
+            val session = Session(mutableListOf()).also { dialled += it }
+            session.serving = test.backgroundScope.launch { desk.serve(Device(address, screen = null)) { session.sent += it } }
             test.runCurrent()
             return session
         }
 
         fun Session.hangUp() {
-            left.complete(Unit)
+            serving.cancel()
             test.runCurrent()
         }
 
@@ -76,42 +81,44 @@ class PairingDeskTest {
 
     /**
      * A device that dials, reads its code and drops within the dwell writes nothing to the board.
-     * It waits out the cooldown each time, so every one of its dials gets a code.
+     * It waits out the cooldown each time, and dials the budget's worth, so every dial gets a code.
      */
     @Test
     fun dialAndDropWritesNothingToTheBoard() = rig {
-        val sessions = List(CYCLES) {
+        val dials = PairingBudget.DEFAULT.requests
+        val sessions = List(dials) {
             dial(LAN).also {
                 it.hangUp()
                 test.advanceTimeBy(Pairing.COOLDOWN)
             }
         }
         assertAll(
-            { assertEquals(CYCLES, sessions.count { it.sent.singleOrNull() is PairingMessage.Code }, "rig: every dial got a code") },
+            { assertEquals(dials, sessions.count { it.sent.singleOrNull() is PairingMessage.Code }, "rig: every dial got a code") },
             { assertEquals(emptyList(), requests) },
         )
     }
 
     /**
-     * The worst a dialler on one address can do in a burst: each dial that gets a code holds on
-     * past the dwell, so its request goes up, then hangs up and dials again.
+     * The worst a dialler on several addresses can do in an hour: [CYCLES] dials spread over the
+     * hour, round-robin across [ADDRESSES] addresses so neither the per-address cooldown nor its
+     * one waiting pairing holds any of them back. Each dial that gets a code stays past the dwell,
+     * so its request goes up, then hangs up. Only the budget stops the rest.
      */
     @Test
-    fun hundredCyclesFromOneAddressLeaveAtMostOneRequest() = rig {
-        val sessions = List(CYCLES) {
-            dial(LAN).also {
+    fun hundredCyclesOverAnHourFromSeveralAddressesLeaveAtMostTheBudget() = rig {
+        val spacing = 1.hours / CYCLES
+        val sessions = List(CYCLES) { cycle ->
+            dial(ADDRESSES[cycle % ADDRESSES.size]).also {
                 if (it.sent.firstOrNull() is PairingMessage.Code) holdPastTheDwell()
                 it.hangUp()
+                test.advanceTimeBy(spacing - Pairing.DWELL - 1.milliseconds)
             }
         }
-        val fromLan = requests
-        val elsewhere = dial(OTHER_LAN)
-        holdPastTheDwell()
+        val budget = PairingBudget.DEFAULT.requests
         assertAll(
-            { assertEquals(1, fromLan.size, "requests on the board from $LAN: $fromLan") },
-            { assertEquals(CYCLES - 1, sessions.count { it.sent == listOf(PairingMessage.Ended(PairingEnd.Busy)) }) },
-            { assertIs<PairingMessage.Code>(elsewhere.sent.single(), "another address pairs while $LAN is throttled") },
-            { assertEquals(fromLan.size + 1, requests.size, "and its request goes up") },
+            { assertTrue(spacing * ADDRESSES.size > Pairing.COOLDOWN, "rig: the cooldown holds no address back") },
+            { assertEquals(budget, requests.size, "requests on the board: ${requests.size}") },
+            { assertEquals(CYCLES - budget, sessions.count { it.sent == listOf(PairingMessage.Ended(PairingEnd.Busy)) }) },
         )
     }
 
@@ -125,7 +132,7 @@ class PairingDeskTest {
         val elsewhere = dial(OTHER_LAN)
         assertAll(
             { assertIs<PairingMessage.Code>(first.sent.single()) },
-            { assertEquals(listOf<PairingMessage>(PairingMessage.Ended(PairingEnd.Busy)), second.sent) },
+            { assertEquals(listOf<PairingMessage>(PairingMessage.Ended(PairingEnd.TooSoon)), second.sent, "told to wait, not that others are pairing") },
             { assertIs<PairingMessage.Code>(elsewhere.sent.single()) },
         )
     }
@@ -166,6 +173,7 @@ class PairingDeskTest {
 
     private companion object {
         const val CYCLES = 100
+        val ADDRESSES = List(4) { "192.168.1.${40 + it}" }
         const val LAN = "192.168.1.20"
         const val OTHER_LAN = "192.168.1.30"
     }

@@ -1,12 +1,12 @@
 package us.tractat.bee.host
 
+import io.ktor.server.application.install
+import io.ktor.server.http.HttpRequestLifecycle
 import io.ktor.server.routing.Route
-import io.ktor.server.websocket.webSocket
-import io.ktor.websocket.Frame
-import io.ktor.websocket.close
+import io.ktor.server.routing.route
+import io.ktor.server.sse.sse
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.PairingEnd
@@ -19,31 +19,36 @@ import kotlin.time.Instant
 private const val MAX_SCREEN_NAME = 40
 
 /**
- * The pairing socket at [PairingWire.PATH] (spec §5.7, step 1): a keyless device dials it, gets a
- * code to show, and waits for a key. It carries [PairingMessage]s and nothing else; [desk] serves
- * each one.
+ * The pairing channel at [PairingWire.PATH] (spec §5.7, step 1): a keyless device opens it, gets a
+ * code to show, and waits for a key. It is a stream of server-sent events, each one
+ * [PairingMessage], and nothing else; [desk] serves each device.
+ *
+ * Not a WebSocket: the host reads nothing from a keyless device, so it gives one no inbound frame
+ * parser to feed. When the device hangs up, Netty cancels its call ([HttpRequestLifecycle]), and
+ * that cancellation is how [desk] learns it left.
+ *
+ * Needs Ktor's `SSE` plugin installed on the application.
  */
 fun Route.pairingEndpoint(desk: PairingDesk, peers: PeerAddress) {
-    webSocket(PairingWire.PATH) {
-        val device = Device(peers.of(call), screenName(call.request.queryParameters[PairingWire.SCREEN_PARAM]))
-        // The device sends nothing; this completes when it closes its socket.
-        val left = async { for (frame in incoming) Unit }
-        try {
-            desk.serve(device, left) { send(Frame.Text(Json.encodeToString(PairingMessage.serializer(), it))) }
-        } finally {
-            left.cancel()
+    route(PairingWire.PATH) {
+        install(HttpRequestLifecycle) { cancelCallOnClose = true }
+        sse {
+            val device = Device(peers.of(call), screenName(call.request.queryParameters[PairingWire.SCREEN_PARAM]))
+            desk.serve(device) { send(data = Json.encodeToString(PairingMessage.serializer(), it)) }
         }
-        close()
     }
 }
 
 /**
- * Serves one keyless device's pairing, from its code to its last message, apart from the socket.
+ * Serves one keyless device's pairing, from its code to its last message, apart from the channel.
  *
  * Each device that [Pairing.open] lets in gets a code. Its join request goes on the board only once
- * it has held its socket open for [dwell], so a device that dials and drops writes nothing there.
- * The pairing ends when a person types the code (a [PairingMessage.Key]), when it is voided or its
- * time runs out (a [PairingMessage.Ended]), or when the device goes away, which closes its request.
+ * it has stayed on for [dwell], so a device that dials and drops writes nothing there. The pairing
+ * ends when a person types the code (a [PairingMessage.Key]), when it is voided or its time runs
+ * out (a [PairingMessage.Ended]), or when the device goes away, which closes its request.
+ *
+ * **The device going away is the cancellation of [serve].** Whatever [serve] is doing when it is
+ * cancelled, it ends the pairing and withdraws a posted request on the way out.
  *
  * @param joinRequests the board side of pairing, ready once the relay is up
  */
@@ -53,37 +58,30 @@ class PairingDesk(
     private val dwell: Duration,
     private val clock: () -> Instant,
 ) {
-    /** Serves [device], whose socket closing completes [left]; [send] writes to its socket. */
-    suspend fun serve(device: Device, left: Deferred<Unit>, send: suspend (PairingMessage) -> Unit) {
+    /** Serves [device] until its pairing ends; [send] writes to its channel. Cancel it when the device leaves. */
+    suspend fun serve(device: Device, send: suspend (PairingMessage) -> Unit) {
         val ticket = when (val opened = pairing.open(device.address)) {
-            is Opened.Refused -> return send(PairingMessage.Ended(PairingEnd.Busy))
+            is Opened.Refused -> return send(PairingMessage.Ended(opened.wire))
             is Opened.Ticket -> opened
         }
         try {
             send(PairingMessage.Code(ticket.id.value, ticket.code, ticket.expiresAt))
-            val droppedEarly = withTimeoutOrNull(dwell) { left.await() } != null
-            if (droppedEarly) return
-            onTheBoard(ticket, device, joinRequests.await(), left)?.let { send(it) }
+            delay(dwell)
+            send(onTheBoard(ticket, device, joinRequests.await()))
         } finally {
             // A device gone before its request was posted leaves no pairing behind.
             pairing.end(ticket.id)
         }
     }
 
-    /** Posts [ticket]'s request and waits for it to end: the device's last message, or null if it left. */
-    private suspend fun onTheBoard(ticket: Opened.Ticket, device: Device, requests: JoinRequestSurface, left: Deferred<Unit>): PairingMessage? {
+    /** Posts [ticket]'s request and waits for it to end: the device's last message. */
+    private suspend fun onTheBoard(ticket: Opened.Ticket, device: Device, requests: JoinRequestSurface): PairingMessage {
         val resolution = requests.post(ticket, device)
         try {
-            val waited = withTimeoutOrNull(ticket.expiresAt - clock()) {
-                select<Waited> { resolution.onAwait { Waited.Resolved(it) }; left.onAwait { Waited.Left } }
-            }
-            val ended = when (waited) {
-                Waited.Left -> return null
-                is Waited.Resolved -> waited.resolution
-                // On the timer, expire the pairing. An entry that won the race already resolved
-                // it, and `end` leaves it be.
-                null -> requests.end(ticket.id, PairingEnd.Expired).let { resolution.await() }
-            }
+            // On the timer, expire the pairing. An entry that won the race already resolved it,
+            // and `end` leaves it be.
+            val ended = withTimeoutOrNull(ticket.expiresAt - clock()) { resolution.await() }
+                ?: requests.end(ticket.id, PairingEnd.Expired).let { resolution.await() }
             return when (ended) {
                 is Resolution.Admitted -> PairingMessage.Key(ended.key.value)
                 is Resolution.Ended -> PairingMessage.Ended(ended.reason)
@@ -91,12 +89,6 @@ class PairingDesk(
         } finally {
             requests.withdraw(ticket.id)
         }
-    }
-
-    private sealed interface Waited {
-        data class Resolved(val resolution: Resolution) : Waited
-
-        data object Left : Waited
     }
 }
 

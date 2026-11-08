@@ -19,15 +19,20 @@ test.afterEach(async () => {
   contexts = [];
 });
 
-/** Opens the page as a room screen named `screen`, reached by the LAN name, logging every socket it opens. */
+/**
+ * Opens the page as a room screen named `screen`, reached by the LAN name, logging every socket it
+ * opens and every request it makes.
+ */
 async function openRemote(browser, screen) {
   const context = await browser.newContext();
   contexts.push(context);
   const page = await context.newPage();
   const sockets = [];
+  const requests = [];
   page.on('websocket', (ws) => sockets.push(new URL(ws.url())));
+  page.on('request', (r) => requests.push({ url: new URL(r.url()), accept: r.headers()['accept'] }));
   await page.goto(`http://${LAN_NAME}:${process.env.BEE_E2E_PORT}/?screen=${screen}`);
-  return { page, sockets };
+  return { page, sockets, requests };
 }
 
 /** Opens the page on the laptop, from 127.0.0.1, as `name`. */
@@ -92,11 +97,14 @@ test('keyless remote page shows a code and no board', async ({ browser }) => {
   expect(await laptop.locator('body').innerText()).not.toContain(shown);
 
   // Nothing of the board reached the remote page: no surface, no record, no status, and no
-  // socket but the pairing one.
+  // socket at all. Pairing is an event stream, which sends the host nothing.
   await expect(remote.page.locator('a2ui-surface')).toHaveCount(0);
   await expect(remote.page.locator('#status')).toHaveCount(0);
   await expect(remote.page.locator('#records')).toHaveCount(0);
-  expect(remote.sockets.map((url) => url.pathname)).toEqual(['/ws/pair']);
+  expect(remote.sockets).toEqual([]);
+  const pairing = remote.requests.filter((r) => r.url.pathname === '/pair');
+  expect(pairing.length, 'the page opened the pairing channel').toBeGreaterThan(0);
+  for (const r of pairing) expect(r.accept).toBe('text/event-stream');
 });
 
 test('typing the code on the laptop admits the remote page', async ({ browser }) => {

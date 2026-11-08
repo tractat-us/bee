@@ -3,9 +3,6 @@ package us.tractat.bee.web
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
-import io.ktor.client.plugins.websocket.webSocket
-import io.ktor.websocket.Frame
-import io.ktor.websocket.readText
 import kotlinx.browser.document
 import kotlinx.browser.sessionStorage
 import kotlinx.browser.window
@@ -21,6 +18,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.w3c.dom.Element
+import org.w3c.dom.EventSource
 import org.w3c.dom.url.URLSearchParams
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardClient
@@ -71,7 +69,7 @@ private sealed interface Access {
  *   the page gains one.
  * - **Where.** Every socket goes back to the host and scheme the page came from, so a page opened
  *   as `http://tractatus.local:8233/` dials `ws://tractatus.local:8233/…`.
- * - **The key gate.** A page from a non-loopback address with no key opens the pairing socket and
+ * - **The key gate.** A page from a non-loopback address with no key opens the pairing channel and
  *   shows its code full screen, and dials the board only once a person typing the code there gives
  *   it a key (§5.7).
  *
@@ -91,7 +89,7 @@ fun main() {
     val http = HttpClient { install(WebSockets) }
     when (val access = accessOf(params)) {
         Access.Loopback, is Access.Keyed -> startBoard(http, actor, access)
-        Access.NeedsPairing -> pair(http, params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, Access.Keyed(key)) }
+        Access.NeedsPairing -> pair(params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, Access.Keyed(key)) }
     }
 }
 
@@ -135,10 +133,13 @@ private fun encodeURIComponent(value: String): String = js("encodeURIComponent(v
 
 /**
  * Shows the pairing code full screen until a person types it on the board, then hands the key to
- * [admitted]. Nothing from the board reaches this page before then: the pairing socket carries only
- * the code and the key.
+ * [admitted]. Nothing from the board reaches this page before then: the pairing channel carries
+ * only the code and the key.
+ *
+ * The channel is an `EventSource`, closed on the host's last word: left open, a browser would dial
+ * it again when the host ends the stream, and open a new pairing.
  */
-private fun pair(http: HttpClient, screen: String?, admitted: (String) -> Unit) {
+private fun pair(screen: String?, admitted: (String) -> Unit) {
     val panel = document.body!!.appendElement("section", "pairing")
     panel.setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;background:#fff")
     val prompt = panel.appendElement("p", "pairing-prompt")
@@ -147,9 +148,7 @@ private fun pair(http: HttpClient, screen: String?, admitted: (String) -> Unit) 
     val again = panel.appendElement("button", "pairing-again")
     again.textContent = "Show a new code"
     again.setAttribute("hidden", "")
-    prompt.textContent = "Asking the host for a code…"
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val query = screen?.let { param(PairingWire.SCREEN_PARAM, it) }.orEmpty()
+    val query = screen?.let { "?${param(PairingWire.SCREEN_PARAM, it)}" }.orEmpty()
 
     fun ended(why: String) {
         prompt.textContent = why
@@ -159,34 +158,30 @@ private fun pair(http: HttpClient, screen: String?, admitted: (String) -> Unit) 
 
     fun request() {
         again.setAttribute("hidden", "")
-        scope.launch {
-            // The socket's last word: a key, or why there is none.
-            var last: PairingMessage? = null
-            try {
-                http.webSocket(socketUrl(PairingWire.PATH, query)) {
-                    for (frame in incoming) {
-                        val text = (frame as? Frame.Text)?.readText() ?: continue
-                        val message = Json.decodeFromString(PairingMessage.serializer(), text)
-                        if (message is PairingMessage.Code) {
-                            prompt.textContent = "Enter this code on the board to join"
-                            code.textContent = message.code
-                        } else {
-                            last = message
-                        }
-                    }
+        prompt.textContent = "Asking the host for a code…"
+        val channel = EventSource(PairingWire.PATH + query)
+        channel.onmessage = { event ->
+            when (val message = Json.decodeFromString(PairingMessage.serializer(), event.data.toString())) {
+                is PairingMessage.Code -> {
+                    prompt.textContent = "Enter this code on the board to join"
+                    code.textContent = message.code
                 }
-            } catch (@Suppress("TooGenericExceptionCaught") lost: Exception) {
-                return@launch ended("Lost the host: ${lost.message ?: lost::class.simpleName}")
+                is PairingMessage.Key -> {
+                    channel.close()
+                    sessionStorage.setItem(KEY_STORAGE, message.key)
+                    panel.remove()
+                    admitted(message.key)
+                }
+                is PairingMessage.Ended -> {
+                    channel.close()
+                    ended(endedText(message.reason))
+                }
             }
-            val admittedKey = when (val outcome = last) {
-                is PairingMessage.Key -> outcome.key
-                is PairingMessage.Ended -> return@launch ended(endedText(outcome.reason))
-                else -> return@launch ended("The host closed the pairing.")
-            }
-            sessionStorage.setItem(KEY_STORAGE, admittedKey)
-            panel.remove()
-            scope.cancel()
-            admitted(admittedKey)
+        }
+        // A browser can't say why a channel failed, only that it did.
+        channel.onerror = {
+            channel.close()
+            ended("Lost the host.")
         }
     }
     again.addEventListener("click", { request() })
@@ -196,7 +191,8 @@ private fun pair(http: HttpClient, screen: String?, admitted: (String) -> Unit) 
 private fun endedText(reason: PairingEnd): String = when (reason) {
     PairingEnd.Expired -> "Nobody typed the code in time."
     PairingEnd.Voided -> "Three wrong codes were typed."
-    PairingEnd.Busy -> "Other devices are pairing right now. Try again in a moment."
+    PairingEnd.Busy -> "The host is busy pairing other devices. Try again later."
+    PairingEnd.TooSoon -> "Wait a moment, then ask for a new code."
 }
 
 @OptIn(ExperimentalUuidApi::class)

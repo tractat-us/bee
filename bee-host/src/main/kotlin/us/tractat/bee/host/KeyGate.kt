@@ -9,6 +9,7 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.response.respond
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.server.sse.SSE
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
@@ -64,7 +65,7 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  *   the key gate**: a call from a loopback address passes, and any other passes only with a key
  *   [Pairing] minted in its `?k=`. Anything else gets a 403 before the WebSocket upgrade, so it
  *   never reaches the hub or the voter.
- * - the pairing socket at [PairingWire.PATH] and the page at `/`, open to all: they are what a
+ * - the pairing channel at [PairingWire.PATH] and the page at `/`, open to all: they are what a
  *   keyless device needs, and neither carries board state, presence or claims.
  *
  * The gate is installed on the route nodes kuilt's own `webSocket(path)` created, so it applies to
@@ -72,10 +73,11 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * host binds; on [Reach.Loopback] no call can fail it.
  *
  * @param peers where each call came from; production passes [PeerAddress.DIRECT]
- * @param desk serves the pairing socket, over [pairing]
+ * @param desk serves the pairing channel, over [pairing]
  */
 fun Application.mountEndpoints(pairing: Pairing, peers: PeerAddress, desk: PairingDesk): HostEndpoints {
     installBoundedWebSockets()
+    install(SSE)
     val board = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
     val admits = { call: ApplicationCall ->
