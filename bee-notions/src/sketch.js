@@ -117,10 +117,15 @@ export class SketchElement extends A2uiLitElement {
     this.armRect = null;
     /** Whether the pointer is over Send, from Send's own boundary events. */
     this.pointerOver = false;
-    /** Whether a real `pointermove` has landed on Send since arming last began. */
-    this.pointerMoved = false;
-    /** Whether arming has finished, Send unmoved, but waits for the pointer resting on it to move. */
-    this.awaitingMove = false;
+    /** Where the pointer came over Send, until the `pointermove` after it (see `arm`). */
+    this.overAt = null;
+    /** Whether the pointer has moved onto Send since arming last began (see `arm`). */
+    this.pointerArrived = false;
+    /** Whether arming has finished, Send unmoved, but waits for the pointer resting on it to leave. */
+    this.awaitingLeave = false;
+    /** When Send was last enabled, and when a press on it last began: only a later press sends. */
+    this.enabledAt = Infinity;
+    this.pressedAt = -Infinity;
     /** When Send last took focus, for the key press that follows Tab out of a sketch. */
     this.focusedAt = -Infinity;
     /** The height the frame was last fitted to, as CSS. */
@@ -131,9 +136,14 @@ export class SketchElement extends A2uiLitElement {
     this.pinned = false;
     this.onMessage = (event) => this.receive(event);
     // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
-    // a change in the size of the bar, this sketch or the page.
+    // a change in the size of the bar or this sketch. The page's body changes size with every fit
+    // on a page taller than the window, so its resize re-arms Send only if Send has moved.
     this.onMove = () => { if (this.proposal) this.arm(); };
-    this.resizes = new ResizeObserver(this.onMove);
+    this.resizes = new ResizeObserver((entries) => {
+      if (!this.proposal) return;
+      if (entries.every((entry) => entry.target === document.body)) this.rearmIfMoved();
+      else this.arm();
+    });
   }
 
   /** Light DOM, as the basic catalog's elements render. */
@@ -226,19 +236,32 @@ export class SketchElement extends A2uiLitElement {
       // Tab out of a sketch lands on its Send, so a key press meant for the sketch would send it.
       // A keyboard activation (detail 0) counts once Send has had focus for SEND_ARM_MS.
       if (event.detail === 0 && performance.now() - this.focusedAt < SEND_ARM_MS) return;
+      // A press that began before Send was enabled was meant for what Send showed then, or for
+      // wherever Send was.
+      if (event.detail !== 0 && this.pressedAt < this.enabledAt) return;
       this.send();
     });
+    send.addEventListener('pointerdown', (event) => { if (event.isTrusted) this.pressedAt = performance.now(); });
     send.addEventListener('focus', () => { this.focusedAt = performance.now(); });
-    // A frame that grows or shrinks under a still pointer delivers boundary events only, never a
-    // pointermove, so a pointer that came to rest over Send without moving was brought there by
-    // the page moving, not by the person (see `arm`).
-    send.addEventListener('pointerover', () => { this.pointerOver = true; });
-    send.addEventListener('pointerout', () => { this.pointerOver = false; });
-    send.addEventListener('pointermove', () => {
-      this.pointerMoved = true;
-      if (!this.awaitingMove) return;
-      this.awaitingMove = false;
-      if (sameRect(send.getBoundingClientRect(), this.armRect)) send.disabled = false;
+    // A pointer moved onto Send gets its `pointerover` and a `pointermove` from one input event,
+    // at the same point. One that Send was moved under gets a `pointerover` alone, and its next
+    // move, a hand's tremor, is somewhere else (see `arm`).
+    send.addEventListener('pointerover', (event) => {
+      this.pointerOver = true;
+      this.overAt = { x: event.clientX, y: event.clientY };
+    });
+    send.addEventListener('pointermove', (event) => {
+      if (this.overAt && event.clientX === this.overAt.x && event.clientY === this.overAt.y) this.pointerArrived = true;
+      this.overAt = null;
+    });
+    // Leaving Send is the only way out of waiting for the pointer to leave it: a mouse moved off
+    // it, or a touch lifted. Moving on Send isn't.
+    send.addEventListener('pointerout', () => {
+      this.pointerOver = false;
+      this.overAt = null;
+      if (!this.awaitingLeave) return;
+      this.awaitingLeave = false;
+      if (sameRect(send.getBoundingClientRect(), this.armRect)) this.enable();
       else this.arm();
     });
     // A held key repeats: only a fresh press may send.
@@ -333,22 +356,29 @@ export class SketchElement extends A2uiLitElement {
    *
    * Nor under a pointer at rest: a sketch can learn where a resting pointer is (a frame grown over
    * it hears `pointerover`, with coordinates, in Chromium), then fit its frame so its own Send
-   * lands there. So when arming ends with the pointer over Send and no `pointermove` on Send since
-   * arming began, Send stays disabled until one lands on it. Touch leaves no pointer at rest: a
-   * tap ends in `pointerout`.
+   * lands there. So when arming ends with the pointer over Send, and the pointer hasn't moved onto
+   * Send since arming began, Send stays disabled until the pointer leaves it. A move on Send, as
+   * small as a tremor, doesn't count. A touch held on Send leaves it when it lifts, and that
+   * touch's own tap can't send, since it began before Send was enabled.
    */
   arm() {
     const send = this.bar.querySelector('.bee-proposal-send');
     send.disabled = true;
     this.armRect = send.getBoundingClientRect();
-    this.pointerMoved = false;
-    this.awaitingMove = false;
+    this.pointerArrived = false;
+    this.awaitingLeave = false;
     clearTimeout(this.armTimer);
     this.armTimer = setTimeout(() => {
       if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
-      else if (this.pointerOver && !this.pointerMoved) this.awaitingMove = true;
-      else send.disabled = false;
+      else if (this.pointerOver && !this.pointerArrived) this.awaitingLeave = true;
+      else this.enable();
     }, SEND_ARM_MS);
+  }
+
+  /** Enables Send, armed where it is. */
+  enable() {
+    this.bar.querySelector('.bee-proposal-send').disabled = false;
+    this.enabledAt = performance.now();
   }
 
   /**
@@ -379,7 +409,7 @@ export class SketchElement extends A2uiLitElement {
   /** Forgets the proposal, unanswered, and hides the bar. */
   drop() {
     this.proposal = null;
-    this.awaitingMove = false;
+    this.awaitingLeave = false;
     clearTimeout(this.armTimer);
     if (this.bar) this.bar.style.display = 'none';
   }
