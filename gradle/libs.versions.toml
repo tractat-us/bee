@@ -1,8 +1,9 @@
 [versions]
-# Kotlin, coroutines, serialization and atomicfu follow kuilt origin/main (280de6b49).
+# Kotlin, coroutines, serialization and atomicfu follow the kuilt pin below (758a0fe6b).
 kotlin = "2.4.20"
-# Ktor runs ahead of kuilt (3.5.2): 3.6.1 delivers a WebSocket's last frame, such as the host's
-# 1009, before Netty closes (KTOR-9987, KTOR-10035; bee#58).
+# Ktor runs ahead of kuilt (3.5.2) until tractat-us/kuilt#3150: 3.6.1 sends a WebSocket's last
+# frame, such as the host's 1009, before the connection closes (KTOR-9987 Netty, KTOR-10035
+# WebSockets; bee#58). ktor-bom aligns kuilt's Ktor modules to this version.
 ktor = "3.6.1"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.12.0"
@@ -35,6 +36,7 @@ kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.re
 kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlinLogging" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
+ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }

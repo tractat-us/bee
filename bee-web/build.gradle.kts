@@ -38,6 +38,7 @@ kotlin {
         val wasmJsMain by getting {
             dependencies {
                 implementation(project.dependencies.platform(libs.kuilt.bom))
+                implementation(project.dependencies.platform(libs.ktor.bom))
                 implementation(project(":bee-core"))
                 implementation(project(":bee-a2ui"))
                 implementation(libs.kuilt.quilter)
