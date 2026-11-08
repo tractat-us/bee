@@ -19,6 +19,7 @@ import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.RecordId
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.ReplicaId
@@ -36,7 +37,8 @@ import kotlin.time.Duration.Companion.milliseconds
  *
  * Records are addressed to a surface, and any session may wait on any surface, so every candidate
  * (`record:<author>:<seq>`) is claimed through Raft before it's returned. A record another session
- * holds, or one this bridge already handed to a caller, is passed over for good.
+ * holds, or one this bridge already handed to a caller, is passed over for good. The one exception
+ * is a surface the host opened: a wait or a list on it is refused ([refuseHosts]).
  *
  * **A claim of this bridge's own that nobody received is given back, then claimed again.** It
  * arises when a claim timed out and won late, when its link died after the voter appended it, or
@@ -75,6 +77,7 @@ class BoardActionSource internal constructor(
 
     override suspend fun next(surfaceId: String, cursor: String?, timeout: Duration): WaitResult {
         bridge.touch()
+        refuseHosts(bridge.board.value, surfaceId)
         val passed = decode(cursor).toMutableSet()
         bridge.waiting(on = true)
         var won: Won? = null
@@ -183,6 +186,7 @@ class BoardActionSource internal constructor(
         bridge.touch()
         val passed = decode(since)
         val state = bridge.board.value
+        refuseHosts(state, surfaceId)
         val fresh = state.records(surfaceId).filter { (id, _) -> id.dot !in passed }
         return ActionPage(
             records = fresh.map { (id, record) -> json(id, record, token = null, basisComplete = record.basis.completeIn(state, surfaceId)) },
@@ -199,6 +203,23 @@ class BoardActionSource internal constructor(
 
     private fun candidate(state: BoardState, surfaceId: String, passed: Set<Dot>, granted: Set<ClaimTarget>) =
         state.records(surfaceId).firstOrNull { (id, _) -> id.dot !in passed || target(id) in granted }
+            ?.also { refuseHosts(state, surfaceId) }
+
+    /**
+     * Refuses a surface the host opened, such as a join request (spec §6.2, bee#72). The host
+     * handles its records itself, without a claim, as their only handler, so an agent has no
+     * business with them, and a record it took would hand it the code a person typed.
+     *
+     * This is a visibility rule for agents, not an access gate in bee#68's sense: it keys on the
+     * kind the surface's opener declares, and only a well-behaved bridge keeps it. A board writer
+     * can still read the records off its own replica. The host doesn't rely on it.
+     */
+    private fun refuseHosts(state: BoardState, surfaceId: String) {
+        val openedBy = state.meta(surfaceId)?.openedBy ?: return
+        if (openedBy.kind == PeerKind.Host) {
+            throw BridgeRefusal("Surface $surfaceId is the host's ($openedBy): the host handles its records itself, so no session waits on or lists them.")
+        }
+    }
 
     /** A record this wait has in hand under [token]: won by its own claim, or [reassigned] to its session. */
     private data class Won(val id: RecordId, val record: ActionRecord, val by: PeerIdentity, val token: ClaimToken, val reassigned: Boolean)
