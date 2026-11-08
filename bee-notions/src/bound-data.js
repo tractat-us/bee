@@ -27,7 +27,7 @@ export class BoundData {
     const properties = this.host.context?.componentModel?.properties ?? {};
     const paths = this.keys.map((key) => (typeof properties[key]?.path === 'string' ? properties[key].path : null));
     const watched = paths.join('\n');
-    if (model && watched !== this.watched) {
+    if (model && this.host.isConnected && watched !== this.watched) {
       this.unsubscribe();
       this.watched = watched;
       this.subscriptions = paths.filter((path) => path !== null)

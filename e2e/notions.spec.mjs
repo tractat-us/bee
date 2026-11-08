@@ -186,6 +186,23 @@ test('concurrent drops never duplicate a card', async ({ browser }) => {
   for (const peer of peers) await expect(card(peer.page, 'board-race', 'c1')).toHaveCount(1);
 });
 
+test('a card dragged onto another board moves nothing', async ({ browser }) => {
+  const alex = await openPeer(browser, 'alex');
+  peers = [alex];
+  // Both fixtures hold a card `c1` in `todo`: ids are unique only within one board.
+  await expect(card(alex.page, 'board-drop', 'c1')).toBeVisible();
+  await expect(card(alex.page, 'board-race', 'c1')).toBeVisible();
+
+  await card(alex.page, 'board-race', 'c1').dragTo(column(alex.page, 'board-drop', 'doing'));
+  await alex.page.waitForTimeout(1_000);
+
+  for (const id of ['board-drop', 'board-race']) {
+    await expect(column(alex.page, id, 'todo').locator('[data-card="c1"]')).toBeVisible();
+    await expect(column(alex.page, id, 'doing').locator('[data-card="c1"]')).toHaveCount(0);
+    await expect(records(alex.page, id)).toHaveCount(0);
+  }
+});
+
 test('clear the board then reopen from history keeps the votes', async ({ browser }) => {
   test.setTimeout(120_000);
   const alex = await openPeer(browser, 'alex');
@@ -226,7 +243,7 @@ test('markup in labels renders as text', async ({ browser }) => {
   await expect(shown.locator('bee-board [data-card="c1"]')).toHaveText(markup);
   await expect(shown.locator('bee-board [data-column="todo"] h3')).toHaveText(markup);
 
-  // Answering shows the option once more, as the voter's choice: still text.
+  // Answering shows the option once more, in the voter list: still text.
   await shown.locator('bee-poll li button').click();
   await expect(shown.locator('bee-poll .total')).toHaveText('1 answer', { timeout: 5_000 });
   await expect(shown.locator('img')).toHaveCount(0);

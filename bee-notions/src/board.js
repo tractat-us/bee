@@ -90,14 +90,15 @@ export class BoardElement extends A2uiLitElement {
         style="padding:0.25rem 0.5rem;margin:0.25rem 0;border:1px solid #999;border-radius:4px;background:#fff;cursor:grab"
         @dragstart=${(event) => {
           this.dragging = card.id;
-          event.dataTransfer?.setData(CARD_TYPE, card.id);
+          event.dataTransfer?.setData(CARD_TYPE, card.id); // lets the browser start a drag; never read back
         }}
         @dragend=${() => { this.dragging = null; }}>${String(card.label ?? card.id)}</li>`;
   }
 
   drop(event, column, cardsThere) {
     event.preventDefault();
-    const card = event.dataTransfer?.getData(CARD_TYPE) || this.dragging;
+    // Only a drag that started in this element counts: card ids repeat across boards.
+    const card = this.dragging;
     this.dragging = null;
     if (!card || cardsThere.some((there) => there.id === card)) return;
     this.context?.dispatchAction({ event: { name: DROP_ACTION, context: { card, column } } });
