@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T02:12Z"
+as_of: "2026-11-08T02:14Z"
 
 sources:
   - title: "v1 plan"
@@ -181,9 +181,9 @@ items:
     kind: task
     title: "Sketch and the companion adapter (spike 5, the acceptance test)"
     status: in-flight
-    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. Started when #27 merged; its Draft PR, on spike/8-sketch, isn't open yet."
+    summary: "The brainstorming visual companion's screens run through bee: v1's done-when."
     depends_on: [bee-27]
-    started: "2026-11-08T02:01Z"
+    started: "2026-11-08T02:13Z"
     estimate:
       low: 2
       high: 24
@@ -192,6 +192,7 @@ items:
       confidence: low
     links:
       - { title: "Plan, Task 8", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-8-sketch-and-the-companion-adapter-spike-5-the-acceptance-test" }
+      - { title: "bee#38", url: "https://github.com/tractat-us/bee/pull/38" }
 
   task-9:
     kind: task
