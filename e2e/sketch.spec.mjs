@@ -4,7 +4,7 @@
 // screen; the newest one is the Sketch on the `companion` surface.
 import { test, expect } from '@playwright/test';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,7 @@ const dirs = mkdtempSync(join(tmpdir(), 'bee-e2e-companion-'));
 const screenDir = join(dirs, 'content');
 const stateDir = join(dirs, 'state');
 const eventsFile = join(stateDir, 'events');
+const companionBin = join(repo, 'bee-companion/build/install/bee-companion/bin/bee-companion');
 const template = join(dirs, 'frame-template.html');
 // A fixture frame template, shaped like the companion's: its CSS, and the content slot.
 const TEMPLATE = '<!DOCTYPE html><html><head><style>.options{display:flex;gap:1rem}</style></head>' +
@@ -36,8 +37,7 @@ test.beforeAll(async () => {
     timeout: 540_000,
     stdio: 'inherit',
   });
-  const bin = join(repo, 'bee-companion/build/install/bee-companion/bin/bee-companion');
-  companion = spawn(bin, ['--screen-dir', screenDir, '--state-dir', stateDir, '--frame-template', template], {
+  companion = spawn(companionBin, ['--screen-dir', screenDir, '--state-dir', stateDir, '--frame-template', template], {
     env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${port}` },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -239,4 +239,28 @@ test('postMessage from another frame is ignored', async ({ browser }) => {
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'a', text: 'Option A' });
   await iain.context.close();
+});
+
+// A companion whose adapter fails ends, and says so in state_dir, as the companion server does:
+// it never goes on advertising itself. A second companion, on its own directories, loses its
+// screen directory, so its first listing fails. It writes nothing to the board before that.
+test('a companion whose adapter fails exits and says it stopped', async () => {
+  test.setTimeout(90_000);
+  const own = mkdtempSync(join(tmpdir(), 'bee-e2e-failing-'));
+  const ownScreens = join(own, 'content');
+  const ownState = join(own, 'state');
+  mkdirSync(ownScreens, { recursive: true });
+  const failing = spawn(companionBin, ['--screen-dir', ownScreens, '--state-dir', ownState, '--frame-template', template], {
+    env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${port}` },
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  const exited = new Promise((resolve) => failing.on('exit', (code) => resolve(code)));
+  await expect.poll(() => existsSync(join(ownState, 'server-info')), { timeout: 30_000 }).toBe(true);
+
+  rmSync(ownScreens, { recursive: true });
+  const code = await Promise.race([exited, new Promise((resolve) => setTimeout(() => resolve('still running'), 30_000))]);
+  if (code === 'still running') failing.kill();
+  expect(code).toBe(1);
+  expect(existsSync(join(ownState, 'server-info'))).toBe(false);
+  expect(JSON.parse(readFileSync(join(ownState, 'server-stopped'), 'utf8')).reason).toMatch(/^failed: /);
 });
