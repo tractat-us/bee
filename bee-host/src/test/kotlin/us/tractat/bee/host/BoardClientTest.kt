@@ -55,11 +55,13 @@ private val OPENED_AT = Instant.parse("2026-11-06T12:00:00Z")
 /**
  * The board relay in memory, under virtual time: a [BoardRelay] whose hub accepts in-memory
  * connections, and [BoardClient]s whose [SpokeLoom]s dial into it. It's a star, as over real
- * sockets: a spoke's only link is the hub.
+ * sockets: a spoke's only link is the hub. Each loom's spoke end runs through a [WireTap], kept
+ * in [taps] under the loom's name across its redials.
  */
-private class Star(private val test: TestScope) {
+internal class Star(private val test: TestScope) {
     val source = InMemoryConnectionSource()
     val hubEnds = mutableListOf<Connection>()
+    val taps = mutableMapOf<String, WireTap>()
     val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
     private val dispatcher = StandardTestDispatcher(test.testScheduler)
     lateinit var relay: BoardRelay
@@ -72,7 +74,7 @@ private class Star(private val test: TestScope) {
         val (hubEnd, spokeEnd) = connectionPair()
         hubEnds += hubEnd
         source.offer(hubEnd)
-        peerMesh(id, listOf(spokeEnd), dispatcher)
+        peerMesh(id, listOf(taps.getOrPut(name) { WireTap() }.wrap(spokeEnd)), dispatcher)
     }
 
     fun client(author: ReplicaId, loom: SpokeLoom = loom(author.value), scope: CoroutineScope = test.backgroundScope) =
@@ -128,7 +130,7 @@ class BoardClientTest {
     }
 
     /**
-     * An offline edit reaches the other spoke by the merge echo, inside one anti-entropy round,
+     * An offline edit reaches the other spoke by the hub's forward, inside one anti-entropy round,
      * under the author it was minted with, and only once: a record re-applied on reconnect would
      * carry a new dot and show up twice.
      */

@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.ktor.server.websockets)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.cbor)
     implementation(libs.kotlin.logging)
     runtimeOnly(libs.logback)
 
