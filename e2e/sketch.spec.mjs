@@ -1,7 +1,8 @@
 // Sketch and the brainstorming companion on bee (Task 8, spike 5). A real bee-companion, built
 // by `:bee-companion:installDist`, joins the host Playwright started, over temporary screen and
 // state directories, as a brainstorming session would point it. Each test pushes its own
-// screen; the newest one is the Sketch on the `companion` surface.
+// screen; the newest one is the Sketch on the companion's own surface, `companion-<id>`, which it
+// keeps in state_dir/bee-companion.json.
 import { test, expect } from '@playwright/test';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
@@ -25,6 +26,7 @@ const TEMPLATE = '<!DOCTYPE html><html><head><style>.options{display:flex;gap:1r
 test.describe.configure({ mode: 'serial' });
 
 let companion;
+let surfaceId;
 let screens = 0;
 
 test.beforeAll(async () => {
@@ -44,6 +46,10 @@ test.beforeAll(async () => {
   companion.lines = [];
   companion.stdout.on('data', (chunk) => companion.lines.push(...chunk.toString().split('\n').filter(Boolean)));
   await expect.poll(() => companion.lines.some((l) => l.includes('server-started')), { timeout: 60_000 }).toBe(true);
+  const kept = join(stateDir, 'bee-companion.json');
+  await expect.poll(() => existsSync(kept), { timeout: 60_000 }).toBe(true);
+  surfaceId = JSON.parse(readFileSync(kept, 'utf8')).surface;
+  expect(surfaceId).toMatch(/^companion-[0-9a-f]+$/);
 });
 
 // The board is shared with the other specs: the companion leaves it as the brainstorming loop
@@ -75,9 +81,9 @@ async function openBoard(browser, name, text) {
   return { context, page, frame };
 }
 
-const sketchIframe = (page) => page.locator('a2ui-surface[data-surface-id="companion"] bee-sketch iframe');
-const sketchFrame = (page) => page.frameLocator('a2ui-surface[data-surface-id="companion"] bee-sketch iframe');
-const companionRecords = (page) => page.locator('#records li[data-surface-id="companion"]');
+const sketchIframe = (page) => page.locator(`a2ui-surface[data-surface-id="${surfaceId}"] bee-sketch iframe`);
+const sketchFrame = (page) => page.frameLocator(`a2ui-surface[data-surface-id="${surfaceId}"] bee-sketch iframe`);
+const companionRecords = (page) => page.locator(`#records li[data-surface-id="${surfaceId}"]`);
 
 function eventLines() {
   return existsSync(eventsFile) ? readFileSync(eventsFile, 'utf8').split('\n').filter(Boolean) : [];
@@ -123,6 +129,7 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
     '  try { out.parent = parent.document.body ? "reached" : "none"; } catch (e) { out.parent = "blocked"; }' +
     '  try { await fetch("' + probe + '/fetch"); out.fetch = "reached"; } catch (e) { out.fetch = "blocked"; }' +
     '  try { new WebSocket("ws://127.0.0.1:' + port + '/sketch-probe"); out.socket = "opened"; } catch (e) { out.socket = "blocked"; }' +
+    '  out.rtc = typeof RTCPeerConnection;' +
     '  document.getElementById("probe").textContent = JSON.stringify(out);' +
     '})();</script>');
   const context = await browser.newContext();
@@ -144,6 +151,8 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
   expect(await sketchIframe(page).getAttribute('sandbox')).toBe('allow-scripts');
   expect(outcome.parent).toBe('blocked');
   expect(outcome.fetch).toBe('blocked');
+  // Best-effort only: WebRTC sits outside CSP (bee#49), so the helper deletes its constructor.
+  expect(outcome.rtc).toBe('undefined');
   // CSP blocks a WebSocket either by throwing or by never sending it; the request log decides.
   await page.waitForTimeout(1_000);
   expect(reached).toEqual([]);
@@ -196,7 +205,8 @@ test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
 });
 
 // A choice is recorded as the viewer's, so a sketch can't make one by itself: only right after a
-// real click, and one per click however many messages that click sends.
+// real click. Every message from a frame counts toward one per 250 ms, so a click followed by a
+// burst makes one choice; forgeries spaced wider than that are what the next test covers.
 test('a sketch that posts at load creates no record', async ({ browser }) => {
   test.setTimeout(60_000);
   // Every Playwright read of the page (a locator, a count) activates it for 5 s, as a gesture
@@ -224,6 +234,39 @@ test('a sketch that posts at load creates no record', async ({ browser }) => {
   expect(await companionRecords(kit.page).count()).toBe(before + 1);
   expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
   await kit.context.close();
+});
+
+// Activation is page-wide: typing in another surface's field activates the page as a click in the
+// sketch does. A sketch that posts in the background, spaced wider than the rate limit, would get
+// its forgeries through while the viewer types. The page saw that gesture, so it refuses them.
+test('a keypress on the page while a sketch posts creates no record', async ({ browser }) => {
+  test.setTimeout(60_000);
+  // As above, Playwright's own reads activate the page for 5 s: the sketch forges every 300 ms
+  // only from 8 s to 14 s after it loads, and the keypress lands at about 9 s.
+  pushScreen('typing-poster.html', '<h2>Typing poster</h2>' +
+    '<div class="options"><div class="option" data-choice="real">Real</div></div><script>' +
+    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 901, method: "ui/message", params: ' +
+    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
+    'setTimeout(() => { let n = 0; const t = setInterval(() => { forge("typed"); if (++n >= 20) clearInterval(t); }, 300); }, 8000);' +
+    '</' + 'script>');
+  const ada = await openBoard(browser, 'ada', 'Typing poster');
+  const before = await companionRecords(ada.page).count();
+  // Another surface's field, from the fixtures global-setup seeded; no other test reads its note.
+  const field = ada.page.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input');
+  await field.focus();
+  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
+  await ada.page.waitForTimeout(8_500);
+  await ada.page.keyboard.press('x');
+  await ada.page.waitForTimeout(6_000);
+  expect(eventLines()).toEqual([]);
+  expect(await companionRecords(ada.page).count()).toBe(before);
+
+  // Control: the keypress didn't block the sketch for good. A real click, past the 5 s, goes through.
+  await ada.frame.locator('[data-choice="real"]').click();
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
+  await field.fill('');
+  await ada.context.close();
 });
 
 test('postMessage from another frame is ignored', async ({ browser }) => {

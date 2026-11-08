@@ -13,6 +13,12 @@ export function sketchHelper() {
   var CHOICE_META = 'us.tractat.bee/choice';
   var nextId = 1;
 
+  // WebRTC sits outside CSP (bee#49): delete its constructors before the sketch's own script runs.
+  // Best-effort only: a sketch can take them back, from a nested about:blank frame for one.
+  ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel'].forEach(function (name) {
+    try { delete window[name]; } catch (e) { /* not configurable here */ }
+  });
+
   function request(method, params) {
     // The frame's origin is opaque (no allow-same-origin), so the parent can't be named: '*'.
     window.parent.postMessage({ jsonrpc: '2.0', id: nextId++, method: method, params: params }, '*');

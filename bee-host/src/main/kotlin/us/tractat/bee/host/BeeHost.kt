@@ -73,7 +73,8 @@ class BeeHost private constructor(
         /**
          * The page's policy: no frame may load a URL. A `Sketch` frame shows its `srcdoc` (which
          * this policy doesn't block, in Chromium or WebKit), but can't navigate itself to a URL,
-         * by `location` or a link, so it has no network beyond the page (spec §5.6). CSP has no
+         * by `location` or a link (spec §5.6). That isn't "no network": WebRTC and DNS hints sit
+         * outside CSP (bee#49). CSP has no
          * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
          * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
          * so the page needs nothing more.

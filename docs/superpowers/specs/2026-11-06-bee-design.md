@@ -329,7 +329,9 @@ call: in sewing, notions are the buttons, snaps and fasteners.** It holds the ba
 components plus these:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
-  (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
+  (`sandbox` without `allow-same-origin`, and no fetch, socket, image or frame load beyond the
+  page). It isn't "no network": WebRTC sits outside CSP, so a sketch can still reach a STUN or
+  TURN server, and a DNS hint can still be resolved (bee#49). It's the mockup escape
   hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
   `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
