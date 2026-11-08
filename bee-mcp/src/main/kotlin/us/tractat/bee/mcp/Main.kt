@@ -65,34 +65,11 @@ fun main() {
     // The bridge's own work (the board, claims, a retire on /clear) runs here; one failure must not end the rest.
     val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val http = peerHttpClient()
-    val author = ReplicaId("mcp-${Uuid.random()}")
-    // The bridge's replica starts empty, so it belongs to the first board the host names; both
-    // its sockets name that board from then on, and a wiped host refuses them (bee#46).
-    val pin = BoardPin.learnedFrom { http.askBoardId(host) }
-    val board = BoardClient(
-        author,
-        SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock).pinnedTo(pin),
-        Rendezvous.Existing(WebSocketAdvertisement(host.socket("/ws/board"), PeerId("bee-host"), "board")),
-        bridgeScope,
-        clock,
-    )
-    // TODO(kuilt#3110): one refused dial ends clusterClient's reconnect loop for good, so the
-    // connection rebuilds a failed link, under a fresh node each time (kuilt keeps a NodeId unique).
-    val claims = ClaimsConnection(
-        scope = bridgeScope,
-        nextNode = { NodeId("mcp-${Uuid.random()}") },
-        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
-        // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
-        onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
-        retryDelay = ClaimsConnection.jitteredBackoff(random),
-    )
-    val identity = BridgeIdentity(sessionName(), random) { old, reason ->
-        val committed = claims.depart(old, reason)
-        logger.info { "Retired $old ($reason); its Depart ${if (committed) "committed" else "is pending until claims are back"}." }
-    }
-    val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, bridgeScope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
-    val bridge = BeeBridge(board, author, claims, identity, presence, clock, bridgeScope)
-    board.connect()
+    val peer = BridgePeer.join(host, sessionName(), http, bridgeScope, random, clock)
+    val bridge = peer.bridge
+    val board = peer.board
+    val pin = peer.pin
+    val identity = peer.identity
     val anotherBoard = CompletableDeferred<AnotherBoard>()
     endOnAnotherBoard(board, pin, http, host, bridgeScope, anotherBoard)
     runBlocking { bridge.announce() }
@@ -151,7 +128,7 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
  * at once. So this bound is longer than that grace, and a SIGKILL before the commit leaves the
  * host to depart the identity `Crashed`.
  */
-private val LEAVE_BOUND = 1.seconds
+internal val LEAVE_BOUND = 1.seconds
 
 /**
  * Departs [bridge]'s identity as [us.tractat.bee.core.DepartReason.Left] as the session ends,

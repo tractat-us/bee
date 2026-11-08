@@ -405,9 +405,12 @@ class BeeBridge(
      *
      * With no live link it proposes nothing, since the process is ending and a queued `Depart`
      * would never be sent: the host departs the identity [DepartReason.Crashed] once its link is lost.
+     *
+     * [reason] is [DepartReason.Left] but for a bridge the host runs for an HTTP client that went
+     * quiet ([HttpBridges]): the host judged that one, so it departs [DepartReason.Quiet].
      */
-    suspend fun leave(within: Duration): Boolean = withTimeoutOrNull(within) {
-        retiring.withLock { claims.link.value?.depart(self, DepartReason.Left) }
+    suspend fun leave(within: Duration, reason: DepartReason = DepartReason.Left): Boolean = withTimeoutOrNull(within) {
+        retiring.withLock { claims.link.value?.depart(self, reason) }
     } == true
 
     /** Sets the "working on…" line beside this session on the board. */
