@@ -115,6 +115,16 @@ export function sketchHelper() {
   // content that overflows it.
   var reportedHeight = -1;
   var sizeTimer = null;
+  // Content sized in `vh` follows the frame's height, so a fit to it changes it again, and every
+  // fit would shrink the next report, down to the floor. So a resize of the frame's height alone,
+  // with nothing in the document changed and its width the same, reports nothing.
+  var contentChanged = true;
+  var frameWidth = innerWidth;
+  var frameHeight = innerHeight;
+  function contentChange() {
+    contentChanged = true;
+    scheduleSize();
+  }
   function scrolls(el) {
     var overflow = getComputedStyle(el).overflowY;
     return overflow === 'auto' || overflow === 'scroll';
@@ -154,6 +164,11 @@ export function sketchHelper() {
   }
   function reportSize() {
     sizeTimer = null;
+    var frameOnly = !contentChanged && innerWidth === frameWidth && innerHeight !== frameHeight;
+    contentChanged = false;
+    frameWidth = innerWidth;
+    frameHeight = innerHeight;
+    if (frameOnly) return;
     var height = documentHeight();
     if (height === reportedHeight) return;
     reportedHeight = height;
@@ -165,9 +180,10 @@ export function sketchHelper() {
   new ResizeObserver(scheduleSize).observe(document.documentElement);
   // A pinned root never changes size, so a ResizeObserver on it hears nothing of what it holds:
   // any change to the document re-measures too.
-  var changes = new MutationObserver(scheduleSize);
+  var changes = new MutationObserver(contentChange);
   changes.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
-  window.addEventListener('load', scheduleSize);
+  window.addEventListener('load', contentChange);
+  if (document.fonts) document.fonts.addEventListener('loadingdone', contentChange);
 
   // The frame's status pill, when the screen has one: it's on the board, not a companion server.
   document.addEventListener('DOMContentLoaded', function () {
