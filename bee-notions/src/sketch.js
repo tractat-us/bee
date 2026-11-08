@@ -106,6 +106,12 @@ export class SketchElement extends A2uiLitElement {
     this.armTimer = null;
     /** Send's box when arming last began: Send arms only if it's still there. */
     this.armRect = null;
+    /** Whether the pointer is over Send, from Send's own boundary events. */
+    this.pointerOver = false;
+    /** Whether a real `pointermove` has landed on Send since arming last began. */
+    this.pointerMoved = false;
+    /** Whether arming has finished, Send unmoved, but waits for the pointer resting on it to move. */
+    this.awaitingMove = false;
     /** When Send last took focus, for the key press that follows Tab out of a sketch. */
     this.focusedAt = -Infinity;
     /** The height the frame was last fitted to, as CSS. */
@@ -207,6 +213,18 @@ export class SketchElement extends A2uiLitElement {
       this.send();
     });
     send.addEventListener('focus', () => { this.focusedAt = performance.now(); });
+    // A frame that grows or shrinks under a still pointer delivers boundary events only, never a
+    // pointermove, so a pointer that came to rest over Send without moving was brought there by
+    // the page moving, not by the person (see `arm`).
+    send.addEventListener('pointerover', () => { this.pointerOver = true; });
+    send.addEventListener('pointerout', () => { this.pointerOver = false; });
+    send.addEventListener('pointermove', () => {
+      this.pointerMoved = true;
+      if (!this.awaitingMove) return;
+      this.awaitingMove = false;
+      if (sameRect(send.getBoundingClientRect(), this.armRect)) send.disabled = false;
+      else this.arm();
+    });
     // A held key repeats: only a fresh press may send.
     send.addEventListener('keydown', (event) => { if (event.repeat) event.preventDefault(); });
     dismiss.addEventListener('click', (event) => { if (event.isTrusted) this.dismiss(); });
@@ -273,15 +291,24 @@ export class SketchElement extends A2uiLitElement {
   /**
    * Disables Send, and enables it SEND_ARM_MS later only if Send is still where it was when
    * arming began; otherwise arming starts again. A sketch can't move Send under a click on its way.
+   *
+   * Nor under a pointer at rest: a sketch can learn where a resting pointer is (a frame grown over
+   * it hears `pointerover`, with coordinates, in Chromium), then fit its frame so its own Send
+   * lands there. So when arming ends with the pointer over Send and no `pointermove` on Send since
+   * arming began, Send stays disabled until one lands on it. Touch leaves no pointer at rest: a
+   * tap ends in `pointerout`.
    */
   arm() {
     const send = this.bar.querySelector('.bee-proposal-send');
     send.disabled = true;
     this.armRect = send.getBoundingClientRect();
+    this.pointerMoved = false;
+    this.awaitingMove = false;
     clearTimeout(this.armTimer);
     this.armTimer = setTimeout(() => {
-      if (sameRect(send.getBoundingClientRect(), this.armRect)) send.disabled = false;
-      else this.arm();
+      if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
+      else if (this.pointerOver && !this.pointerMoved) this.awaitingMove = true;
+      else send.disabled = false;
     }, SEND_ARM_MS);
   }
 
@@ -313,6 +340,7 @@ export class SketchElement extends A2uiLitElement {
   /** Forgets the proposal, unanswered, and hides the bar. */
   drop() {
     this.proposal = null;
+    this.awaitingMove = false;
     clearTimeout(this.armTimer);
     if (this.bar) this.bar.style.display = 'none';
   }
