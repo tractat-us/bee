@@ -42,7 +42,9 @@ object WaitTool {
             name = WAIT,
             description = "Waits for the next action record on a surface of the shared board, such as a click. " +
                 "Returns {record?, timedOut, cursor} within timeoutSeconds (default 45, at most 60). " +
-                "Pass the returned cursor to the next call to keep reading from where this one stopped.",
+                "Pass the returned cursor to the next call to keep reading from where this one stopped. " +
+                "A record is returned with the claim token this session holds it under; one whose claim a person " +
+                "reassigned to this session, from another that left, arrives here too, under the reassign's token.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") { put("type", "string") }
