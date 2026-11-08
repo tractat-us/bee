@@ -30,6 +30,8 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            // BoardClient logs a board too large to sync (bee#65).
+            implementation(libs.kotlin.logging)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
