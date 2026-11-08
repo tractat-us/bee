@@ -4,10 +4,10 @@
 //
 // It speaks the MCP Apps (SEP-1865) View-to-Host envelope, JSON-RPC 2.0 over postMessage: a click
 // on a `[data-choice]` element is a `ui/message` request whose text is the element's text, and
-// whose `_meta` names the choice, and it reports the document's height as a
-// `ui/notifications/size-changed` notification, so the page can fit the frame. It also keeps the brainstorming companion's page API
-// (`toggleSelect`, `window.brainstorm`), so a companion screen behaves as it does on the
-// companion server.
+// whose `_meta` names the choice. It reports the document's height as a
+// `ui/notifications/size-changed` notification, so the page can fit the frame to it. It also keeps
+// the brainstorming companion's page API (`toggleSelect`, `window.brainstorm`), so a companion
+// screen behaves as it does on the companion server.
 
 /** Runs inside the sandboxed frame. */
 export function sketchHelper() {
