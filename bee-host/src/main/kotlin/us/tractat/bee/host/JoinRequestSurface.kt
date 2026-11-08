@@ -52,7 +52,11 @@ class JoinRequestSurface(
     private val pairing: Pairing,
     private val clock: () -> Instant,
 ) {
-    private val posted = ConcurrentHashMap.newKeySet<PairingId>()
+    /**
+     * The requests this host posted and hasn't finished, each with its device's wait. It is the
+     * one record of what is posted, so a request leaves it when its pairing ends, and a loop of
+     * pairings leaves nothing behind here.
+     */
     private val waiting = ConcurrentHashMap<PairingId, CompletableDeferred<Resolution>>()
 
     /** Records already handled. Only the collector [start] launches touches it. */
@@ -65,7 +69,6 @@ class JoinRequestSurface(
     fun post(ticket: Opened.Ticket, device: Device): Deferred<Resolution> {
         val resolution = CompletableDeferred<Resolution>()
         waiting[ticket.id] = resolution
-        posted += ticket.id
         val meta = SurfaceMeta(TITLE, NOTIONS_CATALOG_ID, HOST, clock())
         relay.mutate { it.openSurface(relay.replica, surfaceId(ticket.id), meta, components(device), initialData()) }
         return resolution
@@ -85,9 +88,9 @@ class JoinRequestSurface(
 
     private fun handle(state: BoardState) {
         state.openSurfaces()
-            .filter { it.startsWith(PREFIX) && PairingId(it.removePrefix(PREFIX)) !in posted }
+            .filter { it.startsWith(PREFIX) && PairingId(it.removePrefix(PREFIX)) !in waiting }
             .forEach { stale -> relay.mutate { it.closeSurface(relay.replica, stale, clock()) } }
-        posted.forEach { id ->
+        waiting.keys.forEach { id ->
             state.records(surfaceId(id))
                 .filter { (recordId, record) -> record.name == ADMIT_ACTION && handled.add(recordId) }
                 .forEach { (_, record) -> handle(id, record) }
