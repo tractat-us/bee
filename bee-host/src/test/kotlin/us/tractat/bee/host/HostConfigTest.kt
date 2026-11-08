@@ -5,6 +5,8 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class HostConfigTest {
     private val home = Path.of("/home/iain")
@@ -35,6 +37,19 @@ class HostConfigTest {
         assertAll(
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--lan", "--lan"), home) } },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--lan", "yes"), home) } },
+        )
+    }
+
+    @Test
+    fun hostNameAddsANameTheHostAnswersTo() {
+        val named = HostConfig.fromArgs(listOf("--host-name", "bee-lan.test"), home)
+        val local = Arrival("127.0.0.1", HostConfig.DEFAULT_PORT)
+        assertAll(
+            { assertEquals(setOf("bee-lan.test"), named.hostNames) },
+            { assertEquals(emptySet(), HostConfig.fromArgs(emptyList(), home).hostNames, "none by default") },
+            { assertNull(named.siteRule().refusal("bee-lan.test:8233", null, local)) },
+            { assertNotNull(HostConfig(dataDir = home).siteRule().refusal("bee-lan.test:8233", null, local), "not without the flag") },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--host-name", "a", "--host-name", "b"), home) } },
         )
     }
 
