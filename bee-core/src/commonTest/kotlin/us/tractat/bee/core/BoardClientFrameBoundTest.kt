@@ -105,8 +105,8 @@ class BoardClientFrameBoundTest {
             { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
             { assertEquals(1, relay.dials.size, "no redial loop: dials at ${relay.dials}") },
             { assertNotNull(refusal, "the client says it can't sync") },
-            { assertTrue(refusal!!.bytes > BOUND, "the refusal names the frame's size: ${refusal.bytes}") },
-            { assertEquals(BOUND, refusal!!.limit) },
+            { assertTrue((refusal?.bytes ?: 0) > BOUND, "the refusal names the frame's size: ${refusal?.bytes}") },
+            { assertEquals(BOUND, refusal?.limit) },
             { assertFalse(alex.online.value, "a board that can't sync is offline") },
         )
     }
