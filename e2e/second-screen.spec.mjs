@@ -133,8 +133,9 @@ test('page reached by a non-localhost name connects back to that name', async ({
   for (const url of board) expect(url.searchParams.get('k')).toMatch(/^[A-Za-z0-9_-]{43}$/);
 });
 
-// The page has no claims client yet, so this pins the absence for a screen: the day the page gains
-// one, a screen must still never dial /ws/claims or propose a claim.
+// A person's page opens a claims link, to propose its person's answers to orphan decisions; a
+// screen's page opens none (spec §6.4, A7). This pins that: a screen never dials /ws/claims or
+// proposes a claim.
 test('a screen peer never proposes a claim', async ({ browser }) => {
   const laptop = await openLaptop(browser);
   const remote = await openRemote(browser, 'room-d');
@@ -177,6 +178,33 @@ test('a code typed but not yet admitted stays on the page that typed it', async 
   expect(upBeforeAdmit, 'frames the typing page sent with the code in them, before Admit').toBe(0);
   expect(downBeforeAdmit, 'frames another page received with the code in them, before Admit').toBe(0);
   expect(watcherField).toBe('');
+});
+
+// A person's page opens a claims link, to propose its person's answers to orphan decisions (spec
+// §6.4). Reached over the LAN, it carries the same key and board as the board socket, or a LAN host
+// would refuse it.
+test("a person's page dials /ws/claims with its key and board", async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const remote = await openRemote(browser, 'room-h');
+  await admit(laptop, remote, 'room-h');
+  const key = await remote.page.evaluate(() => sessionStorage.getItem('bee.lan.key'));
+
+  const context = await browser.newContext();
+  contexts.push(context);
+  const person = await context.newPage();
+  const sockets = [];
+  person.on('websocket', (ws) => sockets.push(new URL(ws.url())));
+  await person.goto(`http://${LAN_NAME}:${process.env.BEE_E2E_PORT}/?name=ada&k=${key}`);
+  await expect(person.locator('#status')).toHaveText('online as human:ada', { timeout: 15_000 });
+  await expect.poll(() => sockets.filter((url) => url.pathname === '/ws/claims').length, { timeout: 10_000 }).toBeGreaterThan(0);
+
+  const board = sockets.find((url) => url.pathname === '/ws/board');
+  for (const claims of sockets.filter((url) => url.pathname === '/ws/claims')) {
+    expect(claims.hostname).toBe(LAN_NAME);
+    expect(claims.searchParams.get('k')).toBe(key);
+    expect(claims.searchParams.get('board')).toMatch(/.+/);
+    expect(claims.searchParams.get('board')).toBe(board.searchParams.get('board'));
+  }
 });
 
 // A join link's key goes from the address bar into this tab's storage, then leaves the address

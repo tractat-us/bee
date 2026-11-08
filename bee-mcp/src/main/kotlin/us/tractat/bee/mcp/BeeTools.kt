@@ -48,7 +48,8 @@ object BeeTools {
             name = BOARD,
             description = "Reads the shared board: the open surfaces with their components and data, the closed " +
                 "surface ids (newest first), who is attached, each claim the host has mirrored, and whether this " +
-                "session's claims are online.",
+                "session's claims are online. A claim a person reassigned to this session shows here as held by it; " +
+                "the record itself arrives through bee_wait_action on its surface, with its token.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),
         ) { _ ->
             bridge.touch()

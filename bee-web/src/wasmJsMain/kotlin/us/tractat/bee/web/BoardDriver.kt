@@ -20,6 +20,8 @@ import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.OrphanAnswers
+import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.kuilt.crdt.JsonCrdt
 import us.tractat.kuilt.crdt.Patch
@@ -39,10 +41,14 @@ import kotlin.time.Instant
  *   value, and remote changes to it render once it's released.
  * - **A record's basis is captured inside the transform** that appends it, so it names exactly the
  *   state the record joins (`BasisTest.basisCapturedAtActionTimeIgnoresLaterMerges`).
+ * - **A person's answer to an orphan decision is proposed by this page** (spec §6.4): it records
+ *   the answer, then proposes the `Reassign` or `Release` through the person's own claims
+ *   ([OrphanAnswering.ByPerson]). A room screen can't answer: its answer is refused, never recorded.
  *
  * @param root the renderer's root element, where placeholders go too
  * @param author this page load's CRDT author
  * @param actor who acts on this page
+ * @param answering whether this page's person answers orphan decisions, and through which claims
  * @param onProblem shows a problem to the person: a renderer error, or a record that couldn't be written
  */
 @Suppress("LongParameterList")
@@ -53,6 +59,7 @@ class BoardDriver(
     private val author: ReplicaId,
     private val actor: PeerIdentity,
     private val inputs: LiveInputs,
+    private val answering: OrphanAnswering,
     private val clock: () -> Instant,
     private val onProblem: (String) -> Unit,
 ) {
@@ -63,7 +70,12 @@ class BoardDriver(
     /** Renders the board as it changes, and records every action, until [scope] ends. */
     fun start(scope: CoroutineScope): Job = scope.launch {
         launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
-        launch { renderer.actions.collect(::record) }
+        launch {
+            renderer.actions.collect { action ->
+                // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
+                if (record(action)) launch { answer(action) }
+            }
+        }
     }
 
     private fun show(state: BoardState) {
@@ -125,9 +137,14 @@ class BoardDriver(
      * a `Poll` answer writes this actor's answer, a `Board` drop the card's column, each from the
      * register just read (A13), in the same transform as the record. An action on a surface the
      * board doesn't hold is refused by `Basis.capture`, and an answer or drop naming nothing the
-     * surface holds by [NotionActions.edit]; the person is told, and it's never dropped quietly.
+     * surface holds by [NotionActions.edit], and a screen's answer to an orphan decision by this page;
+     * the person is told, and it's never dropped quietly. True if it appended.
      */
-    private suspend fun record(action: A2uiAction) {
+    private suspend fun record(action: A2uiAction): Boolean {
+        if (answering == OrphanAnswering.Refused && action.answersAnOrphan()) {
+            onProblem("A room screen can't answer ${action.surfaceId}: answer it from your own page.")
+            return false
+        }
         try {
             client.mutate { state ->
                 val record = ActionRecord(
@@ -146,11 +163,38 @@ class BoardDriver(
                 val recorded = state.piece(written).appendRecord(author, record)
                 Patch(written.delta.piece(recorded.delta))
             }
+            return true
         } catch (refused: IllegalArgumentException) {
             onProblem("Couldn't record ${action.name} on ${action.surfaceId}: ${refused.message}")
+            return false
+        }
+    }
+
+    /** Proposes what the person chose, if [action] answers an orphan decision; tells them if it didn't take. */
+    private suspend fun answer(action: A2uiAction) {
+        val answers = (answering as? OrphanAnswering.ByPerson)?.answers ?: return
+        when (val outcome = answers.answered(action.surfaceId, action.name, action.context)) {
+            OrphanAnswers.Outcome.Offline ->
+                onProblem("Your answer on ${action.surfaceId} is recorded, but claims are offline, so nothing was decided. Answer again shortly.")
+            is OrphanAnswers.Outcome.Proposed -> if (!outcome.applied) {
+                onProblem("Your answer on ${action.surfaceId} didn't take: the claim is no longer orphaned, or that peer has left.")
+            }
+            OrphanAnswers.Outcome.NotADecision, OrphanAnswers.Outcome.Waited -> Unit
         }
     }
 }
+
+/** How a page takes part in orphan decisions (spec §6.4). */
+sealed interface OrphanAnswering {
+    /** A person's page: an answer is recorded, then proposed through [answers]. */
+    class ByPerson(val answers: OrphanAnswers) : OrphanAnswering
+
+    /** A room screen's page (A7): it can't answer, so an answer there is refused, never recorded. */
+    data object Refused : OrphanAnswering
+}
+
+private fun A2uiAction.answersAnOrphan(): Boolean =
+    OrphanDecision.targetOf(surfaceId) != null && name == OrphanDecision.ANSWER_ACTION
 
 /**
  * This view with each [held] path showing what the person left there, or, for a field focused and
