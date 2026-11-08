@@ -269,6 +269,76 @@ test('a keypress on the page while a sketch posts creates no record', async ({ b
   await ada.context.close();
 });
 
+// The page's gestures are the page's, not one sketch's: a sketch mounted right after a keypress
+// (an agent draws just after the viewer typed) is as unexplained as one already showing.
+test('a sketch mounted just after a keypress on the page creates no record', async ({ browser }) => {
+  test.setTimeout(60_000);
+  // A waiting screen closes the companion's surface, so the page opens with no sketch on it.
+  const closed = companion.lines.filter((l) => l.includes('screen-closed')).length;
+  pushScreen('waiting-mount.html', '<p>Continuing in terminal...</p>');
+  await expect.poll(() => companion.lines.filter((l) => l.includes('screen-closed')).length, { timeout: 10_000 }).toBe(closed + 1);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('/?name=moe');
+  await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
+  await expect(sketchIframe(page)).toHaveCount(0);
+  const before = await companionRecords(page).count();
+  const field = page.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input');
+  await field.focus();
+
+  // The keypress, then at once a screen that reopens the surface: a new <bee-sketch> mounts well
+  // inside the keypress's 5 s, and forges a choice at load and every 400 ms for 2 s after.
+  await page.keyboard.press('x');
+  pushScreen('mount-poster.html', '<h2>Mount poster</h2>' +
+    '<div class="options"><div class="option" data-choice="real">Real</div></div><script>' +
+    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 902, method: "ui/message", params: ' +
+    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
+    'forge("mounted"); let n = 0; const t = setInterval(() => { forge("mounted"); if (++n >= 5) clearInterval(t); }, 400);' +
+    '</' + 'script>');
+  await expect(sketchFrame(page).locator('h2')).toHaveText('Mount poster', { timeout: 4_000 });
+  await page.waitForTimeout(6_000);
+  expect(eventLines()).toEqual([]);
+  expect(await companionRecords(page).count()).toBe(before);
+
+  // Control: the new sketch takes a real click, past the keypress's 5 s.
+  await sketchFrame(page).locator('[data-choice="real"]').click();
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
+  await field.fill('');
+  await context.close();
+});
+
+/** Dispatches pointer events of `pointerType` on the page itself, outside every sketch, in order. */
+async function pagePointer(page, pointerType, pointerId, types) {
+  await page.evaluate(({ pointerType, pointerId, types }) => {
+    for (const type of types) document.body.dispatchEvent(new PointerEvent(type, { pointerType, pointerId, bubbles: true }));
+  }, { pointerType, pointerId, types });
+}
+
+// Only a gesture that activates the page explains its activation: a touch that becomes a scroll
+// (pointerdown, then pointercancel) doesn't, so a tap in the sketch just after it is the viewer's.
+// A touch tap on the page does, and the refused choice clears the sketch's selection, so the
+// viewer sees it didn't land. The events are synthetic: the page's listeners count them as real.
+test('a touch scroll on the page leaves a tap in the sketch its choice', async ({ browser }) => {
+  test.setTimeout(60_000);
+  pushScreen('touch.html', options.replace('Which layout?', 'Touch layout?'));
+  const tess = await openBoard(browser, 'tess', 'Touch layout?');
+  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
+
+  await pagePointer(tess.page, 'touch', 41, ['pointerdown', 'pointercancel']);
+  await tess.frame.locator('[data-choice="a"]').click();
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'a' });
+
+  // Control: a touch tap on the page refuses the next choice, and the sketch drops its selection.
+  await pagePointer(tess.page, 'touch', 42, ['pointerdown', 'pointerup']);
+  await tess.frame.locator('[data-choice="b"]').click();
+  await expect(tess.frame.locator('.option.selected')).toHaveCount(0, { timeout: 5_000 });
+  await tess.page.waitForTimeout(1_500);
+  expect(eventLines()).toHaveLength(1);
+  await tess.context.close();
+});
+
 test('postMessage from another frame is ignored', async ({ browser }) => {
   pushScreen('layout-3.html', options.replace('Which layout?', 'Last layout?'));
   const iain = await openBoard(browser, 'iain', 'Last layout?');
