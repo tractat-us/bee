@@ -87,7 +87,8 @@ fun main() {
         scope = bridgeScope,
         nextNode = { NodeId("mcp-${Uuid.random()}") },
         open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
-        onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
+        // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
+        onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )
     val identity = BridgeIdentity(sessionName(), random) { old, reason ->

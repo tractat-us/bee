@@ -101,7 +101,8 @@ fun main(args: Array<String>) {
         scope = scope,
         nextNode = { NodeId("companion-${Uuid.random()}") },
         open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
-        onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
+        // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
+        onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )
     val name = System.getenv("BEE_SESSION_NAME")?.takeIf { it.isNotBlank() } ?: "companion"
@@ -154,8 +155,11 @@ fun main(args: Array<String>) {
         }
     } catch (failure: Exception) {
         // main is the top of the stack: a cancellation reaching here is a failure like any other.
-        logger.error(failure) { "The companion failed; bee-companion ends." }
-        stopReason = "failed: ${failure.message ?: failure::class.simpleName}"
+        // Any failure lands here, a dial's too, whose message can hold the key: both the log and
+        // server-stopped show it as the host describes it, never the raw throwable.
+        val described = host.describe(failure)
+        logger.error { "The companion failed; bee-companion ends. $described" }
+        stopReason = "failed: $described"
     }
     exitProcess(1)
 }
