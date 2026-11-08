@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tractat-us/bee/blob/main/docs/project/plan.schema.json",
+  "title": "bee project plan",
+  "description": "The project's plan as data: pieces of work, their status, dependencies and estimates. The docs site renders the Project section from it, and a bee board can be seeded from it: `items` is an object keyed by stable id (one object per item, replaced whole on write) and `order` is a list of ids (an Rga of ids on the board). Every value is plain JSON, so the YAML that holds it uses no anchors, tags or unquoted dates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "as_of", "columns", "column_order", "order", "items"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "as_of": {
+      "description": "When the file was last reconciled with GitHub, as an ISO 8601 UTC timestamp.",
+      "$ref": "#/$defs/timestamp"
+    },
+    "sources": {
+      "description": "Where the data comes from, in reading order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/link" }
+    },
+    "columns": {
+      "description": "One column per status. On a board, these are a Board notion's columns.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/status" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "owner": { "description": "Who moves items out of this column, when that is one party.", "type": "string" }
+        }
+      }
+    },
+    "column_order": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/status" },
+      "uniqueItems": true
+    },
+    "order": {
+      "description": "Every item id exactly once, in display order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/id" },
+      "uniqueItems": true
+    },
+    "items": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "description": "Stable, never reused. Prefixes: task- (a plan task), bee- (a bee issue or PR), kuilt- (a kuilt issue or PR), out- (work outside the code).",
+      "type": "string",
+      "pattern": "^(task|bee|kuilt|out)-[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "status": {
+      "enum": ["done", "in-flight", "next", "blocked", "waiting-on-iain", "later"]
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?Z$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url"],
+      "properties": {
+        "title": { "type": "string" },
+        "url": { "type": "string", "pattern": "^(https://|\\.\\./|\\./|[A-Za-z0-9_])" }
+      }
+    },
+    "estimate": {
+      "description": "A range, always labelled as an estimate, with what it rests on. Wall-clock time from start to merge, not counting time waiting on Iain.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "high", "unit", "basis"],
+      "properties": {
+        "low": { "type": "number", "minimum": 0 },
+        "high": { "type": "number", "minimum": 0 },
+        "unit": { "enum": ["hours", "days"] },
+        "basis": { "description": "Why this range: the merge history or plan text it comes from.", "type": "string" },
+        "confidence": { "enum": ["low", "medium", "high"] }
+      }
+    },
+    "ruling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "summary"],
+      "properties": {
+        "date": { "$ref": "#/$defs/date" },
+        "summary": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "title", "status"],
+      "properties": {
+        "kind": {
+          "description": "task: a task in the v1 plan. pr: a pull request. issue: a bug or follow-up. decision: a question for Iain. kuilt: kuilt work bee depends on. outside: work outside the code.",
+          "enum": ["task", "pr", "issue", "decision", "kuilt", "outside"]
+        },
+        "title": { "type": "string" },
+        "status": { "$ref": "#/$defs/status" },
+        "summary": { "description": "One sentence: what it is, or what it waits for.", "type": "string" },
+        "parent": { "description": "The item this one is part of.", "$ref": "#/$defs/id" },
+        "depends_on": {
+          "description": "Items that must be done before this one can finish.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" },
+          "uniqueItems": true
+        },
+        "started": { "$ref": "#/$defs/timestamp" },
+        "landed": { "description": "When it merged or closed. Required when status is done.", "$ref": "#/$defs/timestamp" },
+        "estimate": { "$ref": "#/$defs/estimate" },
+        "ruling": { "$ref": "#/$defs/ruling" },
+        "links": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/link" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "done" } } },
+          "then": { "required": ["landed"] }
+        }
+      ]
+    }
+  }
+}
