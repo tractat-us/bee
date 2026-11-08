@@ -108,11 +108,11 @@ test('a focused field keeps its focus when a card is reopened from history ahead
 
     const older = page.locator(`#board article.bee-card[data-surface-id="${OLDER}"]`);
     await expect(older.locator('.bee-card-title')).toHaveText('Older', { timeout: 10_000 });
-    // In the board's order, by style, so no card was moved.
-    const position = (id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`).evaluate((e) => Number(e.style.order));
-    expect(await position(OLDER)).toBeLessThan(await position(FIELD));
     await expect(field).toBeFocused();
     await expect(field).toHaveValue('half a thought');
+    // Shown in the board's order by style, so no card was moved.
+    const position = (id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`).evaluate((e) => Number(e.style.order));
+    expect(await position(OLDER)).toBeLessThan(await position(FIELD));
   } finally {
     await other.close();
   }
