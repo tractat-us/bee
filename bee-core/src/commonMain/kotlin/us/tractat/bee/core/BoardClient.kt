@@ -271,8 +271,9 @@ class BoardClient(
     /**
      * Suspends until the held board's `FullState` could fit [limit], measured from [parted], the
      * board as its connection parted, so an edit made while that connection closed is seen. Only
-     * a change a presence post can't make is measured: a post every [Presence.EVERY] never shrinks
-     * the board, and measuring it would cost a full encode each time (bee#65).
+     * a change a presence post can't make is measured: a post every [Presence.EVERY] swaps one
+     * small entry for another, so it can't bring a board under the bound, and measuring it would
+     * cost a full encode each time (bee#65).
      */
     private suspend fun awaitRoom(parted: BoardState, limit: Int) {
         var board = parted
