@@ -106,7 +106,12 @@ test('typing in one browser appears in the other', async ({ browser }, testInfo)
   await blur(alex.page);
   await alex.page.waitForTimeout(1_500);
   const from = Date.now();
-  await field(alex.page, 'typing').press('End');
+  // The caret is set, not moved with End: on macOS, Playwright's End is scrollToEndOfDocument,
+  // which leaves the caret where focus put it (bee#43).
+  await field(alex.page, 'typing').evaluate((input) => {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
   await field(alex.page, 'typing').press('!');
   await expect(field(sam.page, 'typing')).toHaveValue('hello!', { timeout: 2_000 });
   await alex.page.waitForTimeout(1_000);
