@@ -423,7 +423,7 @@ items:
     ruling:
       date: "2026-11-08"
       summary: "Accepted as a v1 limit and documented in the spec; revisit when an engine ships a control."
-      url: "https://github.com/tractat-us/bee/issues/49#issuecomment-6724672448"
+      url: "https://github.com/tractat-us/bee/issues/49#issuecomment-6724762977"
     links:
       - { title: "bee#49", url: "https://github.com/tractat-us/bee/issues/49" }
 
