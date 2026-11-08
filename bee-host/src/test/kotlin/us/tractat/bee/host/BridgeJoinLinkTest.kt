@@ -7,11 +7,15 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeout
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
@@ -38,6 +42,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -72,11 +77,22 @@ class BridgeJoinLinkTest {
         try {
             val link = HostAddress.parse("http://127.0.0.1:${host.port}/?k=${host.pairing.mintJoinKey().value}")
             val bridge = Bridge(link)
-            val online = withTimeout(TIMEOUT) { bridge.board.online.first { it } }
-            val claims = withTimeout(TIMEOUT) { bridge.claims.link.filterNotNull().first() }
+            // Each wait ends on whichever comes first, so a refused bridge fails as refused, not as a timeout.
+            val board = withTimeout(TIMEOUT) {
+                merge(
+                    bridge.board.online.filter { it }.map { "online" },
+                    bridge.board.lastFailure.filterNotNull().filter(::refused).map { "refused: $it" },
+                ).first()
+            }
+            val claims = withTimeout(TIMEOUT) {
+                select {
+                    async { bridge.claims.link.filterNotNull().first() }.onAwait { it }
+                    bridge.claimsRefused.onAwait { fail("the claims socket was refused: $it") }
+                }
+            }
             val won = claims.client.claim(ClaimTarget("record:join-link:1"), PeerIdentity.agent("ada", Random(1)))
             assertAll(
-                { assertEquals(true, online, "the board replica is online") },
+                { assertEquals("online", board, "the board replica") },
                 { assertIs<ClaimOutcome.Won>(won, "the claims link commits a claim") },
                 { assertEquals(host.boardId, bridge.pin.board.value, "the board, asked over HTTP") },
             )
