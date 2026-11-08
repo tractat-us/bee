@@ -39,7 +39,7 @@ class PairingChannelTest {
     private val clock = { Clock.System.now() }
     private val pairing = Pairing(clock, SecureSecrets(SecureRandom()))
     private val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
-        mountEndpoints(pairing, PeerAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), 10.minutes, clock))
+        mountEndpoints(pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), 10.minutes, clock))
     }.start(wait = false)
     private val port = runBlocking { server.engine.resolvedConnectors().first().port }
     private val client = HttpClient(CIO) { install(SSE) }
