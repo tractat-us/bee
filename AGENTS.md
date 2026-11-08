@@ -7,8 +7,9 @@ their coding agents. People talk; agents redraw the board as A2UI surfaces; ever
 same thing, and the board outlives any one peer. See `README.md` for the plain-language picture
 and `docs/superpowers/specs/` for the design.
 
-**Status: design stage.** No build exists yet. Don't scaffold code ahead of an approved spec and
-plan.
+**Status: v1 under construction.** It is built against the approved spec and plan in
+`docs/superpowers/` (epic #6); Tasks 1-10 are merged and Task 11 remains. Don't scaffold code
+ahead of the plan. Build and test with `timeout 600 ./gradlew check`.
 
 ## bee and kuilt
 
