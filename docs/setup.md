@@ -249,8 +249,9 @@ Taking access away is a restart with a flag:
 bridge on another machine, holds the link's key, not one of its own. Forgetting only the paired
 devices would leave those connected.
 
-With a host already running, `bee-up` restarts it with the flag. The board itself survives either
-one.
+With a host already running, `bee-up` restarts it with the flag, on the port, data dir and reach
+it was started with. The board itself survives either one. The host's log, `~/.bee/host.log`,
+holds the join link, so `bee-up` keeps it readable only by you.
 
 What to expect:
 

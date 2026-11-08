@@ -393,8 +393,8 @@ design call:
 3. A participant types the code into that surface, and it arrives as an action record (§6.2). A
    match mints a key, sends it to the browser, and closes the request with "admitted by <name>".
 4. The browser dials `/ws/board` and `/ws/claims` with its key. With `--lan` on, both refuse a
-   non-loopback connection that has no valid key. Keys live in the host's memory, so a host restart
-   re-pairs every LAN device.
+   non-loopback connection that has no valid key. Keys live in the host's data dir, hashed but for
+   the join link's, so they survive a restart; `--new-link` and `--forget-devices` revoke them (bee#106).
 
 **The host handles admit records without a claim (Iain, 2026-11-08, bee#72).** It is their only
 handler, and the voter never claims, so exactly-once holds by construction: the host handles each

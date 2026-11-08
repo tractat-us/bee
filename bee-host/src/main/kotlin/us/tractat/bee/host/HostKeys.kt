@@ -4,6 +4,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.charset.CharacterCodingException
+import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -113,19 +115,20 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
         /**
          * The keys [store] holds, after [reset], saved back before any admits. A store with none
          * gets a join key from [secrets]: the first boot, or the first since the file was moved aside.
+         * [KeyReset.ForgetDevices] keeps nothing, so it never reads [store]: it boots past a key
+         * file that doesn't read.
          */
         fun boot(store: KeyStore, secrets: PairingSecrets, reset: KeyReset): HostKeys {
-            val found = store.load()
             val kept = when (reset) {
-                KeyReset.Keep -> found
-                KeyReset.NewLink -> found?.copy(join = secrets.key())
+                KeyReset.Keep -> store.load()
+                KeyReset.NewLink -> store.load()?.copy(join = secrets.key())
                 KeyReset.ForgetDevices -> null
             } ?: StoredKeys(secrets.key(), devices = emptySet())
             store.save(kept)
             when (reset) {
                 KeyReset.Keep -> {}
                 KeyReset.NewLink -> logger.info { "A new join link: the old one no longer admits. Paired devices keep their keys." }
-                KeyReset.ForgetDevices -> logger.info { "Forgot every device: the join link, and the keys of ${found?.devices?.size ?: 0} paired. Each device pairs again, or takes the new link." }
+                KeyReset.ForgetDevices -> logger.info { "Forgot every device, paired or joined by the link. Each one pairs again, or takes the new link." }
             }
             return HostKeys(store, kept)
         }
@@ -144,13 +147,15 @@ class KeyFile(private val path: Path) : KeyStore {
             Files.readAllLines(path)
         } catch (_: NoSuchFileException) {
             return null
+        } catch (failure: AccessDeniedException) {
+            throw IllegalStateException(unreadable(), failure)
+        } catch (failure: CharacterCodingException) {
+            throw IllegalStateException(unreadable(), failure)
         }
         val fields = lines.filter { it.isNotBlank() && !it.startsWith("#") }.map { it.split(' ') }
         val joins = fields.filter { it.first() == JOIN }
         val unread = fields.filterNot { it.size == 2 && it.first() in setOf(JOIN, DEVICE) }
-        check(unread.isEmpty() && joins.size == 1) {
-            "$path doesn't read as bee-host keys. Move it aside to forget every key: the host prints a new join link, and every device pairs again."
-        }
+        check(unread.isEmpty() && joins.size == 1, ::unreadable)
         return StoredKeys(DeviceKey(joins.single()[1]), fields.filter { it.first() == DEVICE }.map { KeyHash(it[1]) }.toSet())
     }
 
@@ -173,6 +178,10 @@ class KeyFile(private val path: Path) : KeyStore {
             Files.deleteIfExists(temp)
         }
     }
+
+    private fun unreadable(): String =
+        "$path doesn't read as bee-host keys. Start the host with --forget-devices, or move the file aside, to forget every key: " +
+            "the host prints a new join link, and every device pairs again."
 
     companion object {
         /** The key file's name in the host's data dir, beside `board/` and `claims/`. */

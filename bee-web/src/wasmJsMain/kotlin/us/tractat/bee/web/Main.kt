@@ -430,8 +430,8 @@ private fun reloadOnAnotherBoard(scope: CoroutineScope, client: BoardClient, pin
 }
 
 /**
- * A browser can't see why a socket was refused, so a key the host no longer holds (it restarted)
- * looks like any outage. While offline, a keyed LAN page offers to drop its key and pair again.
+ * A browser can't see why a socket was refused, so a key the host no longer holds (it forgot its
+ * devices, bee#106) looks like any outage. While offline, a keyed LAN page offers to drop its key and pair again.
  */
 private fun offerRepair(scope: CoroutineScope, client: BoardClient) {
     val repair = document.body!!.appendElement("button", "pair-again")

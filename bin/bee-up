@@ -39,9 +39,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# The host's log holds the join link, whose key lasts until --new-link: keep it, and everything
+# else here, readable by you alone.
+umask 077
 mkdir -p "$bee_home"
 log="$bee_home/host.log"
 pidfile="$bee_home/host.pid"
+# The flags the running host was started with, one per line, so a reset restarts the same host.
+argsfile="$bee_home/host.args"
+[ -f "$log" ] && chmod 600 "$log"
 running() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
 
 # Stops the running host and waits for it to exit, so its last save is done and the port is free.
@@ -51,7 +57,7 @@ stop_host() {
     kill "$pid"
     for _ in $(seq 1 60); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
     if kill -0 "$pid" 2>/dev/null; then echo "The bee host (pid $pid) didn't stop in 30 s; see $log" >&2; exit 1; fi
-    rm -f "$pidfile"
+    rm -f "$pidfile" "$argsfile"
 }
 
 if [ "$stop" = 1 ]; then
@@ -60,18 +66,28 @@ if [ "$stop" = 1 ]; then
     exit 0
 fi
 
+args=(--port "$port")
+[ -n "$data_dir" ] && args+=(--data-dir "$data_dir")
+[ "$lan" = 1 ] && args+=(--lan)
+
+# A reset restarts the running host as it was started, on its own port and data dir, whatever
+# this call's other flags say: a reset on the wrong data dir would revoke nothing.
 if running && [ -n "$reset" ]; then
-    echo "Restarting the bee host (pid $(cat "$pidfile")) with $reset."
+    if [ ! -f "$argsfile" ]; then
+        echo "bee-up: can't tell how the running host (pid $(cat "$pidfile")) was started, so it can't restart it with $reset." >&2
+        echo "Run bee-up --stop, then bee-up $reset with the flags you started it with." >&2
+        exit 1
+    fi
+    args=()
+    while IFS= read -r arg; do args+=("$arg"); done < "$argsfile"
+    echo "Restarting the bee host (pid $(cat "$pidfile")) with $reset, as it was started: ${args[*]}"
     stop_host
 fi
 
 if running; then
     echo "A bee host is already running (pid $(cat "$pidfile")); reprinting its links. bee-up --stop ends it."
-    port=$(sed -n 's/.*bee host on http:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$log" | tail -1)
 else
-    args=(--port "$port")
-    [ -n "$data_dir" ] && args+=(--data-dir "$data_dir")
-    [ "$lan" = 1 ] && args+=(--lan)
+    printf '%s\n' "${args[@]}" > "$argsfile"
     [ -n "$reset" ] && args+=("$reset")
     : > "$log"
     nohup "$bee_host" "${args[@]}" >> "$log" 2>&1 &
@@ -83,6 +99,7 @@ else
     done
     grep -q 'bee host on http' "$log" || { echo "The bee host didn't come up in 60 s; see $log" >&2; exit 1; }
 fi
+port=$(sed -n 's/.*bee host on http:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$log" | tail -1)
 
 me="http://localhost:$port/?name=$name"
 bee_write_mcp_config "$bee_home/mcp.json" "ws://127.0.0.1:$port" "$name-claude"

@@ -91,11 +91,23 @@ class HostKeysTest {
         )
     }
 
-    /** A key file that doesn't parse stops the boot, rather than start over and drop every key. */
+    /**
+     * A key file that doesn't parse, or isn't text, stops the boot rather than start over and drop
+     * every key, and says how to start over on purpose: `--forget-devices`, which never reads it.
+     */
     @Test
-    fun aKeyFileThatDoesntReadStopsTheBoot() {
+    fun aKeyFileThatDoesntReadStopsTheBootAndForgetDevicesBootsPastIt() {
         Files.writeString(file, "join one\njoin two\n")
-        val stopped = assertFailsWith<IllegalStateException> { boot() }
-        assertTrue(file.toString() in stopped.message.orEmpty(), "the message names the file: ${stopped.message}")
+        val unparsed = assertFailsWith<IllegalStateException> { boot() }
+        Files.write(file, byteArrayOf(0xC3.toByte(), 0x28))
+        val notText = assertFailsWith<IllegalStateException> { boot() }
+        val forgot = boot(KeyReset.ForgetDevices)
+        assertAll(
+            { assertTrue(file.toString() in unparsed.message.orEmpty(), "the message names the file: ${unparsed.message}") },
+            { assertTrue("--forget-devices" in unparsed.message.orEmpty(), "and the way past it: ${unparsed.message}") },
+            { assertEquals(unparsed.message, notText.message, "bytes that aren't UTF-8 read the same") },
+            { assertTrue(forgot.admits(forgot.join.value), "--forget-devices boots, with a new link") },
+            { assertEquals(forgot.join, boot().join, "and saves over the bad file") },
+        )
     }
 }
