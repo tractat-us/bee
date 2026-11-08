@@ -13,7 +13,9 @@ import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
+import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
+import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.CompanionSurfaces
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.OrphanDecision
@@ -22,10 +24,12 @@ import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.bee.host.JoinRequestSurface
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -299,6 +303,105 @@ class BoardWideWaitTest {
         )
         rig.close()
     }
+
+    /**
+     * A record a person reassigns to this session counts as its own in a board-wide wait, though
+     * its surface is another agent's (spec §5.2, §6.4). Zed opened `theirs`; of its two clicks,
+     * nobody claimed the first, and zed held the second and departed, orphaning it. Before the
+     * reassign, ada's board-wide wait takes neither. Then, with her next board-wide wait holding,
+     * a person reassigns the orphan to her: the wait returns it under the reassign's token. The
+     * grant is the record, not the surface: the free click ahead of it on `theirs`, which any
+     * claim would win, is neither returned nor claimed.
+     */
+    @Test
+    fun aBoardWideWaitTakesARecordReassignedToItOnAnotherAgentsSurface() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val (granted, free) = rig.orphanBesideAFreeClickOnAnotherAgentsSurface(ada)
+
+        val before = ada.waitBoard(timeoutSeconds = 2)
+        val holding = async { ada.waitBoard(cursor = before.cursor, timeoutSeconds = 30) }
+        ada.client.state.first { s -> s.latestPresence().any { it.identity == ada.bridge.self && it.waiting } }
+        val token = rig.claims.client(NodeId("iain-page")).reassign(granted, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val waited = holding.await()
+        val again = ada.waitBoard(cursor = waited.cursor, timeoutSeconds = 2)
+        val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
+        assertAll(
+            { assertTrue(before.timedOut, "before the reassign, nothing on zed's surface is ada's: ${before.record}") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertEquals(granted, returned, "the holding board-wide wait returns the reassigned record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), waited.record?.string("token"), "under the reassign's token") },
+            { assertTrue(again.timedOut, "the free click on zed's surface stays out: ${again.record}") },
+            { assertEquals(ClaimStatus.Free, rig.voter.table.value.status(free), "no wait claimed the free click, which any claim would have won") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A surface whose meta hasn't reached this replica stays out of a board-wide scope under any
+     * name, not only a pairing one, since its opener is unknown (spec §5.2). The ghost surface's
+     * name is plain, so no reserved prefix keeps it out: only the unknown opener does. Its record
+     * is never listed, returned or named in a cursor.
+     */
+    @Test
+    fun aBoardWideScopeLeavesOutASurfaceWhoseOpenerIsUnknown() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        val ghost = "plain-ghost"
+        ada.call(BeeTools.OPEN, openArgs("s"))
+        browser.state.first { "s" in it.openSurfaces() }
+        // A record on a surface whose meta no replica ever received: the open is pieced into a scratch state only.
+        browser.mutate { st ->
+            val scratch = st.piece(st.openSurface(iain, ghost, meta(PeerIdentity.agent("ghost", Random(8))), validSurface(), JsonObject(emptyMap())).delta)
+            scratch.appendRecord(iain, click(scratch, ghost, "go"))
+        }
+        browser.mutate { it.appendRecord(iain, click(it, "s", "go")) }
+        val state = ada.client.state.first { it.records().size == 2 }
+
+        val listed = ada.listBoard(since = null)
+        val first = ada.waitBoard()
+        val second = ada.waitBoard(cursor = first.cursor, timeoutSeconds = 1)
+        val sId = BoardActionSource.recordId(state.records("s").single().first)
+        assertAll(
+            { assertEquals(null, state.meta(ghost), "rig: the ghost surface's meta never arrived") },
+            { assertEquals(1, state.records(ghost).size, "rig: its record did") },
+            { assertTrue(HANDLED_ELSEWHERE_PREFIXES.none(ghost::startsWith), "rig: no reserved prefix covers the ghost's name") },
+            { assertEquals(listOf(sId) to sId, listed, "only this session's record is listed, and named in the cursor") },
+            { assertEquals("s", first.record().string("surfaceId")) },
+            { assertTrue(second.timedOut, "the ghost's record is never returned: ${second.record}") },
+            { assertEquals(sId, second.cursor, "the timed-out wait's cursor names no ghost record") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Opens `theirs` as agent zed from a browser and clicks it twice. Nobody claims the first
+     * click; zed claims the second and departs crashed, orphaning it. Returns the orphan's claim
+     * target and the free one's, once [session] has both records. [session] opens nothing, so no
+     * surface on the board is its own.
+     *
+     * The free click comes first in sequence order on purpose: a wait that took in the whole
+     * surface once a record on it was granted would meet the free click, and win it, before the
+     * grant. With the order reversed, the grant is handed over first and leaves the granted set,
+     * so a surface-wide grant would go unseen.
+     */
+    private suspend fun JoinRig.orphanBesideAFreeClickOnAnotherAgentsSurface(session: Session): Pair<ClaimTarget, ClaimTarget> {
+        val browser = browser()
+        val zed = PeerIdentity.agent("zed", Random(9))
+        browser.mutate { it.openSurface(iain, "theirs", meta(zed), validSurface(), JsonObject(emptyMap())) }
+        repeat(2) { browser.mutate { it.appendRecord(iain, click(it, "theirs", "go")) } }
+        val (free, orphan) = session.client.state.first { it.records("theirs").size == 2 }.records("theirs").map { BoardActionSource.target(it.first) }
+        val won = claims.client(NodeId("zed")).claim(orphan, zed)
+        check(won is ClaimOutcome.Won) { "rig: zed holds the second record: $won" }
+        voter.depart(zed, DepartReason.Crashed)
+        voter.table.first { it.status(orphan) is ClaimStatus.Orphaned }
+        check(session.client.state.value.meta("theirs")?.openedBy == zed) { "rig: zed, not the session, opened the surface" }
+        return orphan to free
+    }
+
+    /** The reserved surface-id prefixes a board-wide scope leaves out by name, as `BoardActionSource` lists them. */
+    private val HANDLED_ELSEWHERE_PREFIXES = listOf(PairingSurfaces.PREFIX, OrphanDecision.PREFIX, CompanionSurfaces.PREFIX)
 
     private fun meta(openedBy: PeerIdentity) = SurfaceMeta("Not ada's", NOTIONS_CATALOG_ID, openedBy, kotlin.time.Instant.fromEpochMilliseconds(0))
 
