@@ -49,8 +49,8 @@ class HostConfigTest {
         assertAll(
             { assertEquals(setOf("bee-lan.test"), named.hostNames) },
             { assertEquals(emptySet(), HostConfig.fromArgs(emptyList(), home).hostNames, "none by default") },
-            { assertNull(named.siteRule().refusal(headersOf(HttpHeaders.Host, "bee-lan.test:8233"), local)) },
-            { assertNotNull(HostConfig(dataDir = home).siteRule().refusal(headersOf(HttpHeaders.Host, "bee-lan.test:8233"), local), "not without the flag") },
+            { assertNull(named.siteRule().refusal("/", headersOf(HttpHeaders.Host, "bee-lan.test:8233"), local)) },
+            { assertNotNull(HostConfig(dataDir = home).siteRule().refusal("/", headersOf(HttpHeaders.Host, "bee-lan.test:8233"), local), "not without the flag") },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--host-name", "a", "--host-name", "b"), home) } },
         )
     }
