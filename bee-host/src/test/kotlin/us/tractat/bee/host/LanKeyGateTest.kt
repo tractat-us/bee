@@ -8,6 +8,7 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respondText
@@ -20,6 +21,7 @@ import io.ktor.websocket.close
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
@@ -55,7 +57,7 @@ class LanKeyGateTest {
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
         application {
-            mountEndpoints(pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }))
+            mountEndpoints(BOARD_ID, pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }))
             routing {
                 for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
                     route(gated) { get(PROBE) { call.respondText("through the gate") } }
@@ -127,10 +129,28 @@ class LanKeyGateTest {
         )
     }
 
-    /** The page and the pairing channel are what a keyless device needs, so both stay open to it. */
+    /** A key admits a device, not a board: a keyed socket naming another board is refused (bee#46). */
+    @Test
+    fun aKeyedSocketNamingAnotherBoardIsRefused() = gated { client ->
+        val key = pairing.mintJoinKey().value
+        val stale = BoardId.mint()
+        val right = client.dial("$BOARD&k=$key", LAN)
+        val boardStale = client.dial("${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$stale&k=$key", LAN)
+        val claimsNone = client.dial("${BeeHost.CLAIMS_PATH}?peer=probe&k=$key", LAN)
+        val loopbackStale = client.dial("${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$stale", "127.0.0.1")
+        assertAll(
+            { assertEquals(Dial.Upgraded, right, "rig: this board, keyed") },
+            { assertEquals(Dial.Refused, boardStale) },
+            { assertEquals(Dial.Refused, claimsNone, "no board named") },
+            { assertEquals(Dial.Refused, loopbackStale, "loopback needs no key, and still names its board") },
+        )
+    }
+
+    /** The page, the board's id and the pairing channel are what a keyless device needs, so all stay open to it. */
     @Test
     fun pageAndPairingNeedNoKey() = gated { client ->
         val page = client.get("/") { fromLan() }.status
+        val boardId = client.get(BoardId.PATH) { fromLan() }.bodyAsText()
         var shown: PairingMessage? = null
         var pending = false
         client.sse(PairingWire.PATH, request = { fromLan() }) {
@@ -140,6 +160,7 @@ class LanKeyGateTest {
         val code = assertIs<PairingMessage.Code>(shown)
         assertAll(
             { assertNotEquals(HttpStatusCode.Forbidden, page) },
+            { assertEquals(BOARD_ID.value, boardId) },
             { assertTrue(code.code.matches(Regex("[0-9]{6}")), "a six-digit code: ${code.code}") },
             { assertTrue(pending, "the code names a live pairing") },
         )
@@ -246,8 +267,9 @@ class LanKeyGateTest {
         const val PORT = 8233
 
         // kuilt's server looms read the dialler's fabric id from `peer`.
-        const val BOARD = "${BoardRelay.PATH}?peer=probe"
-        const val CLAIMS = "${BeeHost.CLAIMS_PATH}?peer=probe"
+        val BOARD_ID = BoardId.mint()
+        val BOARD = "${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$BOARD_ID"
+        val CLAIMS = "${BeeHost.CLAIMS_PATH}?peer=probe&${BoardId.PARAM}=$BOARD_ID"
 
         val TEST_PEERS = PeerAddress { call -> requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" } }
 
