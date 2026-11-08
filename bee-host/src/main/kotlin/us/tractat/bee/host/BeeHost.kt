@@ -91,9 +91,10 @@ class BeeHost private constructor(
             // Task 10: keys live in this host's memory, so a restart re-pairs every LAN device.
             val pairing = Pairing(clock, SecureSecrets(SecureRandom()))
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
+            val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(pairing, PeerAddress.DIRECT, joinRequests, clock)
+                endpoints = mountEndpoints(pairing, PeerAddress.DIRECT, desk)
             }
             server.start(wait = false)
             val source = endpoints.board
