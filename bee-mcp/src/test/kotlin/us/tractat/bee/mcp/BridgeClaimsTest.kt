@@ -1299,6 +1299,38 @@ class BridgeClaimsTest {
         rig.close()
     }
 
+    /**
+     * A claim reassigned to a session reaches the wait it already has open, past a cursor that
+     * names the record (spec §6.4). Ada's first wait passes the record over while zed holds it,
+     * so her cursor names it, as an agent's loop leaves it. Her next wait, from that cursor, is
+     * open when a person reassigns the orphan to her; it returns the record under the reassign's token.
+     */
+    @Test
+    fun aReassignedClaimReachesAWaitAlreadyPastIt() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        val first = ada.wait("s", timeoutSeconds = 2)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
+
+        val open = async { ada.wait("s", cursor = first.cursor, timeoutSeconds = 30) }
+        delay(3.seconds) // the wait is holding, its cursor past the record
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val waited = open.await()
+        val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record") },
+            { assertTrue(first.timedOut, "rig: the first wait passed the record over") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertEquals(target, returned, "the open wait returns the reassigned record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), waited.record?.string("token"), "under the reassign's token") },
+        )
+        rig.close()
+    }
+
     private data class Waited(val record: JsonObject?, val timedOut: Boolean, val cursor: String) {
         fun record(): JsonObject = checkNotNull(record) { "the wait timed out" }
     }
