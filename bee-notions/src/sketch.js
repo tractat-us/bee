@@ -1,8 +1,8 @@
 // `Sketch`: agent-written HTML in a sandboxed frame (spec §5.6, plan Task 8). Invariant: the
 // HTML runs only inside `<iframe sandbox="allow-scripts">`, never with allow-same-origin, under a
 // CSP that allows no fetch, socket, image or frame load, and the page acts only on messages whose
-// source is that frame, and on a choice only while the viewer's click in that frame is fresh. The page's own
-// CSP (bee-host's PAGE_CSP) keeps the frame from navigating to a URL.
+// source is that frame, and on a choice only while the viewer's click in that frame is fresh. The
+// page's own CSP (bee-host's PAGE_CSP) keeps the frame from navigating to a URL.
 //
 // Not covered: WebRTC sits outside CSP, so a sketch can still reach the network through an
 // `RTCPeerConnection` (ICE to a STUN or TURN server it names), and the browser may resolve a DNS

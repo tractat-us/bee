@@ -397,7 +397,17 @@ test('a click in one sketch gives another sketch no choice', async ({ browser })
   await expect.poll(() => existsSync(kept), { timeout: 60_000 }).toBe(true);
   const ownSurface = JSON.parse(readFileSync(kept, 'utf8')).surface;
   const ownLines = () => (existsSync(ownEvents) ? readFileSync(ownEvents, 'utf8').split('\n').filter(Boolean) : []);
+  // The chooser stops even when an assertion fails, or it outlives the host, redialling.
+  try {
+    await chooseInOneSketch(browser, ownSurface, ownLines);
+  } finally {
+    chooser.kill('SIGTERM');
+    await exited;
+  }
+});
 
+/** Opens the board as bo, waits out Playwright's activation, and clicks a choice in the chooser's sketch. */
+async function chooseInOneSketch(browser, ownSurface, ownLines) {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto('/?name=bo');
@@ -420,11 +430,8 @@ test('a click in one sketch gives another sketch no choice', async ({ browser })
   const tally = JSON.parse(await sketchFrame(page).locator('#tally').textContent());
   expect(tally.accepted).toBe(0);
   expect(tally.refused).toBeGreaterThanOrEqual(15);
-
-  chooser.kill('SIGTERM');
-  await exited;
   await context.close();
-});
+}
 
 // The brainstorming loop's stop script kills its companion with SIGTERM. A companion stopped so
 // closes its own surface before it ends, so the board keeps no open, dead Sketch.
