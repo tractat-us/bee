@@ -104,8 +104,11 @@ test('a SIGKILLed session still reads as crashed', async ({ page }) => {
   // The voter drops its node after the 30 s learner grace; then the host departs it.
   await expectDeparted(page, 'gets-sigkill', 'crashed', { alarm: true, timeout: 90_000 });
   // By now the grace has run out for the ones that left, too, and the host has proposed Crashed for
-  // each of them. Their own Left committed first, and the first reason stands.
+  // each of them. Their own Left committed first, and the first reason stands. Read on the cards:
+  // the strip keeps only the newest three departures (RECENT_DEPARTURES), so the first has left it.
   for (const name of ['closes-stdin', 'gets-sigterm', 'gets-claude-exit']) {
-    await expectDeparted(page, name, 'left', { alarm: false, timeout: 1_000 });
+    const gone = card(page, name).locator('.bee-card-gone');
+    await expect(gone, `${name} still reads left`).toHaveAttribute('data-reason', 'left', { timeout: 1_000 });
+    await expect(gone).toHaveText('left');
   }
 });
