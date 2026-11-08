@@ -2,13 +2,9 @@ package us.tractat.bee.core
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.cbor.Cbor
 import us.tractat.kuilt.core.PayloadTooLarge
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Seam
-import us.tractat.kuilt.crdt.ReplicaId
-import us.tractat.kuilt.quilter.QuiltMessage
 
 /**
  * The largest WebSocket frame a board link carries, in bytes, at both ends: the host reads no
@@ -37,22 +33,6 @@ const val FRAME_ENVELOPE_BYTES: Int = 4 * 1024
  */
 const val BOARD_PAYLOAD_BYTES: Int = MAX_FRAME_BYTES.toInt() - FRAME_ENVELOPE_BYTES
 
-private val QUILT_MESSAGES = QuiltMessage.serializer(BoardState.serializer())
-
-/**
- * What a `FullState` of [board] weighs as a payload from one of [author]'s connections, at the
- * most: a `QuiltMessage.FullState` in CBOR, the Quilter's default format, under the longest
- * connection replica id [BoardClient] mints and the largest high-water there is, so the measure
- * never falls short of the payload the Quilter sends.
- *
- * Workaround for tractat-us/kuilt#3144, like [BoundedSeam]: bee guesses the Quilter's framing.
- */
-@OptIn(ExperimentalSerializationApi::class)
-internal fun fullStateBytes(author: ReplicaId, board: BoardState): Int {
-    val sender = ReplicaId("${author.value}#c${Int.MAX_VALUE}")
-    return Cbor.encodeToByteArray(QUILT_MESSAGES, QuiltMessage.FullState(sender, board, upThrough = Long.MAX_VALUE)).size
-}
-
 /**
  * [inner], refusing any payload over [limit], or over [inner]'s own budget where that is tighter,
  * before it reaches the wire. [refused] completes with the first refusal, so the client can say
@@ -61,10 +41,13 @@ internal fun fullStateBytes(author: ReplicaId, board: BoardState): Int {
  * As kuilt's [Seam] contract asks, an addressed [sendTo] throws [PayloadTooLarge] and a
  * [broadcast] drops. The Quilter swallows either at debug level, so [refused] is the only notice.
  *
- * Workaround for tractat-us/kuilt#3144 (the Quilter drops an over-budget `Delta` or `FullState`
- * without a word) and tractat-us/kuilt#3145 (kuilt's WebSocket installs take no frame bound, so the
- * board link publishes no budget of its own). Remove it once the Quilter reports an over-budget
- * frame and the link publishes the host's bound.
+ * [BoardClient] refuses an oversize write's delta before it lands ([WireBudget.check]), so what
+ * this seam refuses is a `FullState`: the whole board, sent on first contact.
+ *
+ * Workaround for tractat-us/kuilt#3144, like [WireBudget] (the Quilter drops an over-budget
+ * `Delta` or `FullState` without a word) and tractat-us/kuilt#3145 (kuilt's WebSocket installs
+ * take no frame bound, so the board link publishes no budget of its own). Remove it once the
+ * Quilter reports an over-budget frame and the link publishes the host's bound.
  */
 internal class BoundedSeam(private val inner: Seam, private val limit: Int) : Seam by inner {
     val refused: CompletableDeferred<BoardSyncTooLarge> = CompletableDeferred()
