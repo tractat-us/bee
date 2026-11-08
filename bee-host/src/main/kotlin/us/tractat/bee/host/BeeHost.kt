@@ -11,9 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.LivePresence
@@ -21,7 +19,6 @@ import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
-import us.tractat.kuilt.liveness.PartitionEvent
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
@@ -77,23 +74,14 @@ class BeeHost private constructor(
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
         /**
-         * The board links the host has seen lost for the reconnect window.
-         *
-         * TODO(#28): nothing feeds this yet. Whether a crash is read from the claims link (the
-         * learner grace) or from a per-spoke view over the board hub is tractat-us/bee#28. Until
-         * then no agent departs `Crashed`; `Quiet` still works.
-         */
-        val UNDETECTED_LINK_LOSS: Flow<PartitionEvent> = emptyFlow()
-
-        /**
-         * Starts a host on [config]'s address. Background work runs on [scope]. [linkLoss] feeds
-         * [Departures]' `Crashed`.
+         * Starts a host on [config]'s address. Background work runs on [scope]. [Departures]
+         * reads a crash off the claims voter: a node it drops after the learner grace
+         * ([claimsLinkLoss], bee#28).
          */
         @OptIn(ExperimentalUuidApi::class)
         suspend fun start(
             scope: CoroutineScope,
             config: HostConfig,
-            linkLoss: Flow<PartitionEvent> = UNDETECTED_LINK_LOSS,
         ): BeeHost {
             // Task 9 keeps the board here. Until then the host only makes sure the directory exists.
             Files.createDirectories(config.dataDir)
@@ -124,7 +112,7 @@ class BeeHost private constructor(
                     clock,
                 )
                 val roster = LivePresence(relay.state, clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
-                val departures = Departures(linkLoss, roster::live, voter::depart, clock = clock).start(scope)
+                val departures = Departures(claimsLinkLoss(voter.membership, clock), roster::live, voter::depart, clock = clock).start(scope)
                 return BeeHost(bound, relay, voter, departures, server)
             } catch (failure: Throwable) {
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
