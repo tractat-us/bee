@@ -72,8 +72,9 @@ test("a screen's answer to an orphan decision is refused and records nothing", a
     // Long enough for a record, had one been written, to reach the laptop.
     await screen.waitForTimeout(2_000);
     await expect(rig.laptop.locator(`#records li[data-surface-id="${rig.decision}"]`)).toHaveCount(0);
-    const listed = await rig.ada.call('bee_list_actions', { surfaceId: rig.decision });
-    expect(listed.records).toEqual([]);
+    // The host opened the decision, so the bridge won't list its records (bee#72): the laptop's
+    // replica above is the witness that none was written.
+    await expect(rig.ada.call('bee_list_actions', { surfaceId: rig.decision })).rejects.toThrow(/the host's/);
   } finally {
     await context.close();
   }
