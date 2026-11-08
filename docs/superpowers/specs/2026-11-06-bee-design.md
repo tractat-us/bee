@@ -330,7 +330,7 @@ call: in sewing, notions are the buttons, snaps and fasteners.** It holds the ba
 components plus these:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
-  (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
+  (`sandbox` without `allow-same-origin`, and a CSP of `default-src 'none'`). It's the mockup escape
   hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
   `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
@@ -547,6 +547,19 @@ At each one, look for pieces to pick up in either direction.
   sent, by its `Host`, `Origin` and Fetch Metadata headers (§5.7).
 - **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
   host nor the bee client ever executes surface content outside that sandbox.
+- **A `Sketch` can still reach the network, and v1 accepts that (bee#49).** CSP doesn't cover
+  WebRTC. A sketch can open an `RTCPeerConnection` and use STUN or TURN, which gives it a DNS
+  lookup, UDP carrying data, and the viewer's public IP. No engine ships a CSP `webrtc` directive,
+  and no sandbox flag or permissions policy covers it. The helper's removal of the WebRTC globals
+  is a speed bump, not a boundary: a nested `srcdoc` iframe gets past it, and a closed declarative
+  shadow root gets past a hardened version. `frame-src 'none'` doesn't block `about:srcdoc`. In
+  WebKit, `<link rel=preconnect>` also opens a TCP connection despite `default-src 'none'`.
+  **So treat a sketch's HTML as able to exfiltrate whatever it's shown.** In v1 that's what the
+  agent drew for the board, which the board already shares with every peer, so the sandbox's job
+  is to keep a sketch off the page, the host and the keys, not to keep it quiet. Don't put a
+  secret in a sketch. Revisit when an engine ships a real control. Chromium's
+  `Connection-Allowlist` header exists from Chrome 152, but in 156 it crashes the tab when a
+  nested `srcdoc` frame opens a peer connection, so bee doesn't adopt it yet.
 - **IP.** bee is built on Iain's own time and equipment as open source. It's brought to an employer
   hackathon as an existing tool, never built there. Hosting there is the employer's call.
 - **Keep it small.** Each piece earns its place by being needed in the first hour of real use.
