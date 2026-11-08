@@ -119,8 +119,14 @@ test('twoTabsOfOnePersonCountOnce', async ({ browser }) => {
   await vote(sam.page, 'poll-tabs', 'pizza');
   for (const peer of peers) {
     await expect(total(peer.page, 'poll-tabs')).toHaveText('2 answers', { timeout: 5_000 });
-    await expect(option(peer.page, 'poll-tabs', 'pizza').locator('.voters')).toHaveText('human:sam');
+    await expect(option(peer.page, 'poll-tabs', 'pizza').locator('.voters')).toHaveText('sam');
   }
+  // Each page marks its own viewer's answer, and only that one.
+  const chosen = (page, value) => option(page, 'poll-tabs', value).locator('button');
+  await expect(chosen(sam.page, 'pizza')).toHaveAttribute('aria-pressed', 'true');
+  await expect(chosen(sam.page, 'salad')).toHaveAttribute('aria-pressed', 'false');
+  await expect(chosen(alexTab.page, 'salad')).toHaveAttribute('aria-pressed', 'true');
+  await expect(chosen(alexTab.page, 'pizza')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('a vote cast before an option was added says so in its basis', async ({ browser }) => {
@@ -230,7 +236,7 @@ test('clear the board then reopen from history keeps the votes', async ({ browse
 
   for (const peer of peers) {
     await expect(total(peer.page, 'poll-history')).toHaveText('2 answers', { timeout: 10_000 });
-    await expect(option(peer.page, 'poll-history', 'pizza').locator('.voters')).toHaveText('human:alex');
+    await expect(option(peer.page, 'poll-history', 'pizza').locator('.voters')).toHaveText('alex');
     await expect(entry(peer.page)).toHaveCount(0);
   }
 });
@@ -240,7 +246,7 @@ test('markup in labels renders as text', async ({ browser }) => {
   peers = [alex];
   const markup = '<img src=x onerror=window.pwned=1>';
   const shown = surface(alex.page, 'markup');
-  await expect(shown.locator('bee-poll li button')).toHaveText(markup);
+  await expect(shown.locator('bee-poll li .label')).toHaveText(markup);
   await expect(shown.locator('bee-poll .question')).toHaveText(markup);
   await expect(shown.locator('bee-board [data-card="c1"]')).toHaveText(markup);
   await expect(shown.locator('bee-board [data-column="todo"] h3')).toHaveText(markup);
