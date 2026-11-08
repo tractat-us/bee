@@ -2,7 +2,7 @@
 
 bee is a board that many people and agents share at once. Each of them holds their own copy, and
 every copy has to stay in step: through flaky Wi-Fi, a laptop lid closing, a Claude session that
-crashes halfway through a task. That's a hard problem, and it isn't really about boards. A
+crashes halfway through a task. That's a hard problem, and boards aren't special in having it. A
 multiplayer game has it, and so does a shared to-do list.
 
 [kuilt](https://github.com/tractat-us/kuilt) is the library that solves it. bee is everything that
@@ -104,7 +104,7 @@ all: it's the renderer's side of the page.
 
 ## Why the line sits where it does
 
-Several of bee's own pieces aren't really about boards. Exactly-once claims, a voter that never
+Several of the pieces bee needs have nothing to do with boards. Exactly-once claims, a voter that never
 claims for itself, records of a click that remember what the clicker could see, surfaces stored
 as JSON on a CRDT: another app could want any of them.
 
