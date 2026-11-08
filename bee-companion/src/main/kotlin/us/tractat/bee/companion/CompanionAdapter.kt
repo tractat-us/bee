@@ -73,7 +73,8 @@ private val logger = KotlinLogging.logger {}
  *   the screen it was made on. A click is written only if its basis saw the latest screen and the
  *   surface is open; any other was made on a screen the agent has moved past, and is dropped.
  * - Each new screen clears `stateDir/events`. A `waiting*.html` screen closes the surface instead
- *   ("clear the board" never deletes).
+ *   ("clear the board" never deletes). A graceful stop closes it too ([closeSurface]); a crash
+ *   leaves it open.
  * - A screen the board refuses (too big for its link, [BoardWriteTooLarge], or an invalid surface,
  *   [ScreenInvalid]) is handled as a close: the surface closes and `/screens` advances, so no
  *   click on the screen before it is written. Its events hold one line,
@@ -162,8 +163,21 @@ class CompanionAdapter(
         }
     }
 
-    /** Not yet: closes [surface] on a graceful stop. */
-    suspend fun closeSurface(): Boolean = false
+    /**
+     * Closes [surface], as a graceful stop does, so a finished session leaves no open, dead Sketch
+     * on the board, and waits until the host has the close. Unbounded: the caller bounds it. Only
+     * the surface closes: `bee-companion.json` still names the screen shown, so a restart over the
+     * same directories leaves the surface closed until the agent pushes a new screen.
+     *
+     * @return whether the host acknowledged the close; false when the companion is offline
+     */
+    suspend fun closeSurface(): Boolean = turn.withLock {
+        client.mutateOrSkip { state ->
+            val open = state.surfaceDoc(surface) != null && state.meta(surface)?.closedAt == null
+            if (open) state.closeSurface(author, surface, clock()) else null
+        }
+        client.awaitAcknowledged()
+    }
 
     /** Shows the newest screen if it isn't the one last handled. */
     private suspend fun sync() = turn.withLock {

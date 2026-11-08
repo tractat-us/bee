@@ -144,14 +144,21 @@ internal class CompanionRig(
         heldBack -= name
     }
 
+    /** Spokes, by loom name, whose every frame to the hub takes [SLOW_UPLINK] to leave, as on a slow link. */
+    private val slowed = mutableSetOf<String>()
+
+    fun slowUplink(name: String) {
+        slowed += name
+    }
+
     /** A spoke loom like [BoardStar.loom], whose link publishes [maxFrameBytes] when the rig sets it. */
     private fun loom(name: String, scope: CoroutineScope = test.backgroundScope): SpokeLoom =
         SpokeLoom(scope, name, Random(name.hashCode()), star.clock) { id, _ ->
             val (hubEnd, spokeEnd) = connectionPair()
             star.hubEnds += hubEnd
             star.source.offer(hubEnd)
-            val late = Late(spokeEnd) { name in heldBack }
-            val link = maxFrameBytes?.let { Budgeted(late, it) } ?: late
+            val shaped = Slow(Late(spokeEnd) { name in heldBack }) { name in slowed }
+            val link = maxFrameBytes?.let { Budgeted(shaped, it) } ?: shaped
             peerMesh(id, listOf(link), dispatcher)
         }
 
@@ -161,6 +168,14 @@ internal class CompanionRig(
     /** A link that loses the hub's large frames while [held]. */
     private class Late(base: Connection, held: () -> Boolean) : Connection by base {
         override val incoming: Flow<ByteArray> = base.incoming.filter { !held() || it.size <= LATE_FRAME_BYTES }
+    }
+
+    /** A link whose frames take [SLOW_UPLINK] to leave while [slow]; one its sender stops waiting for is lost. */
+    private class Slow(private val base: Connection, private val slow: () -> Boolean) : Connection by base {
+        override suspend fun send(frame: ByteArray) {
+            if (slow()) delay(SLOW_UPLINK)
+            base.send(frame)
+        }
     }
 
     /**
@@ -213,10 +228,12 @@ internal class CompanionRig(
             scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]) + CoroutineExceptionHandler { _, e -> failed.complete(e) },
         )
         lastSurface = adapter.surface
-        return Running(adapter, client, bridge, reports, failed, scope, adapter.start(supervised)).also { running += it }
+        return Running(author.value, adapter, client, bridge, reports, failed, scope, adapter.start(supervised)).also { running += it }
     }
 
+    /** A companion the rig started, under its loom [name]. */
     class Running(
+        val name: String,
         val adapter: CompanionAdapter,
         val client: BoardClient,
         val bridge: BeeBridge,
@@ -295,6 +312,9 @@ internal class CompanionRig(
 
         /** The largest hub frame a held-back spoke still gets: above the handshake's and presence's. */
         const val LATE_FRAME_BYTES = 2_000
+
+        /** How long a slowed spoke's frame takes to leave for the hub. */
+        val SLOW_UPLINK: Duration = 500.milliseconds
 
         const val FRAME_TEMPLATE = "<!DOCTYPE html>\n<html><head><style>.frame-css { color: teal; }</style></head>" +
             "<body><!-- BRANDING --><div id=\"frame-content\"><!-- CONTENT --></div></body></html>"

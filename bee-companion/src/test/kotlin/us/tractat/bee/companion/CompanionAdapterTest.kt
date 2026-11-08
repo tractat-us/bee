@@ -184,8 +184,9 @@ class CompanionAdapterTest {
 
     /**
      * A companion that stops gracefully closes its surface, so a finished session leaves no open,
-     * dead Sketch on the board. It's killed the moment [CompanionAdapter.closeSurface] returns, so
-     * the host has the close only if the companion waited for it to be acknowledged.
+     * dead Sketch on the board. It's killed the moment [CompanionAdapter.closeSurface] returns, on
+     * a link whose frames take [CompanionRig.SLOW_UPLINK] to leave, so the host has the close only
+     * if the companion waited for it to be acknowledged.
      */
     @Test
     fun gracefulStopLeavesTheSurfaceClosed() = runTest(timeout = 120.seconds) {
@@ -196,6 +197,7 @@ class CompanionAdapterTest {
         rig.shows(browser) { "mockup" in it }
         val surface = rig.surface
 
+        rig.slowUplink(companion.name)
         val acknowledged = companion.adapter.closeSurface()
         companion.stop()
         val host = rig.star.relay.state.value

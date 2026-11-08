@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -137,6 +138,9 @@ fun main(args: Array<String>) {
             val adapter = CompanionAdapter(
                 screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print, boardId, random,
             )
+            // A graceful stop (SIGTERM, the stop script's kill) closes the surface. A crash can't,
+            // and leaves it open.
+            Runtime.getRuntime().addShutdownHook(Thread({ closeOnStop(adapter) }, "bee-companion-close"))
             bridge.announce()
             adapter.start(this).join()
         }
@@ -148,15 +152,37 @@ fun main(args: Array<String>) {
     exitProcess(1)
 }
 
+/** How long a stopping companion waits for the host to acknowledge its surface's close. */
+private val STOP_BOUND = 2.seconds
+
+/** The HTTP statuses that refuse a request outright: asking again gets the same answer. */
+private val CLIENT_ERRORS = 400..499
+
+/** Closes [adapter]'s surface as the process ends, waiting at most [STOP_BOUND] for the host to have it. */
+private fun closeOnStop(adapter: CompanionAdapter) {
+    val acknowledged = try {
+        runBlocking { withTimeoutOrNull(STOP_BOUND) { adapter.closeSurface() } }
+    } catch (failure: Exception) {
+        // The top of the hook's thread: a cancellation reaching here is a failure like any other.
+        logger.warn(failure) { "Closing ${adapter.surface} on stop failed." }
+        return
+    }
+    if (acknowledged != true) logger.warn { "The host didn't acknowledge closing ${adapter.surface} within $STOP_BOUND; it may stay open." }
+}
+
 /**
  * The board the host names at [url] ([BoardId.PATH]), as a page asks for it. A host that isn't up
- * yet is asked again each second; one that answers with something that isn't a board id fails.
+ * yet, or answers with a server error, is asked again each second; one that refuses the request
+ * (a 4xx: not a bee host, or not one that takes this companion) fails.
+ *
+ * @throws IllegalStateException if the host answers 4xx
  */
 private suspend fun askBoardId(http: HttpClient, url: String): BoardId {
     while (true) {
         try {
             val response = http.get(url)
             if (response.status.isSuccess()) return BoardId(response.bodyAsText().trim())
+            check(response.status.value !in CLIENT_ERRORS) { "$url refused the companion: ${response.status}" }
             logger.warn { "$url answered ${response.status}; asking again." }
         } catch (cancelled: CancellationException) {
             throw cancelled

@@ -7,14 +7,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -120,6 +125,12 @@ class BoardClient(
     ) {
         /** Completes when the connection is over: its seam tore, a pump failed, or its Quilter closed. */
         val ended = CompletableDeferred<Unit>()
+
+        /**
+         * The writes published through [quilter], each under its next sequence number, so the last
+         * one's is this count. Changed under the client's mutex.
+         */
+        var writes = 0L
     }
 
     private val backoff = ExponentialBackoff(base = 250.milliseconds, cap = 5.seconds, random = random)
@@ -201,6 +212,7 @@ class BoardClient(
                 f(state)?.also { WireBudget.check(connection.quilter.replica, it.delta, connection.seam.maxPayloadBytes) }
             }
             if (wrote != null) {
+                if (wrote) connection.writes++
                 held.value = connection.quilter.state.value
                 return@withLock wrote
             }
@@ -212,6 +224,29 @@ class BoardClient(
         WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, budget)
         held.value = held.value.piece(patch.delta)
         true
+    }
+
+    /**
+     * Waits until every peer of the live connection (on a spoke, the relay) has acknowledged every
+     * write made on it, so a process may end without losing them. Unbounded: the caller bounds it.
+     *
+     * kuilt's `Quilter.mutate` doesn't return the sequence number it published, so this counts the
+     * writes made through each connection's Quilter, the only local writes it numbers. A kuilt gap,
+     * not yet filed: a Quilter caller can't wait for its own write to be acknowledged.
+     *
+     * @return true once they're acknowledged; false at once when offline (an offline write rides
+     *   the next connection's FullState), or when the connection ends first
+     */
+    suspend fun awaitAcknowledged(): Boolean {
+        val (connection, writes) = mutex.withLock { live?.let { it to it.writes } } ?: return false
+        return coroutineScope {
+            val acknowledged = async { connection.quilter.universalAckFlow.first { it >= writes } }
+            val ended = async { connection.ended.await() }
+            select {
+                acknowledged.onAwait { true }
+                ended.onAwait { false }
+            }.also { coroutineContext.cancelChildren() }
+        }
     }
 
     /** The result of [f] through [connection]'s Quilter, or null if that Quilter has closed. */
