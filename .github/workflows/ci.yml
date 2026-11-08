@@ -204,7 +204,7 @@ jobs:
           S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
         run: |
           [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
-          # installDist: Playwright starts the host from it, and orphan-decisions.spec.mjs its bridges.
+          # installDist: Playwright starts the host from it, and the board-page and orphan-decisions specs' bridges.
           timeout 600 ./gradlew check :bee-host:installDist :bee-mcp:installDist -Pbee.realsocket.tests=true --stacktrace --console=plain
 
       - name: Playwright

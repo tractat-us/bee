@@ -144,8 +144,8 @@ class BeeBridge(
     /** Whether a claims link is up. */
     val claimsOnline: Boolean get() = claims.link.value != null
 
-    /** Everyone attached, as this bridge's replica sees them. */
-    suspend fun roster(): List<PresenceEntry> = presence.roster.live()
+    /** Everyone attached, as this bridge's replica sees them: one entry per identity. */
+    suspend fun roster(): Map<PeerIdentity, PresenceEntry> = presence.roster.peers()
 
     /** Puts this session on the board's presence from the start, not only from its first tool call. */
     suspend fun announce() = presence.update(self, statusLine, clock(), waiting = false)

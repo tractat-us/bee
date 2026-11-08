@@ -16,7 +16,10 @@ import kotlin.time.Instant
 
 /** An action record's identity: the dot its insert minted in the board's `records` sequence. */
 @JvmInline
-value class RecordId(val dot: Dot)
+value class RecordId(val dot: Dot) {
+    /** The claim target for this record: `record:<author>:<seq>`. */
+    val claimTarget: ClaimTarget get() = ClaimTarget("record:${dot.replica.value}:${dot.seq}")
+}
 
 /**
  * What a person or agent did on a surface (§6.2). Immutable: correcting one means appending
