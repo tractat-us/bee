@@ -32,6 +32,7 @@ import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.quilter.QuiltMessage
 import us.tractat.kuilt.quilter.Quilter
 import us.tractat.kuilt.quilter.QuilterConfig
+import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -132,7 +133,7 @@ class BoardClient(
     private var connections = 0
     private var attempt = 0
 
-    /** The last live seam's payload budget, which an offline write is weighed against. Held under [mutex]. */
+    /** The last live seam's payload budget, which an offline write is weighed against. Written under [mutex]. */
     @Volatile private var budget: Int? = null
 
     /** The board as this peer holds it, online or not. */
@@ -145,10 +146,11 @@ class BoardClient(
     val link: StateFlow<String?> = _link.asStateFlow()
 
     /**
-     * The board link's payload budget in bytes: the live seam's, or the last one's while offline.
-     * Null when no link has published one, and then no write is refused for its size.
+     * The board link's payload budget in bytes, as the last link to go live published it. Null when
+     * no link has published one, and then no write is refused for its size. An online write is
+     * weighed against the live seam's own reading, which may have moved since.
      */
-    val maxPayloadBytes: Int? get() = live?.seam?.maxPayloadBytes ?: budget
+    val maxPayloadBytes: Int? get() = budget
 
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
