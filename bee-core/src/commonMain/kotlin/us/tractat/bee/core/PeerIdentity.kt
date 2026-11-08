@@ -5,8 +5,8 @@ import kotlin.random.Random
 /**
  * Whether a peer is a person, a coding agent, or the host.
  *
- * A kind is a label: what a peer may do never rests on it (spec §5.7, bee#68). [Host] is what the
- * host opens its own surfaces as, so the board shows them as the host's (bee#71).
+ * A kind is self-declared, so no new gate may rest on it (spec §5.7, bee#68). [Host] is a label
+ * only: what the host opens its own surfaces as, so the board shows them as the host's (bee#71).
  */
 enum class PeerKind { Human, Agent, Host }
 

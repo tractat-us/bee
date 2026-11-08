@@ -184,7 +184,7 @@ Claude session ── bee-mcp                                           ┘     
   identity, where `name` is `$BEE_SESSION_NAME`, else the working directory's basename. A human is
   `human:<name>`, the same across tabs and devices. Only agents depart (§6.4). The host opens its
   own surfaces, join requests (§5.7) and orphan decisions (§6.4), as `host:bee-host`, a third kind
-  (Iain, 2026-11-08, bee#71). Like every kind it's a label: no gate rests on it (§5.7). It keeps
+  (Iain, 2026-11-08, bee#71). It's a label, and no new gate rests on it (§5.7). It keeps
   `bee_board_clear` off the host's surfaces, so clearing never strands a pairing device. Snapshots
   from before it name the host `agent:bee-host#00000000`, which still reads as the host.
 - **CRDT authors are not peer identities (design call).** A replica writes as `web-<uuid>` per page
