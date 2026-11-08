@@ -6,6 +6,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.withTimeout
@@ -81,8 +82,13 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
     suspend fun close() = voter.close()
 
     /** A browser's replica, online, through the same kind of link as the companion's. */
-    fun browser(name: String = "web-iain"): BoardClient =
-        star.client(ReplicaId(name), loom = loom(name)).also { it.connect() }
+    fun browser(name: String = "web-iain"): Browser {
+        val author = ReplicaId(name)
+        return Browser(author, star.client(author, loom = loom(name)).also { it.connect() })
+    }
+
+    /** A browser's replica and the author it writes as: each browser appends its clicks as itself. */
+    class Browser(val author: ReplicaId, val client: BoardClient)
 
     /** A spoke loom like [BoardStar.loom], whose link publishes [maxFrameBytes] when the rig sets it. */
     private fun loom(name: String, scope: CoroutineScope = test.backgroundScope): SpokeLoom =
@@ -122,8 +128,8 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
             retryDelay = { 1.seconds },
         )
         val identity = BridgeIdentity("companion", Random(n)) { old, reason -> connection.depart(old, reason) }
-        val presence = Presence(client, author, claims.clock, scope) { throw it }
-        val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock).also { it.announce() }
+        val presence = Presence(client, author, connection.link.filterNotNull().map { it.node }, claims.clock, scope) { throw it }
+        val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock, scope).also { it.announce() }
         connection.link.filterNotNull().first()
         val reports = mutableListOf<JsonObject>()
         val adapter = CompanionAdapter(
@@ -163,14 +169,17 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
         return file
     }
 
+    /** [shows], on [browser]'s board. */
+    suspend fun shows(browser: Browser, html: (String) -> Boolean): BoardState = shows(browser.client, html)
+
     /** Waits on [client]'s board until the companion surface shows [html], and returns that board. */
     suspend fun shows(client: BoardClient, html: (String) -> Boolean): BoardState = withTimeout(WAIT) {
         client.state.first { state -> sketchHtml(state)?.let(html) == true }
     }
 
-    /** Clicks [choice] on the companion's sketch from [browser], as the page records it. */
-    suspend fun click(browser: BoardClient, choice: String, text: String, atEpochSeconds: Long) {
-        browser.mutate { state ->
+    /** Clicks [choice] on the companion's sketch from [browser], as the page records it: under its own author. */
+    suspend fun click(browser: Browser, choice: String, text: String, atEpochSeconds: Long) {
+        browser.client.mutate { state ->
             val record = ActionRecord(
                 surfaceId = CompanionAdapter.SURFACE,
                 componentId = "root",
@@ -183,7 +192,7 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
                 basis = Basis.capture(state, CompanionAdapter.SURFACE),
                 at = Instant.fromEpochSeconds(atEpochSeconds),
             )
-            state.appendRecord(ReplicaId("web-iain"), record)
+            state.appendRecord(browser.author, record)
         }
     }
 
