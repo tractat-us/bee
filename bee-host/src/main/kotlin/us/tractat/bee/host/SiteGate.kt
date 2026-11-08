@@ -7,6 +7,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
+import io.ktor.server.request.path
 import io.ktor.server.response.respond
 import java.net.InetAddress
 
@@ -50,7 +51,8 @@ class SiteRule(names: Set<String>) {
     private val names: Set<String> = names.mapTo(mutableSetOf(LOCALHOST)) { it.lowercase() }
 
     /** Why a call with [headers], arriving at [arrival], isn't from the host's site; null if it is. */
-    fun refusal(headers: Headers, arrival: Arrival): String? {
+    @Suppress("UnusedParameter")
+    fun refusal(path: String, headers: Headers, arrival: Arrival): String? {
         val host = headers[HttpHeaders.Host]
         val origin = headers[HttpHeaders.Origin]
         val named = host?.let(::authority)
@@ -129,7 +131,7 @@ fun Application.installSiteGate(rule: SiteRule, arrivals: ArrivalAddress) {
     install(
         createApplicationPlugin("BeeSiteGate") {
             onCall { call ->
-                val refusal = rule.refusal(call.request.headers, arrivals.of(call))
+                val refusal = rule.refusal(call.request.path(), call.request.headers, arrivals.of(call))
                 if (refusal != null) call.respond(HttpStatusCode.Forbidden, refusal)
             }
         },
