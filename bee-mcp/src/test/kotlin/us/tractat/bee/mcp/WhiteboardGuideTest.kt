@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,6 +54,37 @@ class WhiteboardGuideTest {
             *each.toTypedArray(),
             { assertEquals(ids, ada.client.state.value.openSurfaces().sorted(), "every example is on the board") },
             { assertTrue(refused.isError == true, "control: a rootless surface is refused: ${refused.text()}") },
+        )
+        rig.close()
+    }
+
+    /** The updates the cheat-sheet describes apply: a field's text by pointer, and a card added to the Board. */
+    @Test
+    fun theCheatSheetsUpdatesApply() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val field = WhiteboardGuide.EXAMPLES.single { "TextField" in it.components }
+        val board = WhiteboardGuide.EXAMPLES.single { "\"Board\"" in it.components }
+        ada.call(BeeTools.OPEN, field.args("field"))
+        ada.call(BeeTools.OPEN, board.args("board"))
+
+        val typed = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "field", "data" to Json.parseToJsonElement("""{"/idea": "new text"}""")))
+        val added = ada.call(
+            BeeTools.UPDATE,
+            mapOf(
+                "surfaceId" to "board",
+                "data" to Json.parseToJsonElement("""{"/cards/items/c2": {"label": "Pick a host", "column": "todo"}, "/cards/order": ["c1", "c2"]}"""),
+            ),
+        )
+        val boardData = ada.call(BeeTools.BOARD, emptyMap()).json().getValue("open").jsonArray
+            .map { it.jsonObject }.associate { it.getValue("surfaceId").jsonPrimitive.content to it.getValue("data").jsonObject }
+        val cards = boardData.getValue("board").getValue("cards").jsonObject
+        assertAll(
+            { assertEquals(null, typed.isError, typed.text()) },
+            { assertEquals(null, added.isError, added.text()) },
+            { assertEquals("new text", boardData.getValue("field").getValue("idea").jsonPrimitive.content) },
+            { assertEquals(setOf("c1", "c2"), cards.getValue("items").jsonObject.keys) },
+            { assertEquals(listOf("c1", "c2"), cards.getValue("order").jsonArray.map { it.jsonPrimitive.content }) },
         )
         rig.close()
     }
