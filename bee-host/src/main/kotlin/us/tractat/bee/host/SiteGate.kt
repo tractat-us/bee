@@ -1,5 +1,6 @@
 package us.tractat.bee.host
 
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -41,8 +42,10 @@ fun interface ArrivalAddress {
 class SiteRule(names: Set<String>) {
     private val names: Set<String> = names.mapTo(mutableSetOf(LOCALHOST)) { it.lowercase() }
 
-    /** Why a call with these headers, arriving at [arrival], isn't from the host's site; null if it is. */
-    fun refusal(host: String?, origin: String?, arrival: Arrival): String? {
+    /** Why a call with [headers], arriving at [arrival], isn't from the host's site; null if it is. */
+    fun refusal(headers: Headers, arrival: Arrival): String? {
+        val host = headers[HttpHeaders.Host]
+        val origin = headers[HttpHeaders.Origin]
         val named = host?.let(::authority)
         return when {
             named == null || !answersTo(named, arrival) -> "This host doesn't go by \"$host\"."
@@ -107,7 +110,7 @@ fun Application.installSiteGate(rule: SiteRule, arrivals: ArrivalAddress) {
     install(
         createApplicationPlugin("BeeSiteGate") {
             onCall { call ->
-                val refusal = rule.refusal(call.request.headers[HttpHeaders.Host], call.request.headers[HttpHeaders.Origin], arrivals.of(call))
+                val refusal = rule.refusal(call.request.headers, arrivals.of(call))
                 if (refusal != null) call.respond(HttpStatusCode.Forbidden, refusal)
             }
         },
