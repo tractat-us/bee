@@ -42,7 +42,9 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.Departures")
  * second `Depart`, and a lingering presence entry would otherwise re-propose it on every check. A
  * proposal that fails is logged and not remembered, so the next lost link or check tries again.
  *
- * It decides; [depart] commits. `BeeHost` passes `ClaimsVoter::depart`.
+ * It decides; [depart] commits. `BeeHost` passes `ClaimsVoter::depart`, and for [presence] each
+ * poster's newest entry, however old (`hostDepartures`): a crashed agent's entry has aged out of
+ * the live roster by the time the voter drops its node.
  */
 class Departures(
     private val events: Flow<PartitionEvent>,
