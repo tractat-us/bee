@@ -77,12 +77,20 @@ class ClaimsLinkLossTest {
         assertEquals(listOf(lost(b), lost(a)), events)
     }
 
-    /** A learner made a voter is still in the cluster: its link isn't lost. Leaving it altogether, the control, is. */
+    /**
+     * A learner made a voter is still in the cluster: its link isn't lost then, only when it
+     * leaves altogether. The order tells the two apart: `b`'s loss, between them, comes first.
+     */
     @Test
     fun aLearnerMadeAVoterIsNotLost() = runTest {
-        val promoted = ClusterConfig(voters = setOf(host, a), learners = emptySet())
-        val events = claimsLinkLoss(flowOf(config(setOf(a)), promoted, config(emptySet())), clock = { at }).toList()
-        assertEquals(listOf(lost(a)), events)
+        val configs = flowOf(
+            config(setOf(a, b)),
+            ClusterConfig(voters = setOf(host, a), learners = setOf(b)),
+            ClusterConfig(voters = setOf(host, a), learners = emptySet()),
+            config(emptySet()),
+        )
+        val events = claimsLinkLoss(configs, clock = { at }).toList()
+        assertEquals(listOf(lost(b), lost(a)), events)
     }
 
     /**
