@@ -14,13 +14,17 @@ const rig = {};
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(150_000);
+  // Each piece joins `rig` as it is made, so a failed beforeAll still leaves afterAll its cleanup.
   const context = await browser.newContext();
+  rig.context = context;
   const laptop = await context.newPage();
   await laptop.goto('/?name=iain');
   await expect(laptop.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
 
   const zed = await startAgent('zed');
+  rig.zed = zed;
   const ada = await startAgent('ada');
+  rig.ada = ada;
   await zed.call('bee_surface_open', {
     surfaceId: SOURCE,
     title: 'Orphan source',
@@ -38,10 +42,15 @@ test.beforeAll(async ({ browser }) => {
   const decision = `orphan-record:${held.record.recordId}`;
   // The voter drops zed's node after the 30 s learner grace; then the host departs zed.
   await expect(laptop.locator(`a2ui-surface[data-surface-id="${decision}"] bee-poll`)).toBeVisible({ timeout: 90_000 });
-  Object.assign(rig, { context, laptop, zed, ada, held: held.record, decision });
+  Object.assign(rig, { laptop, held: held.record, decision });
 });
 
 test.afterAll(async () => {
+  // ada holds the record the Reassign handed her. Completing it before her bridge dies keeps the
+  // host from departing her ~30 s later and reopening the decision while later spec files run.
+  if (rig.reassigned) {
+    await rig.ada.call('bee_action_done', { recordId: rig.reassigned.recordId, token: rig.reassigned.token });
+  }
   rig.ada?.kill();
   rig.zed?.kill();
   await rig.context?.close();
@@ -75,6 +84,7 @@ test("a person's Reassign reaches the agent's wait", async () => {
   await poll.getByRole('button', { name: `Reassign to ${rig.ada.identity}` }).click();
 
   const got = await waiting;
+  if (got.record) rig.reassigned = got.record;
   expect(got.timedOut).toBe(false);
   expect(got.record?.recordId).toBe(rig.held.recordId);
   expect(got.record?.token).toMatch(/^\d+:\d+$/);
