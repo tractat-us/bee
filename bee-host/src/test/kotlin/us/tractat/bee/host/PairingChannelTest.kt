@@ -8,7 +8,6 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -56,9 +55,12 @@ class PairingChannelTest {
         val code = CompletableDeferred<PairingMessage.Code>()
         val device = launch {
             client.sse("http://127.0.0.1:$port${PairingWire.PATH}") {
-                val first = incoming.first()
-                code.complete(assertIs<PairingMessage.Code>(Json.decodeFromString(PairingMessage.serializer(), requireNotNull(first.data))))
-                delay(10.minutes)
+                // The device stays on, reading its stream as a browser's EventSource does, until it
+                // is cancelled. Not `incoming.first()`: Ktor's client hangs up the moment a collection
+                // of `incoming` ends, so the device would leave as soon as it saw its code (bee#85).
+                incoming.collect { event ->
+                    code.complete(assertIs<PairingMessage.Code>(Json.decodeFromString(PairingMessage.serializer(), requireNotNull(event.data))))
+                }
             }
         }
         val id = PairingId(withTimeout(10.seconds) { code.await() }.pairing)
