@@ -182,6 +182,9 @@ class BoardState internal constructor(
      * because the log is durable, so a later mirror always wins. A target the table no longer holds
      * (released) shows `free`. A newly retired identity is recorded at the table's index, which is
      * its `Depart`'s own index when the host mirrors every committed table in order.
+     *
+     * The "only grows across host boots" premise can break when a tab is left open across a wipe, or
+     * `claims/` is moved aside: the tab's old views carry indexes the new log hasn't reached (bee#46).
      */
     fun mirrorClaims(replica: ReplicaId, table: ClaimTable): Patch<BoardState> {
         requireReplica(replica)
@@ -235,6 +238,12 @@ class BoardState internal constructor(
      * is attached now is [LivePresence]'s view, which ages entries out.
      */
     fun latestPresence(): List<PresenceEntry> = presence.entries.values.mapNotNull { it.value }
+
+    /**
+     * This board without its presence, the form it is saved in (Task 9). Who is attached is true
+     * only while they are: a restored board starts with nobody, and each peer posts itself again.
+     */
+    fun withoutPresence(): BoardState = copy(presence = EphemeralMap.empty())
 
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }
