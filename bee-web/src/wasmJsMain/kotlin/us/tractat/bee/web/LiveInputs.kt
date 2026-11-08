@@ -49,6 +49,10 @@ external object NotionsLive : JsAny {
  *   wait until they leave it. [releases] ticks each time a path stops being held, so the driver
  *   renders what waited.
  *
+ * An `obscured` field is never tracked: it holds a secret, which must not reach the board as it
+ * is typed (§5.7). Typing leaves the board's value at its path as it was, so [BoardDriver]'s diff
+ * doesn't resend it, and the typed value stays until a writer changes the board's.
+ *
  * Only absolute bindings are tracked (`{"path": "/…"}`). A `TextField` inside a list template binds
  * a relative path, and v1 has none; one that turns up is reported through [onProblem], as is a
  * surface the renderer can't be watched on, so a field that loses live typing or its hold says so.
@@ -190,10 +194,21 @@ class LiveInputs(
     }
 
     private companion object {
-        /** The data path a `TextField`'s `value` binds, absolute or not, or null if it binds none. */
+        /**
+         * The data path a `TextField`'s `value` binds, absolute or not, or null if it binds none or
+         * is [obscured][isObscured].
+         */
         fun boundPath(component: JsonObject): String? {
-            if ((component["component"] as? JsonPrimitive)?.content != "TextField") return null
+            if ((component["component"] as? JsonPrimitive)?.content != "TextField" || component.isObscured()) return null
             return ((component["value"] as? JsonObject)?.get("path") as? JsonPrimitive)?.content
         }
+
+        /**
+         * Whether this is A2UI's `obscured` input, the catalog's field for a secret, such as a
+         * pairing code (§5.7). It never syncs live: what is typed stays in this page's renderer,
+         * and leaves it only inside the context of an action that reads its path. Live typing
+         * would write each keystroke to every replica.
+         */
+        fun JsonObject.isObscured(): Boolean = (this["variant"] as? JsonPrimitive)?.content == "obscured"
     }
 }
