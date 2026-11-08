@@ -77,7 +77,7 @@ class HostCore private constructor(
             random: Random = Random.Default,
             quilterConfig: QuilterConfig = BEE_QUILTER_CONFIG,
         ): HostCore {
-            val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, clock, random, quilterConfig)
+            val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, stores.boardId, clock, random, quilterConfig)
             val voter = ClaimsVoter.start(scope, claimsHost, stores.claims, raftConfig, boardMirror(board.relay), clock)
             val departures = hostDepartures(voter, board.relay.state, clock).start(scope)
             return HostCore(board, voter, departures, intake)
@@ -85,12 +85,34 @@ class HostCore private constructor(
     }
 }
 
-/** Where the host keeps what outlives a boot: the board's snapshot and the claims log. */
-class HostStores(val board: DurableStore, val claims: DurableStore) {
+/**
+ * Where the host keeps what outlives a boot: the board's snapshot and the claims log, and the
+ * [boardId] the two belong to together. Invariant: **both stores record [boardId].** A snapshot
+ * never meets a claims log it wasn't mirrored from ([BoardId]).
+ */
+class HostStores private constructor(val board: DurableStore, val claims: DurableStore, val boardId: BoardId) {
     companion object {
-        /** Each in its own [FileChannelDurableStore] under [dataDir]: `board/` and `claims/`. */
-        fun onDisk(dataDir: Path): HostStores =
-            HostStores(board = fileStore(dataDir.resolve("board")), claims = fileStore(dataDir.resolve("claims")))
+        /**
+         * [board] and [claims], under the board id both record. If either records none, or they
+         * disagree, a new board: its id is recorded in both, claims first. A crash between the two
+         * writes leaves them disagreeing, so the next boot mints again.
+         */
+        suspend fun settle(board: DurableStore, claims: DurableStore): HostStores {
+            val kept = BoardId.keptIn(board)
+            val logged = BoardId.keptIn(claims)
+            val id = kept?.takeIf { it == logged } ?: BoardId.mint().also { minted ->
+                if (kept != null) {
+                    log.warn { "The claims log isn't board $kept's (it names ${logged ?: "none"}), so this is a new board, $minted. Board $kept's snapshot stays in board/." }
+                }
+                BoardId.recordIn(claims, minted)
+                BoardId.recordIn(board, minted)
+            }
+            return HostStores(board, claims, id)
+        }
+
+        /** Each in its own [FileChannelDurableStore] under [dataDir], `board/` and `claims/`, [settle]d. */
+        suspend fun onDisk(dataDir: Path): HostStores =
+            settle(board = fileStore(dataDir.resolve("board")), claims = fileStore(dataDir.resolve("claims")))
 
         private fun fileStore(dir: Path) = FileChannelDurableStore(Files.createDirectories(dir).toFile())
     }
@@ -103,8 +125,8 @@ class HostStores(val board: DurableStore, val claims: DurableStore) {
  * under a name the spokes already hold cursors for. The board is saved on change, without
  * presence, and once more on [close].
  *
- * The board's [id] is minted at the first boot and kept beside the snapshot, so it changes only
- * when the store is wiped. Pages key their copies by it ([BoardId]).
+ * The board's [id] is the one its stores settled on ([HostStores.settle]): it changes only when
+ * `board/` or `claims/` is wiped or moved aside. Pages key their copies by it ([BoardId]).
  *
  * A snapshot that doesn't decode stops the boot rather than start an empty board over it. To boot
  * anyway, move the data dir's `board/` aside: the host starts an empty board under a new id, and
@@ -132,7 +154,7 @@ class HostBoard private constructor(
 
     companion object {
         /**
-         * Restores the board from [store] and relays it to spokes from [source]. Background work runs on [scope].
+         * Restores board [id] from [store] and relays it to spokes from [source]. Background work runs on [scope].
          *
          * @throws IllegalStateException if the snapshot in [store] doesn't decode, whether as a
          *   serialization failure or a nested decoder's own refusal
@@ -144,11 +166,11 @@ class HostBoard private constructor(
             source: ConnectionSource,
             dispatcher: CoroutineContext,
             store: DurableStore,
+            id: BoardId,
             clock: () -> Instant,
             random: Random,
             config: QuilterConfig,
         ): HostBoard {
-            val id = BoardId.keptIn(store) ?: BoardId.mint().also { BoardId.recordIn(store, it) }
             val author = ReplicaId("host-${Uuid.random()}")
             val snapshot = QuiltedPersistence(store, id.snapshotKey, BoardState.serializer())
             val initial = try {
