@@ -89,10 +89,20 @@ const companionRecords = (page) => page.locator(`#records li[data-surface-id="${
 const proposal = (page, surface = surfaceId) =>
   page.locator(`a2ui-surface[data-surface-id="${surface}"] bee-sketch .bee-proposal`);
 
-/** Sends the sketch's proposal, with a click on the page's own Send button. */
+/**
+ * Sends the sketch's proposal, with a click on the page's own Send button. Send re-arms whenever
+ * it moves, so it's scrolled into view first, and clicked once it has armed where it stays.
+ */
 async function confirm(page, surface = surfaceId) {
-  await proposal(page, surface).getByRole('button', { name: 'Send', exact: true }).click();
+  const send = proposal(page, surface).getByRole('button', { name: 'Send', exact: true });
+  await send.scrollIntoViewIfNeeded();
+  await settled(page);
+  await expect(send).toBeEnabled();
+  await send.click();
 }
+
+/** Waits two frames, so the scroll and resize events of any layout change so far have fired. */
+const settled = (page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
 
 function eventLines() {
   return existsSync(eventsFile) ? readFileSync(eventsFile, 'utf8').split('\n').filter(Boolean) : [];
@@ -255,17 +265,22 @@ test('Enter just after tabbing out of a sketch records nothing', async ({ browse
   const tia = await openBoard(browser, 'tia', 'Tab layout?');
   const { page, frame } = tia;
   await frame.locator('[data-choice="a"]').click();
-  const send = proposal(page).getByRole('button', { name: 'Send', exact: true });
-  await expect(send).toBeEnabled();
   await frame.locator('#last').click();
+  // Send in view and armed, so the Tab below scrolls nothing and Send stays enabled.
+  const send = proposal(page).getByRole('button', { name: 'Send', exact: true });
+  await send.scrollIntoViewIfNeeded();
+  await settled(page);
+  await expect(send).toBeEnabled();
+  const focused = () => page.evaluate(() => `${document.activeElement?.className} ${document.activeElement?.disabled}`);
   await page.keyboard.press('Tab');
+  // Precondition: Tab took focus to an enabled Send, so the Enter just after reached it.
+  expect(await focused()).toBe('bee-proposal-send false');
   await page.keyboard.press('Enter');
-  // Precondition: Tab took focus to Send, so Enter reached it.
-  expect(await page.evaluate(() => document.activeElement?.className)).toBe('bee-proposal-send');
   await page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
 
   // Control: Enter on Send, once it has had focus a while, sends.
+  expect(await focused()).toBe('bee-proposal-send false');
   await page.keyboard.press('Enter');
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'a', text: 'Option A' });
