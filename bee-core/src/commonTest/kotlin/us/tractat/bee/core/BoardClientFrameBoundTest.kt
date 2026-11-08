@@ -16,6 +16,7 @@ import us.tractat.bee.core.BoardFixtures.A
 import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
+import us.tractat.kuilt.core.CloseReason
 import us.tractat.kuilt.core.InMemoryLoom
 import us.tractat.kuilt.core.InMemoryTag
 import us.tractat.kuilt.core.Loom
@@ -77,10 +78,10 @@ private class HangUpRelay(
 
         override suspend fun sendTo(peer: PeerId, payload: ByteArray) = refuseOr(payload) { inner.sendTo(peer, payload) }
 
-        override suspend fun close() {
+        override suspend fun close(reason: CloseReason) {
             closesBegun++
             delay(closeTakes)
-            inner.close()
+            inner.close(reason)
             closesDone++
         }
 

@@ -2,6 +2,7 @@ package us.tractat.bee.core
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import us.tractat.kuilt.core.PayloadTooLarge
 import us.tractat.kuilt.core.PeerId
@@ -46,6 +47,7 @@ private val QUILT_MESSAGES = QuiltMessage.serializer(BoardState.serializer())
  *
  * Workaround for tractat-us/kuilt#3144, like [BoundedSeam]: bee guesses the Quilter's framing.
  */
+@OptIn(ExperimentalSerializationApi::class)
 internal fun fullStateBytes(author: ReplicaId, board: BoardState): Int {
     val sender = ReplicaId("${author.value}#c${Int.MAX_VALUE}")
     return Cbor.encodeToByteArray(QUILT_MESSAGES, QuiltMessage.FullState(sender, board, upThrough = Long.MAX_VALUE)).size
