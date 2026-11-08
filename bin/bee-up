@@ -2,12 +2,18 @@
 # bee-up: start a bee board others can join, and print how.
 #
 #   bee-up [--name <you>] [--port <n>] [--data-dir <dir>] [--local] [--no-open]
+#          [--new-link | --forget-devices]
 #   bee-up --stop
 #
 # Starts the host in the background (log in ~/.bee/host.log), reachable on your network unless
-# --local, and keeps the board in ~/.bee/host unless --data-dir says otherwise, so a restart brings
-# it back. Opens the board in your browser as <you>, writes ~/.bee/mcp.json for your own Claude
-# sessions, and prints the join link to send a coworker. Run it again to reprint the links.
+# --local, and keeps the board and its keys in ~/.bee/host unless --data-dir says otherwise, so a
+# restart brings back the board, the join link and every paired device. Opens the board in your
+# browser as <you>, writes ~/.bee/mcp.json for your own Claude sessions, and prints the join link
+# to send a coworker. Run it again to reprint the links.
+#
+# --new-link restarts the host with a new join link: the old link stops working, and paired
+# devices keep their keys. --forget-devices restarts it forgetting every device, paired or joined
+# by the link, and prints a new link: each device pairs again or takes the new link.
 set -euo pipefail
 . "$(dirname "$0")/bee-env"
 
@@ -16,6 +22,7 @@ port=8233
 data_dir=""
 lan=1
 stop=0
+reset=""
 while [ $# -gt 0 ]; do
     case $1 in
         --name) name=$2; shift 2 ;;
@@ -23,30 +30,65 @@ while [ $# -gt 0 ]; do
         --data-dir) data_dir=$2; shift 2 ;;
         --local) lan=0; shift ;;
         --no-open) BEE_NO_OPEN=1; shift ;;
+        # --forget-devices mints a new link too, so it wins over --new-link.
+        --new-link) [ "$reset" = --forget-devices ] || reset=--new-link; shift ;;
+        --forget-devices) reset=--forget-devices; shift ;;
         --stop) stop=1; shift ;;
-        -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "bee-up: unknown argument $1 (try --help)" >&2; exit 2 ;;
     esac
 done
 
+# The host's log holds the join link, whose key lasts until --new-link: keep it, and everything
+# else here, readable by you alone.
+umask 077
 mkdir -p "$bee_home"
 log="$bee_home/host.log"
 pidfile="$bee_home/host.pid"
+# The flags the running host was started with, one per line, so a reset restarts the same host.
+argsfile="$bee_home/host.args"
+[ -f "$log" ] && chmod 600 "$log"
 running() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
 
+# Stops the running host and waits for it to exit, so its last save is done and the port is free.
+stop_host() {
+    local pid
+    pid=$(cat "$pidfile")
+    kill "$pid"
+    for _ in $(seq 1 60); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    if kill -0 "$pid" 2>/dev/null; then echo "The bee host (pid $pid) didn't stop in 30 s; see $log" >&2; exit 1; fi
+    rm -f "$pidfile" "$argsfile"
+}
+
 if [ "$stop" = 1 ]; then
-    if running; then kill "$(cat "$pidfile")"; rm -f "$pidfile"; echo "bee host stopped. The board is kept; bee-up brings it back."
+    if running; then stop_host; echo "bee host stopped. The board and its keys are kept; bee-up brings them back."
     else echo "No bee host is running from bee-up."; fi
     exit 0
 fi
 
+args=(--port "$port")
+[ -n "$data_dir" ] && args+=(--data-dir "$data_dir")
+[ "$lan" = 1 ] && args+=(--lan)
+
+# A reset restarts the running host as it was started, on its own port and data dir, whatever
+# this call's other flags say: a reset on the wrong data dir would revoke nothing.
+if running && [ -n "$reset" ]; then
+    if [ ! -f "$argsfile" ]; then
+        echo "bee-up: can't tell how the running host (pid $(cat "$pidfile")) was started, so it can't restart it with $reset." >&2
+        echo "Run bee-up --stop, then bee-up $reset with the flags you started it with." >&2
+        exit 1
+    fi
+    args=()
+    while IFS= read -r arg; do args+=("$arg"); done < "$argsfile"
+    echo "Restarting the bee host (pid $(cat "$pidfile")) with $reset, as it was started: ${args[*]}"
+    stop_host
+fi
+
 if running; then
     echo "A bee host is already running (pid $(cat "$pidfile")); reprinting its links. bee-up --stop ends it."
-    port=$(sed -n 's/.*bee host on http:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$log" | tail -1)
 else
-    args=(--port "$port")
-    [ -n "$data_dir" ] && args+=(--data-dir "$data_dir")
-    [ "$lan" = 1 ] && args+=(--lan)
+    printf '%s\n' "${args[@]}" > "$argsfile"
+    [ -n "$reset" ] && args+=("$reset")
     : > "$log"
     nohup "$bee_host" "${args[@]}" >> "$log" 2>&1 &
     echo $! > "$pidfile"
@@ -57,6 +99,7 @@ else
     done
     grep -q 'bee host on http' "$log" || { echo "The bee host didn't come up in 60 s; see $log" >&2; exit 1; }
 fi
+port=$(sed -n 's/.*bee host on http:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$log" | tail -1)
 
 me="http://localhost:$port/?name=$name"
 bee_write_mcp_config "$bee_home/mcp.json" "ws://127.0.0.1:$port" "$name-claude"
@@ -70,7 +113,7 @@ if [ -n "$join" ]; then
     key=${join##*\?k=}
     ips=$( (ifconfig 2>/dev/null || ip -4 addr 2>/dev/null) | sed -n 's/.*inet \(addr:\)\{0,1\}\([0-9.]*\).*/\2/p' | grep -v -e '^127\.' -e '^169\.254\.' || true)
     echo
-    echo "  A coworker joins with this link (it admits whoever holds it until the host stops):"
+    echo "  A coworker joins with this link (it admits whoever holds it, across restarts, until bee-up --new-link):"
     for ip in $ips; do echo "      http://$ip:$port/?k=$key"; done
     echo "      $join"
     echo "  They open it in a browser (add &name=<them>), and run:  bee-join '<link>' --name <them>"

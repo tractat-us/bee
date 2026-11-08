@@ -29,6 +29,7 @@ fun lanName(): String = InetAddress.getLocalHost().hostName.let { if ('.' in it)
  * @param pairingBudget how many devices off this machine may ask to join in an hour, all together
  * @param hostNames names the host answers to beyond those [reach] gives it ([SiteRule]): one the
  *   machine goes by that bee can't find itself, or a test's
+ * @param keyReset what this boot does to the keys kept in [dataDir] ([HostKeys]): by default, nothing
  */
 data class HostConfig(
     val port: Int = DEFAULT_PORT,
@@ -36,6 +37,7 @@ data class HostConfig(
     val dataDir: Path,
     val pairingBudget: PairingBudget = PairingBudget.DEFAULT,
     val hostNames: Set<String> = emptySet(),
+    val keyReset: KeyReset = KeyReset.Keep,
 ) {
     /** The address the host binds, from [reach]. */
     val bind: String get() = reach.bind
@@ -47,6 +49,9 @@ data class HostConfig(
         const val DEFAULT_PORT: Int = 8233
 
         private const val LAN_FLAG = "--lan"
+        private const val NEW_LINK_FLAG = "--new-link"
+        private const val FORGET_FLAG = "--forget-devices"
+        private val SWITCHES = setOf(LAN_FLAG, NEW_LINK_FLAG, FORGET_FLAG)
         private const val BUDGET_FLAG = "--join-requests-per-hour"
         private const val NAME_FLAG = "--host-name"
 
@@ -54,22 +59,26 @@ data class HostConfig(
          * Reads `--port <n>`, `--data-dir <dir>`, `--join-requests-per-hour <n>`, `--host-name <name>`
          * and `--lan`, the form Playwright starts the host with (`--lan` aside). Without
          * `--data-dir` the data lives in `<home>/.bee/host`; without `--join-requests-per-hour`, it
-         * is [PairingBudget.DEFAULT_PER_HOUR].
+         * is [PairingBudget.DEFAULT_PER_HOUR]. `--new-link` is [KeyReset.NewLink] and
+         * `--forget-devices` is [KeyReset.ForgetDevices], which mints a new link too, so the two
+         * together are `--forget-devices`.
          *
          * @throws IllegalArgumentException on an unknown or repeated flag, a flag without a value, a
          *   bad port, or a budget below one
          */
         fun fromArgs(args: List<String>, home: Path): HostConfig {
-            require(args.count { it == LAN_FLAG } <= 1) { "Repeated flags: $LAN_FLAG" }
-            val valued = args - LAN_FLAG
-            require(valued.size % 2 == 0) { "Every flag but $LAN_FLAG takes a value: ${args.joinToString(" ")}" }
+            val repeatedSwitches = SWITCHES.filter { switch -> args.count { it == switch } > 1 }
+            require(repeatedSwitches.isEmpty()) { "Repeated flags: ${repeatedSwitches.joinToString()}" }
+            val valued = args.filterNot { it in SWITCHES }
+            require(valued.size % 2 == 0) { "Every flag but ${SWITCHES.joinToString()} takes a value: ${args.joinToString(" ")}" }
             val pairs = valued.chunked(2).map { (flag, value) -> flag to value }
             val repeated = pairs.groupBy { it.first }.filterValues { it.size > 1 }.keys
             require(repeated.isEmpty()) { "Repeated flags: ${repeated.joinToString()}" }
             val flags = pairs.toMap()
             val unknown = flags.keys - setOf("--port", "--data-dir", BUDGET_FLAG, NAME_FLAG)
             require(unknown.isEmpty()) {
-                "Unknown flags: ${unknown.joinToString()}. bee-host takes --port <n>, --data-dir <dir>, $BUDGET_FLAG <n>, $NAME_FLAG <name> and $LAN_FLAG."
+                "Unknown flags: ${unknown.joinToString()}. bee-host takes --port <n>, --data-dir <dir>, $BUDGET_FLAG <n>, $NAME_FLAG <name>, " +
+                    "$LAN_FLAG, $NEW_LINK_FLAG and $FORGET_FLAG."
             }
             val budget = flags[BUDGET_FLAG]?.let { PairingBudget(requireNotNull(it.toIntOrNull()) { "Not a number: $it" }) }
             val port = flags["--port"]?.let { requireNotNull(it.toIntOrNull()?.takeIf { p -> p in 0..65535 }) { "Not a port: $it" } }
@@ -79,6 +88,11 @@ data class HostConfig(
                 dataDir = flags["--data-dir"]?.let(Path::of) ?: home.resolve(".bee").resolve("host"),
                 pairingBudget = budget ?: PairingBudget.DEFAULT,
                 hostNames = setOfNotNull(flags[NAME_FLAG]),
+                keyReset = when {
+                    FORGET_FLAG in args -> KeyReset.ForgetDevices
+                    NEW_LINK_FLAG in args -> KeyReset.NewLink
+                    else -> KeyReset.Keep
+                },
             )
         }
     }

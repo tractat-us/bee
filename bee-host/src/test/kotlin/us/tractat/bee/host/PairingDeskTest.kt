@@ -66,7 +66,7 @@ class PairingDeskTest {
 
     private fun rig(body: suspend Rig.() -> Unit) = runTest(StandardTestDispatcher()) {
         val star = BoardStar(this).apply { start() }
-        val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()))
+        val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()), memoryKeys())
         val requests = JoinRequestSurface(star.relay, pairing, star.clock)
         requests.start(backgroundScope)
         runCurrent()

@@ -25,7 +25,7 @@ class PairingTest {
     private val ada = PeerIdentity.agent("ada", Random(1))
 
     private var now = Instant.parse("2026-11-07T12:00:00Z")
-    private val pairing = Pairing(clock = { now }, secrets = ScriptedSecrets())
+    private val pairing = Pairing(clock = { now }, secrets = ScriptedSecrets(), keys = memoryKeys())
 
     private fun advance(by: Duration) {
         now += by
@@ -212,7 +212,7 @@ class PairingTest {
      */
     @Test
     fun theBudgetBoundsPairingsAcrossEveryAddress() {
-        val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), budget = PairingBudget(3))
+        val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), keys = memoryKeys(), budget = PairingBudget(3))
         val spent = List(3) {
             assertIs<Opened.Ticket>(budgeted.open(fresh())).also { ticket ->
                 budgeted.end(ticket.id)
@@ -243,7 +243,7 @@ class PairingTest {
      */
     @Test
     fun oneAddressSpendsOnlyItsShareOfTheBudget() {
-        val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), budget = PairingBudget(10))
+        val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), keys = memoryKeys(), budget = PairingBudget(10))
         val greedy = "192.168.1.200"
         var opened = 0
         repeat(359) {
@@ -262,7 +262,7 @@ class PairingTest {
 
     @Test
     fun joinKeyAdmits() {
-        val key = pairing.mintJoinKey()
+        val key = pairing.joinKey
         assertTrue(pairing.admits(key.value))
     }
 

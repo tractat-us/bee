@@ -71,7 +71,7 @@ class JoinRequestSurfaceTest {
 
     private fun rig(body: suspend Rig.() -> Unit) = runTest(StandardTestDispatcher()) {
         val star = BoardStar(this).apply { start() }
-        val pairing = Pairing(star.clock, FixedSecrets(CODE))
+        val pairing = Pairing(star.clock, FixedSecrets(CODE), memoryKeys())
         val requests = JoinRequestSurface(star.relay, pairing, star.clock)
         requests.start(backgroundScope)
         runCurrent()

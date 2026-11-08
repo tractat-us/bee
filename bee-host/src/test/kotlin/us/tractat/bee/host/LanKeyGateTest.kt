@@ -53,7 +53,7 @@ import kotlin.time.Clock
  * probe, with the same peer and query, got the gate's 403. Anything else is a broken rig.
  */
 class LanKeyGateTest {
-    private val pairing = Pairing({ Clock.System.now() }, SecureSecrets(SecureRandom()))
+    private val pairing = Pairing({ Clock.System.now() }, SecureSecrets(SecureRandom()), memoryKeys())
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
         application {
@@ -98,7 +98,7 @@ class LanKeyGateTest {
     fun urlKeyAdmits() = gated { client ->
         val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
-        val joinKey = pairing.mintJoinKey()
+        val joinKey = pairing.joinKey
         val boardKeyed = client.dial("$BOARD&k=${key.value}", LAN)
         val claimsKeyed = client.dial("$CLAIMS&k=${key.value}", LAN)
         val boardJoinLink = client.dial("$BOARD&k=${joinKey.value}", LAN)
@@ -132,7 +132,7 @@ class LanKeyGateTest {
     /** A key admits a device, not a board: a keyed socket naming another board is refused (bee#46). */
     @Test
     fun aKeyedSocketNamingAnotherBoardIsRefused() = gated { client ->
-        val key = pairing.mintJoinKey().value
+        val key = pairing.joinKey.value
         val stale = BoardId.mint()
         val right = client.dial("$BOARD&k=$key", LAN)
         val boardStale = client.dial("${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$stale&k=$key", LAN)
@@ -169,7 +169,7 @@ class LanKeyGateTest {
     /** A keyed LAN page, from its own origin, by the host's LAN name or its LAN address (bee#45). */
     @Test
     fun theBoardPageFromItsOwnOriginIsAdmittedOnTheLan() = gated { client ->
-        val key = pairing.mintJoinKey().value
+        val key = pairing.joinKey.value
         val byName = "$LAN_NAME:$PORT"
         val byAddress = "$LAPTOP:$PORT"
         val boardByName = client.dial("$BOARD&k=$key", LAN, host = byName, origin = "http://$byName")
@@ -187,7 +187,7 @@ class LanKeyGateTest {
     /** Every dial here holds a good key, so a refusal is the site gate's (bee#45). */
     @Test
     fun aLanCallFromAnotherSiteOrByAnotherNameIsRefused() = gated { client ->
-        val key = pairing.mintJoinKey().value
+        val key = pairing.joinKey.value
         val byName = "$LAN_NAME:$PORT"
         val crossSite = client.dial("$BOARD&k=$key", LAN, host = byName, origin = "http://evil.example")
         val rebound = client.dial("$BOARD&k=$key", LAN, host = "evil.example:$PORT", origin = "http://evil.example:$PORT")
