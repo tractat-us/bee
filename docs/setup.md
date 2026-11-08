@@ -252,7 +252,7 @@ What to expect:
 
 - **The key is in their config, and admits whoever holds it until the host stops.** Treat the
   config like the link itself. The bridge's log names the host and says "with a join key"; it
-  never prints the key.
+  never prints the key, not even when a dial fails and the failure names the URL it dialled.
 - **A host restart needs a new link.** The old key no longer admits, so the bridge is refused.
   Send the new link, and have them update `BEE_HOST` and restart the bridge from `/mcp`.
 - **If their machine can't find yours by name**, swap the name for your machine's IP address and
