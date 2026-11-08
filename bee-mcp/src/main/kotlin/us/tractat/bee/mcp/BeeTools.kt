@@ -48,11 +48,12 @@ object BeeTools {
             name = BOARD,
             description = "Reads the shared board: the open surfaces with their components and data, the closed " +
                 "surface ids (newest first), who is attached, each claim the host has mirrored, and whether this " +
-                "session's claims are online.",
+                "session's claims are online. Attached lists each peer once: agents, and the people and room " +
+                "screens with the board open. A person's lastActedAt is when their page loaded.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),
         ) { _ ->
             bridge.touch()
-            answer(board(bridge.board.value, bridge.roster(), bridge.claimsOnline))
+            answer(board(bridge.board.value, bridge.roster().values, bridge.claimsOnline))
         }
         server.addTool(
             name = OPEN,
@@ -159,7 +160,7 @@ object BeeTools {
         }
     }
 
-    private fun board(state: BoardState, attached: List<PresenceEntry>, claimsOnline: Boolean): JsonObject = buildJsonObject {
+    private fun board(state: BoardState, attached: Collection<PresenceEntry>, claimsOnline: Boolean): JsonObject = buildJsonObject {
         put(
             "open",
             buildJsonArray {
