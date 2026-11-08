@@ -100,6 +100,7 @@ class BoardWideWaitTest {
             { assertEquals(onBoard, listed, "the lists, resumed from a board-wide cursor, read every record once, in order") },
             { assertEquals(3, before.ids.size, "rig: the first drain met three records: ${before.ids}") },
             { assertEquals(returned.distinct(), returned, "no record was returned twice") },
+            { assertEquals(emptyList(), before.relisted + after.relisted, "each wait's cursor names every record returned so far") },
             { assertEquals(onBoard.toSet(), returned.toSet(), "every record on the board was returned") },
             { assertEquals(setOf("poll", "kanban", "diagram"), (before.surfaces + after.surfaces).toSet()) },
             { assertEquals(setOf(iain.value, bo.value), returned.map { it.substringBeforeLast(':') }.toSet(), "from both authors") },
@@ -156,20 +157,30 @@ class BoardWideWaitTest {
         fun record(): JsonObject = checkNotNull(record) { "the wait timed out" }
     }
 
-    /** What a run of board-wide waits returned before one timed out, and the cursor it ended on. */
-    private data class Drained(val ids: List<String>, val surfaces: List<String>, val cursor: String)
+    /**
+     * What a run of board-wide waits returned before one timed out, and the cursor it ended on.
+     * [relisted] is every record a list from a returned record's own cursor read again, though a
+     * wait had returned it by then: empty when each cursor names all it has passed.
+     */
+    private data class Drained(val ids: List<String>, val surfaces: List<String>, val cursor: String, val relisted: List<String>)
 
-    /** Board-wide waits from [cursor], each resuming from the last one's cursor, until one times out. */
+    /**
+     * Board-wide waits from [cursor], each resuming from the last one's cursor, until one times out.
+     * After each record, a list from that wait's cursor checks the cursor itself, since the
+     * session's claims would pass over a record it already holds even if the cursor forgot it.
+     */
     private suspend fun Session.drain(cursor: String?): Drained {
         val records = mutableListOf<JsonObject>()
+        val relisted = mutableListOf<String>()
         var at = cursor
         while (true) {
             val waited = waitBoard(cursor = at, timeoutSeconds = 1)
             at = waited.cursor
             if (waited.timedOut) break
             records += waited.record()
+            relisted += listBoard(since = waited.cursor).first.filter { id -> records.any { it.string("recordId") == id } }
         }
-        return Drained(records.map { it.string("recordId") }, records.map { it.string("surfaceId") }, checkNotNull(at))
+        return Drained(records.map { it.string("recordId") }, records.map { it.string("surfaceId") }, checkNotNull(at), relisted)
     }
 
     /** A board-wide list's record ids and cursor. */
