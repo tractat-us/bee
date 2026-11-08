@@ -9,13 +9,11 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.response.respond
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.Deferred
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
 import java.net.InetAddress
-import kotlin.time.Instant
 
 /** The address a call came from, as an IP literal. */
 fun interface PeerAddress {
@@ -58,14 +56,9 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * host binds; on [Reach.Loopback] no call can fail it.
  *
  * @param peers where each call came from; production passes [PeerAddress.DIRECT]
- * @param joinRequests the board side of pairing, ready once the relay is up
+ * @param desk serves the pairing socket, over [pairing]
  */
-fun Application.mountEndpoints(
-    pairing: Pairing,
-    peers: PeerAddress,
-    joinRequests: Deferred<JoinRequestSurface>,
-    clock: () -> Instant,
-): HostEndpoints {
+fun Application.mountEndpoints(pairing: Pairing, peers: PeerAddress, desk: PairingDesk): HostEndpoints {
     val board = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
     val admits = { call: ApplicationCall ->
@@ -75,7 +68,7 @@ fun Application.mountEndpoints(
         for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
             route(gated) { install(KeyGate) { this.admits = admits } }
         }
-        pairingEndpoint(pairing, peers, joinRequests, clock)
+        pairingEndpoint(desk, peers)
         staticResources("/", "web")
     }
     return HostEndpoints(board, claims)
