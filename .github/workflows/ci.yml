@@ -102,7 +102,9 @@ jobs:
             if [[ "$file" == *.md ]]; then
               DOCS_INPUTS=true
             fi
+            # The docs site builds in its own workflow, docs-site.yml, never in Gradle.
             if ! { [[ "$file" == *.md ]] || [[ "$file" == docs/* ]] \
+              || [[ "$file" == docs-site/* ]] || [[ "$file" == .github/workflows/docs-site.yml ]] \
               || [[ "$file" == LICENSE ]] || [[ "$file" == .gitignore ]]; }; then
               BUILD_INPUTS=true
             fi
