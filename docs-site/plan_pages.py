@@ -238,8 +238,10 @@ def render_timeline() -> str:
             if "estimate" in item:
                 facts.append(_estimate(item))
             line = f"- **{_item_link(id)}**" + "".join(f". {f}" for f in facts)
+            if facts:
+                line += "."
             if "estimate" in item:
-                line += f".  \n  Basis: {item['estimate']['basis']}"
+                line += f"  \n  Basis: {item['estimate']['basis']}"
             out.append(line)
         out.append("")
     return "\n".join(out)
