@@ -233,12 +233,14 @@ def render_timeline() -> str:
         out.append(f"### {_status(status)}\n")
         for id in ids:
             item = _plan["items"][id]
-            facts = [f"Started {_et(item['started'])}" if "started" in item else "Not started"]
+            # No start time means none was recorded, not that work hasn't begun.
+            facts = [f"Started {_et(item['started'])}"] if "started" in item else []
             if "estimate" in item:
                 facts.append(_estimate(item))
-            out.append(f"- **{_item_link(id)}**. " + ". ".join(facts) + ".")
+            line = f"- **{_item_link(id)}**" + "".join(f". {f}" for f in facts)
             if "estimate" in item:
-                out.append(f"  Basis: {item['estimate']['basis']}")
+                line += f".  \n  Basis: {item['estimate']['basis']}"
+            out.append(line)
         out.append("")
     return "\n".join(out)
 
