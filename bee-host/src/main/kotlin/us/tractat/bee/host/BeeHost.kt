@@ -1,6 +1,5 @@
 package us.tractat.bee.host
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.http.content.staticResources
@@ -26,8 +25,6 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-
-private val log = KotlinLogging.logger("us.tractat.bee.host.BeeHost")
 
 /**
  * The always-on host (spec §5.4): it serves the page at `/`, relays the board at
