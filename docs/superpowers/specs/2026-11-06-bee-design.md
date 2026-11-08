@@ -376,6 +376,14 @@ design call:
    non-loopback connection that has no valid key. Keys live in the host's memory, so a host restart
    re-pairs every LAN device.
 
+**The host handles admit records without a claim (Iain, 2026-11-08, bee#72).** It is their only
+handler, and the voter never claims, so exactly-once holds by construction: the host handles each
+record once per boot, and a pairing never outlives the boot that opened it. The bridge refuses
+`bee_wait_action` and `bee_list_actions` on a surface the host opened (`host:`, §5.2), so no
+session takes an admit record and the code a person typed into it. That refusal is a visibility
+rule for well-behaved agents, not an access gate: it keys on a declared kind, and the host doesn't
+rely on it.
+
 **Only human peers may admit a device (Iain: humans only, for now).** This departs from the
 orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
 someone can see the new screen.
@@ -489,6 +497,8 @@ browser hadn't yet received. A handler whose replica lacks a dot the basis names
 as incomplete: unknown, never applicable.
 
 A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
+The exception is a surface the host opened. The host handles its records itself, without a claim,
+as their only handler, and the bridge refuses a wait or a list on it (§5.7, bee#72).
 
 ### 6.3 Claims: exactly one
 
