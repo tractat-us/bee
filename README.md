@@ -16,6 +16,17 @@ restart. [Run a board](docs/setup.md#run-a-board) is the shortest way to try it.
 [remaining tasks](docs/superpowers/plans/2026-11-06-bee-v1.md) and each spike's notes in
 [`docs/spikes/`](docs/spikes/) say what is still open.
 
+## Share a board with a coworker
+
+From a checkout, `bin/bee-up --name <you>` starts a board on your network, opens it in your
+browser, and prints a join link. Send the link to a coworker. They run
+`bee-join '<link>' --name <them>`, which opens the board in their browser and points their Claude
+sessions at it. Each of you then starts Claude as the scripts print, and types
+`/mcp__bee__whiteboard`.
+
+Your coworker needs no checkout and no JDK. `bin/bee-bundle` builds a zip with the host, the
+bridge, a trimmed Java runtime and both scripts, for your own OS and CPU.
+
 bee is built on [kuilt](https://github.com/tractat-us/kuilt), which keeps every copy of the board
 in step. [bee and kuilt](docs/bee-and-kuilt.md) says which part does what.
 
