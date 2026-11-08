@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.filterNotNull
@@ -23,6 +24,7 @@ import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.Departure
+import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
@@ -90,13 +92,25 @@ class JoinSmokeTest {
                 val target = ClaimTarget("record:smoke:1")
                 val won = link.client.claim(target, ada)
 
+                val roster = LivePresence(host.state, clock, scope) { throw it }
+                val killedAt = clock()
+                val dropped = async {
+                    withTimeoutOrNull(45.seconds) {
+                        host.voter.membership.first { link.node !in it.allMembers }
+                        clock() - killedAt
+                    }
+                }
                 bridgeJob.cancelAndJoin()
                 val departed = withTimeoutOrNull(45.seconds) {
                     host.state.first { state -> state.departures().any { it.identity == ada } }
                 }
+                val droppedAfter = dropped.await()
+                val liveAtEnd = roster.live().map { it.identity }
+                System.err.println("[join-smoke] dropped after $droppedAfter, departed=${departed != null}, live at end $liveAtEnd")
                 assertAll(
                     { assertIs<ClaimOutcome.Won>(won, "rig: the bridge held a claim") },
                     { assertNotNull(seen, "rig: the host saw presence naming the bridge's claims node") },
+                    { assertNotNull(droppedAfter, "rig: the voter dropped the killed bridge's claims node") },
                     { assertNotNull(departed, "the board shows the killed bridge departed") },
                     { assertEquals(DepartReason.Crashed, departed?.departures()?.single { it.identity == ada }?.let(Departure::reason)) },
                     { assertEquals("orphaned", departed?.claimView(target)?.status, "its claim shows orphaned") },
