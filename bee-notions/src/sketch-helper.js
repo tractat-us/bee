@@ -14,7 +14,9 @@ export function sketchHelper() {
   var nextId = 1;
 
   // WebRTC sits outside CSP (bee#49): delete its constructors before the sketch's own script runs.
-  // Best-effort only: a sketch can take them back, from a nested about:blank frame for one.
+  // A speed bump, not a boundary: a nested srcdoc frame has its own `RTCPeerConnection`, and a
+  // closed declarative shadow root hides that frame even from a helper that removes nested frames.
+  // (A nested about:blank frame is no way back: it counts as cross-origin, and throws.)
   ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel'].forEach(function (name) {
     try { delete window[name]; } catch (e) { /* not configurable here */ }
   });
@@ -25,21 +27,25 @@ export function sketchHelper() {
   }
 
   var choices = {};
+  var latestChoice = null;
 
+  // Proposes a choice: the page shows it outside the frame, and records it only on the viewer's
+  // Send there (bee#60). The page answers once it's sent, dismissed or replaced.
   function choose(choice, text) {
     var meta = {};
     meta[CHOICE_META] = String(choice);
+    latestChoice = nextId;
     choices[nextId] = true;
     request('ui/message', { role: 'user', content: { type: 'text', text: String(text) }, _meta: meta });
   }
 
-  // A choice the page refused (no click by the viewer, or one too soon) didn't land: drop the
-  // selection, so the viewer sees that and can choose again.
+  // The viewer dismissed the latest choice: drop the selection, so the frame shows that. An
+  // earlier choice answered as replaced leaves the selection to the later one.
   window.addEventListener('message', function (event) {
     var reply = event.data;
     if (event.source !== window.parent || !reply || reply.jsonrpc !== '2.0' || !choices[reply.id]) return;
     delete choices[reply.id];
-    if (!reply.error) return;
+    if (!reply.error || reply.id !== latestChoice) return;
     document.querySelectorAll('.selected').forEach(function (el) { el.classList.remove('selected'); });
     window.selectedChoice = null;
   });
