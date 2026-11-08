@@ -2,21 +2,27 @@ package us.tractat.bee.host
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
+import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimsClient
 import us.tractat.bee.core.DepartReason
+import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.liveness.PartitionEvent
 import us.tractat.kuilt.raft.ClusterConfig
 import us.tractat.kuilt.raft.NodeId
@@ -139,6 +145,41 @@ class ClaimsLinkLossTest {
             { assertTrue(oldGone != null && fresh in oldGone.learners, "rig: the old node left and the fresh one stayed, was $oldGone") },
             { assertNull(afterOld, "the old node's removal departs nobody") },
             { assertEquals(DepartReason.Crashed, afterFresh?.departReason(ada), "control: the current node's removal does") },
+        )
+        voter.close()
+    }
+
+    /**
+     * The host's own wiring ([hostDepartures]) departs a killed bridge although its presence entry
+     * has aged out of the live roster by then. The voter drops a node a whole learner grace after
+     * its link went, and an entry leaves the live roster a [LivePresence.TTL] after its last post,
+     * and the grace is no shorter. So a lost node is matched against each poster's newest entry.
+     */
+    @Test
+    fun theHostDepartsAKilledBridgeWhoseEntryAgedOut() = runTest(timeout = 120.seconds) {
+        val rig = ClaimsRig(this)
+        val voter = rig.startVoter()
+        val ada = PeerIdentity.agent("ada", Random(1))
+        val node = NodeId("mcp-ada-1")
+        val (learner, kill) = learner(rig, node)
+        val won = learner.claim(ClaimTarget("record:web-1:1"), ada)
+        // The bridge posted once, then died with its link: nothing posts again.
+        val board = MutableStateFlow(BoardState.EMPTY.piece(BoardState.EMPTY.postPresence(ReplicaId("mcp-ada"), entry(ada, node), clock = 1)))
+        val roster = LivePresence(board, rig.clock, backgroundScope) { throw it }
+        hostDepartures(voter, board, backgroundScope, rig.clock).start(backgroundScope)
+        val liveAtDrop = async {
+            withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2) {
+                voter.membership.first { node !in it.allMembers }
+                roster.live()
+            }
+        }
+
+        kill()
+        val after = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2) { voter.table.first { it.retired(ada) } }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(won, "rig: ada held a claim") },
+            { assertEquals(emptyList(), liveAtDrop.await(), "rig: by the drop, the entry had aged out of the live roster") },
+            { assertEquals(DepartReason.Crashed, after?.departReason(ada), "departed Crashed all the same") },
         )
         voter.close()
     }
