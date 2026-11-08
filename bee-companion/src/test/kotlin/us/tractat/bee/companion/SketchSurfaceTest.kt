@@ -40,12 +40,14 @@ class SketchSurfaceTest {
             while (companion.reports.none { it["file"] == JsonPrimitive("huge.html") }) delay(100)
             companion.reports.single { it["file"] == JsonPrimitive("huge.html") }
         }
+        // Checked first: without the refusal, the next screen never reaches the browser either,
+        // because the dropped delta leaves a gap its Quilter waits on.
+        assertEquals(JsonPrimitive("screen-refused"), refusal["type"], "the oversized screen was refused: $refusal")
         val onBoard = companion.client.state.value
         rig.screen("next.html", "<p>next</p>")
         rig.shows(browser) { "next" in it }
         val reason = (refusal["reason"] as? JsonPrimitive)?.content.orEmpty()
         assertAll(
-            { assertEquals(JsonPrimitive("screen-refused"), refusal["type"], "the oversized screen was refused: $refusal") },
             { assertTrue("limit of $budget bytes" in reason, "the refusal states the limit: $reason") },
             { assertTrue("small" in sketchHtml(onBoard)!!, "the board still shows the screen before it") },
             { assertEquals(1, CompanionAdapter.screensShown(onBoard), "nothing of the refused screen was written") },
