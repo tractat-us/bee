@@ -27,6 +27,7 @@ import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.DepartReason
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.host.BeeHost
 import us.tractat.bee.host.ClaimsVoter
@@ -1254,6 +1255,41 @@ class BridgeClaimsTest {
             { assertEquals(false, settled, "a link that hasn't folded the claim never reads its release as settled") },
             { assertEquals(listOf(unreceived), queued, "the release stayed queued") },
             { assertNotNull(drained, "control: it settles once the link catches up") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A claim reassigned to a session survives that session's sweep (Task 11, bee#31). An orphan
+     * is reassigned to ada by a person: held as ada, claimed by no wait of hers, received by no
+     * caller, just as a stranded late win is. It's kept, and a wait on its surface passes it over
+     * rather than give it back. The control, a stranded win as ada on another target, is given
+     * back by the same sweep.
+     */
+    @Test
+    fun aReassignedClaimSurvivesItsBridgesSweep() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
+
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val stray = ClaimTarget("card:s/stray")
+        val strayWon = rig.claims.client(NodeId("stray")).claim(stray, ada.bridge.self)
+        val strayFreed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(stray) == ClaimStatus.Free } }
+        val waited = ada.wait("s", timeoutSeconds = 3)
+        delay(10.seconds) // any release a sweep proposed lands
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record before it departed") },
+            { assertIs<ClaimOutcome.Won>(strayWon, "rig: the stray claim won as ada") },
+            { assertNotNull(strayFreed, "control: the sweep gave the stranded win back") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertTrue(waited.timedOut, "a wait passes the reassigned record over") },
+            { assertEquals(ClaimStatus.Held(ada.bridge.self, token!!), rig.voter.table.value.status(target), "the reassigned claim is still ada's") },
+            { assertEquals(0, rig.releasesOf(target, token!!), "and nothing released it") },
         )
         rig.close()
     }
