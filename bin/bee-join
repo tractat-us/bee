@@ -49,7 +49,7 @@ echo "  You, in a browser:    $page"
 echo "  Your Claude session:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
 echo "                        then type  /mcp__bee__whiteboard"
 echo
-echo "  The link's key is now in $bee_home/mcp.json (readable only by you); it stops working when"
-echo "  the board's host stops."
+echo "  The link's key is now in $bee_home/mcp.json (readable only by you). It keeps working across"
+echo "  the host's restarts, until its owner runs bee-up --new-link or --forget-devices."
 echo
 bee_open "$page"
