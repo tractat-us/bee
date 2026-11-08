@@ -10,8 +10,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * - `/question` is an append-only array of revisions, each a string; the last one shows.
  * - `/options` is an append-only array of `{"id", "label"}` objects: "Reassign to <peer>" for
  *   each present peer ([reassignOption]), [RELEASE] and [WAIT].
- * - `/answers` is an object keyed by `PeerIdentity.toString()`, each the option id that peer chose.
- * - `/target`, `/holder` and `/token` name the orphan the surface was opened for.
+ * - `/rounds/<token>/answers` is an object keyed by `PeerIdentity.toString()`, each the option id
+ *   that peer chose, for the orphaning that token names. The `Poll` binds the current one.
+ * - `/target`, `/holder` and `/token` name the orphan the surface is open for now.
  *
  * An answer arrives as the action [ANSWER_ACTION] with context `{"option": <id>}` ([OPTION_KEY]).
  * The answerer's own client proposes what it chose ([OrphanAnswers]); the host proposes nothing.
