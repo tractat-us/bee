@@ -1,9 +1,6 @@
 package us.tractat.bee.companion
 
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +30,7 @@ import us.tractat.bee.mcp.BridgeIdentity
 import us.tractat.bee.mcp.awaitAnotherBoard
 import us.tractat.bee.mcp.beeHostFrom
 import us.tractat.bee.mcp.boardNamedOrNull
+import us.tractat.bee.mcp.peerHttpClient
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
@@ -82,7 +80,7 @@ fun main(args: Array<String>) {
     val random = SecureRandom().asKotlinRandom()
     val clock = { Clock.System.now() }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val http = HttpClient(CIO) { install(WebSockets) }
+    val http = peerHttpClient()
     val author = ReplicaId("companion-${Uuid.random()}")
     // The companion's replica starts empty, so it belongs to the first board the host names: both
     // its sockets name that board from then on, its state is kept under it, and a wiped host
