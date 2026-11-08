@@ -236,6 +236,12 @@ class BoardState internal constructor(
      */
     fun latestPresence(): List<PresenceEntry> = presence.entries.values.mapNotNull { it.value }
 
+    /**
+     * This board without its presence, the form it is saved in (Task 9). Who is attached is true
+     * only while they are: a restored board starts with nobody, and each peer posts itself again.
+     */
+    fun withoutPresence(): BoardState = copy(presence = EphemeralMap.empty())
+
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }
 
