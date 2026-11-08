@@ -48,8 +48,9 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
  *   in a shape this can't extend, is logged once and skipped; every other decision goes on. An
  *   orphaned view naming no holder or token is a broken mirror, and that propagates.
  * - **A decision closes once its target isn't orphaned**, and keeps its content and records, in
- *   the history strip. A person who clears the board closes an open decision too; it stays closed
- *   until the target is orphaned again, so the host never fights a clear.
+ *   the history strip. A decision someone closes stays closed until the target is orphaned again,
+ *   so the host never fights a close. `bee_board_clear` leaves it open, as it leaves every surface
+ *   the host opened (bee#71).
  * - **Only agents are offered a reassign.** A person has no release path in v1, so a claim
  *   reassigned to one would be held for good. This filters for liveness; the table still commits
  *   any `Reassign`.

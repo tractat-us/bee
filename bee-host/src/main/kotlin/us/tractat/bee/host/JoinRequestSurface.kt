@@ -16,7 +16,6 @@ import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PeerIdentity
-import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.RecordId
 import us.tractat.bee.core.SurfaceMeta
 import java.util.concurrent.ConcurrentHashMap
@@ -128,8 +127,12 @@ class JoinRequestSurface(
     }
 
     companion object {
-        /** Who the board shows opening a request. bee has no host peer kind, so it is an agent named for the host. */
-        val HOST: PeerIdentity = PeerIdentity(PeerKind.Agent, "bee-host", "00000000")
+        /**
+         * Who the board shows opening the host's surfaces: `host:bee-host`. Its kind is a label
+         * (bee#71): it isn't an agent, so it never departs or holds a claim. A snapshot that names it
+         * as it was, `agent:bee-host#00000000`, still reads as it ([PeerIdentity.parse]).
+         */
+        val HOST: PeerIdentity = PeerIdentity.host("bee-host")
 
         const val ADMIT_ACTION: String = "admit"
         const val ADMIT_BUTTON: String = "admit-button"

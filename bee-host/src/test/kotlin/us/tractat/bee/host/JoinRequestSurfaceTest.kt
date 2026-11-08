@@ -21,6 +21,7 @@ import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.test.assertAll
 import kotlin.random.Random
@@ -102,6 +103,26 @@ class JoinRequestSurfaceTest {
      * The code field is A2UI's `obscured` input, which bee-web's live typing never syncs, so what
      * a person types stays on their page until Admit puts it in a record (e2e/second-screen).
      */
+    /** The host opens a request as itself, `host:bee-host`, never as an agent (bee#71). */
+    @Test
+    fun requestIsOpenedByTheHostKind() = rig {
+        val (ticket, _) = post()
+        val id = JoinRequestSurface.surfaceId(ticket.id)
+        val openedBy = requireNotNull(board.meta(id)).openedBy
+        val decoded = WIRE.decodeFromString(BoardState.serializer(), WIRE.encodeToString(BoardState.serializer(), board))
+        assertAll(
+            { assertEquals(PeerKind.Host, openedBy.kind) },
+            { assertEquals("host:bee-host", openedBy.toString()) },
+            { assertEquals(JoinRequestSurface.HOST, decoded.meta(id)?.openedBy, "it survives the wire") },
+        )
+    }
+
+    /** A snapshot from before the host had its kind names it `agent:bee-host#00000000`, and it still reads as the host. */
+    @Test
+    fun oldEncodedHostIsStillTheHost() {
+        assertEquals(JoinRequestSurface.HOST, PeerIdentity.parse("agent:bee-host#00000000"))
+    }
+
     @Test
     fun codeFieldIsObscured() = rig {
         val (ticket, _) = post()

@@ -108,7 +108,7 @@ object BeeTools {
         }
         server.addTool(
             name = CLEAR,
-            description = "Puts a cleared board $SHARED: closes every open surface and deletes none.",
+            description = "Puts a cleared board $SHARED: closes every open surface but the host's, and deletes none.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),
         ) { _ -> tool { answer(buildJsonObject { put("closed", JsonArray(bridge.clear().map(::JsonPrimitive))) }) } }
         server.addTool(
