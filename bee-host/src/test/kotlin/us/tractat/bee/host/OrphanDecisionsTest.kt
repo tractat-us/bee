@@ -172,6 +172,26 @@ class OrphanDecisionsTest {
     }
 
     /**
+     * A target orphaned again asks again, on the same surface: reassigned to bo, it closes; bo
+     * departs, and it reopens with a new question naming bo, for the new orphaning's token.
+     */
+    @Test
+    fun aReorphanedTargetAsksAgain() = rig {
+        answer(iain, OrphanDecision.reassignOption(bo))
+        star.relay.state.first { surfaceId in it.closedSurfaces() }
+        voter.depart(bo, DepartReason.Crashed)
+        val reopened = star.relay.state.first { surfaceId in it.openSurfaces() }
+        val questions = requireNotNull(reopened.surfaceDoc(surfaceId)).toSurfaceView(surfaceId).data.getValue("question").jsonArray
+        val orphaned = voter.table.value.status(target) as ClaimStatus.Orphaned
+        assertAll(
+            { assertEquals(listOf(surfaceId), orphanSurfaces(), "still one decision surface") },
+            { assertEquals(2, questions.size, "a second revision: $questions") },
+            { assertTrue(bo.toString() in questions.last().jsonPrimitive.content, "naming the new holder") },
+            { assertEquals("${orphaned.token.term}:${orphaned.token.index}", data().getValue("token").jsonPrimitive.content) },
+        )
+    }
+
+    /**
      * The host proposes nothing but `Depart`: through an orphan, its decision surface, a "Wait"
      * answer and a minute of board changes, the log holds only ada's claim and her departure.
      */
