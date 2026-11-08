@@ -509,9 +509,10 @@ replica as it turns the A2UI `action` into an edit. A click can't claim to have 
 browser hadn't yet received. A handler whose replica lacks a dot the basis names treats the basis
 as incomplete: unknown, never applicable.
 
-A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
-The exception is a pairing surface the host opened. The host handles its records itself, without a
-claim, as their only handler, and the bridge refuses a wait or a list on it (§5.7, bee#72). Orphan
+A handler finds its records by surface: a session handles a surface by waiting on it, or on the
+whole board (§5.2). The exception is a pairing surface the host opened. The host handles its
+records itself, without a claim, as their only handler, and the bridge refuses a wait or a list on
+it, and leaves it out of a board-wide one (§5.7, bee#72). Orphan
 decisions are host-opened too and stay open to every participant (§6.4).
 
 ### 6.3 Claims: exactly one
