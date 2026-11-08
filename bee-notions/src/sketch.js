@@ -1,23 +1,31 @@
 // `Sketch`: agent-written HTML in a sandboxed frame (spec §5.6, plan Task 8). Invariant: the
 // HTML runs only inside `<iframe sandbox="allow-scripts">`, never with allow-same-origin, under a
-// CSP that allows no fetch, socket, image or frame load, and the page acts only on messages whose
-// source is that frame, and on a choice only while the viewer's click in that frame is fresh. The
-// page's own CSP (bee-host's PAGE_CSP) keeps the frame from navigating to a URL.
+// CSP that allows no fetch, socket, image or frame load. The page acts only on messages whose
+// source is that frame. The page's own CSP (bee-host's PAGE_CSP) keeps the frame from navigating
+// to a URL.
 //
-// Not covered: WebRTC sits outside CSP, so a sketch can still reach the network through an
-// `RTCPeerConnection` (ICE to a STUN or TURN server it names), and the browser may resolve a DNS
-// name a sketch hints at (bee#49). The helper deletes the WebRTC constructors, best-effort.
+// A sketch never records a choice: it only proposes one (bee#60). A click on a `[data-choice]`
+// element inside it shows, on the page under that frame, "Send <text>?" with the page's own Send
+// and Dismiss buttons. The choice reaches the board, as the A2UI action `choice` with context
+// `{choice, text}`, only when the viewer clicks that Send. The frame reports a click in the MCP
+// Apps (SEP-1865) View-to-Host envelope: a JSON-RPC 2.0 `ui/message` request (see
+// sketch-helper.js), which this element answers once the viewer sends it, dismisses it, or the
+// sketch replaces it.
 //
-// A click on a `[data-choice]` element inside it reaches the board as the A2UI action `choice`,
-// with context `{choice, text}`. The frame reports it in the MCP Apps (SEP-1865) View-to-Host
-// envelope: a JSON-RPC 2.0 `ui/message` request (see sketch-helper.js), which this element answers.
+// Not covered: WebRTC sits outside CSP, so a sketch can still reach the network, through an
+// `RTCPeerConnection` (ICE to a STUN or TURN server it names). The helper deletes the WebRTC
+// constructors, but that's a speed bump, not a boundary: a nested srcdoc frame gets a fresh
+// `RTCPeerConnection`, and a closed declarative shadow root hides that frame from even a helper
+// that removes nested frames. WebKit also opens a TCP connection for `<link rel=preconnect>`, and
+// the browser may resolve a DNS name a sketch hints at (bee#49).
 import { A2uiLitElement } from '@a2ui/lit/v0_9';
 import { DynamicStringSchema, TextApi } from '@a2ui/web_core/v0_9';
 import { sketchHelper } from './sketch-helper.js';
 
 /**
  * No fetch, socket, frame or form loads: only the inline script and styles the sketch carries, and
- * data: images. CSP doesn't govern WebRTC or DNS hints, so this isn't "no network" (bee#49).
+ * data: images. CSP doesn't govern WebRTC, preconnect or DNS hints, so this isn't "no network"
+ * (bee#49).
  */
 export const SKETCH_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:";
@@ -31,48 +39,11 @@ export const CHOICE_ACTION = 'choice';
 const CHOICE_META = 'us.tractat.bee/choice';
 
 /**
- * The least time between two `ui/message`s from one frame, refused ones included: faster than a
- * person clicks twice. A frame that posts faster than this gets nothing through.
+ * How long Send stays disabled after a proposal appears or changes. The sketch decides when its
+ * proposal changes, so without this it could swap the text, or slide the bar in, under a viewer's
+ * click already on its way. Browsers hold their own permission prompts' buttons about as long.
  */
-const CHOICE_GAP_MS = 250;
-
-/**
- * How long a gesture on the page itself explains the page's user activation: Chromium's
- * transient activation lasts about this long.
- */
-const PAGE_GESTURE_MS = 5_000;
-
-/**
- * When the page last saw a gesture that activates it, for every sketch on it: a sketch mounted
- * just after a keypress is as unexplained as one already showing.
- */
-let lastPageGestureAt = -Infinity;
-
-/** Touch and pen pointers that turned into a scroll or a zoom: their pointerup activates nothing. */
-const cancelledPointers = new Set();
-
-// The events that activate a page (HTML's activation-triggering input events): a key other than
-// Escape, a mouse press, and the release of any other pointer that wasn't cancelled. A touch that
-// scrolls activates nothing, so it mustn't refuse the tap that follows it. Installed once, in the
-// capture phase, so no handler on the page can hide a gesture from them. A gesture inside a
-// sketch's frame (cross-origin) never reaches them.
-const capture = { capture: true };
-const pageGesture = () => {
-  lastPageGestureAt = performance.now();
-};
-window.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') pageGesture();
-}, capture);
-window.addEventListener('pointerdown', (event) => {
-  if (event.pointerType === 'mouse') pageGesture();
-  else cancelledPointers.delete(event.pointerId);
-}, capture);
-window.addEventListener('pointercancel', (event) => {
-  cancelledPointers.add(event.pointerId);
-}, capture);
-window.addEventListener('pointerup', (event) => {
-  if (event.pointerType !== 'mouse' && !cancelledPointers.delete(event.pointerId)) pageGesture();
-}, capture);
+const SEND_ARM_MS = 500;
 
 /**
  * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
@@ -104,13 +75,16 @@ export function sketchDocument(html) {
   );
 }
 
-/** `<bee-sketch>`: one sandboxed frame showing its `html`. */
+/** `<bee-sketch>`: one sandboxed frame showing its `html`, and the page's bar for its proposal. */
 export class SketchElement extends A2uiLitElement {
   constructor() {
     super();
     this.frame = null;
+    this.bar = null;
     this.shown = null;
-    this.lastMessageAt = -Infinity;
+    /** The choice the frame proposes, `{id, choice, text, at}`, or null. Never on the board. */
+    this.proposal = null;
+    this.armTimer = null;
     this.onMessage = (event) => this.receive(event);
   }
 
@@ -126,10 +100,11 @@ export class SketchElement extends A2uiLitElement {
 
   disconnectedCallback() {
     window.removeEventListener('message', this.onMessage);
+    this.drop();
     super.disconnectedCallback();
   }
 
-  /** Lit renders nothing here; the frame is managed in `updated`, outside Lit's part. */
+  /** Lit renders nothing here; the frame and bar are managed in `updated`, outside Lit's part. */
   render() {
     return undefined;
   }
@@ -144,13 +119,46 @@ export class SketchElement extends A2uiLitElement {
       frame.style.cssText = 'display:block;width:100%;height:min(80vh,720px);border:0';
       this.insertBefore(frame, this.firstChild);
       this.frame = frame;
+      this.bar = this.createBar();
+      frame.after(this.bar);
     }
     this.frame.title = String(props.title ?? 'Sketch');
     const doc = sketchDocument(props.html ?? '');
     if (doc !== this.shown) {
+      // A proposal belongs to the screen that made it: a new screen's viewer never saw it.
+      this.drop();
       this.shown = doc;
       this.frame.srcdoc = doc;
     }
+  }
+
+  /**
+   * The page's own bar under the frame: the proposal's text, as text, and Send and Dismiss. It's
+   * outside the frame, so no sketch can reach it, and under its own frame, so a proposal is
+   * always shown with the sketch that made it.
+   */
+  createBar() {
+    const bar = document.createElement('div');
+    bar.className = 'bee-proposal';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', "This sketch's choice");
+    bar.style.cssText = 'display:none;align-items:center;gap:0.5rem;padding:0.5rem 0;overflow-wrap:anywhere';
+    const label = document.createElement('span');
+    label.className = 'bee-proposal-text';
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'bee-proposal-send';
+    send.textContent = 'Send';
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'bee-proposal-dismiss';
+    dismiss.textContent = 'Dismiss';
+    // Only a real gesture counts: `isTrusted` is false for any event a script dispatched, and a
+    // sketch's script can't reach the page to dispatch one anyway.
+    send.addEventListener('click', (event) => { if (event.isTrusted) this.send(); });
+    dismiss.addEventListener('click', (event) => { if (event.isTrusted) this.dismiss(); });
+    bar.append(label, send, dismiss);
+    return bar;
   }
 
   /** A message from this element's own frame, or nothing: any other window's is ignored. */
@@ -159,59 +167,66 @@ export class SketchElement extends A2uiLitElement {
     const message = event.data;
     if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0' || typeof message.method !== 'string') return;
     if (message.method === 'ui/message') {
-      if (!this.mayChoose()) {
-        this.reply(message.id, { error: { code: -32000, message: 'Refused: a choice needs a click by the viewer.' } });
-        return;
-      }
       const params = message.params ?? {};
       const choice = params._meta?.[CHOICE_META];
-      const text = params.content?.type === 'text' ? String(params.content.text ?? '') : '';
-      if (choice !== undefined) {
-        this.context?.dispatchAction({ event: { name: CHOICE_ACTION, context: { choice: String(choice), text } } });
+      if (choice === undefined) {
+        this.reply(message.id, { result: {} });
+        return;
       }
-      this.reply(message.id, { result: {} });
+      const text = params.content?.type === 'text' ? String(params.content.text ?? '') : '';
+      this.propose(message.id, String(choice), text);
     } else {
       this.reply(message.id, { error: { code: -32601, message: `Method not found: ${message.method}` } });
     }
   }
 
   /**
-   * Whether a `ui/message` now is the viewer's: a choice is recorded as theirs, so the sketch may
-   * not send one on its own. A click inside the frame activates this page too (user activation
-   * reaches every ancestor), so `isActive` holds only for a few seconds after a real gesture.
-   *
-   * Activation is page-wide, so a gesture on the page itself (typing in another surface's field)
-   * would open the same window to a sketch posting in the background. A gesture the page saw in
-   * the last PAGE_GESTURE_MS explains the activation, so the choice is refused; one inside the
-   * frame never reaches the page's listeners. The cost: a choice made within that time of typing
-   * or tapping on the page is refused too. The frame gets the refusal as an error, and its helper
-   * drops the selection, so the viewer sees the choice didn't land.
-   *
-   * A gesture inside another sketch's frame activates the page too, and reaches no listener here.
-   * It focuses that sketch's `<iframe>`, though, so only the frame that has focus may choose. The
-   * focus is read from the frame's own root, which is the document unless a catalog component
-   * holds the sketch in its shadow root.
-   *
-   * Every message counts toward the CHOICE_GAP_MS limit, refused or not, so a frame that posts
-   * faster than a person clicks gets nothing through.
-   *
-   * Not covered: a sketch that posts while the viewer presses on the frame but not on a choice
-   * (selecting text, say) is taken as the viewer's choice.
+   * Shows [choice] as this sketch's proposal, in place of any earlier one, which is answered as
+   * replaced. It records nothing: only the viewer's Send does. Send is disabled for SEND_ARM_MS
+   * after every change, and the bar never takes focus, so a keypress meant for something else
+   * can't send it.
    */
-  mayChoose() {
-    const now = performance.now();
-    const sincePrevious = now - this.lastMessageAt;
-    this.lastMessageAt = now;
-    if (sincePrevious < CHOICE_GAP_MS) return false;
-    if (!navigator.userActivation?.isActive) return false;
-    if (this.frame.getRootNode().activeElement !== this.frame) return false;
-    return now - lastPageGestureAt >= PAGE_GESTURE_MS;
+  propose(id, choice, text) {
+    if (this.proposal) this.reply(this.proposal.id, { error: { code: -32001, message: 'Replaced by a later choice.' } });
+    this.proposal = { id, choice, text, at: performance.now() };
+    const label = this.bar.querySelector('.bee-proposal-text');
+    const shown = document.createElement('em');
+    shown.textContent = text || choice;
+    label.replaceChildren('Send ', shown, '?');
+    const send = this.bar.querySelector('.bee-proposal-send');
+    send.disabled = true;
+    clearTimeout(this.armTimer);
+    this.armTimer = setTimeout(() => { send.disabled = false; }, SEND_ARM_MS);
+    this.bar.style.display = 'flex';
+  }
+
+  /** The viewer's Send: records the proposal shown, as theirs, and answers the frame. */
+  send() {
+    const proposal = this.proposal;
+    if (!proposal || performance.now() - proposal.at < SEND_ARM_MS) return;
+    this.context?.dispatchAction({ event: { name: CHOICE_ACTION, context: { choice: proposal.choice, text: proposal.text } } });
+    this.reply(proposal.id, { result: {} });
+    this.drop();
+  }
+
+  /** The viewer's Dismiss: the frame hears its choice was declined, and drops its selection. */
+  dismiss() {
+    if (!this.proposal) return;
+    this.reply(this.proposal.id, { error: { code: -32000, message: 'Dismissed by the viewer.' } });
+    this.drop();
+  }
+
+  /** Forgets the proposal, unanswered, and hides the bar. */
+  drop() {
+    this.proposal = null;
+    clearTimeout(this.armTimer);
+    if (this.bar) this.bar.style.display = 'none';
   }
 
   /** Answers request [id] (a notification, with no id, gets none). The frame's origin is opaque: '*'. */
   reply(id, outcome) {
     if (id === undefined || id === null) return;
-    this.frame.contentWindow?.postMessage({ jsonrpc: '2.0', id, ...outcome }, '*');
+    this.frame?.contentWindow?.postMessage({ jsonrpc: '2.0', id, ...outcome }, '*');
   }
 }
 SketchElement.tagName = 'bee-sketch';
