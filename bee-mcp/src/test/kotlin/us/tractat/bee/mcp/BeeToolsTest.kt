@@ -268,7 +268,7 @@ class BeeToolsTest {
         val reading = tools - BeeTools.WRITING
         assertAll(
             { assertEquals(BeeTools.WRITING, writing.keys, "every writing tool is registered") },
-            { assertEquals(setOf(BeeTools.BOARD, WaitTool.WAIT, WaitTool.LIST), reading.keys, "the rest only read") },
+            { assertEquals(setOf(BeeTools.BOARD, WaitTool.WAIT, WaitTool.LIST, WhiteboardGuide.EXAMPLES_TOOL), reading.keys, "the rest only read") },
             {
                 val unshared = writing.filterValues { !(it.startsWith("Puts ") && BeeTools.SHARED in it.substringBefore('.')) }
                 assertEquals(emptyMap(), unshared, "writing tools whose first sentence doesn't say it's shared")

@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import us.tractat.bee.a2ui.SurfaceValidator
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,9 +32,40 @@ class WhiteboardGuideTest {
         val ada = rig.session("ada")
 
         val sent = ada.mcp.serverInstructions.orEmpty()
+        val shown = WhiteboardGuide.EXAMPLES.filter { it.components in sent }
         assertAll(
             { assertEquals(WhiteboardGuide.INSTRUCTIONS, sent) },
-            { assertTrue(WhiteboardGuide.EXAMPLES.all { it.components in sent }, "every cheat-sheet surface is shown verbatim") },
+            { assertEquals(WhiteboardGuide.ESSENTIAL, shown, "the essential surfaces are shown verbatim, and only they") },
+            { assertEquals(SurfaceValidator.SKETCH, shown.first().components.componentType(), "Sketch comes first") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Claude Code cuts server instructions past `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH`, 4096
+     * characters by default, and appends "… [truncated]": anything past it never reaches the model.
+     */
+    @Test
+    fun instructionsFitClaudeCodesLimit() {
+        assertTrue(
+            WhiteboardGuide.INSTRUCTIONS.length <= WhiteboardGuide.CLAUDE_CODE_TEXT_LIMIT,
+            "instructions are ${WhiteboardGuide.INSTRUCTIONS.length} characters, over ${WhiteboardGuide.CLAUDE_CODE_TEXT_LIMIT}",
+        )
+    }
+
+    /** `bee_examples` returns the whole cheat-sheet, every entry verbatim, and its description fits the cut too. */
+    @Test
+    fun beeExamplesReturnsTheWholeCheatSheet() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+
+        val tool = ada.mcp.listTools(options = options).tools.single { it.name == WhiteboardGuide.EXAMPLES_TOOL }
+        val result = ada.call(WhiteboardGuide.EXAMPLES_TOOL, emptyMap())
+        val missing = WhiteboardGuide.EXAMPLES.filter { it.components !in result.text() || (it.data ?: "") !in result.text() }
+        assertAll(
+            { assertEquals(null, result.isError, result.text()) },
+            { assertEquals(emptyList(), missing.map { it.name }, "cheat-sheet entries missing from the result") },
+            { assertTrue(tool.description.orEmpty().length <= WhiteboardGuide.CLAUDE_CODE_TEXT_LIMIT, "description fits") },
         )
         rig.close()
     }
@@ -96,10 +128,10 @@ class WhiteboardGuideTest {
         val ada = rig.session("ada")
 
         val served = ada.mcp.listTools(options = options).tools.map { it.name }.toSet()
-        val texts = listOf(WhiteboardGuide.INSTRUCTIONS, WhiteboardGuide.prompt(null), WhiteboardGuide.prompt("a topic"))
+        val texts = listOf(WhiteboardGuide.INSTRUCTIONS, WhiteboardGuide.CHEAT_SHEET, WhiteboardGuide.prompt(null), WhiteboardGuide.prompt("a topic"))
         val named = texts.flatMap { Regex("""\bbee_[a-z_]+""").findAll(it).map { m -> m.value }.toList() }.toSet()
         assertAll(
-            { assertTrue(named.containsAll(setOf(WaitTool.WAIT, BeeTools.DONE, BeeTools.CLAIM)), "the scan finds tool names: $named") },
+            { assertTrue(named.containsAll(setOf(WaitTool.WAIT, BeeTools.DONE, BeeTools.CLAIM, WhiteboardGuide.EXAMPLES_TOOL)), "the scan finds tool names: $named") },
             { assertEquals(emptySet(), named - served, "named but not served") },
         )
         rig.close()
@@ -126,18 +158,22 @@ class WhiteboardGuideTest {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
 
-        val withTopic = ada.promptText(mapOf(WhiteboardGuide.TOPIC to "the login flow"))
+        val withTopic = ada.promptText(mapOf(WhiteboardGuide.TOPIC to "login-flow"))
         val without = ada.promptText(null)
         val blank = ada.promptText(mapOf(WhiteboardGuide.TOPIC to "  "))
         assertAll(
-            { assertTrue("Draw the topic: the login flow." in withTopic, withTopic) },
+            { assertTrue("typed after the command: \"login-flow\"" in withTopic, withTopic) },
             { assertTrue("Ask, on the board, what to work on" !in withTopic, "a topic isn't asked for") },
             { assertTrue("Ask, on the board, what to work on" in without, without) },
             { assertEquals(without, blank, "a blank topic is no topic") },
             { assertTrue("bee_wait_action" in without && "Done" in without, "it loops on waits until done") },
+            { assertTrue("no person attached" in without && "10 minutes" in without, "it stops when the room is idle") },
         )
         rig.close()
     }
+
+    private fun String.componentType(): String =
+        Json.parseToJsonElement(this).jsonArray.first().jsonObject.getValue("component").jsonPrimitive.content
 
     private suspend fun Session.promptText(arguments: Map<String, String>?): String =
         mcp.getPrompt(GetPromptRequest(GetPromptRequestParams(WhiteboardGuide.PROMPT, arguments)), options)
