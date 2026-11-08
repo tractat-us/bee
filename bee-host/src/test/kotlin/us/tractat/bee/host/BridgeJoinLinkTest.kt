@@ -107,11 +107,22 @@ class BridgeJoinLinkTest {
         try {
             val root = HostAddress.parse("http://127.0.0.1:${host.port}/")
             val bridge = Bridge(root)
-            val board = withTimeout(TIMEOUT) { bridge.board.lastFailure.filterNotNull().filter(::refused).first() }
-            val claims = withTimeout(TIMEOUT) { bridge.claimsRefused.await() }
+            // As above, each wait ends on whichever comes first: an admitted bridge fails as admitted.
+            val board = withTimeout(TIMEOUT) {
+                merge(
+                    bridge.board.online.filter { it }.map { "online" },
+                    bridge.board.lastFailure.filterNotNull().filter(::refused).map { "refused" },
+                ).first()
+            }
+            val claims = withTimeout(TIMEOUT) {
+                select {
+                    async { bridge.claims.link.filterNotNull().first() }.onAwait { "admitted" }
+                    bridge.claimsRefused.onAwait { "refused" }
+                }
+            }
             assertAll(
-                { assertTrue(refused(board), "the board socket's gate answered 403: $board") },
-                { assertTrue(refused(claims), "the claims socket's gate answered 403: $claims") },
+                { assertEquals("refused", board, "the board socket's gate answers 403") },
+                { assertEquals("refused", claims, "the claims socket's gate answers 403") },
                 { assertFalse(bridge.board.online.value, "the board replica never came online") },
                 { assertEquals(host.boardId, bridge.pin.board.value, "rig: /board-id is open, so the bridge learned the board") },
             )
