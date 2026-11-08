@@ -9,7 +9,7 @@ import kotlin.coroutines.CoroutineContext
 
 /**
  * The bridge's MCP server as a Claude session meets it: the [WhiteboardGuide]'s instructions in
- * `initialize`, its `whiteboard` prompt, and every tool. `main` serves this one, and so do the
+ * `initialize`, its `whiteboard` prompt, the [CheckinGuide]'s `checkin` prompt, and every tool. `main` serves this one, and so do the
  * bridge's tests, so they see what a session sees.
  */
 object BeeServer {
@@ -29,6 +29,7 @@ object BeeServer {
         WaitTool.register(server, BoardActionSource(bridge))
         BeeTools.register(server, bridge)
         WhiteboardGuide.register(server)
+        CheckinGuide.register(server)
         return server
     }
 }
