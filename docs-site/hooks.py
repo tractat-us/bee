@@ -7,8 +7,13 @@ pages. This hook rewrites each such link to the file on GitHub, and only when th
 target exists in the checkout: a link to nothing is left alone for `--strict`
 to report. A link into a home directory (`~/...`) resolves on no host, so it
 becomes its link text and the path in code.
+
+It also tells overrides/main.html where a page's Markdown copy is, for the
+"View as Markdown" and "Copy page as Markdown" buttons. The llmstxt plugin
+writes that copy for each page its `sections` list.
 """
 
+import fnmatch
 import os
 import re
 
@@ -140,3 +145,23 @@ def on_page_markdown(markdown: str, page: Page, config, files: Files, **kwargs) 
         )
         lines[i] = line
     return "\n".join(line for line in lines if line is not None)
+
+
+def _has_markdown_copy(src_uri: str, config) -> bool:
+    """Whether the llmstxt plugin writes a Markdown copy of this page."""
+    plugin = config["plugins"].get("llmstxt")
+    if plugin is None:
+        return False
+    for inputs in plugin.config.sections.values():
+        for item in inputs:
+            pattern = next(iter(item)) if isinstance(item, dict) else item
+            if fnmatch.fnmatchcase(src_uri, pattern):
+                return True
+    return False
+
+
+def on_page_context(context, page: Page, config, nav, **kwargs):
+    """Point main.html at the page's Markdown copy: its dest_uri, `.html` → `.md`."""
+    if _has_markdown_copy(page.file.src_uri, config):
+        page.meta["markdown_url"] = os.path.splitext(page.file.dest_uri)[0] + ".md"
+    return context
