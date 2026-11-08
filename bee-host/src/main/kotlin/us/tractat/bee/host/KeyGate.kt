@@ -38,6 +38,18 @@ fun isLoopback(literal: String): Boolean = try {
     false
 }
 
+/**
+ * The largest WebSocket frame the host reads, in bytes. A frame whose header announces more closes
+ * its socket with 1009 (too big) before Ktor allocates a buffer for it; Ktor's own default is
+ * `Long.MAX_VALUE`, so a header alone could make the host allocate up to 2 GiB.
+ *
+ * The largest legitimate frame is a board `FullState`, sent once per spoke connection. Nothing
+ * measures one yet; a board of text surfaces and their action records is kilobytes to a few MiB,
+ * so 64 MiB leaves an order of magnitude of headroom. Only a loopback or keyed device reaches a
+ * WebSocket at all ([mountEndpoints]), so this is defence in depth, not the key gate.
+ */
+const val MAX_FRAME_BYTES: Long = 64L * 1024 * 1024
+
 /** The host's two key-gated endpoints, mounted by [mountEndpoints]. */
 class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
 
