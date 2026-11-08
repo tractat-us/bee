@@ -5,6 +5,7 @@ import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
+import us.tractat.bee.core.MAX_FRAME_BYTES
 import us.tractat.kuilt.test.assertAll
 import java.io.DataInputStream
 import java.io.EOFException

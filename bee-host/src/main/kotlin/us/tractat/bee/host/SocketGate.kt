@@ -18,6 +18,7 @@ import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
 import us.tractat.bee.core.BoardId
+import us.tractat.bee.core.MAX_FRAME_BYTES
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.websocket.KtorConnectionSource
@@ -47,18 +48,6 @@ fun isLoopback(literal: String): Boolean = try {
 } catch (_: IllegalArgumentException) {
     false
 }
-
-/**
- * The largest WebSocket frame the host reads, in bytes. A frame whose header announces more closes
- * its socket with 1009 (too big) before Ktor allocates a buffer for it; Ktor's own default is
- * `Long.MAX_VALUE`, so a header alone could make the host allocate up to 2 GiB.
- *
- * The largest legitimate frame is a board `FullState`, sent once per spoke connection. Nothing
- * measures one yet; a board of text surfaces and their action records is kilobytes to a few MiB,
- * so 64 MiB leaves an order of magnitude of headroom. Only a loopback or keyed device reaches a
- * WebSocket at all ([mountEndpoints]), so this is defence in depth, not the key gate.
- */
-const val MAX_FRAME_BYTES: Long = 64L * 1024 * 1024
 
 /** The host's two gated sockets, mounted by [mountEndpoints]. */
 class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
