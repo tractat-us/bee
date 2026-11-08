@@ -13,8 +13,9 @@
 // sketch replaces it.
 //
 // The frame fits its document's height, within [SKETCH_MIN_HEIGHT_PX, SKETCH_MAX_HEIGHT], from the
-// helper's `ui/notifications/size-changed` notifications. A fit moves this sketch's Send and every
-// Send below it, so each fit re-arms every shown proposal at once (see `fit`).
+// helper's `ui/notifications/size-changed` notifications. A fit can move this sketch's Send and
+// every Send below it, so it re-arms each shown proposal whose Send it moved (see `fit`), and a
+// frame that refits too often keeps its height.
 //
 // Not covered: WebRTC sits outside CSP, so a sketch can still reach the network, through an
 // `RTCPeerConnection` (ICE to a STUN or TURN server it names). The helper deletes the WebRTC
@@ -45,6 +46,13 @@ export const SKETCH_MAX_HEIGHT = 'min(80vh, 720px)';
 
 /** Every connected `<bee-sketch>`, so one frame's fit can re-arm the Send of every other. */
 const connected = new Set();
+
+/**
+ * How many fits a frame gets in a second before its height is pinned until its next screen. A
+ * document whose height follows the frame's (`height: calc(1000px - 100vh)`) would otherwise
+ * refit, and re-arm every Send it moves, many times a second, for as long as it's shown.
+ */
+const FITS_PER_SECOND = 10;
 
 /** The A2UI action a choice becomes, and the record name bee-companion handles. */
 export const CHOICE_ACTION = 'choice';
@@ -116,6 +124,9 @@ export class SketchElement extends A2uiLitElement {
     this.focusedAt = -Infinity;
     /** The height the frame was last fitted to, as CSS. */
     this.fitted = null;
+    /** When this screen's recent fits happened, and whether its height is pinned (see `fit`). */
+    this.fitTimes = [];
+    this.pinned = false;
     this.onMessage = (event) => this.receive(event);
     // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
     // a change in the size of the bar, this sketch or the page.
@@ -176,6 +187,8 @@ export class SketchElement extends A2uiLitElement {
       // A proposal belongs to the screen that made it: a new screen's viewer never saw it.
       this.drop();
       this.shown = doc;
+      this.fitTimes = [];
+      this.pinned = false;
       this.frame.srcdoc = doc;
     }
   }
@@ -272,20 +285,41 @@ export class SketchElement extends A2uiLitElement {
 
   /**
    * Fits the frame to a document [height] tall, in CSS pixels, within SKETCH_MIN_HEIGHT_PX and
-   * SKETCH_MAX_HEIGHT. A new height moves this sketch's Send and every Send below it, and when the
-   * page is shorter than the window a move changes no element's size, so no ResizeObserver hears
-   * it. So every shown proposal re-arms here, in the same task that moved it, before any click
-   * can land on a Send in its new place.
+   * SKETCH_MAX_HEIGHT. A new height can move this sketch's Send and every Send below it, and when
+   * the page is shorter than the window a move changes no element's size, so no ResizeObserver
+   * hears it. So each shown proposal whose Send has moved re-arms here, in the same task that
+   * moved it, before any click can land on a Send in its new place.
+   *
+   * After FITS_PER_SECOND fits in a second, the frame keeps its height until its next screen.
    */
   fit(height) {
-    if (typeof height !== 'number' || !Number.isFinite(height) || height < 0) return;
+    if (this.pinned || typeof height !== 'number' || !Number.isFinite(height) || height < 0) return;
     // The frame's own border is inside its height (border-box): add it, or the document scrolls.
     const border = this.frame.offsetHeight - this.frame.clientHeight;
     const css = `clamp(${SKETCH_MIN_HEIGHT_PX}px, ${Math.ceil(height) + border}px, ${SKETCH_MAX_HEIGHT})`;
     if (css === this.fitted) return;
+    const now = performance.now();
+    this.fitTimes = this.fitTimes.filter((at) => now - at < 1_000);
+    if (this.fitTimes.length >= FITS_PER_SECOND) {
+      this.pinned = true;
+      return;
+    }
+    this.fitTimes.push(now);
     this.fitted = css;
+    const before = this.frame.offsetHeight;
     this.frame.style.height = css;
-    for (const sketch of connected) sketch.onMove();
+    if (this.frame.offsetHeight === before) return;
+    for (const sketch of connected) sketch.rearmIfMoved();
+  }
+
+  /**
+   * Re-arms Send if it has left the box it was armed in. Away and back again are both moves, so
+   * a Send slid away and back under a click still re-arms twice.
+   */
+  rearmIfMoved() {
+    if (!this.proposal) return;
+    const send = this.bar.querySelector('.bee-proposal-send');
+    if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
   }
 
   /**
