@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T02:18Z"
+as_of: "2026-11-08T03:25Z"
 
 sources:
   - title: "v1 plan"
@@ -47,6 +47,10 @@ order:
   - bee-33
   - bee-37
   - bee-40
+  - bee-43
+  - bee-44
+  - bee-45
+  - bee-46
   - bee-14
   - bee-19
   - bee-23
@@ -66,6 +70,8 @@ order:
   - kuilt-3133
   - kuilt-3134
   - kuilt-3129
+  - kuilt-3142
+  - kuilt-3143
   - out-cla
   - out-kuilt-references
 
@@ -193,16 +199,11 @@ items:
   task-9:
     kind: task
     title: "Durability of the board (spike 6)"
-    status: in-flight
+    status: done
     summary: "The board survives host restarts and closed browsers, through a generic Quilter–DurableStore adapter."
     depends_on: [bee-27]
     started: "2026-11-08T02:15Z"
-    estimate:
-      low: 2
-      high: 24
-      unit: hours
-      basis: "Same basis as Task 8. QuiltedPersistence is a kuilt graduation candidate, so a kuilt gap is the likely way it runs long."
-      confidence: low
+    landed: "2026-11-08T03:21Z"
     links:
       - { title: "Plan, Task 9", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-9-durability-of-the-board-spike-6" }
       - { title: "bee#39", url: "https://github.com/tractat-us/bee/pull/39" }
@@ -211,9 +212,9 @@ items:
     kind: task
     title: "A second screen, joined by LAN pairing (spike 7)"
     status: in-flight
-    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. Started when #27 merged; its Draft PR, on spike/10-second-screen, isn't open yet."
+    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. In a review-fix round."
     depends_on: [bee-27]
-    started: "2026-11-08T02:01Z"
+    started: "2026-11-08T02:20Z"
     estimate:
       low: 3
       high: 24
@@ -222,6 +223,7 @@ items:
       confidence: low
     links:
       - { title: "Plan, Task 10", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-10-a-second-screen-spike-7" }
+      - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
 
   task-11:
     kind: task
@@ -298,22 +300,61 @@ items:
   bee-37:
     kind: issue
     title: "A wait's reserve can no longer fail, so make it fail loudly"
-    status: next
-    summary: "A follow-up from #33's re-review."
+    status: done
+    summary: "A follow-up from #33's re-review. Fixed by #41."
     depends_on: [bee-33]
     started: "2026-11-08T02:10Z"
+    landed: "2026-11-08T02:28Z"
     links:
       - { title: "bee#37", url: "https://github.com/tractat-us/bee/issues/37" }
+      - { title: "bee#41", url: "https://github.com/tractat-us/bee/pull/41" }
 
   bee-40:
     kind: pr
     title: "Move kuilt to 0.7.0-dev.1696"
-    status: in-flight
+    status: done
     summary: "Takes kuilt's LatticeDotFun and CausalMap, slices (a) and (b) of kuilt#3126."
     depends_on: [kuilt-3132, kuilt-3136]
     started: "2026-11-08T02:15Z"
+    landed: "2026-11-08T02:19Z"
     links:
       - { title: "bee#40", url: "https://github.com/tractat-us/bee/pull/40" }
+
+  bee-43:
+    kind: issue
+    title: "A board change elsewhere may re-create the field someone is typing in"
+    status: later
+    summary: "A bug that needs a design before work starts."
+    started: "2026-11-08T02:36Z"
+    links:
+      - { title: "bee#43", url: "https://github.com/tractat-us/bee/issues/43" }
+
+  bee-44:
+    kind: decision
+    title: "An agent that dies while the host is down keeps its claims forever"
+    status: waiting-on-iain
+    summary: "How presence and departures behave across a host restart."
+    started: "2026-11-08T02:36Z"
+    links:
+      - { title: "bee#44", url: "https://github.com/tractat-us/bee/issues/44" }
+
+  bee-45:
+    kind: issue
+    title: "Any website open on the laptop can use the board: check Origin and Host on /ws/*"
+    status: next
+    summary: "A bug, ready to start."
+    started: "2026-11-08T02:44Z"
+    links:
+      - { title: "bee#45", url: "https://github.com/tractat-us/bee/issues/45" }
+
+  bee-46:
+    kind: issue
+    title: "A tab left open across a host wipe pushes its old board into the new host"
+    status: next
+    summary: "A bug, ready to start. The old board carries its claim views with it."
+    started: "2026-11-08T03:07Z"
+    links:
+      - { title: "bee#46", url: "https://github.com/tractat-us/bee/issues/46" }
 
   bee-14:
     kind: decision
@@ -467,6 +508,23 @@ items:
     links:
       - { title: "kuilt#3129", url: "https://github.com/tractat-us/kuilt/issues/3129" }
       - { title: "kuilt#3141, slice 1", url: "https://github.com/tractat-us/kuilt/pull/3141" }
+
+  kuilt-3142:
+    kind: kuilt
+    title: "quilter: no signal that a replica has caught up with the peer it joined"
+    status: next
+    started: "2026-11-08T02:25Z"
+    links:
+      - { title: "kuilt#3142", url: "https://github.com/tractat-us/kuilt/issues/3142" }
+
+  kuilt-3143:
+    kind: kuilt
+    title: "store: IndexedDbDurableStore lets synchronous JS throws escape as JsException"
+    status: next
+    summary: "No catch (Exception) sees them. Task 9 stores the board in the browser through this store."
+    started: "2026-11-08T02:41Z"
+    links:
+      - { title: "kuilt#3143", url: "https://github.com/tractat-us/kuilt/issues/3143" }
 
   # ── Outside the code ─────────────────────────────────────────────────
   out-cla:
