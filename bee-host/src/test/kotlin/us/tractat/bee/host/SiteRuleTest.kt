@@ -1,5 +1,8 @@
 package us.tractat.bee.host
 
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import io.ktor.http.headers
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertNotNull
@@ -53,4 +56,14 @@ class SiteRuleTest {
             { assertNotNull(rule.refusal("127.0.0.1:8233", "", loopback)) },
         )
     }
+}
+
+/** [SiteRule.refusal] of a call with [host], [origin] and these other [headers], each `name: value`. */
+private fun SiteRule.refusal(host: String?, origin: String?, arrival: Arrival, vararg headers: String): String? =
+    refusal(callHeaders(host, origin, headers.toList()), arrival)
+
+private fun callHeaders(host: String?, origin: String?, others: List<String>): Headers = headers {
+    host?.let { append(HttpHeaders.Host, it) }
+    origin?.let { append(HttpHeaders.Origin, it) }
+    others.forEach { append(it.substringBefore(": "), it.substringAfter(": ")) }
 }
