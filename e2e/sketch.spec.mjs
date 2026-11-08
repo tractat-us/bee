@@ -333,15 +333,14 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
     '})();</script>');
   const context = await browser.newContext();
   const page = await context.newPage();
-  // Chromium reports a load the CSP blocked as a request that failed, never sent. So what counts
-  // is a probe that got an answer from the host (a 404 is an answer) or a socket that opened.
+  // What counts is a probe that got an answer from the host (a 404 is an answer) or a socket that
+  // opened. A load the frame's CSP refused is reported on the console, in Chromium and WebKit alike
+  // (Chromium also reports it as a failed request, WebKit doesn't), as clickAway relies on.
   const reached = [];
-  const blocked = [];
+  const refused = [];
   page.on('response', (response) => { if (response.url().includes('sketch-probe')) reached.push(response.url()); });
-  page.on('requestfailed', (request) => {
-    if (request.url().includes('sketch-probe')) blocked.push(`${request.url()} ${request.failure()?.errorText}`);
-  });
   page.on('websocket', (ws) => { if (ws.url().includes('sketch-probe')) reached.push(ws.url()); });
+  page.on('console', (message) => { if (message.text().includes('sketch-probe')) refused.push(message.text()); });
   await page.goto('/?name=kim');
   const frame = sketchFrame(page);
   await expect(frame.locator('#probe')).not.toHaveText('running', { timeout: 15_000 });
@@ -356,7 +355,7 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
   await page.waitForTimeout(1_000);
   expect(reached).toEqual([]);
   // Control: the image load was attempted and refused, so the probe could have seen one.
-  expect(blocked.some((b) => b.includes('/img.png'))).toBe(true);
+  expect(refused.some((r) => r.includes('/img.png'))).toBe(true);
   // The parent's DOM is untouched by the sketch: the page still shows the board as before.
   await expect(page.locator('#status')).toHaveText(/^online/);
   await context.close();
