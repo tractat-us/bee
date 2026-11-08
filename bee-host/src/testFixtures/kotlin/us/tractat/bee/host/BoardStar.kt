@@ -3,6 +3,7 @@ package us.tractat.bee.host
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import us.tractat.bee.core.BOARD_PAYLOAD_BYTES
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.kuilt.core.InMemoryTag
@@ -42,8 +43,13 @@ class BoardStar(private val test: TestScope) {
         peerMesh(id, listOf(taps.getOrPut(name) { WireTap() }.wrap(spokeEnd)), dispatcher)
     }
 
-    fun client(author: ReplicaId, loom: SpokeLoom = loom(author.value), scope: CoroutineScope = test.backgroundScope) =
-        BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, config = CONFIG)
+    /** A board client of [author]'s through [loom], sending no payload over [maxPayloadBytes]. */
+    fun client(
+        author: ReplicaId,
+        loom: SpokeLoom = loom(author.value),
+        scope: CoroutineScope = test.backgroundScope,
+        maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
+    ) = BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, config = CONFIG, maxPayloadBytes = maxPayloadBytes)
 
     companion object {
         /** The board's tuning under virtual time. */

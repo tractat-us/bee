@@ -75,9 +75,9 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * reaches the wire ([BoundedSeam]). A write's delta that big is refused before it lands (below),
  * so what the seam refuses is a `FullState`: the first one refused ends its connection, lands in
  * [tooLarge] and [lastFailure], and is logged. The client then dials again only once the held
- * board's `FullState`, measured locally ([WireBudget]), could fit, since a board that fits no better would be refused the
- * same way. A presence post doesn't count as a change. The next connection to settle clears
- * [tooLarge].
+ * board's `FullState`, measured locally ([WireBudget]), could fit, since a board that fits no
+ * better would be refused the same way. A presence post doesn't count as a change. The next
+ * connection to settle clears [tooLarge].
  *
  * **Identities.** Every edit names [author] through the transform (`it.openSurface(author, …)`):
  * it is the stable CRDT author for this process, online or offline. The Quilter's own replica id
