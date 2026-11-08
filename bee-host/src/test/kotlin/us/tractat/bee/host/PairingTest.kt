@@ -13,6 +13,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -233,6 +234,29 @@ class PairingTest {
             { assertEquals(Opened.OverBudget, justBefore) },
             { assertIs<Opened.Ticket>(afterTheFirstFrees) },
             { assertEquals(Opened.OverBudget, thenSpentAgain) },
+        )
+    }
+
+    /**
+     * One address dialling and dropping all hour spends at most a fifth of the budget, so a second
+     * address can still pair afterwards.
+     */
+    @Test
+    fun oneAddressSpendsOnlyItsShareOfTheBudget() {
+        val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), budget = PairingBudget(10))
+        val greedy = "192.168.1.200"
+        var opened = 0
+        repeat(359) {
+            (budgeted.open(greedy) as? Opened.Ticket)?.let {
+                opened++
+                budgeted.end(it.id)
+            }
+            advance(10.seconds)
+        }
+        val other = budgeted.open(fresh())
+        assertAll(
+            { assertEquals(2, opened, "10 / 5 pairings in the hour, however often it dials") },
+            { assertIs<Opened.Ticket>(other, "a second address still pairs") },
         )
     }
 

@@ -103,7 +103,7 @@ test('keyless remote page shows a code and no board', async ({ browser }) => {
   await expect(remote.page.locator('#records')).toHaveCount(0);
   expect(remote.sockets).toEqual([]);
   const pairing = remote.requests.filter((r) => r.url.pathname === '/pair');
-  expect(pairing.length, 'the page opened the pairing channel').toBeGreaterThan(0);
+  expect(pairing.length, 'one pairing channel, never reopened').toBe(1);
   for (const r of pairing) expect(r.accept).toBe('text/event-stream');
 });
 

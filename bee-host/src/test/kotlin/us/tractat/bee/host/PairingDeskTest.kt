@@ -81,11 +81,12 @@ class PairingDeskTest {
 
     /**
      * A device that dials, reads its code and drops within the dwell writes nothing to the board.
-     * It waits out the cooldown each time, and dials the budget's worth, so every dial gets a code.
+     * It waits out the cooldown each time, and dials one address's share of the budget, so every
+     * dial gets a code.
      */
     @Test
     fun dialAndDropWritesNothingToTheBoard() = rig {
-        val dials = PairingBudget.DEFAULT.requests
+        val dials = PairingBudget.DEFAULT.requests / 5
         val sessions = List(dials) {
             dial(LAN).also {
                 it.hangUp()
@@ -173,7 +174,7 @@ class PairingDeskTest {
 
     private companion object {
         const val CYCLES = 100
-        val ADDRESSES = List(4) { "192.168.1.${40 + it}" }
+        val ADDRESSES = List(6) { "192.168.1.${40 + it}" }
         const val LAN = "192.168.1.20"
         const val OTHER_LAN = "192.168.1.30"
     }

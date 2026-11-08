@@ -1,11 +1,13 @@
 package us.tractat.bee.host
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PeerKind
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import kotlin.math.max
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -119,6 +121,8 @@ sealed interface Attempt {
     data object Unknown : Attempt
 }
 
+private val logger = KotlinLogging.logger {}
+
 /**
  * Bluetooth-style passkey pairing (spec §5.7): the state machine, with no I/O.
  *
@@ -135,8 +139,9 @@ sealed interface Attempt {
  *   not an identity, though: a device that answers on many addresses gets a turn on each.
  * - **The total is bounded.** All limited addresses together open at most [budget]'s worth of
  *   pairings in its window, so however many addresses a device has, it writes at most that many
- *   join requests to the board in that time. The budget is shared, so such a device can spend it
- *   and hold off everyone else's pairing until the window rolls on; the join link still admits.
+ *   join requests to the board in that time. No one address may spend more than a fifth of it
+ *   (at least one), so a device can't hold off everyone else's pairing; the join link still
+ *   admits. The host logs a warning when the budget runs out.
  * - A loopback address is never limited: it reaches the board without a key, so it has nothing to
  *   pair for.
  *
@@ -165,21 +170,31 @@ class Pairing(
     private val lastOpened = mutableMapOf<String, Instant>()
 
     /** When each limited pairing within the last [PairingBudget.per] opened, oldest first. */
-    private val budgetSpent = ArrayDeque<Instant>()
+    private val budgetSpent = ArrayDeque<Pair<Instant, String>>()
+
+    /** Whether this window's running out of budget has been logged. */
+    private var exhaustionLogged = false
     private val keys = mutableListOf<DeviceKey>()
 
     /** Opens a pairing for a keyless device at address [from], or says why not ([Opened.Refused]). */
     fun open(from: String): Opened = synchronized(lock) {
         val now = clock()
         lastOpened.values.removeIf { now >= it + cooldown }
-        while (budgetSpent.firstOrNull()?.let { now >= it + budget.per } == true) budgetSpent.removeFirst()
+        while (budgetSpent.firstOrNull()?.let { now >= it.first + budget.per } == true) budgetSpent.removeFirst()
         // An expired pairing holds no place, though it stays pending until its timer ends it.
         val live = pending.values.filter { now < it.expiresAt }
+        if (budgetSpent.isEmpty()) exhaustionLogged = false
         val limited = !isLoopback(from)
+        val overBudget = limited &&
+            (budgetSpent.size >= budget.requests || budgetSpent.count { it.second == from } >= max(1, budget.requests / 5))
+        if (overBudget && !exhaustionLogged) {
+            exhaustionLogged = true
+            logger.warn { "Pairing budget reached (${budgetSpent.size} of ${budget.requests} an hour); refusing $from" }
+        }
         when {
             limited && live.any { it.from == from } -> Opened.AlreadyPairing
             limited && from in lastOpened -> Opened.TooSoon
-            limited && budgetSpent.size >= budget.requests -> Opened.OverBudget
+            overBudget -> Opened.OverBudget
             live.size >= MAX_PENDING -> Opened.Busy
             else -> {
                 val id = secrets.pairingId()
@@ -188,7 +203,7 @@ class Pairing(
                 pending[id] = Pending(from, ticket.code, ticket.expiresAt, wrong = 0)
                 if (limited) {
                     lastOpened[from] = now
-                    budgetSpent.addLast(now)
+                    budgetSpent.addLast(now to from)
                 }
                 ticket
             }
