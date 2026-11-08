@@ -22,17 +22,18 @@ class BoardWriteTooLarge(val bytes: Int, val limit: Int) :
     IllegalArgumentException("The write is $bytes bytes on the wire, over the board link's limit of $limit bytes, so nothing was written.")
 
 /**
- * What a board delta weighs as the Quilter frames it: a `QuiltMessage.Delta` in CBOR, the
- * Quilter's default format. The sequence number is the largest there is, so the measure never
- * falls short of the frame the Quilter sends.
+ * What a board's frames weigh as the Quilter sends them: a `QuiltMessage.Delta` or
+ * `QuiltMessage.FullState` in CBOR, the Quilter's default format. The sequence number or
+ * high-water is the largest there is, so a measure never falls short of the frame the Quilter
+ * sends. This is the one place bee sizes the wire.
  *
  * A workaround for tractat-us/kuilt#3144: the Quilter drops a `Delta` or `FullState` over its
- * seam's budget at debug level, so bee weighs each write itself, guessing the Quilter's framing.
- * Only a delta is weighed. An online write's delta goes on the wire as it is, so it is covered.
- * An offline write is weighed alone against the last link's budget, but it reaches the wire inside
- * the next connection's `FullState`, which nobody weighs: offline writes that each fit can still
- * add up past the budget, and so can the board a joiner is sent on first contact. bee doesn't
- * chunk a `FullState`; that belongs to the Quilter (kuilt#3144).
+ * seam's budget at debug level, so bee weighs its frames itself, guessing the Quilter's framing.
+ * [BoardClient] weighs each write's delta before it lands, and refuses one that won't fit. Offline
+ * writes that each fit can still add up past the bound in the next connection's `FullState`, and
+ * so can the board a joiner is sent on first contact: [BoundedSeam] refuses that `FullState`, the
+ * client reports it as [BoardClient.tooLarge], and it dials again only once [fullStateBytes] says
+ * the board could fit. bee doesn't chunk a `FullState`; that belongs to the Quilter (kuilt#3144).
  */
 internal object WireBudget {
     private val messages = QuiltMessage.serializer(BoardState.serializer())
@@ -40,9 +41,17 @@ internal object WireBudget {
     fun deltaBytes(sender: ReplicaId, delta: BoardState): Int =
         Cbor.encodeToByteArray(messages, QuiltMessage.Delta(sender, Long.MAX_VALUE, delta)).size
 
-    /** Throws [BoardWriteTooLarge] if [delta] from [sender] won't fit [limit]; a null limit fits anything. */
-    fun check(sender: ReplicaId, delta: BoardState, limit: Int?) {
-        if (limit == null) return
+    /**
+     * What a `FullState` of [board] weighs as a payload from one of [author]'s connections, at the
+     * most: under the longest connection replica id [BoardClient] mints, `<author>#c<n>`.
+     */
+    fun fullStateBytes(author: ReplicaId, board: BoardState): Int {
+        val sender = ReplicaId("${author.value}#c${Int.MAX_VALUE}")
+        return Cbor.encodeToByteArray(messages, QuiltMessage.FullState(sender, board, upThrough = Long.MAX_VALUE)).size
+    }
+
+    /** Throws [BoardWriteTooLarge] if [delta] from [sender] won't fit [limit]. */
+    fun check(sender: ReplicaId, delta: BoardState, limit: Int) {
         val bytes = deltaBytes(sender, delta)
         if (bytes > limit) throw BoardWriteTooLarge(bytes, limit)
     }
