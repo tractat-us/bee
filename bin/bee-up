@@ -9,7 +9,7 @@
 # --local, and keeps the board and its keys in ~/.bee/host unless --data-dir says otherwise, so a
 # restart brings back the board, the join link and every paired device. Opens the board in your
 # browser as <you>, writes ~/.bee/mcp.json for your own Claude sessions, and prints the join link
-# to send a coworker. Run it again to reprint the links.
+# to send a coworker, copied to the clipboard on macOS. Run it again to reprint the links.
 #
 # --new-link restarts the host with a new join link: the old link stops working, and paired
 # devices keep their keys. --forget-devices restarts it forgetting every device, paired or joined
@@ -22,6 +22,7 @@ port=8233
 data_dir=""
 lan=1
 stop=0
+started=0
 reset=""
 while [ $# -gt 0 ]; do
     case $1 in
@@ -98,6 +99,20 @@ else
         sleep 0.5
     done
     grep -q 'bee host on http' "$log" || { echo "The bee host didn't come up in 60 s; see $log" >&2; exit 1; }
+    started=1
+fi
+# On the network, the host logs its join link just after it comes up, once it has looked up this
+# machine's name, which can take seconds on macOS: wait for that line too.
+lan_host=$lan
+if [ -f "$argsfile" ]; then
+    if grep -qx -- --lan "$argsfile"; then lan_host=1; else lan_host=0; fi
+fi
+if [ "$lan_host" = 1 ]; then
+    for _ in $(seq 1 30); do
+        grep -q 'Join link, no code' "$log" && break
+        running || break
+        sleep 0.5
+    done
 fi
 port=$(sed -n 's/.*bee host on http:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$log" | tail -1)
 
@@ -106,6 +121,10 @@ bee_write_mcp_config "$bee_home/mcp.json" "ws://127.0.0.1:$port" "$name-claude"
 
 echo
 echo "bee board is up on port $port."
+# A restart brings the board back: show the host's own receipt for what it restored.
+if [ "$started" = 1 ]; then
+    grep 'board .* restored as ' "$log" | grep -v ': 0 surfaces, 0 records' | sed 's/^.* - /  /' || true
+fi
 echo
 echo "  You, in a browser:   $me"
 join=$(sed -n 's/.*Join link, no code: \(http[^ ]*\).*/\1/p' "$log" | tail -1)
@@ -118,6 +137,13 @@ if [ -n "$join" ]; then
     echo "      $join"
     echo "  They open it in a browser (add &name=<them>), and run:  bee-join '<link>' --name <them>"
     echo "  Plain HTTP on your network: don't put on the board what you wouldn't say in the room."
+    first=${ips%%$'\n'*}
+    if [ -n "$first" ] && command -v pbcopy >/dev/null 2>&1 && printf '%s' "http://$first:$port/?k=$key" | pbcopy; then
+        echo "  Copied the first link to your clipboard."
+    fi
+elif [ "$lan_host" = 1 ]; then
+    echo
+    echo "  The host hasn't logged its join link yet; run bee-up again in a moment to print it."
 fi
 echo
 echo "  Your Claude session:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
