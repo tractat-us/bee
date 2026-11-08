@@ -67,10 +67,12 @@ class HostStoresTest {
         BoardId.recordIn(board, old)
         claims.write(DurableStoreRaftStorage.META_KEY, byteArrayOf(1))
         val settled = HostStores.settle(board, claims).boardId
+        val claimsKeep = BoardId.keptIn(claims)
+        val boardKeeps = BoardId.keptIn(board)
         assertAll(
             { assertEquals(old, settled) },
-            { assertEquals(old, BoardId.keptIn(claims), "claims now records it") },
-            { assertEquals(old, BoardId.keptIn(board)) },
+            { assertEquals(old, claimsKeep, "claims now records it") },
+            { assertEquals(old, boardKeeps) },
         )
     }
 

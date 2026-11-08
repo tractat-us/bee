@@ -18,6 +18,7 @@ import us.tractat.bee.core.persist.QuiltedPersistence
 import us.tractat.kuilt.core.fabric.ConnectionSource
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.quilter.QuilterConfig
+import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.session.RoomHost
 import us.tractat.kuilt.store.DurableStore
@@ -95,11 +96,22 @@ class HostStores private constructor(val board: DurableStore, val claims: Durabl
         /**
          * [board] and [claims], under the board id both record. If either records none, or they
          * disagree, a new board: its id is recorded in both, claims first. A crash between the two
-         * writes leaves them disagreeing, so the next boot mints again.
+         * writes leaves them disagreeing, so the next boot mints again. The exception is data from
+         * before bee#46: `board/` records an id and `claims/` holds a Raft log (`raft/meta`) with
+         * none. That snapshot was mirrored from that log, so the log adopts the id.
          */
         suspend fun settle(board: DurableStore, claims: DurableStore): HostStores {
             val kept = BoardId.keptIn(board)
             val logged = BoardId.keptIn(claims)
+            if (kept != null && logged == null && claims.read(DurableStoreRaftStorage.META_KEY) != null) {
+                // A claims log with no id predates bee#46. The snapshot's mirror came from this log, so they belong together.
+                log.info { "Adopting board $kept into claims/ (data from before bee#46)." }
+                BoardId.recordIn(claims, kept)
+                return HostStores(board, claims, kept)
+            }
+            if (kept == null && logged != null) {
+                log.warn { "board/ keeps no board id, so it was moved aside or wiped; claims/ keeps $logged. This is a new board, and claims/ is re-mirrored." }
+            }
             val id = kept?.takeIf { it == logged } ?: BoardId.mint().also { minted ->
                 if (kept != null) {
                     log.warn { "The claims log isn't board $kept's (it names ${logged ?: "none"}), so this is a new board, $minted. Board $kept's snapshot stays in board/." }
