@@ -379,7 +379,7 @@ design call:
 **The host handles admit records without a claim (Iain, 2026-11-08, bee#72).** It is their only
 handler, and the voter never claims, so exactly-once holds by construction: the host handles each
 record once per boot, and a pairing never outlives the boot that opened it. The bridge refuses
-`bee_wait_action` and `bee_list_actions` on a surface the host opened (`host:`, §5.2), so no
+`bee_wait_action` and `bee_list_actions` on a pairing surface the host opened (`bee-pair-`, `host:`, §5.2), so no
 session takes an admit record and the code a person typed into it. That refusal is a visibility
 rule for well-behaved agents, not an access gate: it keys on a declared kind, and the host doesn't
 rely on it.
@@ -497,8 +497,9 @@ browser hadn't yet received. A handler whose replica lacks a dot the basis names
 as incomplete: unknown, never applicable.
 
 A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
-The exception is a surface the host opened. The host handles its records itself, without a claim,
-as their only handler, and the bridge refuses a wait or a list on it (§5.7, bee#72).
+The exception is a pairing surface the host opened. The host handles its records itself, without a
+claim, as their only handler, and the bridge refuses a wait or a list on it (§5.7, bee#72). Orphan
+decisions are host-opened too and stay open to every participant (§6.4).
 
 ### 6.3 Claims: exactly one
 
