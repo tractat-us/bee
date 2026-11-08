@@ -379,8 +379,8 @@ needs no key. "Admitted by <name>" names the declared actor.
 - No new gate may rest on peer kind until actors are attested. Review holds that until the type
   below exists.
 - **Open (bee#64), before a second person or a keyed agent attaches:** a keyed connection's actor
-  must match the identity its key was minted for. That's generic, so it's a kuilt issue: the
-  relay attests each record's author by its connection. `Pairing.attempt` then takes the attested
+  must match the identity its key was minted for. That's generic, so it's tractat-us/kuilt#3149:
+  the relay attests each record's author by its connection. `Pairing.attempt` then takes the attested
   type, so a declared identity no longer compiles there. Loopback stays trusted, because the host
   can't tell a person's browser from a process on its own machine.
 
