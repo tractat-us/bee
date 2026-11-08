@@ -539,9 +539,10 @@ table over the committed log:
   sees in the board's claims mirror. The surface is a `Poll` with this data:
   - `question`: an append-only array of revisions, naming the departed holder.
   - `options`: an append-only array of `{id, label}`. It holds "Reassign to <peer>"
-    (`reassign:<identity>`) for each peer present but the holder, then `release`, then `wait`. A
+    (`reassign:<identity>`) for each agent present but the holder, then `release`, then `wait`. A
     peer who arrives later is appended. One who leaves keeps its option, and the table rejects a
-    `Reassign` to a retired agent.
+    `Reassign` to a retired agent. Reassign targets are agents, because a person has no release
+    path in v1; the table still commits any `Reassign` it's given.
   - `target`, `holder` and `token`: the orphaning the surface is open for now.
   - `rounds/<token>/answers`: each answerer's option id, keyed by peer identity. The `Poll` binds
     the current orphaning's answers, so an answer to an earlier orphaning doesn't show. Its
