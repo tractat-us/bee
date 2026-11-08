@@ -197,21 +197,24 @@ test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
 // A choice is recorded as the viewer's, so a sketch can't make one by itself: only right after a
 // real click, and one per click however many messages that click sends.
 test('a sketch that posts at load creates no record', async ({ browser }) => {
-  // The sketch posts a forged choice every 100 ms for its first 1.5 s, and ten more right after
-  // the helper sends the real click's.
+  test.setTimeout(60_000);
+  // Every Playwright read of the page (a locator, a count) activates it for 5 s, as a gesture
+  // would; a real page isn't. So the sketch posts its forgeries, every 100 ms, only from 8 s to
+  // 10.5 s after it loads, and the test leaves the page alone meanwhile. It posts ten more right
+  // after the helper sends a real click's choice.
   pushScreen('auto.html', '<h2>Auto poster</h2>' +
     '<div class="options"><div class="option" id="real" data-choice="real">Real</div></div><script>' +
     'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 900, method: "ui/message", params: ' +
     '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
-    'let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 15) clearInterval(t); }, 100);' +
+    'setTimeout(() => { let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 25) clearInterval(t); }, 100); }, 8000);' +
     'document.getElementById("real").addEventListener("click", () => setTimeout(() => { for (let i = 0; i < 10; i++) forge("burst"); }, 0));' +
     '</' + 'script>');
   const kit = await openBoard(browser, 'kit', 'Auto poster');
   const before = await companionRecords(kit.page).count();
   await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
-  await kit.page.waitForTimeout(2_000);
-  expect(await companionRecords(kit.page).count()).toBe(before);
+  await kit.page.waitForTimeout(12_000);
   expect(eventLines()).toEqual([]);
+  expect(await companionRecords(kit.page).count()).toBe(before);
 
   // Control: a real click goes through, once, though it sends eleven messages.
   await kit.frame.locator('[data-choice="real"]').click();
