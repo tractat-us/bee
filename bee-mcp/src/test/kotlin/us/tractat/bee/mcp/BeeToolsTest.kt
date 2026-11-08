@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -25,16 +26,20 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.put
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimTarget
+import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
+import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.host.BoardStar
 import us.tractat.bee.host.ClaimsRig
 import us.tractat.bee.host.ClaimsVoter
@@ -43,6 +48,7 @@ import us.tractat.bee.host.boardMirror
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.InMemoryTag
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import kotlin.random.Random
@@ -234,6 +240,19 @@ internal class JoinRig(private val test: TestScope) {
     /** Stops the voter before the test's scope ends: cancelled with it, its relay throws (spike 4 notes). */
     suspend fun close() = voter.close()
 
+    /** How many releases of [target] under [token] the voter's log holds, committed or rejected. */
+    suspend fun releasesOf(target: ClaimTarget, token: ClaimToken): Int =
+        DurableStoreRaftStorage.open(claims.store).entries(1).count { entry ->
+            val command = try {
+                ClaimCommand.decode(entry.command)
+            } catch (_: SerializationException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            command is ClaimCommand.Release && command.target == target && command.token == token
+        }
+
     /** The browser [clickOn] clicked from. */
     lateinit var browserClient: BoardClient
 
@@ -295,8 +314,8 @@ internal class JoinRig(private val test: TestScope) {
             retryDelay = retryDelay,
         )
         val identity = BridgeIdentity(name, Random(n)) { old, reason -> connection.depart(old, reason) }
-        val presence = Presence(client, author, claims.clock, scope) { throw it }
-        val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock).also { it.announce() }
+        val presence = Presence(client, author, connection.link.filterNotNull().map { it.node }, claims.clock, scope) { throw it }
+        val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock, scope).also { it.announce() }
         connection.link.filterNotNull().first()
         return Session(bridge, client, connection, identity, failures, connect(bridge))
     }
@@ -336,6 +355,17 @@ internal class Session(
 
     /** The live link's Raft node. */
     suspend fun node(): NodeId = link().node
+
+    /** The claims node this session's own posted presence names now. */
+    fun postedClaimsNode(): NodeId? = ownEntry(client.state.value)?.claimsNode
+
+    /** Suspends until this session's own posted presence names [node]. */
+    suspend fun awaitPostedClaimsNode(node: NodeId) {
+        client.state.first { ownEntry(it)?.claimsNode == node }
+    }
+
+    private fun ownEntry(state: BoardState): PresenceEntry? =
+        state.presence.entries.values.mapNotNull { it.value }.singleOrNull { it.identity == bridge.self }
 
     suspend fun call(name: String, arguments: Map<String, Any?>): CallToolResult =
         mcp.callTool(name, arguments, options = RequestOptions(timeout = 5.minutes))

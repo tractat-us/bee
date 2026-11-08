@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -135,7 +136,12 @@ class InMemoryClaimsHost(private val dispatcher: CoroutineContext, private val c
 class DroppableConnection(private val delegate: Connection) : Connection by delegate {
     @Volatile var dropping: Boolean = false
 
+    private val lost = MutableStateFlow(0)
+
+    /** How many sends were lost, so a test can assert its drop caught something. */
+    val dropped: Int get() = lost.value
+
     override suspend fun send(frame: ByteArray) {
-        if (!dropping) delegate.send(frame)
+        if (dropping) lost.update { it + 1 } else delegate.send(frame)
     }
 }

@@ -1,13 +1,17 @@
 package us.tractat.bee.mcp
 
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
@@ -51,7 +55,16 @@ import kotlin.time.Instant
  * ([reserve], [handedOver]): a claim of its own that nobody received is given back ([giveBack])
  * and claimed again under a fresh token, never handed over under the old one.
  *
+ * **Every claim it holds that nobody received is given back, whether or not a wait reaches it.**
+ * It sweeps the live link's table as the link catches up (tractat-us/bee#31): a claim held as this
+ * bridge, under a token no wait has in hand and no caller received, with no claim of its target in
+ * flight here, is marked as being given back and released, queued until it commits. A claim in
+ * flight is skipped, because between its verdict and its keep ([reserve], or [handedOver] for
+ * `bee_claim`) its win is in nobody's hands yet; once it leaves flight the sweep looks again. A
+ * wait's [giveBack] follows the same rule, so no win is given back from under the claim that won it.
+ *
  * @param author the [client]'s CRDT author (`mcp-<uuid>`), which every write names.
+ * @param scope runs the sweep, for the bridge's lifetime.
  */
 @Suppress("TooManyFunctions")
 class BeeBridge(
@@ -61,15 +74,53 @@ class BeeBridge(
     private val identity: BridgeIdentity,
     private val presence: Presence,
     private val clock: () -> Instant,
+    private val scope: CoroutineScope,
 ) {
     private val retiring = Mutex()
 
     /**
-     * Claims this bridge won, by target and token: in a wait's hands, handed to a caller, or
+     * A claim this bridge won, by target and token: in a wait's hands, handed to a caller, or
      * being given back. A claim being given back never returns to a wait's hands.
      */
     private enum class Reservation { InHand, HandedOver, GivingBack }
-    private val reservations = MutableStateFlow<Map<Pair<ClaimTarget, ClaimToken>, Reservation>>(emptyMap())
+
+    /**
+     * What this bridge's claims are to it, in one value so one update reads it all: the
+     * [reservations] of the claims it won, and how many claims of each target are in flight
+     * ([claiming]), from proposal until the win, if any, is reserved or handed over.
+     */
+    private data class Ledger(
+        val reservations: Map<Pair<ClaimTarget, ClaimToken>, Reservation> = emptyMap(),
+        val claiming: Map<ClaimTarget, Int> = emptyMap(),
+    ) {
+        fun with(key: Pair<ClaimTarget, ClaimToken>, reservation: Reservation) = copy(reservations = reservations + (key to reservation))
+
+        fun entering(target: ClaimTarget) = copy(claiming = claiming + (target to (claiming[target] ?: 0) + 1))
+
+        fun leaving(target: ClaimTarget): Ledger {
+            val left = claiming.getValue(target) - 1
+            return copy(claiming = if (left == 0) claiming - target else claiming + (target to left))
+        }
+
+        /** Nobody could still take [key]: it isn't reserved, and no claim of its target is in flight. */
+        fun unclaimed(key: Pair<ClaimTarget, ClaimToken>) = key !in reservations && key.first !in claiming
+
+        /**
+         * What [key] is to this bridge's other claims. It's in reach while a wait has it in hand,
+         * or while it's unreserved and a claim of its target is in flight, whose win isn't in
+         * anyone's hands yet. A key already being given back is givable whatever is in flight.
+         */
+        fun standing(key: Pair<ClaimTarget, ClaimToken>): Standing = when (reservations[key]) {
+            Reservation.HandedOver -> Standing.HandedOver
+            Reservation.InHand -> Standing.InReach
+            Reservation.GivingBack -> Standing.Givable
+            null -> if (key.first in claiming) Standing.InReach else Standing.Givable
+        }
+    }
+
+    private enum class Standing { HandedOver, InReach, Givable }
+
+    private val ledger = MutableStateFlow(Ledger())
 
     @Volatile private var statusLine: String? = null
 
@@ -141,12 +192,31 @@ class BeeBridge(
         return open
     }
 
-    /** Claims [target] as this bridge. A retired identity re-identifies and is refused. */
-    suspend fun claim(target: ClaimTarget): ClaimOutcome {
-        val outcome = live().client.claim(target, beforeWrite())
-        // Retired as the claim committed: re-identify now, which refuses this call.
-        if (outcome == ClaimOutcome.Retired) beforeWrite()
+    /** Claims [target] for the caller to keep, as `bee_claim` does: a win is recorded as handed over. */
+    suspend fun claim(target: ClaimTarget): ClaimOutcome = claim(target) { keptForCaller(target, it) }
+
+    /** `bee_claim`'s keep: records a win of [target] as handed over to the caller, and answers [outcome]. */
+    internal fun keptForCaller(target: ClaimTarget, outcome: ClaimOutcome): ClaimOutcome {
+        if (outcome is ClaimOutcome.Won) handedOver(target, outcome.token)
         return outcome
+    }
+
+    /**
+     * Claims [target] as this bridge, and settles the outcome with [keep] while the claim is still
+     * in flight, so the sweep can't give a win back first. [keep] takes a win into a wait's hands
+     * ([reserve]) or records it handed over ([handedOver]); a win it leaves is one nobody
+     * received, and the sweep gives it back. A retired identity re-identifies and is refused.
+     */
+    internal suspend fun <T> claim(target: ClaimTarget, keep: suspend (ClaimOutcome) -> T): T {
+        ledger.update { it.entering(target) }
+        try {
+            val outcome = live().client.claim(target, beforeWrite())
+            // Retired as the claim committed: re-identify now, which refuses this call.
+            if (outcome == ClaimOutcome.Retired) beforeWrite()
+            return keep(outcome)
+        } finally {
+            ledger.update { it.leaving(target) }
+        }
     }
 
     /** Releases [target]; [token] may be null only for an orphaned target. */
@@ -157,45 +227,83 @@ class BeeBridge(
 
     /** Releases [target] under [token] without the retirement check: the hand-back of a claim nobody received. */
     internal suspend fun releaseUnreceived(target: ClaimTarget, holder: PeerIdentity, token: ClaimToken) {
-        reservations.update { it + ((target to token) to Reservation.GivingBack) }
+        ledger.update { it.with(target to token, Reservation.GivingBack) }
         claims.releaseUnreceived(ClaimsConnection.Unreceived(target, holder, token))
     }
 
-    /** Takes [token] on [target] into a wait's hands; false if another wait has it, or it was handed over. */
-    internal fun reserve(target: ClaimTarget, token: ClaimToken): Boolean {
+    /**
+     * Takes [token] on [target], just won by the wait's own claim, into that wait's hands. Call it
+     * from the claim's keep, while the claim is still in flight. It can't find the token taken:
+     * a token is won by exactly one claim, and while a claim of its target is in flight nothing
+     * marks it, since the sweep skips it and [giveBack] answers [OwnClaim.InReach]. If it ever
+     * does, it throws rather than let the wait pass a record it won.
+     */
+    internal fun reserve(target: ClaimTarget, token: ClaimToken) {
         val key = target to token
-        return reservations.getAndUpdate { if (key in it) it else it + (key to Reservation.InHand) }[key] == null
+        ledger.update {
+            check(key !in it.reservations) {
+                "$token on $target was just won by a wait's claim, yet is already ${it.reservations[key]}: " +
+                    "nothing may mark a token while a claim of its target is in flight."
+            }
+            it.with(key, Reservation.InHand)
+        }
     }
 
     /** Records that [token] on [target] reached a caller. */
     internal fun handedOver(target: ClaimTarget, token: ClaimToken) {
-        reservations.update { it + ((target to token) to Reservation.HandedOver) }
+        ledger.update { it.with(target to token, Reservation.HandedOver) }
     }
 
-    /** Suspends until [token] on [target] leaves a wait's hands: handed over, or given back. */
-    internal suspend fun awaitOutOfHand(target: ClaimTarget, token: ClaimToken) {
-        reservations.first { it[target to token] != Reservation.InHand }
+    /** Suspends until [token] on [target] is out of reach of this bridge's other claims: see [Ledger.standing]. */
+    internal suspend fun awaitOutOfReach(target: ClaimTarget, token: ClaimToken) {
+        ledger.first { it.standing(target to token) != Standing.InReach }
     }
 
     /**
      * Gives back this bridge's own claim of [target], held as [holder] under [token], unless a
-     * caller received it or another wait has it in hand. One update reads its reservation and
-     * marks it as being given back, so no wait takes it into its hands after; then it's released.
-     * The caller claims the record again under a fresh token, and any release of [token] still on
-     * its way to the voter is rejected.
+     * caller received it or another claim of this bridge has it in reach: a wait has it in hand,
+     * or a claim of [target] is in flight, whose win isn't in anyone's hands yet. That is the rule
+     * the sweep follows. One update reads its standing and marks it as being given back; then
+     * it's released. The caller claims the record again under a fresh token, and any release of
+     * [token] still on its way to the voter is rejected.
      */
     internal suspend fun giveBack(target: ClaimTarget, holder: PeerIdentity, token: ClaimToken): OwnClaim {
         val key = target to token
-        val found = reservations.getAndUpdate { if (it[key].givable()) it + (key to Reservation.GivingBack) else it }[key]
+        val found = ledger.getAndUpdate { if (it.standing(key) == Standing.Givable) it.with(key, Reservation.GivingBack) else it }.standing(key)
         return when (found) {
-            Reservation.InHand -> OwnClaim.InHand
-            Reservation.HandedOver -> OwnClaim.HandedOver
-            null, Reservation.GivingBack ->
+            Standing.HandedOver -> OwnClaim.HandedOver
+            Standing.InReach -> OwnClaim.InReach
+            Standing.Givable ->
                 if (claims.releaseUnreceived(ClaimsConnection.Unreceived(target, holder, token))) OwnClaim.GivenBack else OwnClaim.Queued
         }
     }
 
-    private fun Reservation?.givable() = this == null || this == Reservation.GivingBack
+    init {
+        scope.launch(CoroutineName("claims-sweep")) { sweep() }
+    }
+
+    /**
+     * Gives back each claim held as this bridge that nobody could still take, as each table the
+     * live link folds shows it, and again whenever the [ledger] changes. One update finds a key
+     * unclaimed and marks it as being given back, so it's queued once, and a wait's [giveBack] of
+     * it finds it givable. The release is queued on [claims], never tried here, so a failed try
+     * can't leave a key marked and unqueued: the live link proposes it until it commits.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun sweep() {
+        claims.link.filterNotNull().flatMapLatest { it.client.table }.combine(ledger) { table, _ -> table }.collect { table ->
+            val who = self
+            table.targets.forEach { (target, status) ->
+                if (status is ClaimStatus.Held && status.holder == who && markUnclaimed(target to status.token)) {
+                    claims.queue(ClaimsConnection.Unreceived(target, who, status.token))
+                }
+            }
+        }
+    }
+
+    /** Marks [key] as being given back if nobody could still take it; true if it did. */
+    private fun markUnclaimed(key: Pair<ClaimTarget, ClaimToken>): Boolean =
+        ledger.getAndUpdate { if (it.unclaimed(key)) it.with(key, Reservation.GivingBack) else it }.unclaimed(key)
 
     private fun live(): ClaimsLink = claims.link.value ?: throw ClaimsOfflineRefusal()
 
@@ -274,8 +382,8 @@ internal enum class OwnClaim {
     /** A caller received it: the record is passed over. */
     HandedOver,
 
-    /** Another wait has it in hand: wait that out. */
-    InHand,
+    /** Another claim of this bridge has won it or may still win it: wait that out. */
+    InReach,
 
     /** Released, or no longer held under its token: claim the record again. */
     GivenBack,

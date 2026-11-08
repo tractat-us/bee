@@ -26,9 +26,11 @@ import kotlin.time.Duration.Companion.milliseconds
 /**
  * The board-backed [ActionSource] (spec §5.2, §6.3). Invariant: **a wait returns a record only
  * under a token its own claim won, and a claim this bridge holds but didn't hand over is given
- * back by the next wait of this bridge that reaches it.** Until one does, a late win or a claim
- * appended just before its link died stays held for no caller; a sweep when a link proves is
- * tractat-us/bee#31.
+ * back, whether or not a wait reaches it.** The bridge sweeps the live link's table as it catches
+ * up (tractat-us/bee#31), so a late win or a claim appended just before its link died is given back
+ * on the next link. A wait that reaches such a claim first gives it back itself. A win, a wait's or
+ * `bee_claim`'s, is kept while its claim is still in flight, so neither the sweep nor another wait
+ * gives it back first.
  *
  * Records are addressed to a surface, and any session may wait on any surface, so every candidate
  * (`record:<author>:<seq>`) is claimed through Raft before it's returned. A record another session
@@ -40,7 +42,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * is held under a token no caller has. The wait marks that token as being given back, releases it,
  * and claims the record again under a fresh token. So a release of the old token still on its way
  * to the voter is rejected, and can never free a record the wait returned. A target that reads free
- * retries. A token another wait of this bridge holds is waited out.
+ * retries. A token another claim of this bridge has won or may still win is waited out.
  *
  * A win is never lost at the wait's edge. If the bound lands just as the claim wins, the record
  * is handed over; if the wait ends any other way after the win (a cancel, an exception), the
@@ -55,6 +57,8 @@ class BoardActionSource internal constructor(
     private val bridge: BeeBridge,
     /** Test seam: runs once a claim is told it won, before its token is taken into this wait's hands. */
     private val beforeReserve: suspend () -> Unit = {},
+    /** Test seam: runs with what each of this wait's [BeeBridge.giveBack] calls found, once it returns. */
+    private val afterGiveBack: (OwnClaim) -> Unit = {},
     /** Test seam: runs once [claimNext] returns a win, within the wait's bound. */
     private val afterWin: suspend () -> Unit,
 ) : ActionSource {
@@ -97,18 +101,22 @@ class BoardActionSource internal constructor(
             val (id, record) = nextCandidate(surfaceId, passed)
             val target = target(id)
             val by = bridge.self
+            // A win is taken into this wait's hands while its claim is still in flight, so nothing gives it back first.
             val outcome = try {
-                bridge.claim(target)
+                bridge.claim(target) { o ->
+                    if (o is ClaimOutcome.Won) {
+                        beforeReserve()
+                        bridge.reserve(target, o.token)
+                    }
+                    o
+                }
             } catch (_: ClaimsOfflineRefusal) {
                 // The claims link is being rebuilt: the wait holds until it's back, within its bound.
                 bridge.awaitClaims()
                 continue
             }
             when (outcome) {
-                is ClaimOutcome.Won -> {
-                    beforeReserve()
-                    if (bridge.reserve(target, outcome.token)) return Won(id, record, by, outcome.token) else passed += id.dot
-                }
+                is ClaimOutcome.Won -> return Won(id, record, by, outcome.token)
                 is ClaimOutcome.Lost -> when (ownClaim(target, outcome, by)) {
                     Own.Pass -> passed += id.dot
                     Own.Retry -> Unit
@@ -134,9 +142,9 @@ class BoardActionSource internal constructor(
                 if (status.holder != by) {
                     Own.Pass
                 } else {
-                    when (bridge.giveBack(target, by, status.token)) {
+                    when (bridge.giveBack(target, by, status.token).also(afterGiveBack)) {
                         OwnClaim.HandedOver -> Own.Pass
-                        OwnClaim.InHand -> Own.Retry.also { bridge.awaitOutOfHand(target, status.token) }
+                        OwnClaim.InReach -> Own.Retry.also { bridge.awaitOutOfReach(target, status.token) }
                         // Claim it again, under a fresh token.
                         OwnClaim.GivenBack -> Own.Retry
                         OwnClaim.Queued -> Own.Retry.also { delay(RETRY) }

@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
 import kotlinx.io.asSource
@@ -84,8 +86,8 @@ fun main() {
         val committed = claims.depart(old, reason)
         logger.info { "Retired $old ($reason); its Depart ${if (committed) "committed" else "is pending until claims are back"}." }
     }
-    val presence = Presence(board, author, clock, bridgeScope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
-    val bridge = BeeBridge(board, author, claims, identity, presence, clock)
+    val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, bridgeScope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
+    val bridge = BeeBridge(board, author, claims, identity, presence, clock, bridgeScope)
     board.connect()
     runBlocking { bridge.announce() }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }

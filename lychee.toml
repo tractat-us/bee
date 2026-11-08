@@ -1,0 +1,3 @@
+# Read by lychee from the working directory, so ci.yml's links job and a local
+# run both skip the docs site's venv and build output: generated, not ours.
+exclude_path = ["docs-site/\\.venv/", "docs-site/site/"]
