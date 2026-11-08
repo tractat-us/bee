@@ -109,7 +109,10 @@ class JoinRequestSurface(
         }
     }
 
-    /** Shows [status] on [id]'s request and clears its code field for the next entry. */
+    /**
+     * Shows [status] on [id]'s request. The board's code stays empty: what a person types in the
+     * obscured field stays on their page until Admit sends it in a record.
+     */
     private fun show(id: PairingId, status: String) {
         relay.mutate { it.updateData(relay.replica, surfaceId(id), "", data(code = "", status = status)) }
     }
@@ -127,6 +130,7 @@ class JoinRequestSurface(
 
         const val ADMIT_ACTION: String = "admit"
         const val ADMIT_BUTTON: String = "admit-button"
+        const val CODE_FIELD: String = "code-field"
 
         private const val PREFIX = "bee-pair-"
         private const val TITLE = "A device wants to join"
@@ -151,7 +155,7 @@ class JoinRequestSurface(
 
         private fun components(device: Device): List<JsonObject> = listOf(
             component("root", "Column") {
-                put("children", JsonArray(listOf("heading", "from", "code-field", ADMIT_BUTTON, "status").map(::JsonPrimitive)))
+                put("children", JsonArray(listOf("heading", "from", CODE_FIELD, ADMIT_BUTTON, "status").map(::JsonPrimitive)))
             },
             component("heading", "Text") {
                 put("variant", "h4")
@@ -161,8 +165,11 @@ class JoinRequestSurface(
                 val screen = device.screen?.let { ", as the screen \"$it\"" }.orEmpty()
                 put("text", "From ${device.address}$screen.")
             },
-            component("code-field", "TextField") {
+            // Obscured, so the page keeps what is typed to itself: an obscured field never syncs
+            // live (bee-web's LiveInputs), and the code leaves the page only in the admit record.
+            component(CODE_FIELD, "TextField") {
                 put("label", "Code")
+                put("variant", "obscured")
                 putJsonObject("value") { put("path", "/$CODE_KEY") }
             },
             component("admit-label", "Text") { put("text", "Admit") },
