@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.w3c.dom.Element
+import org.w3c.dom.HTMLElement
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.LivePresence
@@ -26,6 +27,9 @@ import kotlin.time.Duration.Companion.seconds
  * - **Cards hold the renderer's surfaces.** The renderer mounts each `<a2ui-surface>` through [place],
  *   inside its card under [root], so a surface and its header are one element on the page.
  *   A card is made by whichever comes first, the renderer or the board's view.
+ * - **Cards never move.** [root] is a flex column, and each card's CSS `order` is its place in
+ *   the board's order. Moving a node would re-attach its surface: a focused field loses focus,
+ *   and a Sketch iframe reloads and drops its pending proposals.
  * - **A placeholder joins its card.** [BoardDriver] puts an invalid surface's placeholder in
  *   [root]; the chrome moves it into that surface's card as soon as it appears.
  * - **Live presence ages without a board change**, so the view is redrawn every [TICK] as well.
@@ -51,29 +55,18 @@ class BoardChrome(private val root: Element, private val strip: Element) {
 
     /** Shows [board] and its live presence from [roster] as they change, until [scope] ends. */
     fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence): Job = scope.launch {
-        combine(board, ticks(TICK)) { state, _ -> state }.collect { state -> show(BoardView.of(state, roster.live())) }
+        combine(board, ticks(TICK)) { state, _ -> state }.collect { state -> show(BoardView.of(state, roster.peers())) }
     }
 
     fun show(view: BoardView) {
         val open = view.cards.map { it.surfaceId }.toSet()
         (cards.keys - open).forEach { id -> cards.remove(id)?.element?.remove() }
-        view.cards.forEach { card(it.surfaceId).show(it) }
-        keepOrder(view.cards.map { it.surfaceId })
+        view.cards.forEachIndexed { index, it -> card(it.surfaceId).show(it, index) }
         adoptPlaceholders()
         if (view.peers != peers) showPeers(view.peers)
     }
 
     private fun card(id: String): Card = cards.getOrPut(id) { Card(id).also { root.appendChild(it.element) } }
-
-    /** Moves a card only when it is out of the board's order: a move re-attaches its surface. */
-    private fun keepOrder(order: List<String>) {
-        val shown = cardElements().map { it.getAttribute(SURFACE_ID) }
-        if (shown.filter { it in order } == order) return
-        order.forEach { id -> cards[id]?.let { root.appendChild(it.element) } }
-    }
-
-    private fun cardElements(): List<Element> =
-        (0 until root.childElementCount).mapNotNull { root.children.item(it) }.filter { it.classList.contains(CARD_CLASS) }
 
     private fun adoptPlaceholders() {
         (0 until root.childElementCount).mapNotNull { root.children.item(it) }
@@ -87,7 +80,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         shown.forEach { peer ->
             val item = strip.appendChild(element("li", "bee-peer")) as Element
             item.setAttribute(PEER, peer.identity.toString())
-            item.setAttribute("data-state", peer.state.name.lowercase())
+            item.setAttribute("data-state", peer.state.name)
             item.setAttribute("title", "${peer.identity}: ${label(peer)}")
             item.appendChild(name(peer.identity, "bee-peer-name"))
             item.appendChild(element("span", "bee-peer-state").also { it.textContent = label(peer) })
@@ -97,12 +90,14 @@ class BoardChrome(private val root: Element, private val strip: Element) {
 
     /** One card: a header the chrome writes, and a body the renderer writes. */
     private class Card(id: String) {
-        val element: Element = element("article", CARD_CLASS).also { it.setAttribute(SURFACE_ID, id) }
+        val element: HTMLElement = (element("article", CARD_CLASS) as HTMLElement).also { it.setAttribute(SURFACE_ID, id) }
         private val head = element.appendChild(element("header", "bee-card-head")) as Element
         val body: Element = element.appendChild(element("div", "bee-card-body")) as Element
         private var shown: CardView? = null
 
-        fun show(view: CardView) {
+        /** Shows [view] as the board's [index]th card. */
+        fun show(view: CardView, index: Int) {
+            element.style.order = index.toString()
             if (view == shown) return
             shown = view
             while (head.firstChild != null) head.firstChild?.let { head.removeChild(it) }
@@ -110,8 +105,11 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             val meta = head.appendChild(element("p", "bee-card-meta")) as Element
             meta.appendChild(element("span", "bee-card-by").also { it.textContent = "opened by " })
             meta.appendChild(name(view.openedBy, "bee-card-opener"))
-            view.openerStatus?.let { status -> meta.appendChild(element("span", "bee-card-working").also { it.textContent = status }) }
-            view.openerDeparted?.let { reason -> meta.appendChild(element("span", "bee-card-gone").also { it.textContent = departedText(reason) }) }
+            when (val opener = view.opener) {
+                is OpenerState.Attached -> opener.status?.let { status -> meta.appendChild(element("span", "bee-card-working").also { it.textContent = status }) }
+                is OpenerState.Departed -> meta.appendChild(element("span", "bee-card-gone").also { it.textContent = departedText(opener.reason) })
+                OpenerState.Away -> Unit
+            }
             if (view.claims.isEmpty()) return
             val badges = head.appendChild(element("ul", "bee-badges")) as Element
             view.claims.forEach { claim ->
@@ -119,7 +117,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
                 badge.setAttribute("data-claim-status", if (claim.orphaned) "orphaned" else "held")
                 badge.setAttribute("data-claim-target", claim.target)
                 badge.setAttribute("title", "${claim.target}, ${if (claim.orphaned) "orphaned" else "held"} by ${claim.holder}")
-                badge.textContent = if (claim.orphaned) "orphaned: ${shortName(claim.holder)} left" else "claimed by ${shortName(claim.holder)}"
+                badge.textContent = if (claim.orphaned) "orphaned: ${claim.holder.name} left" else "claimed by ${claim.holder.name}"
             }
         }
     }
@@ -140,11 +138,11 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             }
         }
 
-        fun label(peer: PeerView): String = when (peer.state) {
+        fun label(peer: PeerView): String = when (val state = peer.state) {
             PeerState.Waiting -> "waiting"
             PeerState.Acting -> "acting"
             PeerState.Here -> "here"
-            PeerState.Departed -> departedText(requireNotNull(peer.departed) { "${peer.identity} departed for no reason." })
+            is PeerState.Departed -> departedText(state.reason)
         }
 
         fun departedText(reason: DepartReason): String = when (reason) {
@@ -160,13 +158,6 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             if (identity.kind == PeerKind.Agent) {
                 it.appendChild(element("span", "bee-instance").also { tag -> tag.textContent = "#${identity.instance.take(4)}" })
             }
-        }
-
-        /** A claim holder as shown in a badge: its name, or the raw text if it isn't an identity. */
-        fun shortName(holder: String): String = try {
-            PeerIdentity.parse(holder).name
-        } catch (_: IllegalArgumentException) {
-            holder
         }
 
         fun element(tag: String, className: String): Element = document.createElement(tag).also { it.className = className }
