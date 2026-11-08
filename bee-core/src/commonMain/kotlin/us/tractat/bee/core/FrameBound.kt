@@ -1,9 +1,13 @@
 package us.tractat.bee.core
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.serialization.cbor.Cbor
 import us.tractat.kuilt.core.PayloadTooLarge
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Seam
+import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.quilter.QuiltMessage
 
 /**
  * The largest WebSocket frame a board link carries, in bytes, at both ends: the host reads no
@@ -32,6 +36,21 @@ const val FRAME_ENVELOPE_BYTES: Int = 4 * 1024
  */
 const val BOARD_PAYLOAD_BYTES: Int = MAX_FRAME_BYTES.toInt() - FRAME_ENVELOPE_BYTES
 
+private val QUILT_MESSAGES = QuiltMessage.serializer(BoardState.serializer())
+
+/**
+ * What a `FullState` of [board] weighs as a payload from one of [author]'s connections, at the
+ * most: a `QuiltMessage.FullState` in CBOR, the Quilter's default format, under the longest
+ * connection replica id [BoardClient] mints and the largest high-water there is, so the measure
+ * never falls short of the payload the Quilter sends.
+ *
+ * Workaround for tractat-us/kuilt#3144, like [BoundedSeam]: bee guesses the Quilter's framing.
+ */
+internal fun fullStateBytes(author: ReplicaId, board: BoardState): Int {
+    val sender = ReplicaId("${author.value}#c${Int.MAX_VALUE}")
+    return Cbor.encodeToByteArray(QUILT_MESSAGES, QuiltMessage.FullState(sender, board, upThrough = Long.MAX_VALUE)).size
+}
+
 /**
  * [inner], refusing any payload over [limit], or over [inner]'s own budget where that is tighter,
  * before it reaches the wire. [refused] completes with the first refusal, so the client can say
@@ -46,7 +65,11 @@ const val BOARD_PAYLOAD_BYTES: Int = MAX_FRAME_BYTES.toInt() - FRAME_ENVELOPE_BY
  * frame and the link publishes the host's bound.
  */
 internal class BoundedSeam(private val inner: Seam, private val limit: Int) : Seam by inner {
-    val refused: CompletableDeferred<BoardTooLarge> = CompletableDeferred()
+    val refused: CompletableDeferred<BoardSyncTooLarge> = CompletableDeferred()
+
+    /** The first refusal, or null if nothing was refused. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun refusal(): BoardSyncTooLarge? = if (refused.isCompleted) refused.getCompleted() else null
 
     override val maxPayloadBytes: Int get() = inner.maxPayloadBytes?.let { minOf(it, limit) } ?: limit
 
@@ -62,7 +85,7 @@ internal class BoundedSeam(private val inner: Seam, private val limit: Int) : Se
 
     private fun fits(payload: ByteArray, budget: Int = maxPayloadBytes): Boolean {
         if (payload.size <= budget) return true
-        refused.complete(BoardTooLarge(payload.size, budget))
+        refused.complete(BoardSyncTooLarge(payload.size, budget))
         return false
     }
 }

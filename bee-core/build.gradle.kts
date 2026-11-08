@@ -30,8 +30,10 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            // BoardClient logs a board too large to sync (bee#65).
+            // BoardClient logs a board too large to sync, and measures its FullState in CBOR,
+            // as the Quilter frames it (bee#65).
             implementation(libs.kotlin.logging)
+            implementation(libs.kotlinx.serialization.cbor)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
