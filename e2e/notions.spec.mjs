@@ -131,7 +131,7 @@ test('a vote cast before an option was added says so in its basis', async ({ bro
 
   await vote(alex.page, 'poll-basis', 'tea');
   await expect(records(alex.page, 'poll-basis')).toHaveCount(1, { timeout: 5_000 });
-  await expect(records(alex.page, 'poll-basis').last()).toContainText('human:alex answer on poll, having seen /options 2,');
+  await expect(records(alex.page, 'poll-basis').last()).toContainText('human:alex answer on root, having seen /options 2,');
 
   // Another peer adds an option after alex voted. alex's record keeps what alex had seen.
   await seeder('--append-option', 'poll-basis=cocoa');
@@ -155,7 +155,7 @@ test('dropping a card moves it in every browser', async ({ browser }) => {
   for (const peer of peers) {
     await expect(column(peer.page, 'board-drop', 'doing').locator('[data-card="c1"]')).toBeVisible({ timeout: 5_000 });
     await expect(column(peer.page, 'board-drop', 'todo').locator('[data-card="c1"]')).toHaveCount(0);
-    await expect(records(peer.page, 'board-drop').last()).toContainText('human:alex drop on board');
+    await expect(records(peer.page, 'board-drop').last()).toContainText('human:alex drop on root');
   }
 });
 
