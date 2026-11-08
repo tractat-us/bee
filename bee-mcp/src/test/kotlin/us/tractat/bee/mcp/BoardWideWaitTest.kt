@@ -165,7 +165,8 @@ class BoardWideWaitTest {
         val reserved = listOf("${CompanionSurfaces.PREFIX}own", "${OrphanDecision.PREFIX}record:y:1", "${PairingSurfaces.PREFIX}own")
         val all = reserved + "plain"
         all.forEach { ada.call(BeeTools.OPEN, openArgs(it)) }
-        browser.state.first { s -> all.all { it in s.openSurfaces() } }
+        // The host closes a pairing surface it isn't waiting on, so the rig waits on each one's meta, not its being open.
+        browser.state.first { s -> all.all { s.meta(it) != null } }
         all.forEach { surface -> browser.mutate { it.appendRecord(iain, click(it, surface, "go")) } }
         ada.client.state.first { it.records().size == 4 }
 
@@ -197,7 +198,8 @@ class BoardWideWaitTest {
         val ghost = "${PairingSurfaces.PREFIX}ghost"
         ada.call(BeeTools.OPEN, openArgs("s"))
         bo.call(BeeTools.OPEN, openArgs(agents))
-        browser.state.first { request in it.openSurfaces() && "s" in it.openSurfaces() && agents in it.openSurfaces() }
+        // The host closes a pairing surface it isn't waiting on, so the rig waits on bo's one's meta, not its being open.
+        browser.state.first { request in it.openSurfaces() && "s" in it.openSurfaces() && it.meta(agents) != null }
         browser.mutate { it.appendRecord(iain, admit(it, request)) }
         browser.mutate { it.appendRecord(iain, click(it, agents, "go")) }
         // A record on a surface whose meta no replica ever received: the open is pieced into a scratch state only.
