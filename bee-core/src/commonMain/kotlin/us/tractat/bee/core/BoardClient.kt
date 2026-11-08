@@ -38,7 +38,6 @@ import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.quilter.QuiltMessage
 import us.tractat.kuilt.quilter.Quilter
 import us.tractat.kuilt.quilter.QuilterConfig
-import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -73,9 +72,10 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * (bee#65).
  *
  * **A board too large to sync stops, and says so** (bee#65). No payload over [maxPayloadBytes]
- * reaches the wire ([BoundedSeam]): the first one refused ends its connection, lands in [tooLarge]
- * and [lastFailure], and is logged. The client then dials again only once the held board's
- * `FullState`, measured locally, could fit, since a board that fits no better would be refused the
+ * reaches the wire ([BoundedSeam]). A write's delta that big is refused before it lands (below),
+ * so what the seam refuses is a `FullState`: the first one refused ends its connection, lands in
+ * [tooLarge] and [lastFailure], and is logged. The client then dials again only once the held
+ * board's `FullState`, measured locally ([WireBudget]), could fit, since a board that fits no better would be refused the
  * same way. A presence post doesn't count as a change. The next connection to settle clears
  * [tooLarge].
  *
@@ -93,9 +93,10 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  *
  * **A write too big for the link is refused, never dropped** (Review Focus 5). A seam drops a
  * broadcast over its `maxPayloadBytes` without a word, so each delta is weighed as the Quilter
- * will frame it, against the live seam's budget, or offline against the last link's, and a delta
- * over it throws [BoardWriteTooLarge] with the board unchanged. A seam that publishes no budget
- * (kuilt's WebSocket link today) refuses nothing.
+ * will frame it ([WireBudget]), online against the live seam's budget ([maxPayloadBytes], or the
+ * link's own where that is tighter), offline against [maxPayloadBytes], and a delta over it throws
+ * [BoardWriteTooLarge] with the board unchanged and the link up. One write is the caller's to
+ * fix; a board too large to sync as a whole is [tooLarge].
  *
  * **Failures are state.** A failed dial, a dial that outlasts [dialTimeout], a failed pump or a
  * failed seam close lands in
@@ -113,8 +114,9 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  *   accepted and never upgraded, or one closed mid-handshake) is cancelled at this bound, recorded
  *   as a [DialTimeoutException], and redialled on the backoff, so it can't leave the client
  *   offline for good.
- * @param maxPayloadBytes the largest Quilter payload a connection may send: [BOARD_PAYLOAD_BYTES],
- *   so no frame is over the host's [MAX_FRAME_BYTES]. Tests pass a small one.
+ * @property maxPayloadBytes the largest Quilter payload a connection may send: [BOARD_PAYLOAD_BYTES],
+ *   so no frame is over the host's [MAX_FRAME_BYTES]. A write whose delta is bigger is refused, and
+ *   a `FullState` bigger is [tooLarge]. Tests pass a small one.
  * @param settleAfter how long a connection must stay live before its tear resets the backoff.
  */
 @Suppress("LongParameterList")
@@ -128,7 +130,7 @@ class BoardClient(
     private val config: QuilterConfig = BEE_QUILTER_CONFIG,
     random: Random = Random.Default,
     private val dialTimeout: Duration = 5.seconds,
-    private val maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
+    val maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
     private val settleAfter: Duration = 5.seconds,
 ) {
     init {
@@ -172,9 +174,6 @@ class BoardClient(
     private var connections = 0
     private var attempt = 0
 
-    /** The last live seam's payload budget, which an offline write is weighed against. Written under [mutex]. */
-    @Volatile private var budget: Int? = null
-
     /** The board as this peer holds it, online or not. */
     val state: StateFlow<BoardState> = held.asStateFlow()
 
@@ -183,13 +182,6 @@ class BoardClient(
 
     /** The live connection's fabric peer id, or null offline. Tests read it. */
     val link: StateFlow<String?> = _link.asStateFlow()
-
-    /**
-     * The board link's payload budget in bytes, as the last link to go live published it. Null when
-     * no link has published one, and then no write is refused for its size. An online write is
-     * weighed against the live seam's own reading, which may have moved since.
-     */
-    val maxPayloadBytes: Int? get() = budget
 
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
@@ -252,7 +244,7 @@ class BoardClient(
         // goes onto the held board, and the next connection's FullState carries it.
         connection?.let { partLocked(it) }
         val patch = f(held.value) ?: return@withLock false
-        WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, budget)
+        WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, maxPayloadBytes)
         held.value = held.value.piece(patch.delta)
         true
     }
@@ -339,7 +331,7 @@ class BoardClient(
      */
     private suspend fun awaitRoom(parted: BoardState, limit: Int) {
         var board = parted
-        while (fullStateBytes(author, board) > limit) {
+        while (WireBudget.fullStateBytes(author, board) > limit) {
             val measured = board.withoutPresence()
             board = held.first { it.withoutPresence() != measured }
         }
@@ -424,7 +416,6 @@ class BoardClient(
         live = connection
         held.value = connection.quilter.state.value
         _link.value = connection.seam.selfId.value
-        budget = connection.seam.maxPayloadBytes
         _lastFailure.value = null
         _online.value = true
     }
