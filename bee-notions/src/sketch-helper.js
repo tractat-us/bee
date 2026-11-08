@@ -26,34 +26,65 @@ export function sketchHelper() {
     window.parent.postMessage({ jsonrpc: '2.0', id: nextId++, method: method, params: params }, '*');
   }
 
+  // Each choice still waiting for the page's answer, by request id: the element clicked (or null,
+  // for the page API), its choice, and whether it was selected before the click.
   var choices = {};
   var latestChoice = null;
 
   // Proposes a choice: the page shows it outside the frame, and records it only on the viewer's
   // Send there (bee#60). The page answers once it's sent, dismissed or replaced.
-  function choose(choice, text) {
+  function choose(choice, text, el, wasSelected) {
     var meta = {};
     meta[CHOICE_META] = String(choice);
     latestChoice = nextId;
-    choices[nextId] = true;
+    choices[nextId] = { el: el || null, choice: String(choice), wasSelected: !!wasSelected };
     request('ui/message', { role: 'user', content: { type: 'text', text: String(text) }, _meta: meta });
   }
 
-  // The viewer dismissed the latest choice: drop the selection, so the frame shows that. An
-  // earlier choice answered as replaced leaves the selection to the later one.
+  function isMulti(el) {
+    var container = el.closest('.options') || el.closest('.cards');
+    return !!container && container.dataset.multiselect !== undefined;
+  }
+
+  // A choice the page didn't send leaves the frame as it was before that click, so what the frame
+  // shows selected is what was sent, plus the latest proposal. In a multiselect container, a
+  // replaced or dismissed click is undone. Otherwise only a dismissed latest choice is, since
+  // toggleSelect has already moved the selection to the later one. Options already sent keep theirs.
   window.addEventListener('message', function (event) {
     var reply = event.data;
     if (event.source !== window.parent || !reply || reply.jsonrpc !== '2.0' || !choices[reply.id]) return;
+    var sent = choices[reply.id];
     delete choices[reply.id];
-    if (!reply.error || reply.id !== latestChoice) return;
-    document.querySelectorAll('.selected').forEach(function (el) { el.classList.remove('selected'); });
-    window.selectedChoice = null;
+    if (!reply.error) return;
+    var latest = reply.id === latestChoice;
+    if (sent.el && isMulti(sent.el)) {
+      var later = latest ? null : choices[latestChoice];
+      // A later click on the same element takes over undoing to the state before this one.
+      if (later && later.el === sent.el) later.wasSelected = sent.wasSelected;
+      else sent.el.classList.toggle('selected', sent.wasSelected);
+    } else if (latest) {
+      var shown = sent.el ? [sent.el] : document.querySelectorAll('[data-choice]');
+      Array.prototype.forEach.call(shown, function (el) {
+        if (el.dataset.choice === sent.choice) el.classList.remove('selected');
+      });
+      window.selectedChoice = null;
+    }
   });
 
+  function choiceOf(event) {
+    return event.target && event.target.closest ? event.target.closest('[data-choice]') : null;
+  }
+  // Capture runs before the element's own onclick (toggleSelect), so it sees the selection
+  // as it was before this click.
+  var selectedBefore = new WeakMap();
   document.addEventListener('click', function (event) {
-    var target = event.target && event.target.closest ? event.target.closest('[data-choice]') : null;
+    var target = choiceOf(event);
+    if (target) selectedBefore.set(target, target.classList.contains('selected'));
+  }, true);
+  document.addEventListener('click', function (event) {
+    var target = choiceOf(event);
     if (!target) return;
-    choose(target.dataset.choice, target.textContent.trim());
+    choose(target.dataset.choice, target.textContent.trim(), target, selectedBefore.get(target));
   });
 
   // The companion frame's selection helpers, as its helper.js defines them.
