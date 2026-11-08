@@ -4,6 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -90,18 +92,40 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
     /** A browser's replica and the author it writes as: each browser appends its clicks as itself. */
     class Browser(val author: ReplicaId, val client: BoardClient)
 
+    /**
+     * Spokes, by loom name, that don't get the board yet: every frame from the hub over
+     * [LATE_FRAME_BYTES] is lost on the way, as a relay that's slow to send it would be. The small
+     * frames (the mesh handshake, presence) still pass, so the spoke goes online. Released, the
+     * Quilter's anti-entropy heals the board within seconds.
+     */
+    private val heldBack = mutableSetOf<String>()
+
+    fun holdBoardBack(name: String) {
+        heldBack += name
+    }
+
+    fun releaseBoard(name: String) {
+        heldBack -= name
+    }
+
     /** A spoke loom like [BoardStar.loom], whose link publishes [maxFrameBytes] when the rig sets it. */
     private fun loom(name: String, scope: CoroutineScope = test.backgroundScope): SpokeLoom =
         SpokeLoom(scope, name, Random(name.hashCode()), star.clock) { id, _ ->
             val (hubEnd, spokeEnd) = connectionPair()
             star.hubEnds += hubEnd
             star.source.offer(hubEnd)
-            val link = maxFrameBytes?.let { Budgeted(spokeEnd, it) } ?: spokeEnd
+            val late = Late(spokeEnd) { name in heldBack }
+            val link = maxFrameBytes?.let { Budgeted(late, it) } ?: late
             peerMesh(id, listOf(link), dispatcher)
         }
 
     /** A link that publishes [maxFrameBytes], as a framed transport does. */
     private class Budgeted(base: Connection, override val maxFrameBytes: Int) : Connection by base
+
+    /** A link that loses the hub's large frames while [held]. */
+    private class Late(base: Connection, held: () -> Boolean) : Connection by base {
+        override val incoming: Flow<ByteArray> = base.incoming.filter { !held() || it.size <= LATE_FRAME_BYTES }
+    }
 
     /** A companion over the rig's directories, joined like a session, running on a fresh child scope. */
     suspend fun companion(): Running {
@@ -206,6 +230,9 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
 
     companion object {
         val WAIT: Duration = 60.seconds
+
+        /** The largest hub frame a held-back spoke still gets: above the handshake's and presence's. */
+        const val LATE_FRAME_BYTES = 2_000
 
         const val FRAME_TEMPLATE = "<!DOCTYPE html>\n<html><head><style>.frame-css { color: teal; }</style></head>" +
             "<body><!-- BRANDING --><div id=\"frame-content\"><!-- CONTENT --></div></body></html>"

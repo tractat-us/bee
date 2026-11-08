@@ -1,5 +1,6 @@
 package us.tractat.bee.companion
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
@@ -82,20 +83,26 @@ class CompanionAdapterTest {
     fun newScreenClearsEvents() = runTest(timeout = 120.seconds) {
         val rig = rig(this).apply { start() }
         rig.screen("first.html", "<p>first</p>")
-        rig.companion()
+        val companion = rig.companion()
         val browser = rig.browser()
         rig.shows(browser) { "first" in it }
         rig.click(browser, "a", "A", 1_706_000_101)
         rig.eventLines(1)
-        // A second browser that hasn't seen the next screen yet clicks the first one late.
+        // A second browser saw only the first screen: it goes offline before the next one is
+        // pushed, so its click is on the first screen by construction, and lands once it's back.
         val late = rig.browser("web-late")
         rig.shows(late) { "first" in it }
+        late.client.disconnect()
+        withTimeout(WAIT) { late.client.online.first { !it } }
 
         rig.screen("second.html", "<p>second</p>")
         rig.shows(browser) { "second" in it }
-        val cleared = withTimeout(WAIT) { while (rig.events.exists()) kotlinx.coroutines.delay(100); true }
+        val cleared = withTimeout(WAIT) { while (rig.events.exists()) delay(100); true }
         rig.click(late, "stale", "Stale", 1_706_000_102)
+        late.client.connect()
         rig.click(browser, "b", "B", 1_706_000_103)
+        // Control: the stale click reached the companion, which dropped it.
+        withTimeout(WAIT) { while (companion.reports.none { it["type"] == JsonPrimitive("click-dropped") }) delay(100) }
         val lines = rig.eventLines(1)
         assertAll(
             { assertTrue(cleared, "the new screen cleared the events file") },
@@ -114,7 +121,7 @@ class CompanionAdapterTest {
         rig.shows(browser) { "mockup" in it }
 
         rig.screen("waiting-2.html", "<p>Continuing in terminal...</p>")
-        val state = withTimeout(WAIT) { browser.state.first { CompanionAdapter.SURFACE in it.closedSurfaces() } }
+        val state = withTimeout(WAIT) { browser.client.state.first { CompanionAdapter.SURFACE in it.closedSurfaces() } }
         assertAll(
             { assertEquals(emptyList(), state.openSurfaces()) },
             { assertTrue("mockup" in sketchHtml(state)!!, "the closed surface keeps its last sketch") },
