@@ -1,5 +1,6 @@
 package us.tractat.bee.core
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
@@ -37,7 +38,6 @@ import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.quilter.QuiltMessage
 import us.tractat.kuilt.quilter.Quilter
 import us.tractat.kuilt.quilter.QuilterConfig
-import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -65,6 +65,20 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * connection's first-contact `FullState` carries the edit, under the dot it was minted with, never
  * re-applied.
  *
+ * **The backoff resets only for a connection that settled**: one still live [settleAfter] after
+ * it went live. A dial that succeeds says nothing about whether the relay will keep the link, so a
+ * relay that hangs up on every spoke at once (for a frame it refuses, or any reason the client
+ * can't see) meets a backoff that grows to its cap, never a redial every few hundred milliseconds
+ * (bee#65).
+ *
+ * **A board too large to sync stops, and says so** (bee#65). No payload over [maxPayloadBytes]
+ * reaches the wire ([BoundedSeam]). A write's delta that big is refused before it lands (below),
+ * so what the seam refuses is a `FullState`: the first one refused ends its connection, lands in
+ * [tooLarge] and [lastFailure], and is logged. The client then dials again only once the held
+ * board's `FullState`, measured locally ([WireBudget]), could fit, since a board that fits no
+ * better would be refused the same way. A presence post doesn't count as a change. The next
+ * connection to settle clears [tooLarge].
+ *
  * **Identities.** Every edit names [author] through the transform (`it.openSurface(author, …)`):
  * it is the stable CRDT author for this process, online or offline. The Quilter's own replica id
  * is fresh per connection (`<author>#c<n>`), because a rebuilt Quilter restarts its delta seqs at
@@ -79,9 +93,10 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  *
  * **A write too big for the link is refused, never dropped** (Review Focus 5). A seam drops a
  * broadcast over its `maxPayloadBytes` without a word, so each delta is weighed as the Quilter
- * will frame it, against the live seam's budget, or offline against the last link's, and a delta
- * over it throws [BoardWriteTooLarge] with the board unchanged. A seam that publishes no budget
- * (kuilt's WebSocket link today) refuses nothing.
+ * will frame it ([WireBudget]), online against the live seam's budget ([maxPayloadBytes], or the
+ * link's own where that is tighter), offline against [maxPayloadBytes], and a delta over it throws
+ * [BoardWriteTooLarge] with the board unchanged and the link up. One write is the caller's to
+ * fix; a board too large to sync as a whole is [tooLarge].
  *
  * **Failures are state.** A failed dial, a dial that outlasts [dialTimeout], a failed pump or a
  * failed seam close lands in
@@ -99,6 +114,10 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  *   accepted and never upgraded, or one closed mid-handshake) is cancelled at this bound, recorded
  *   as a [DialTimeoutException], and redialled on the backoff, so it can't leave the client
  *   offline for good.
+ * @property maxPayloadBytes the largest Quilter payload a connection may send: [BOARD_PAYLOAD_BYTES],
+ *   so no frame is over the host's [MAX_FRAME_BYTES]. A write whose delta is bigger is refused, and
+ *   a `FullState` bigger is [tooLarge]. Tests pass a small one.
+ * @param settleAfter how long a connection must stay live before its tear resets the backoff.
  */
 @Suppress("LongParameterList")
 class BoardClient(
@@ -111,20 +130,30 @@ class BoardClient(
     private val config: QuilterConfig = BEE_QUILTER_CONFIG,
     random: Random = Random.Default,
     private val dialTimeout: Duration = 5.seconds,
+    val maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
+    private val settleAfter: Duration = 5.seconds,
 ) {
     init {
         require(dialTimeout.isPositive()) { "dialTimeout must be positive, was $dialTimeout" }
+        require(maxPayloadBytes > 0) { "maxPayloadBytes must be positive, was $maxPayloadBytes" }
+        require(settleAfter.isPositive()) { "settleAfter must be positive, was $settleAfter" }
     }
 
     /** One connection: its seam, its Quilter, and the job they and their pumps run under. */
     internal class Connection(
-        val seam: Seam,
+        val seam: BoundedSeam,
         val quilter: Quilter<BoardState>,
         val job: Job,
         val scope: CoroutineScope,
     ) {
         /** Completes when the connection is over: its seam tore, a pump failed, or its Quilter closed. */
         val ended = CompletableDeferred<Unit>()
+
+        /**
+         * Whether it stayed live for the client's settle time. Written under the client's mutex, and
+         * read by the redial loop after [end] has taken that mutex.
+         */
+        var settled = false
 
         /**
          * The writes published through [quilter], each under its next sequence number, so the last
@@ -139,13 +168,11 @@ class BoardClient(
     private val _online = MutableStateFlow(false)
     private val _link = MutableStateFlow<String?>(null)
     private val _lastFailure = MutableStateFlow<Throwable?>(null)
+    private val _tooLarge = MutableStateFlow<BoardSyncTooLarge?>(null)
     private val wanted = MutableStateFlow(false)
     private var live: Connection? = null
     private var connections = 0
     private var attempt = 0
-
-    /** The last live seam's payload budget, which an offline write is weighed against. Written under [mutex]. */
-    @Volatile private var budget: Int? = null
 
     /** The board as this peer holds it, online or not. */
     val state: StateFlow<BoardState> = held.asStateFlow()
@@ -156,15 +183,11 @@ class BoardClient(
     /** The live connection's fabric peer id, or null offline. Tests read it. */
     val link: StateFlow<String?> = _link.asStateFlow()
 
-    /**
-     * The board link's payload budget in bytes, as the last link to go live published it. Null when
-     * no link has published one, and then no write is refused for its size. An online write is
-     * weighed against the live seam's own reading, which may have moved since.
-     */
-    val maxPayloadBytes: Int? get() = budget
-
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
+
+    /** Why the board can't sync, if it can't: a frame it would send is over the link's bound. */
+    val tooLarge: StateFlow<BoardSyncTooLarge?> = _tooLarge.asStateFlow()
 
     private val driver: Job = scope.launch(CoroutineName("board-client-${author.value}")) {
         wanted.collectLatest { if (it) stayConnected() }
@@ -221,7 +244,7 @@ class BoardClient(
         // goes onto the held board, and the next connection's FullState carries it.
         connection?.let { partLocked(it) }
         val patch = f(held.value) ?: return@withLock false
-        WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, budget)
+        WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, maxPayloadBytes)
         held.value = held.value.piece(patch.delta)
         true
     }
@@ -268,29 +291,76 @@ class BoardClient(
 
     private suspend fun stayConnected() {
         while (true) {
-            val connection = openOrNull()
-            if (connection != null) {
-                try {
-                    connection.ended.await()
-                } finally {
-                    withContext(NonCancellable) { end(connection) }
-                }
-            }
+            openOrNull()?.let { ride(it) }
             delay(backoff.delay(attempt++))
+        }
+    }
+
+    /**
+     * Waits out [connection] and ends it. If its seam refused a payload over the bound, says why
+     * the board can't sync, then waits until the board could fit: a board that fits no better
+     * would be refused the same way.
+     */
+    private suspend fun ride(connection: Connection) {
+        try {
+            connection.ended.await()
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) { end(connection) }
+            throw cancelled
+        }
+        val parted = withContext(NonCancellable) { end(connection) }
+        if (connection.settled) attempt = 0
+        val refusal = connection.seam.refusal() ?: return
+        report(refusal)
+        awaitRoom(parted, refusal.limit)
+    }
+
+    /** Says why the board can't sync. */
+    private fun report(refusal: BoardSyncTooLarge) {
+        _tooLarge.value = refusal
+        recordFailure(refusal)
+        log.warn { "${author.value}: ${refusal.message}; dialling again once the board could fit." }
+    }
+
+    /**
+     * Suspends until the held board's `FullState` could fit [limit], measured from [parted], the
+     * board as its connection parted, so an edit made while that connection closed is seen. Only
+     * a change a presence post can't make is measured: a post every [Presence.EVERY] swaps one
+     * small entry for another, so it can't bring a board under the bound, and measuring it would
+     * cost a full encode each time (bee#65).
+     */
+    private suspend fun awaitRoom(parted: BoardState, limit: Int) {
+        var board = parted
+        while (WireBudget.fullStateBytes(author, board) > limit) {
+            val measured = board.withoutPresence()
+            board = held.first { it.withoutPresence() != measured }
         }
     }
 
     private suspend fun openOrNull(): Connection? {
         val seam = weaveOrNull() ?: return null
         val connection = try {
-            mutex.withLock { wire(seam).also { publish(it) } }
+            mutex.withLock { wire(BoundedSeam(seam, maxPayloadBytes)).also { publish(it) } }
         } catch (failure: Throwable) {
             withContext(NonCancellable) { closeQuietly(seam) }
             throw failure
         }
         connection.quilter.state.pumpIn(connection, "mirror") { mirrorIfLive(connection) }
         connection.seam.state.pumpIn(connection, "tear") { if (it is SeamState.Torn) connection.ended.complete(Unit) }
+        // Synchronous with the refusal, so neither a cancelled scope nor [settle] can come between.
+        connection.seam.refused.invokeOnCompletion { connection.ended.complete(Unit) }
+        connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-settle")) {
+            delay(settleAfter)
+            settle(connection)
+        }
         return connection
+    }
+
+    /** Marks [connection] settled, if it is still live, so its tear resets the backoff. */
+    private suspend fun settle(connection: Connection) = mutex.withLock {
+        if (live !== connection || connection.ended.isCompleted) return@withLock
+        connection.settled = true
+        _tooLarge.value = null
     }
 
     /**
@@ -317,7 +387,7 @@ class BoardClient(
     }
 
     /** A fresh Quilter over [seam], seeded with the held board, on a new child job. Holds [mutex]. */
-    private fun wire(seam: Seam): Connection {
+    private fun wire(seam: BoundedSeam): Connection {
         val n = ++connections
         val job = SupervisorJob(scope.coroutineContext[Job])
         val connectionScope = scope + job
@@ -337,14 +407,15 @@ class BoardClient(
         }
     }
 
-    /** Makes [connection] live, and resets the redial backoff and the last failure. Holds [mutex]. */
+    /**
+     * Makes [connection] live, and resets the last failure. The redial backoff resets only once it
+     * settles ([settle]). Holds [mutex].
+     */
     private fun publish(connection: Connection) {
         check(live == null) { "${author.value} is already connected" }
         live = connection
-        attempt = 0
         held.value = connection.quilter.state.value
         _link.value = connection.seam.selfId.value
-        budget = connection.seam.maxPayloadBytes
         _lastFailure.value = null
         _online.value = true
     }
@@ -359,12 +430,20 @@ class BoardClient(
     /** The live connection, for the guard's test. */
     internal suspend fun liveConnection(): Connection? = mutex.withLock { live }
 
-    /** Ends [connection]: parts it if it's still live, then stops its job and closes its seam. */
-    private suspend fun end(connection: Connection) {
-        mutex.withLock { partLocked(connection) }
+    /**
+     * Ends [connection]: parts it if it's still live, then stops its job and closes its seam.
+     * Returns the held board as it stood at the parting, before the close, which can take up to
+     * [SEAM_CLOSE_TIMEOUT].
+     */
+    private suspend fun end(connection: Connection): BoardState {
+        val parted = mutex.withLock {
+            partLocked(connection)
+            held.value
+        }
         connection.job.cancelAndJoin()
         connection.quilter.close()
         closeQuietly(connection.seam)
+        return parted
     }
 
     /**
@@ -416,8 +495,17 @@ class BoardClient(
 
     private companion object {
         val SEAM_CLOSE_TIMEOUT = 2.seconds
+        val log = KotlinLogging.logger("us.tractat.bee.core.BoardClient")
     }
 }
+
+/**
+ * The board can't sync: the client would have sent a frame of [bytes] bytes, over the link's bound
+ * of [limit], and sent nothing instead. Not a write refused for its size: the board took the
+ * write, and it's the board as a whole that can't reach the link.
+ */
+class BoardSyncTooLarge(val bytes: Int, val limit: Int) :
+    Exception("can't sync: board too large ($bytes bytes to send, over the link's bound of $limit)")
 
 /** A [BoardClient] dial that didn't answer within [timeout]; it was cancelled and goes round the redial. */
 class DialTimeoutException(val timeout: Duration) : Exception("dial took over $timeout")

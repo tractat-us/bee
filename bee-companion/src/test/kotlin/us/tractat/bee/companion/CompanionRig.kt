@@ -21,12 +21,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
+import us.tractat.bee.core.BOARD_PAYLOAD_BYTES
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.FRAME_ENVELOPE_BYTES
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
@@ -68,7 +70,8 @@ import kotlin.time.Instant
  * against a new or a crashed host is: [board] is the id that rig's host serves.
  *
  * @param maxFrameBytes when set, every spoke's link to the hub publishes this frame ceiling, as a
- *   real fabric would, so the seams above it publish a payload budget.
+ *   real fabric would, so the seams above it publish a payload budget, and every client is bound
+ *   as bee binds one to the host's frame bound: the ceiling less [FRAME_ENVELOPE_BYTES].
  */
 internal class CompanionRig(
     private val test: TestScope,
@@ -122,7 +125,7 @@ internal class CompanionRig(
     /** A browser's replica, online, through the same kind of link as the companion's. */
     fun browser(name: String = "web-iain"): Browser {
         val author = ReplicaId(name)
-        return Browser(author, star.client(author, loom = loom(name)).also { it.connect() })
+        return Browser(author, star.client(author, loom = loom(name), maxPayloadBytes = maxPayloadBytes).also { it.connect() })
     }
 
     /** A browser's replica and the author it writes as: each browser appends its clicks as itself. */
@@ -135,6 +138,9 @@ internal class CompanionRig(
      * Quilter's anti-entropy heals the board within seconds.
      */
     private val heldBack = mutableSetOf<String>()
+
+    /** Each client's payload bound: under [maxFrameBytes] as [BOARD_PAYLOAD_BYTES] is under the host's. */
+    private val maxPayloadBytes: Int = maxFrameBytes?.let { it - FRAME_ENVELOPE_BYTES } ?: BOARD_PAYLOAD_BYTES
 
     fun holdBoardBack(name: String) {
         heldBack += name
@@ -186,7 +192,7 @@ internal class CompanionRig(
         val n = ++companions
         val scope = CoroutineScope(test.backgroundScope.coroutineContext + Job(test.backgroundScope.coroutineContext[Job]))
         val author = ReplicaId("companion-$n")
-        val client = star.client(author, loom = loom(author.value, scope), scope = scope).also { it.connect() }
+        val client = star.client(author, loom = loom(author.value, scope), scope = scope, maxPayloadBytes = maxPayloadBytes).also { it.connect() }
         var links = 0
         val connection = ClaimsConnection(
             scope = scope,

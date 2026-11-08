@@ -13,7 +13,6 @@ import us.tractat.kuilt.test.assertAll
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -23,9 +22,10 @@ class SketchSurfaceTest {
      * that states the limit, nothing reaches the board, and the board keeps working: the next
      * screen that fits is shown.
      *
-     * The links publish an 8 KB frame ceiling, as a framed transport would. Without the refusal,
-     * the seam would drop the oversized delta without a word: the companion's replica would hold
-     * the screen and no other peer would ever see it.
+     * The links publish an 8 KB frame ceiling, as a framed transport would, and the clients are
+     * bound under it as bee binds them under the host's. Without the refusal, the seam would drop
+     * the oversized delta without a word: the companion's replica would hold the screen and no
+     * other peer would ever see it.
      */
     @Test
     fun oversizedSketchIsRefusedWithItsLimit() = runTest(timeout = 120.seconds) {
@@ -35,7 +35,7 @@ class SketchSurfaceTest {
         val companion = rig.companion()
         val browser = rig.browser()
         rig.shows(browser) { "small" in it }
-        val budget = assertNotNull(companion.client.maxPayloadBytes, "rig: the link publishes a budget")
+        val budget = companion.client.maxPayloadBytes
 
         rig.screen("huge.html", "<p>" + "x".repeat(4 * LIMIT) + "</p>")
         // Whatever the companion did with the screen, it reports it: shown, or refused.

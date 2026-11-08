@@ -32,7 +32,9 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            // BoardClient weighs each delta as the Quilter frames it, in CBOR (WireBudget).
+            // BoardClient logs a board too large to sync (bee#65).
+            implementation(libs.kotlin.logging)
+            // BoardClient weighs each delta and FullState as the Quilter frames it, in CBOR (WireBudget).
             implementation(libs.kotlinx.serialization.cbor)
         }
         commonTest.dependencies {
