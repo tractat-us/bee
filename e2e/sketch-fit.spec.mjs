@@ -48,11 +48,11 @@ async function open(page, name) {
   await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
 }
 
-/** Proposes [choice] from inside sketch [id], as a click on a `[data-choice]` would. */
-const propose = (page, id, choice) => frame(page, id).locator('body').evaluate((body, c) => parent.postMessage({
+/** Proposes [choice], shown as [text], from inside sketch [id], as a click on a `[data-choice]` would. */
+const propose = (page, id, choice, text = choice) => frame(page, id).locator('body').evaluate((body, [c, t]) => parent.postMessage({
   jsonrpc: '2.0', id: 41, method: 'ui/message',
-  params: { role: 'user', content: { type: 'text', text: c }, _meta: { 'us.tractat.bee/choice': c } },
-}, '*'), choice);
+  params: { role: 'user', content: { type: 'text', text: t }, _meta: { 'us.tractat.bee/choice': c } },
+}, '*'), [choice, text]);
 
 /** Sets the height of `#box` inside sketch [id]. */
 const resize = (page, id, px) => frame(page, id).locator('#box').evaluate((box, h) => { box.style.height = `${h}px`; }, px);
@@ -306,13 +306,14 @@ test('a press held on Send while its proposal changes records nothing', async ({
   await openSketch('held', `${NO_MARGIN}<div style="height:150px">Held</div>`);
   await open(page, 'ty');
   await expect(frame(page, 'held').locator('body')).toContainText('Held', { timeout: 15_000 });
-  await propose(page, 'held', 'first');
+  // Both proposals show the same text, so Send stays where the press is.
+  await propose(page, 'held', 'first', 'Same');
   await expect(send(page, 'held')).toBeEnabled();
   const box = await send(page, 'held').boundingBox();
   const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.mouse.move(at.x, at.y);
   await page.mouse.down();
-  await propose(page, 'held', 'second');
+  await propose(page, 'held', 'second', 'Same');
   await page.waitForTimeout(700);
   await leaveAndReturn(page, at);
   await expect(send(page, 'held')).toBeEnabled();
@@ -321,6 +322,7 @@ test('a press held on Send while its proposal changes records nothing', async ({
   await expect(records(page, 'held')).toHaveCount(0);
 
   // Control: a fresh click sends the proposal shown.
+  expect(await under(page, at)).toBe('bee-proposal-send');
   await page.mouse.down();
   await page.mouse.up();
   await expect(records(page, 'held')).toHaveCount(1, { timeout: 10_000 });
@@ -337,13 +339,13 @@ test('a touch held on Send across its arming leaves it usable once lifted', asyn
     await openSketch('touch', `${NO_MARGIN}<div style="height:150px">Touch</div>`);
     await open(page, 'ro');
     await expect(frame(page, 'touch').locator('body')).toContainText('Touch', { timeout: 15_000 });
-    await propose(page, 'touch', 'first');
+    await propose(page, 'touch', 'first', 'Same');
     await expect(send(page, 'touch')).toBeEnabled();
     const box = await send(page, 'touch').boundingBox();
     const at = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
     const cdp = await context.newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
-    await propose(page, 'touch', 'second');
+    await propose(page, 'touch', 'second', 'Same');
     // Precondition: Send re-armed under the held touch.
     await expect(send(page, 'touch')).toBeDisabled();
     await page.waitForTimeout(700);
