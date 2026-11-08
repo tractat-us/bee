@@ -66,6 +66,17 @@ export function peerName(peer) {
   return match ? match[1] : String(peer);
 }
 
+/**
+ * The page's viewer: the nearest `data-viewer` above `element`, through any shadow root on the
+ * way (the surface may render its children into one). Null on a page that names no viewer.
+ */
+function viewerOf(element) {
+  for (let node = element; node; node = node.parentNode ?? node.host) {
+    if (node.nodeType === 1 && node.hasAttribute('data-viewer')) return node.getAttribute('data-viewer');
+  }
+  return null;
+}
+
 // The page's colours (index.html's tokens), with fallbacks for a page that doesn't define them.
 // Styled inline, as Board is: the element renders into light DOM, inside the page's card.
 const INK = 'var(--ink,#1f2328)';
@@ -110,7 +121,7 @@ export class PollElement extends A2uiLitElement {
       voters.get(String(answer))?.push(peer);
     }
     const total = [...voters.values()].reduce((sum, peers) => sum + peers.length, 0);
-    const viewer = this.closest('[data-viewer]')?.getAttribute('data-viewer');
+    const viewer = viewerOf(this);
     const mine = viewer && Object.hasOwn(answers, viewer) ? String(answers[viewer]) : null;
     return html`<div class="bee-poll" style="color:${INK}">
       <p class="question" style="margin:0 0 0.75rem;font-size:1.15rem;font-weight:600">${latestRevision(props.question)}</p>

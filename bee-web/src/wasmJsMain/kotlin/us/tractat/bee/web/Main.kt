@@ -219,6 +219,8 @@ private fun endedText(reason: PairingEnd): String = when (reason) {
 @OptIn(ExperimentalUuidApi::class)
 private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, access: Access) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
+    // Who views this page, for a Notion that marks the viewer's own choice (bee-notions' Poll).
+    root.setAttribute("data-viewer", actor.toString())
     val shell = PageShell.around(root)
     val status = shell.status
     val problem = shell.problem
