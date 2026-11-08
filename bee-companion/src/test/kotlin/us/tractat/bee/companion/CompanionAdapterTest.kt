@@ -240,7 +240,7 @@ class CompanionAdapterTest {
         val browser = after.browser()
         val second = after.companion()
         val startedAt = testScheduler.currentTime
-        val failure = withTimeout(2 * WAIT) { second.awaitFailure() }
+        val failure = withTimeout(WAIT * 2) { second.awaitFailure() }
         val waited = (testScheduler.currentTime - startedAt).milliseconds
         assertAll(
             { assertTrue("delete the file to reopen" in failure.message.orEmpty(), "it says how to reopen: ${failure.message}") },

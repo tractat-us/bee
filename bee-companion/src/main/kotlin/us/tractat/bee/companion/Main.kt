@@ -4,9 +4,13 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -14,6 +18,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.Presence
@@ -26,6 +31,7 @@ import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.websocket.WebSocketAdvertisement
+import java.io.IOException
 import java.io.PrintStream
 import java.net.URI
 import java.nio.file.Files
@@ -35,7 +41,9 @@ import kotlin.io.path.deleteIfExists
 import kotlin.io.path.writeText
 import kotlin.random.asKotlinRandom
 import kotlin.system.exitProcess
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -97,9 +105,9 @@ fun main(args: Array<String>) {
     }
     val bridge = BeeBridge(board, author, claims, identity, presence, clock, scope)
     val print: (JsonObject) -> Unit = { line -> synchronized(out) { out.println(line); out.flush() } }
-    val adapter = CompanionAdapter(screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print)
 
-    val pageUrl = URI(host.replaceFirst("ws", "http") + "/").toString()
+    val httpHost = host.replaceFirst("ws", "http")
+    val pageUrl = URI("$httpHost/").toString()
     val started = buildJsonObject {
         put("type", "server-started")
         put("url", pageUrl)
@@ -124,6 +132,11 @@ fun main(args: Array<String>) {
     // on advertising a companion that handles no screens or clicks.
     try {
         runBlocking {
+            val boardId = askBoardId(http, "$httpHost${BoardId.PATH}")
+            logger.info { "The host serves $boardId." }
+            val adapter = CompanionAdapter(
+                screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print, boardId, random,
+            )
             bridge.announce()
             adapter.start(this).join()
         }
@@ -133,6 +146,25 @@ fun main(args: Array<String>) {
         stopReason = "failed: ${failure.message ?: failure::class.simpleName}"
     }
     exitProcess(1)
+}
+
+/**
+ * The board the host names at [url] ([BoardId.PATH]), as a page asks for it. A host that isn't up
+ * yet is asked again each second; one that answers with something that isn't a board id fails.
+ */
+private suspend fun askBoardId(http: HttpClient, url: String): BoardId {
+    while (true) {
+        try {
+            val response = http.get(url)
+            if (response.status.isSuccess()) return BoardId(response.bodyAsText().trim())
+            logger.warn { "$url answered ${response.status}; asking again." }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (unreachable: IOException) {
+            logger.warn { "$url is unreachable (${unreachable.message}); asking again." }
+        }
+        delay(1.seconds)
+    }
 }
 
 private fun usage(problem: String): Nothing {
