@@ -99,10 +99,6 @@ class JoinRequestSurfaceTest {
         )
     }
 
-    /**
-     * The code field is A2UI's `obscured` input, which bee-web's live typing never syncs, so what
-     * a person types stays on their page until Admit puts it in a record (e2e/second-screen).
-     */
     /** The host opens a request as itself, `host:bee-host`, never as an agent (bee#71). */
     @Test
     fun requestIsOpenedByTheHostKind() = rig {
@@ -123,6 +119,10 @@ class JoinRequestSurfaceTest {
         assertEquals(JoinRequestSurface.HOST, PeerIdentity.parse("agent:bee-host#00000000"))
     }
 
+    /**
+     * The code field is A2UI's `obscured` input, which bee-web's live typing never syncs, so what
+     * a person types stays on their page until Admit puts it in a record (e2e/second-screen).
+     */
     @Test
     fun codeFieldIsObscured() = rig {
         val (ticket, _) = post()
