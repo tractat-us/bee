@@ -104,7 +104,7 @@ class FrameBoundTest {
                 val opcode = try {
                     readUnsignedByte() and 0x0F
                 } catch (_: EOFException) {
-                    return Close(NO_CLOSE_FRAME, "the host hung up with no close frame, after opcodes $seen")
+                    return Close(NO_CLOSE_FRAME, "the host hung up with no close frame (bee#58), after opcodes $seen")
                 }
                 seen += opcode
                 val length = when (val short = readUnsignedByte() and 0x7F) {

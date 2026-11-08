@@ -69,8 +69,11 @@ class ClaimsSmokeTest {
         val first = a.claim(target, alice, CLAIM_BOUND)
         val b = linkedClient(scope, voter, NodeId("smoke-b"))
         val second = b.claim(ClaimTarget("record:smoke:2"), bob, CLAIM_BOUND)
-        voter.voter.depart(bob, DepartReason.Crashed)
-        val through = voter.voter.table.first { it.retired(bob) }.appliedIndex
+        val through = withTimeoutOrNull(CLAIM_BOUND) {
+            voter.voter.depart(bob, DepartReason.Crashed)
+            voter.voter.table.first { it.retired(bob) }.appliedIndex
+        }
+        assertNotNull(through, "the voter committed no Depart of bob within $CLAIM_BOUND; ${voter.state(b)}")
         val aSaw = withTimeoutOrNull(CLAIM_BOUND) { a.table.first { it.appliedIndex >= through } }
         System.err.println(
             "[claims-spike] real sockets, two learners: voter through $through, a through ${a.table.value.appliedIndex}, " +
