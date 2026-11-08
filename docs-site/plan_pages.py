@@ -387,7 +387,7 @@ def render_dependencies() -> str:
         "A solid arrow points from what must finish to what waits on it. A box holds an item's parts. "
         f"Colour shows status. Finished work that nothing open waits on is folded into one **Done ({len(folded)})** node; "
         "an item with a GitHub link opens it.\n",
-        "```mermaid\nflowchart TD",
+        "```mermaid\nflowchart LR",
     ]
     if folded:
         out.append(f'    done_folded["Done ({len(folded)})"]:::done')
