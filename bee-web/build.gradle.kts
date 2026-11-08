@@ -67,15 +67,17 @@ kotlin {
     }
 }
 
-// webpack (the bundle, and Karma's test bundle) reads bee-notions from its copy in node_modules,
-// which these tasks' own inputs leave out. The root build re-copies it when its sources change;
-// tracking the same sources here reruns the tasks that bundle it.
-val notionsSources = fileTree("../bee-notions") { exclude("node_modules/**") }
+// webpack (the bundle, and Karma's test bundle) reads bee-notions from Yarn's copy in the root
+// build's node_modules, which these tasks' own inputs leave out. Track that copy, not the
+// sources: it is the file webpack reads. Tracking the sources let an edit that landed between
+// kotlinWasmNpmInstall and the bundle mark an old bundle up to date (bee#80). The root build
+// re-copies bee-notions when its sources change, and fails if the copy doesn't match them.
+val notionsInstalled = rootProject.layout.buildDirectory.dir("wasm/node_modules/@bee/notions")
 tasks.withType<KotlinWebpack>().configureEach {
-    inputs.files(notionsSources).withPropertyName("beeNotions").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(notionsInstalled).withPropertyName("beeNotions").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 tasks.withType<KotlinJsTest>().configureEach {
-    inputs.files(notionsSources).withPropertyName("beeNotions").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(notionsInstalled).withPropertyName("beeNotions").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 // The production page, for bee-host to pack under `web/`.
