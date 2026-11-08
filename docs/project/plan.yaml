@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T03:25Z"
+as_of: "2026-11-08T03:26Z"
 
 sources:
   - title: "v1 plan"
@@ -72,6 +72,7 @@ order:
   - kuilt-3129
   - kuilt-3142
   - kuilt-3143
+  - kuilt-3144
   - out-cla
   - out-kuilt-references
 
@@ -211,8 +212,8 @@ items:
   task-10:
     kind: task
     title: "A second screen, joined by LAN pairing (spike 7)"
-    status: in-flight
-    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. In a review-fix round."
+    status: waiting-on-iain
+    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. The review's fixes are in; #42 waits on four calls for Iain in its body and his hand check on a second device."
     depends_on: [bee-27]
     started: "2026-11-08T02:20Z"
     estimate:
@@ -331,7 +332,7 @@ items:
 
   bee-44:
     kind: decision
-    title: "An agent that dies while the host is down keeps its claims forever"
+    title: "Decision: an agent that dies while the host is down keeps its claims forever"
     status: waiting-on-iain
     summary: "How presence and departures behave across a host restart."
     started: "2026-11-08T02:36Z"
@@ -349,9 +350,9 @@ items:
 
   bee-46:
     kind: issue
-    title: "A tab left open across a host wipe pushes its old board into the new host"
+    title: "A tab left open across a host wipe pushes its old board, claim views included, into the new host"
     status: next
-    summary: "A bug, ready to start. The old board carries its claim views with it."
+    summary: "A bug, ready to start."
     started: "2026-11-08T03:07Z"
     links:
       - { title: "bee#46", url: "https://github.com/tractat-us/bee/issues/46" }
@@ -393,7 +394,7 @@ items:
     kind: issue
     title: "Dogfood: bee as the board for its own development"
     status: later
-    summary: "A first try after Task 9; the full version as Task 11's secondary test. The markdown stays the source of truth for now (ruled 2026-11-07)."
+    summary: "A first try is possible now that Task 9 has landed; the full version is Task 11's secondary test. The markdown stays the source of truth for now (ruled 2026-11-07)."
     depends_on: [task-7, task-8, task-9, task-11]
     links:
       - { title: "bee#21", url: "https://github.com/tractat-us/bee/issues/21" }
@@ -409,7 +410,7 @@ items:
       low: 1
       high: 3
       unit: days
-      basis: "From the issue being filed to the last slice merging. (a) and (b) each took about 3 h from PR open to merge. (c) is filed with no PR yet, and (d)–(g) are not filed. What remains is a chain of three: (c), then (d), then (e)–(g) in parallel, at 3–12 h each."
+      basis: "From the issue being filed to the last slice merging. (a) and (b) each took about 3 h from PR open to merge. (c) waits on three design calls for Iain, with no PR yet, and (d)–(g) are not filed. What remains is a chain of three: (c), then (d), then (e)–(g) in parallel, at 3–12 h each."
       confidence: low
     ruling:
       date: "2026-11-07"
@@ -444,11 +445,13 @@ items:
   kuilt-3137:
     kind: kuilt
     title: "(c) A dot-store Rga"
-    status: in-flight
+    status: waiting-on-iain
     parent: kuilt-3126
+    summary: "A design gate is posted, with three calls for Iain before implementation. bee#19 and Task 11 wait on the chain that starts here."
     started: "2026-11-07T23:54Z"
     links:
       - { title: "kuilt#3137", url: "https://github.com/tractat-us/kuilt/issues/3137" }
+      - { title: "Design gate", url: "https://github.com/tractat-us/kuilt/issues/3137#issuecomment-6716124347" }
 
   kuilt-3126-d:
     kind: kuilt
@@ -501,7 +504,7 @@ items:
 
   kuilt-3129:
     kind: kuilt
-    title: "session: the RoomHost contract says whether onRoom ends when its room tears"
+    title: "session: the RoomHost contract doesn't say whether onRoom ends when its connection tears"
     status: in-flight
     summary: "The tear signal bee needs to close a claims session when its learner leaves (bee#23). Slice 1, the conformance suite, is in review."
     started: "2026-11-08T01:28Z"
@@ -519,12 +522,21 @@ items:
 
   kuilt-3143:
     kind: kuilt
-    title: "store: IndexedDbDurableStore lets synchronous JS throws escape as JsException"
+    title: "store: IndexedDbDurableStore lets synchronous JS throws escape as JsException, which no catch (Exception) sees"
     status: next
-    summary: "No catch (Exception) sees them. Task 9 stores the board in the browser through this store."
+    summary: "Found in bee#39. bee works around it with a decorator, so it doesn't wait on the fix."
     started: "2026-11-08T02:41Z"
     links:
       - { title: "kuilt#3143", url: "https://github.com/tractat-us/kuilt/issues/3143" }
+
+  kuilt-3144:
+    kind: kuilt
+    title: "Quilter drops a delta or FullState over the seam's payload budget without a word"
+    status: next
+    summary: "bee hit it on its board link in #38, and works around it with WireBudget for now."
+    started: "2026-11-08T02:58Z"
+    links:
+      - { title: "kuilt#3144", url: "https://github.com/tractat-us/kuilt/issues/3144" }
 
   # ── Outside the code ─────────────────────────────────────────────────
   out-cla:
