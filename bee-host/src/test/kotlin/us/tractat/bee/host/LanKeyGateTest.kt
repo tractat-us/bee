@@ -70,13 +70,13 @@ class LanKeyGateTest {
 
     @Test
     fun loopbackNeedsNoKey() = gated { client ->
-        val d1 = client.dial(BOARD, "127.0.0.1")
-        val d2 = client.dial(CLAIMS, "127.0.0.1")
-        val d3 = client.dial(BOARD, "::1")
+        val boardV4 = client.dial(BOARD, "127.0.0.1")
+        val claimsV4 = client.dial(CLAIMS, "127.0.0.1")
+        val boardV6 = client.dial(BOARD, "::1")
         assertAll(
-            { assertEquals(Dial.Upgraded, d1) },
-            { assertEquals(Dial.Upgraded, d2) },
-            { assertEquals(Dial.Upgraded, d3) },
+            { assertEquals(Dial.Upgraded, boardV4) },
+            { assertEquals(Dial.Upgraded, claimsV4) },
+            { assertEquals(Dial.Upgraded, boardV6) },
         )
     }
 
@@ -85,13 +85,13 @@ class LanKeyGateTest {
         val ticket = assertIs<Opened.Ticket>(pairing.open())
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val joinKey = pairing.mintJoinKey()
-        val d1 = client.dial("$BOARD&k=${key.value}", LAN)
-        val d2 = client.dial("$CLAIMS&k=${key.value}", LAN)
-        val d3 = client.dial("$BOARD&k=${joinKey.value}", LAN)
+        val boardKeyed = client.dial("$BOARD&k=${key.value}", LAN)
+        val claimsKeyed = client.dial("$CLAIMS&k=${key.value}", LAN)
+        val boardJoinLink = client.dial("$BOARD&k=${joinKey.value}", LAN)
         assertAll(
-            { assertEquals(Dial.Upgraded, d1) },
-            { assertEquals(Dial.Upgraded, d2) },
-            { assertEquals(Dial.Upgraded, d3, "the printed join link's key") },
+            { assertEquals(Dial.Upgraded, boardKeyed) },
+            { assertEquals(Dial.Upgraded, claimsKeyed) },
+            { assertEquals(Dial.Upgraded, boardJoinLink, "the printed join link's key") },
         )
     }
 
@@ -99,17 +99,19 @@ class LanKeyGateTest {
     fun wrongUrlKeyIsRefused() = gated { client ->
         val ticket = assertIs<Opened.Ticket>(pairing.open())
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
-        val d1 = client.dial("$BOARD&k=${key.value}", LAN)
-        val d2 = client.dial("$BOARD&k=${key.value.dropLast(1)}x", LAN)
-        val d3 = client.dial("$CLAIMS&k=${key.value.dropLast(1)}x", LAN)
-        val d4 = client.dial("$BOARD&k=", LAN)
-        val d5 = client.dial("$BOARD&k=${ticket.code}", LAN)
+        val boardRight = client.dial("$BOARD&k=${key.value}", LAN)
+        // The right key with its last character changed: a near miss, never the key itself.
+        val nearMiss = key.value.dropLast(1) + if (key.value.last() == 'x') 'y' else 'x'
+        val boardWrong = client.dial("$BOARD&k=$nearMiss", LAN)
+        val claimsWrong = client.dial("$CLAIMS&k=$nearMiss", LAN)
+        val boardEmpty = client.dial("$BOARD&k=", LAN)
+        val boardCode = client.dial("$BOARD&k=${ticket.code}", LAN)
         assertAll(
-            { assertEquals(Dial.Upgraded, d1, "rig: the right key admits") },
-            { assertEquals(Dial.Refused, d2) },
-            { assertEquals(Dial.Refused, d3) },
-            { assertEquals(Dial.Refused, d4) },
-            { assertEquals(Dial.Refused, d5, "a pairing code is not a key") },
+            { assertEquals(Dial.Upgraded, boardRight, "rig: the right key admits") },
+            { assertEquals(Dial.Refused, boardWrong) },
+            { assertEquals(Dial.Refused, claimsWrong) },
+            { assertEquals(Dial.Refused, boardEmpty) },
+            { assertEquals(Dial.Refused, boardCode, "a pairing code is not a key") },
         )
     }
 
