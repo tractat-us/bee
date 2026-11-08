@@ -2,6 +2,8 @@
 // `./gradlew :bee-mcp:installDist`, driven over its stdio MCP transport (newline-delimited
 // JSON-RPC) the way Claude Code drives it. It joins the host Playwright started.
 import { spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +17,14 @@ const BRIDGE = join(dirname(fileURLToPath(import.meta.url)), '..', 'bee-mcp', 'b
  */
 export async function startAgent(name) {
   const child = spawn(BRIDGE, [], {
-    env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${process.env.BEE_E2E_PORT}`, BEE_SESSION_NAME: name },
+    env: {
+      ...process.env,
+      BEE_HOST: `ws://127.0.0.1:${process.env.BEE_E2E_PORT}`,
+      BEE_SESSION_NAME: name,
+      // Its own run dir: under a Claude session the bridge would otherwise overwrite, then delete,
+      // the developer's real ~/.bee/run/<claudePid>.json.
+      BEE_RUN_DIR: mkdtempSync(join(tmpdir(), 'bee-e2e-run-')),
+    },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const pending = new Map();
