@@ -1,0 +1,47 @@
+# Sourced by bee-up and bee-join: finds the bridge, the host and a Java 25 runtime, whether these
+# scripts run from a bee checkout (bin/) or from an unzipped kit (bee-bundle's layout, with its own
+# runtime/ beside them). Sets: bee_root, bee_mcp, bee_host, bee_home, and exports JAVA_HOME.
+
+bee_here=$(cd "$(dirname "$0")" && pwd)
+bee_home=${BEE_HOME:-$HOME/.bee}
+
+if [ -d "$bee_here/runtime" ]; then
+    # An unzipped kit: everything sits beside the scripts, prebuilt.
+    bee_root=$bee_here
+    export JAVA_HOME="$bee_root/runtime"
+    bee_mcp="$bee_root/bee-mcp/bin/bee-mcp"
+    bee_host="$bee_root/bee-host/bin/bee-host"
+else
+    # A checkout: bin/ is one level below the root, and the launchers come from installDist.
+    bee_root=$(cd "$bee_here/.." && pwd)
+    if [ -z "${JAVA_HOME:-}" ] || ! "$JAVA_HOME/bin/java" -version 2>&1 | grep -q 'version "25'; then
+        export JAVA_HOME="$HOME/.sdkman/candidates/java/25.0.5.0+8-tem"
+    fi
+    bee_mcp="$bee_root/bee-mcp/build/install/bee-mcp/bin/bee-mcp"
+    bee_host="$bee_root/bee-host/build/install/bee-host/bin/bee-host"
+    if [ ! -x "$bee_mcp" ] || [ ! -x "$bee_host" ] || [ "${BEE_BUILD:-}" = 1 ]; then
+        echo "Building the bee host and bridge (./gradlew installDist)…" >&2
+        (cd "$bee_root" && ./gradlew :bee-host:installDist :bee-mcp:installDist --console=plain -q) >&2
+    fi
+fi
+
+[ -x "$JAVA_HOME/bin/java" ] || { echo "No Java 25 at $JAVA_HOME. Set JAVA_HOME to a JDK 25, or use a bee kit." >&2; exit 1; }
+
+# Writes an MCP config at $1 that runs the bridge against BEE_HOST $2, named $3.
+bee_write_mcp_config() {
+    mkdir -p "$(dirname "$1")"
+    umask 077
+    cat > "$1" <<EOF
+{ "mcpServers": { "bee": { "type": "stdio",
+  "command": "$bee_mcp",
+  "env": { "JAVA_HOME": "$JAVA_HOME", "BEE_HOST": "$2", "BEE_SESSION_NAME": "$3" } } } }
+EOF
+}
+
+# Opens $1 in the default browser, where there is one to open.
+bee_open() {
+    if [ "${BEE_NO_OPEN:-}" = 1 ]; then return 0; fi
+    if command -v open >/dev/null 2>&1; then open "$1"
+    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$1" >/dev/null 2>&1 &
+    fi
+}
