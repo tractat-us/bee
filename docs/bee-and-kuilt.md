@@ -137,10 +137,11 @@ Two gaps show the loop.
   [spike notes](spikes/2026-11-spike-4-claims.md) tell the whole story.
 - **Removing a key lost its history.** In kuilt's JSON CRDT, deleting a key and writing it again
   could reuse identities other copies had already seen, so a concurrent edit could silently erase
-  the new value ([kuilt#3126](https://github.com/tractat-us/kuilt/issues/3126)). bee works around
-  it by never deleting a key, only clearing it. The surface changes that need a real delete
-  ([bee#19](https://github.com/tractat-us/bee/pull/19)) are on hold until kuilt's fix lands. In
-  November 2026 that fix is a kuilt epic still in progress.
+  the new value ([kuilt#3126](https://github.com/tractat-us/kuilt/issues/3126)). bee's surface
+  code never deletes a key. A workaround that clears values instead
+  ([bee#19](https://github.com/tractat-us/bee/pull/19)) worked, but it couldn't tell a cleared
+  object from an empty one. So it's on hold until kuilt's fix lands and bee can delete outright.
+  In November 2026 that fix is a kuilt epic still in progress.
 
 bee's open asks are collected on one kuilt tracking issue,
 [kuilt#3119](https://github.com/tractat-us/kuilt/issues/3119). The plan lists the gaps known when
