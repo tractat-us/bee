@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/tractat-us/bee/blob/main/docs/project/plan.schema.json",
   "title": "bee project plan",
-  "description": "The project's plan as data: pieces of work, their status, dependencies and estimates. The docs site renders the Project section from it, and a bee board can be seeded from it: `items` is an object keyed by stable id (one object per item, replaced whole on write) and `order` is a list of ids (an Rga of ids on the board). Every value is plain JSON, so the YAML that holds it uses no anchors, tags or unquoted dates.",
+  "description": "The project's plan as data: pieces of work, their status, dependencies and estimates. The docs site renders the Project section from it, and a bee board can be seeded from it: `items` is an object keyed by stable id (one object per item, replaced whole on write) and `order` is a list of ids (an Rga of ids on the board). Replacing an item whole means that on a board, a concurrent status move and summary edit on the same item keep only one of the two. Every value is plain JSON, so the YAML that holds it uses no anchors, tags or unquoted dates. A future export from a board must drop duplicate and missing ids from `order`, and must bump `schema_version` before adding any field, since an item allows no properties beyond those listed here.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "as_of", "columns", "column_order", "order", "items"],
@@ -37,7 +37,7 @@
       "uniqueItems": true
     },
     "order": {
-      "description": "Every item id exactly once, in display order.",
+      "description": "Every item id exactly once, in display order. The docs build fails on a duplicate, a missing id or an id that is not an item.",
       "type": "array",
       "items": { "$ref": "#/$defs/id" },
       "uniqueItems": true
@@ -50,7 +50,7 @@
   },
   "$defs": {
     "id": {
-      "description": "Stable, never reused. Prefixes: task- (a plan task), bee- (a bee issue or PR), kuilt- (a kuilt issue or PR), out- (work outside the code).",
+      "description": "Opaque, stable and never reused. Prefixes: task- (a plan task), bee- (a bee issue or PR), kuilt- (a kuilt issue or PR), out- (work outside the code). A slice keeps its draft id (kuilt-3126-d) once it is filed; its GitHub number lives only in `links`.",
       "type": "string",
       "pattern": "^(task|bee|kuilt|out)-[a-z0-9]+(-[a-z0-9]+)*$"
     },
@@ -80,7 +80,7 @@
       "additionalProperties": false,
       "required": ["low", "high", "unit", "basis"],
       "properties": {
-        "low": { "type": "number", "minimum": 0 },
+        "low": { "description": "At most `high`.", "type": "number", "minimum": 0 },
         "high": { "type": "number", "minimum": 0 },
         "unit": { "enum": ["hours", "days"] },
         "basis": { "description": "Why this range: the merge history or plan text it comes from.", "type": "string" },
@@ -109,15 +109,15 @@
         "title": { "type": "string" },
         "status": { "$ref": "#/$defs/status" },
         "summary": { "description": "One sentence: what it is, or what it waits for.", "type": "string" },
-        "parent": { "description": "The item this one is part of.", "$ref": "#/$defs/id" },
+        "parent": { "description": "The item this one is part of. A parent depends on its children by definition, so a child never appears in its parent's `depends_on`; the docs build fails if it does.", "$ref": "#/$defs/id" },
         "depends_on": {
-          "description": "Items that must be done before this one can finish.",
+          "description": "Items that must be done before this one can finish, other than its children. The docs build fails on a cycle.",
           "type": "array",
           "items": { "$ref": "#/$defs/id" },
           "uniqueItems": true
         },
-        "started": { "$ref": "#/$defs/timestamp" },
-        "landed": { "description": "When it merged or closed. Required when status is done.", "$ref": "#/$defs/timestamp" },
+        "started": { "description": "When its PR opened, or when its issue was filed if there is no PR.", "$ref": "#/$defs/timestamp" },
+        "landed": { "description": "When it merged or closed; for a decision, when it was ruled. Required when status is done, and allowed only then. Never before `started`.", "$ref": "#/$defs/timestamp" },
         "estimate": { "$ref": "#/$defs/estimate" },
         "ruling": { "$ref": "#/$defs/ruling" },
         "links": {
