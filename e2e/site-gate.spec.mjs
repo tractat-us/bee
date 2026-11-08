@@ -51,11 +51,12 @@ test('a page from another origin cannot open the board socket', async ({ page })
   expect(await dial(page, board)).toBe('refused');
 });
 
-// bee#54: an `<img>` sends no `Origin`, so only its Fetch Metadata tells the host another site
-// sent it. Admitted, it would hold a pairing slot and, after the dwell, post its `?screen=` text
-// to the board as a join request. Chromium may cut such a response short itself (ORB) where Safari
-// doesn't, so the host's 403 is what this test reads, not only the empty board.
-test('a page from another origin cannot open a pairing channel as an image', async ({ browser, page }) => {
+// bee#54: an `<img>` or a no-cors `fetch` sends no `Origin`, so only its Fetch Metadata tells the
+// host another site sent it. Admitted, it would hold a pairing slot and, after the dwell, post its
+// `?screen=` text to the board as a join request. Chromium cuts an image that isn't one short, and
+// may block another origin's event stream itself (ORB), where Safari does neither, so the host's
+// 403 is what this test reads first, and the empty board second.
+test('a page from another origin cannot open a pairing channel without a navigation', async ({ browser, page }) => {
   const context = await browser.newContext();
   try {
     const laptop = await context.newPage();
@@ -63,26 +64,31 @@ test('a page from another origin cannot open a pairing channel as an image', asy
     await expect(laptop.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
     const request = (screen) =>
       laptop.locator('a2ui-surface[data-surface-id^="bee-pair-"]').filter({ hasText: `"${screen}"` });
-    /** Loads `/pair` as an image on `page`, and returns the host's status for it. */
-    const image = async (screen) => {
-      const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/pair');
-      await page.evaluate(
-        (src) => document.body.append(Object.assign(new Image(), { src })),
-        `http://127.0.0.1:${port}/pair?screen=${screen}`,
-      );
+    const pair = (screen) => `http://127.0.0.1:${port}/pair?screen=${screen}`;
+    /** Runs `load` on `page` with `/pair` for `screen`, and returns the host's status for it. */
+    const status = async (screen, load) => {
+      const answered = page.waitForResponse((r) => r.url() === pair(screen));
+      await page.evaluate(load, pair(screen));
       return (await answered).status();
     };
+    const asImage = (src) => document.body.append(Object.assign(new Image(), { src }));
+    // Keeps the response, so the stream stays open past the dwell.
+    const asNoCorsFetch = (url) => {
+      fetch(url, { mode: 'no-cors' }).then((r) => (window.held = r));
+    };
 
-    // The control: the board's own page loads the same image, and its request reaches the board.
+    // The control: the board's own page holds the same channel open, and its request reaches the board.
     await page.goto('/');
-    expect(await image('own-image')).toBe(200);
-    await expect(request('own-image')).toHaveCount(1, { timeout: 15_000 });
+    expect(await status('own-fetch', asNoCorsFetch)).toBe(200);
+    await expect(request('own-fetch')).toHaveCount(1, { timeout: 15_000 });
 
     await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
-    expect(await image('elsewhere-image')).toBe(403);
+    expect(await status('elsewhere-image', asImage)).toBe(403);
+    expect(await status('elsewhere-fetch', asNoCorsFetch)).toBe(403);
     // Well past the dwell, after which an admitted channel posts its request.
     await laptop.waitForTimeout(6_000);
     await expect(request('elsewhere-image')).toHaveCount(0);
+    await expect(request('elsewhere-fetch')).toHaveCount(0);
   } finally {
     await context.close();
   }
