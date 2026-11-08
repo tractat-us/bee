@@ -32,6 +32,8 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            // BoardClient weighs each delta as the Quilter frames it, in CBOR (WireBudget).
+            implementation(libs.kotlinx.serialization.cbor)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

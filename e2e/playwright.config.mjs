@@ -41,8 +41,9 @@ export default defineConfig({
   testMatch: '*.spec.mjs',
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
-  // Every spec shares one host and its seeded fixtures, so spec files run one at a time too.
-  // In parallel, a second file's board activity broke two-browsers' caret test (PR #42).
+  // Every spec shares one host, its board and its seeded fixtures, so spec files run one at a
+  // time. In parallel, a second file's board activity broke two-browsers' caret test (PR #42), and
+  // a test that counts the board's records (the basis tests) read another file's writes as its own.
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -51,7 +52,12 @@ export default defineConfig({
     baseURL,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // WebKit on demand, one project per run, since a spec's beforeAll owns the shared board:
+    // `BEE_E2E_WEBKIT=1 npx playwright test --project=webkit sketch.spec.mjs`. CI installs Chromium only.
+    ...(process.env.BEE_E2E_WEBKIT ? [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }] : []),
+  ],
   webServer: hasSpecs ? {
     // `--host-name bee-lan.test`: second-screen.spec.mjs reaches the host by that name, which the
     // host refuses as a rebinding name otherwise (bee#45).

@@ -14,13 +14,13 @@ import kotlinx.serialization.json.JsonPrimitive
 object SurfaceValidator {
     /**
      * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog plus
-     * `Poll` and `Board` (`bee-notions/src/catalog.js`). `Sketch` joins this set in the task that
-     * adds it there, so it always matches what the renderer can draw.
+     * `Sketch`, `Poll` and `Board` (`bee-notions/src/catalog.js`), so it always matches what the
+     * renderer can draw.
      */
     val NOTIONS_COMPONENT_TYPES: Set<String> = setOf(
         "Text", "Image", "Icon", "Video", "AudioPlayer", "Row", "Column", "List", "Card", "Tabs",
         "Modal", "Divider", "Button", "TextField", "CheckBox", "ChoicePicker", "Slider", "DateTimeInput",
-        POLL, BOARD,
+        SKETCH, POLL, BOARD,
     )
 
     /** A question, options and per-peer answers ([NotionActions]): binds `question`, `options` and `answers`. */
@@ -34,6 +34,9 @@ object SurfaceValidator {
         POLL to listOf("answers", "options", "question"),
         BOARD to listOf("cards", "columns"),
     )
+
+    /** Agent-written HTML in a sandboxed frame (spec §5.6): properties `html` and `title?`. */
+    const val SKETCH = "Sketch"
 
     private const val ROOT_ID = "root"
 
@@ -55,9 +58,13 @@ object SurfaceValidator {
     private fun typeErrors(id: String, component: JsonObject): List<String> {
         val type = component["component"]?.stringOrNull() ?: return listOf("Component \"$id\" has no type.")
         if (type !in NOTIONS_COMPONENT_TYPES) return listOf("Component \"$id\" has unknown type \"$type\".")
-        return BINDINGS[type].orEmpty()
-            .filterNot { isBinding(component[it]) }
-            .map { "Component \"$id\" is a $type whose $it isn't a data binding ({\"path\": \"/…\"})." }
+        return when (type) {
+            // The frame's whole content: without it the renderer has nothing to sandbox.
+            SKETCH -> if (component["html"] == null) listOf("Component \"$id\" is a Sketch with no html.") else emptyList()
+            else -> BINDINGS[type].orEmpty()
+                .filterNot { isBinding(component[it]) }
+                .map { "Component \"$id\" is a $type whose $it isn't a data binding ({\"path\": \"/…\"})." }
+        }
     }
 
     /** A2UI's `DataBinding`: `{"path": "/…"}`, an absolute pointer into the data model. */
