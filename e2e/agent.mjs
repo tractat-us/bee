@@ -104,5 +104,16 @@ export async function startAgent(name) {
       if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL');
       await exited;
     },
+    /**
+     * Ends the session the way Claude Code does when it closes normally, and resolves once the
+     * bridge has exited: `stdin` closes the transport, `SIGTERM` signals the process. The bridge
+     * departs itself as left on the way out.
+     */
+    async end(how = 'stdin') {
+      killed = true;
+      if (how === 'stdin') child.stdin.end();
+      else child.kill(how);
+      await exited;
+    },
   };
 }
