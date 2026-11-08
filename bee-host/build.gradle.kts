@@ -49,6 +49,8 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.cio)
     testImplementation(libs.ktor.client.websockets)
+    // HostRestartTest reads what the host logs when saving the board fails.
+    testImplementation(libs.logback)
 
     webDistribution(project(path = ":bee-web", configuration = "webDistribution"))
 }

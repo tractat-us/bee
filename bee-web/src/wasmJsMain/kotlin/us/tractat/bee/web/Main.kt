@@ -1,5 +1,6 @@
 package us.tractat.bee.web
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -8,11 +9,14 @@ import io.ktor.websocket.readText
 import kotlinx.browser.document
 import kotlinx.browser.sessionStorage
 import kotlinx.browser.window
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -20,6 +24,7 @@ import org.w3c.dom.Element
 import org.w3c.dom.url.URLSearchParams
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
@@ -36,6 +41,8 @@ import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+
+private val log = KotlinLogging.logger("us.tractat.bee.web.Main")
 
 /** The host's board relay route (bee-host's `BoardRelay.PATH`). */
 private const val BOARD_PATH = "/ws/board"
@@ -70,6 +77,13 @@ private sealed interface Access {
  *
  * The CRDT author is fresh per page load, `web-<uuid>`. The page shows whether it is online, and
  * why not, and lists the board's action records with what each one's basis saw.
+ *
+ * The page starts from this browser's copy of the board ([BrowserStore]), for the board the host
+ * names at [BoardId.PATH]. The copy holds what a tab did while the host was down: close that tab,
+ * and the next page opened once the host is back starts from the copy and sends it on. The host
+ * serves this page and bee has no service worker, so with the host down a reload shows the
+ * browser's error page, not the board. `#store` says whether this tab is the one keeping the copy
+ * (`data-writer`).
  */
 fun main() {
     val params = URLSearchParams(window.location.search.toJsString())
@@ -190,6 +204,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
     val status = document.body!!.appendElement("p", "status")
     val problem = document.body!!.appendElement("p", "problem")
+    val store = document.body!!.appendElement("p", "store")
     val records = document.body!!.appendElement("ol", "records")
 
     val author = ReplicaId("web-${Uuid.random()}")
@@ -208,29 +223,125 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         else -> ""
     }
     val rendezvous = Rendezvous.Existing(WebSocketAdvertisement(socketUrl(BOARD_PATH, query), PeerId("bee-host"), "board"))
-    val client = BoardClient(
-        author = author,
-        loom = SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock),
-        rendezvous = rendezvous,
-        scope = scope,
-        clock = clock,
-    )
-    val onProblem: (String) -> Unit = { problem.textContent = it }
-    val inputs = LiveInputs(root, client, author, scope, onProblem)
-    BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, clock, onProblem).start(scope)
-    if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
-
     scope.launch {
-        combine(client.online, client.lastFailure) { online, failure ->
-            when {
-                online -> "online as $actor"
-                failure != null -> "offline: ${failure.message ?: failure::class.simpleName}"
-                else -> "offline"
-            }
-        }.collect { status.textContent = it }
+        val (copy, initial) = restore(askBoardId(), author, store)
+        val client = BoardClient(
+            author = author,
+            loom = SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock),
+            rendezvous = rendezvous,
+            scope = scope,
+            clock = clock,
+            initial = initial,
+        )
+        val onProblem: (String) -> Unit = { problem.textContent = it }
+        val inputs = LiveInputs(root, client, author, scope, onProblem)
+        BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, clock, onProblem).start(scope)
+        if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
+
+        scope.launch {
+            combine(client.online, client.lastFailure) { online, failure ->
+                when {
+                    online -> "online as $actor"
+                    failure != null -> "offline: ${failure.message ?: failure::class.simpleName}"
+                    else -> "offline"
+                }
+            }.collect { status.textContent = it }
+        }
+        scope.launch { client.state.collect { showRecords(records, it) } }
+        client.connect()
+        if (copy != null) keep(copy, client.state, scope, store)
     }
-    scope.launch { client.state.collect { showRecords(records, it) } }
-    client.connect()
+}
+
+/** What asking the host for its board came to. */
+private sealed interface HostAnswer {
+    /** The host named its board. */
+    data class Named(val board: BoardId) : HostAnswer
+
+    /** The fetch itself failed: no host answered, so the last-known board is the best there is. */
+    data object Silent : HostAnswer
+
+    /** A host answered, but named nothing (a non-OK status, or no text): its board is not known. */
+    data object Declined : HostAnswer
+}
+
+/**
+ * The board the host names at [BoardId.PATH]. A plain `fetch` that settles either way: Ktor's
+ * wasm engine reports a refused fetch as a `kotlin.Error`, which no `catch (Exception)` sees.
+ */
+private suspend fun askBoardId(): HostAnswer {
+    val answer = CompletableDeferred<Pair<String?, Boolean>>()
+    fetchText(BoardId.PATH) { text, rejected -> answer.complete(text to rejected) }
+    val (text, rejected) = answer.await()
+    return when {
+        rejected -> HostAnswer.Silent
+        text.isNullOrBlank() -> HostAnswer.Declined
+        else -> HostAnswer.Named(BoardId(text))
+    }
+}
+
+/**
+ * Fetches [path] past every cache and calls [onDone] with its text, or null for a non-OK status;
+ * `rejected` is true only when the fetch itself failed.
+ */
+@JsFun(
+    """(path, onDone) => {
+        fetch(path, { cache: 'no-store' })
+            .then((r) => (r.ok ? r.text() : null))
+            .then((text) => onDone(text, false), () => onDone(null, true));
+    }""",
+)
+private external fun fetchText(path: String, onDone: (String?, Boolean) -> Unit)
+
+/** The copy this tab reads and may keep: one [board]'s, in [store]. */
+private class Copy(val store: BrowserStore, val board: BoardId)
+
+/**
+ * This browser's copy of the board the host named ([answer]), and the board it holds, under
+ * [author]. A browser that can't keep one (no IndexedDB, no Web Locks, or no board known) starts
+ * from an empty board, and [line] says why: the host still has the board. A copy that doesn't
+ * read is logged and kept, to be replaced by the writer.
+ */
+private suspend fun restore(answer: HostAnswer, author: ReplicaId, line: Element): Pair<Copy?, BoardState> {
+    if (answer is HostAnswer.Declined) return notKept(line, "the host didn't name its board")
+    val served = (answer as? HostAnswer.Named)?.board
+    val copy = try {
+        BrowserStore.open().let { store -> store.board(served)?.let { Copy(store, it) } }
+            ?: return notKept(line, "the host didn't name its board")
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        return notKept(line, failure.message ?: failure::class.simpleName.orEmpty())
+    }
+    val initial = try {
+        copy.store.load(copy.board, author) ?: BoardState.EMPTY
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (unreadable: Exception) {
+        log.warn(unreadable) { "This browser's copy of ${copy.board} didn't read. The page starts empty, and the next save replaces it." }
+        BoardState.EMPTY
+    }
+    return copy to initial
+}
+
+private fun notKept(line: Element, why: String): Pair<Copy?, BoardState> {
+    line.setAttribute("data-writer", "false")
+    line.textContent = "not kept in this browser: $why"
+    return null to BoardState.EMPTY
+}
+
+/** Waits to be the tab that keeps [copy], then keeps it for as long as the page lives. */
+private suspend fun keep(copy: Copy, board: StateFlow<BoardState>, scope: CoroutineScope, line: Element) {
+    line.setAttribute("data-writer", "false")
+    line.textContent = "another tab keeps the board in this browser"
+    val saver = copy.store.keep(copy.board, board, scope)
+    line.setAttribute("data-writer", "true")
+    saver.lastFailure.collect { failure ->
+        line.textContent = when (failure) {
+            null -> "this tab keeps the board in this browser"
+            else -> "not saved in this browser: ${failure.message ?: failure::class.simpleName}"
+        }
+    }
 }
 
 /**

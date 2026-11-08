@@ -48,6 +48,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.browser)
+                implementation(libs.kotlin.logging)
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.js) // browser WebSocket engine
                 implementation(libs.ktor.client.websockets)
