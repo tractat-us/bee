@@ -45,7 +45,7 @@ import kotlin.uuid.Uuid
  * entry for a basis to name. `malformed` is the exception: a surface no valid writer would write
  * (A11), with a type outside the catalog and a child nobody has, for the page's placeholder.
  */
-val E2E_FIXTURES: List<String> = listOf("typing", "conflict", "records", "hold", MALFORMED)
+val E2E_FIXTURES: List<String> = listOf("typing", "conflict", "records", "hold", MALFORMED) + NOTIONS_FIXTURES
 
 private const val MALFORMED = "malformed"
 
@@ -53,7 +53,8 @@ private const val MALFORMED = "malformed"
  * Writes the Playwright fixture surfaces onto a running host through a JVM [BoardClient], as any
  * peer would: the host has no write route. Run as `:bee-host:e2eSeed -Pbee.e2e.host=<url>` from
  * Playwright's globalSetup, which passes `--host <url>`. It seeds every fixture by default, and
- * `--fixture <name>` narrows it to one.
+ * `--fixture <name>` narrows it to one. `--close` or `--append-option` (NotionsFixtures.kt) seeds
+ * nothing, and makes that one change instead.
  *
  * It returns once a second, fresh client reads every seeded surface back from the host, so a test
  * never starts before its fixture is on the board.
@@ -69,7 +70,7 @@ fun main(args: Array<String>) {
     // way: a failed seed must end globalSetup, never hang it.
     @Suppress("TooGenericExceptionCaught")
     try {
-        runBlocking { seed(URI(host), fixtures) }
+        runBlocking { seed(URI(host), fixtures, flags) }
     } catch (failure: Throwable) {
         failure.printStackTrace()
         exitProcess(1)
@@ -78,7 +79,7 @@ fun main(args: Array<String>) {
 }
 
 @OptIn(ExperimentalUuidApi::class)
-private suspend fun seed(host: URI, fixtures: List<String>) {
+private suspend fun seed(host: URI, fixtures: List<String>, flags: Map<String, String?>) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val http = HttpClient(CIO) { install(WebSockets) }
     val clock = { Clock.System.now() }
@@ -92,7 +93,19 @@ private suspend fun seed(host: URI, fixtures: List<String>) {
         val author = ReplicaId("e2e-seeder-${Uuid.random()}")
         val writer = client(author).apply { connect() }
         withTimeout(30.seconds) { writer.online.first { it } }
+        actOnNotion(writer, author, flags, clock())?.let { done ->
+            val reader = client(ReplicaId("e2e-reader-${Uuid.random()}")).apply { connect() }
+            withTimeout(30.seconds) { reader.state.first(done) }
+            println("Made ${flags.keys.joinToString()} on $host")
+            reader.close()
+            writer.close()
+            return
+        }
         for (id in fixtures) {
+            if (id in NOTIONS_FIXTURES) {
+                seedNotion(writer, author, id, clock())
+                continue
+            }
             // The host is fresh per run, so a surface already there is a mistake, and openSurface
             // refuses it.
             writer.mutate { state ->
@@ -105,7 +118,13 @@ private suspend fun seed(host: URI, fixtures: List<String>) {
         val reader = client(ReplicaId("e2e-reader-${Uuid.random()}")).apply { connect() }
         withTimeout(30.seconds) {
             reader.state.first { state ->
-                fixtures.all { id -> state.surfaceDoc(id)?.toSurfaceView(id)?.data?.get("options") != null }
+                fixtures.all { id ->
+                    if (id in NOTIONS_FIXTURES) {
+                        notionSeeded(state, id)
+                    } else {
+                        state.surfaceDoc(id)?.toSurfaceView(id)?.data?.get("options") != null
+                    }
+                }
             }
         }
         println("Seeded ${fixtures.joinToString()} on $host")
