@@ -23,10 +23,11 @@ import kotlin.time.Instant
  * reads is never reported; one connected for a whole grace is read.
  */
 fun claimsLinkLoss(membership: Flow<ClusterConfig>, clock: () -> Instant): Flow<PartitionEvent> = flow {
-    var before: Set<NodeId>? = null
+    // Empty before the first config, so the first loses nothing: it is the baseline.
+    var before = emptySet<NodeId>()
     membership.collect { config ->
         val now = config.allMembers
-        before?.minus(now)?.forEach { gone -> emit(PartitionEvent.PeerLost(PeerId(gone.value), clock())) }
+        (before - now).forEach { gone -> emit(PartitionEvent.PeerLost(PeerId(gone.value), clock())) }
         before = now
     }
 }
