@@ -7,6 +7,7 @@ import java.security.SecureRandom
 import java.util.Base64
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /** One pairing's id. It names the join request on the board, so it is not a secret. */
@@ -51,8 +52,17 @@ sealed interface Opened {
         override fun toString(): String = "Ticket(id=$id, code=…, expiresAt=$expiresAt)"
     }
 
+    /** No pairing: the device may ask again later. The wire says only [us.tractat.bee.core.PairingEnd.Busy]. */
+    sealed interface Refused : Opened
+
     /** [Pairing.MAX_PENDING] pairings are already waiting. */
-    data object Busy : Opened
+    data object Busy : Refused
+
+    /** A pairing from this address is already waiting. */
+    data object AlreadyPairing : Refused
+
+    /** This address opened a pairing less than [Pairing.COOLDOWN] ago. */
+    data object TooSoon : Refused
 }
 
 /** What one typed entry did to a pairing. */
@@ -87,6 +97,11 @@ sealed interface Attempt {
  *   code is compared, so it neither spends a try nor learns whether it matched.
  * - **Codes and keys are compared in constant time**, so a timing side channel can't walk them.
  * - **Keys live in memory only.** A new host process re-pairs every device.
+ * - **One address can't crowd out the others.** An address has at most one pairing waiting, and
+ *   opens at most one per [cooldown]; past that, only [MAX_PENDING] wait at once. A loopback
+ *   address is never limited: it reaches the board without a key, so it has nothing to pair for.
+ *   An address is not an identity, though: a device that answers on many addresses gets a turn on
+ *   each.
  *
  * Every method is synchronous and thread-safe; [clock] and [secrets] are its only inputs.
  */
@@ -95,24 +110,43 @@ class Pairing(
     private val secrets: PairingSecrets,
     private val ttl: Duration = TTL,
     private val maxWrong: Int = MAX_WRONG,
+    private val cooldown: Duration = COOLDOWN,
 ) {
-    private class Pending(val code: String, val expiresAt: Instant, val wrong: Int)
+    private class Pending(val from: String, val code: String, val expiresAt: Instant, val wrong: Int)
 
     private val lock = Any()
+
+    /**
+     * Every pairing opened and not yet ended, expired ones included. Only [attempt] and [end]
+     * remove one, so a pairing still waiting on the board always has its entry until its owner
+     * ends it.
+     */
     private val pending = mutableMapOf<PairingId, Pending>()
+
+    /** When each limited address last opened a pairing, within the last [cooldown]. */
+    private val lastOpened = mutableMapOf<String, Instant>()
     private val keys = mutableListOf<DeviceKey>()
 
-    /** Opens a pairing for a keyless device, or [Opened.Busy] if [MAX_PENDING] are already live. */
-    fun open(): Opened = synchronized(lock) {
+    /** Opens a pairing for a keyless device at address [from], or says why not ([Opened.Refused]). */
+    fun open(from: String): Opened = synchronized(lock) {
         val now = clock()
-        // An expired pairing holds no place. Its host timer ends it too; this keeps the map bounded if not.
-        pending.values.removeIf { now >= it.expiresAt }
-        if (pending.size >= MAX_PENDING) return Opened.Busy
-        val id = secrets.pairingId()
-        check(id !in pending) { "pairing id $id minted twice" }
-        val ticket = Opened.Ticket(id, secrets.code(), now + ttl)
-        pending[id] = Pending(ticket.code, ticket.expiresAt, wrong = 0)
-        ticket
+        lastOpened.values.removeIf { now >= it + cooldown }
+        // An expired pairing holds no place, though it stays pending until its timer ends it.
+        val live = pending.values.filter { now < it.expiresAt }
+        val limited = !isLoopback(from)
+        when {
+            limited && live.any { it.from == from } -> Opened.AlreadyPairing
+            limited && from in lastOpened -> Opened.TooSoon
+            live.size >= MAX_PENDING -> Opened.Busy
+            else -> {
+                val id = secrets.pairingId()
+                check(id !in pending) { "pairing id $id minted twice" }
+                val ticket = Opened.Ticket(id, secrets.code(), now + ttl)
+                pending[id] = Pending(from, ticket.code, ticket.expiresAt, wrong = 0)
+                if (limited) lastOpened[from] = now
+                ticket
+            }
+        }
     }
 
     /** [actor] typed [code] for pairing [id]. */
@@ -127,7 +161,7 @@ class Pairing(
             }
             live.wrong + 1 >= maxWrong -> Attempt.Voided.also { pending.remove(id) }
             else -> {
-                pending[id] = Pending(live.code, live.expiresAt, live.wrong + 1)
+                pending[id] = Pending(live.from, live.code, live.expiresAt, live.wrong + 1)
                 Attempt.Wrong(triesLeft = maxWrong - live.wrong - 1)
             }
         }
@@ -158,8 +192,20 @@ class Pairing(
         /** The wrong entry that voids a pairing (§5.7). */
         const val MAX_WRONG: Int = 3
 
-        /** Pairings waiting at once. Each puts a request on the board, so a LAN device can't flood it. */
+        /**
+         * Pairings waiting at once, from every address together. It caps concurrent requests on
+         * the board, not how many open over time: that is [COOLDOWN] and [DWELL]'s job.
+         */
         const val MAX_PENDING: Int = 3
+
+        /** How long after one pairing an address waits before it may open another. */
+        val COOLDOWN: Duration = 10.seconds
+
+        /**
+         * How long a device holds its pairing socket open before its request goes on the board. A
+         * device that dials and drops writes nothing there, so a loop of them leaves no surfaces.
+         */
+        val DWELL: Duration = 3.seconds
 
         private fun constantTimeEquals(a: String, b: String): Boolean =
             MessageDigest.isEqual(a.encodeToByteArray(), b.encodeToByteArray())
