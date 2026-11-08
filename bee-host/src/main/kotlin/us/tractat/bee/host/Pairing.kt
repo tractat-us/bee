@@ -105,7 +105,9 @@ class Pairing(
     /** Opens a pairing for a keyless device, or [Opened.Busy] if [MAX_PENDING] are already live. */
     fun open(): Opened = synchronized(lock) {
         val now = clock()
-        if (pending.values.count { now < it.expiresAt } >= MAX_PENDING) return Opened.Busy
+        // An expired pairing holds no place. Its host timer ends it too; this keeps the map bounded if not.
+        pending.values.removeIf { now >= it.expiresAt }
+        if (pending.size >= MAX_PENDING) return Opened.Busy
         val id = secrets.pairingId()
         check(id !in pending) { "pairing id $id minted twice" }
         val ticket = Opened.Ticket(id, secrets.code(), now + ttl)
