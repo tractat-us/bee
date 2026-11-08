@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T03:28Z"
+as_of: "2026-11-08T03:30Z"
 
 sources:
   - title: "v1 plan"
@@ -74,6 +74,7 @@ order:
   - kuilt-3142
   - kuilt-3143
   - kuilt-3144
+  - kuilt-3145
   - out-cla
   - out-kuilt-references
 
@@ -232,7 +233,7 @@ items:
     title: "Task 10's follow-up calls"
     status: waiting-on-iain
     summary: "Four calls from #42 — the host's PeerKind, claim-free join records, no local copy for LAN pages, and the one-worker e2e — plus the hand check on a second device. Follow-up decisions, not merge gates."
-    started: "2026-11-08T03:10Z"
+    started: "2026-11-08T02:35Z"
     links:
       - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
 
@@ -547,6 +548,15 @@ items:
     started: "2026-11-08T02:58Z"
     links:
       - { title: "kuilt#3144", url: "https://github.com/tractat-us/kuilt/issues/3144" }
+
+  kuilt-3145:
+    kind: kuilt
+    title: "WebSocket installs take no frame bound, so one header can allocate 2 GiB"
+    status: next
+    summary: "Found in the review of bee#42. bee works around it in KeyGate.kt, so it doesn't wait on the fix."
+    started: "2026-11-08T03:25Z"
+    links:
+      - { title: "kuilt#3145", url: "https://github.com/tractat-us/kuilt/issues/3145" }
 
   # ── Outside the code ─────────────────────────────────────────────────
   out-cla:
