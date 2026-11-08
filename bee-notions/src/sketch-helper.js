@@ -4,7 +4,8 @@
 //
 // It speaks the MCP Apps (SEP-1865) View-to-Host envelope, JSON-RPC 2.0 over postMessage: a click
 // on a `[data-choice]` element is a `ui/message` request whose text is the element's text, and
-// whose `_meta` names the choice. It also keeps the brainstorming companion's page API
+// whose `_meta` names the choice, and it reports the document's height as a
+// `ui/notifications/size-changed` notification, so the page can fit the frame. It also keeps the brainstorming companion's page API
 // (`toggleSelect`, `window.brainstorm`), so a companion screen behaves as it does on the
 // companion server.
 
@@ -107,6 +108,26 @@ export function sketchHelper() {
       choose(value, metadata && metadata.text !== undefined ? metadata.text : value);
     },
   };
+
+  // The document's height, so the page can fit the frame to it: an MCP Apps
+  // `ui/notifications/size-changed` notification whenever it changes, a few at most per frame's
+  // worth of layout. The root's box holds the body's margins; the body's scroll height catches
+  // content that overflows it.
+  var reportedHeight = -1;
+  var sizeTimer = null;
+  function reportSize() {
+    sizeTimer = null;
+    var root = document.documentElement;
+    var height = Math.ceil(Math.max(root.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0));
+    if (height === reportedHeight) return;
+    reportedHeight = height;
+    window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: height } }, '*');
+  }
+  function scheduleSize() {
+    if (sizeTimer === null) sizeTimer = setTimeout(reportSize, 50);
+  }
+  new ResizeObserver(scheduleSize).observe(document.documentElement);
+  window.addEventListener('load', scheduleSize);
 
   // The frame's status pill, when the screen has one: it's on the board, not a companion server.
   document.addEventListener('DOMContentLoaded', function () {
