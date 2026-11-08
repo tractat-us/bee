@@ -253,9 +253,12 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
   await page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
 
-  // Control: once Send has stayed put, the same click sends.
+  // Control: once Send has stayed put and the pointer has really moved on it, a click sends. (Send
+  // came to rest under a still pointer, so it waits for that move: see sketch-fit.spec.mjs.)
+  await page.mouse.move(at.x + 1, at.y);
   await expect(send).toBeEnabled();
-  await page.mouse.click(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.up();
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'moved', text: 'moved' });
   await max.context.close();
