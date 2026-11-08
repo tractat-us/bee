@@ -483,6 +483,12 @@ table over the committed log:
 - **Crashed** means the agent's claims link is gone: the voter drops its claims node after the 30 s
   learner grace, and bee departs the agent whose newest presence entry names that node (bee#28).
   The peer's claims show as **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
+- **Crashed while the host was down** can slip past that rule: presence isn't saved, so when the
+  voter drops a restored node, no entry may name it yet. So once a boot grace of 60 s (twice the
+  learner grace) has passed, bee departs any agent still holding a claim that hasn't posted to
+  this boot **(Iain, bee#44)**. Posting means one of its presence slots advanced while the host was
+  watching it. An entry a surviving peer pushes back on reconnect doesn't count, because a dead
+  agent's last entry never advances.
 - **Quiet** means the agent hasn't acted for a while (for example, a long build). It shows as
   "quiet since …" until a timeout, then **the session is declared dead, exactly as if it had
   crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a reasonable

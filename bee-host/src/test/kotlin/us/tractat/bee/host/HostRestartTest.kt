@@ -1,12 +1,18 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package us.tractat.bee.host
 
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -19,15 +25,22 @@ import org.slf4j.LoggerFactory
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
+import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimView
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
+import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.SurfaceMeta
+import us.tractat.kuilt.core.InMemoryTag
+import us.tractat.kuilt.core.Rendezvous
+import us.tractat.kuilt.core.fabric.peerMesh
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.store.DurableStore
@@ -35,6 +48,7 @@ import us.tractat.kuilt.store.InMemoryDurableStore
 import us.tractat.kuilt.store.StoreKey
 import us.tractat.kuilt.test.assertAll
 import us.tractat.kuilt.test.fabric.InMemoryConnectionSource
+import us.tractat.kuilt.test.fabric.connectionPair
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +56,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -212,6 +227,106 @@ class HostRestartTest {
         }
     }
 
+    /**
+     * bee#44's scenario. alice and bo each hold a claim, the host stops, and alice dies while it is
+     * down. The host boots with no presence, since presence isn't saved. bo reconnects inside the
+     * boot grace, on a fresh claims link as `ClaimsConnection` rebuilds one, and posts it, then
+     * re-posts as a live peer does: he keeps his claim. alice is departed `Crashed` once the grace ends, so her claim shows orphaned, and
+     * the departure is logged.
+     */
+    @Test
+    fun anAgentThatDiedWhileTheHostWasDownIsDepartedAfterTheBootGrace() = runTest(timeout = 120.seconds) {
+        val logged = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger("us.tractat.bee.host.Departures") as Logger
+        logger.addAppender(logged)
+        try {
+            val rig = Rig(this)
+            val bo = PeerIdentity.agent("bo", Random(2))
+            val hers = ClaimTarget("record:lunch:1")
+            val his = ClaimTarget("record:lunch:2")
+            val first = rig.boot()
+            // The host going down ends every claims link of the first boot.
+            val firstLinks = Job(backgroundScope.coroutineContext[Job])
+            val linkScope = CoroutineScope(backgroundScope.coroutineContext + firstLinks)
+            val aliceWon = rig.claims.client(NodeId("claims-alice-1"), linkScope).claim(hers, alice)
+            val boWon = rig.claims.client(NodeId("claims-bo-1"), linkScope).claim(his, bo)
+            first.close()
+            firstLinks.cancelAndJoin()
+
+            val second = rig.boot()
+            advanceTimeBy(10.seconds)
+            rig.claims.client(NodeId("claims-bo-2"))
+            second.board.relay.mutate { it.postPresence(ReplicaId("mcp-bo"), agentPresence(bo, "claims-bo-2"), clock = 1) }
+            advanceTimeBy(Presence.EVERY)
+            second.board.relay.mutate { it.postPresence(ReplicaId("mcp-bo"), agentPresence(bo, "claims-bo-2"), clock = 2) }
+            advanceTimeBy(Departures.BOOT_GRACE - 11.seconds - Presence.EVERY)
+            runCurrent()
+            val inGrace = second.voter.table.value
+            val after = withTimeoutOrNull(Departures.BOOT_GRACE) { second.voter.table.first { it.retired(alice) } }
+            // A check later, so a Depart of bo proposed after alice's would have committed.
+            advanceTimeBy(Departures.CHECK_EVERY)
+            runCurrent()
+            val settled = second.voter.table.value
+            val lines = logged.list.map { it.formattedMessage }
+            assertAll(
+                { assertIs<ClaimOutcome.Won>(aliceWon, "rig: alice held a claim") },
+                { assertIs<ClaimOutcome.Won>(boWon, "rig: bo held a claim") },
+                { assertIs<ClaimStatus.Held>(inGrace.status(hers), "alice keeps her claim until the grace ends") },
+                { assertEquals(DepartReason.Crashed, after?.departReason(alice), "then she is departed Crashed") },
+                { assertEquals(ClaimStatus.Orphaned(alice, (aliceWon as ClaimOutcome.Won).token), after?.status(hers)) },
+                { assertEquals(ClaimStatus.Held(bo, (boWon as ClaimOutcome.Won).token), settled.status(his), "bo, seen inside the grace, keeps his") },
+                { assertEquals(null, settled.departReason(bo), "and isn't departed") },
+                { assertTrue(lines.any { "$alice" in it && "Crashed" in it }, "the departure is logged: $lines") },
+            )
+            second.close()
+        } finally {
+            logger.detachAppender(logged)
+        }
+    }
+
+    /**
+     * bee#44 through the real push path. alice holds a claim and dies while the host is down. A
+     * tab left open across the restart holds her last presence entry, as every peer connected
+     * before the outage does, and redials after the learner grace, when the voter has already
+     * dropped her old claims node. Its first-contact push puts her entry on the new board inside
+     * the boot grace, but the entry never advances: she is still departed `Crashed` once the grace
+     * ends. Counting a pushed-back entry as seen kept her claims held for good.
+     */
+    @Test
+    fun aDeadAgentsEntryPushedBackByASurvivingTabDoesNotCountAsSeen() = runTest(timeout = 120.seconds) {
+        val rig = Rig(this)
+        val hers = ClaimTarget("record:lunch:1")
+        val first = rig.boot()
+        val firstLinks = Job(backgroundScope.coroutineContext[Job])
+        val won = rig.claims.client(NodeId("claims-alice-1"), CoroutineScope(backgroundScope.coroutineContext + firstLinks)).claim(hers, alice)
+        first.close()
+        firstLinks.cancelAndJoin()
+        val held = BoardState.EMPTY.let { it.piece(it.postPresence(ReplicaId("mcp-alice"), agentPresence(alice, "claims-alice-1"), clock = 1).delta) }
+        val tab = rig.tab(ReplicaId("web-iain"), held)
+
+        val second = rig.boot()
+        val booted = testScheduler.currentTime
+        advanceTimeBy(Departures.BOOT_GRACE - 15.seconds)
+        tab.connect()
+        withTimeoutOrNull(10.seconds) { second.board.relay.state.first { s -> s.latestPresence().any { it.identity == alice } } }
+        val pushedAfter = (testScheduler.currentTime - booted).milliseconds
+        val after = withTimeoutOrNull(Departures.BOOT_GRACE) { second.voter.table.first { it.retired(alice) } }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(won, "rig: alice held a claim") },
+            { assertTrue(second.board.relay.state.value.latestPresence().any { it.identity == alice }, "rig: the tab pushed her entry back") },
+            {
+                assertTrue(
+                    pushedAfter > ClaimsVoter.LEARNER_GRACE && pushedAfter < Departures.BOOT_GRACE,
+                    "rig: pushed after the lost-link rule's turn and inside the boot grace, at $pushedAfter",
+                )
+            },
+            { assertEquals(DepartReason.Crashed, after?.departReason(alice), "she is departed Crashed all the same") },
+            { assertEquals(ClaimStatus.Orphaned(alice, (won as ClaimOutcome.Won).token), after?.status(hers)) },
+        )
+        tab.close()
+        second.close()
+    }
+
     /** The host's stores, kept across its boots, and its endpoints in memory. */
     private class Rig(
         private val test: TestScope,
@@ -221,6 +336,19 @@ class HostRestartTest {
         val claims = ClaimsRig(test)
         private val dispatcher = StandardTestDispatcher(test.testScheduler)
 
+        /** Where the board of the boot that is up takes connections. */
+        private var boardSource = InMemoryConnectionSource()
+
+        /** A tab holding [held], which dials whichever boot is up. */
+        fun tab(author: ReplicaId, held: BoardState): BoardClient {
+            val loom = SpokeLoom(test.backgroundScope, author.value, Random(0), claims.clock) { id, _ ->
+                val (hubEnd, spokeEnd) = connectionPair()
+                boardSource.offer(hubEnd)
+                peerMesh(id, listOf(spokeEnd), dispatcher)
+            }
+            return BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, claims.clock, held, BoardStar.CONFIG, Random(0))
+        }
+
         suspend fun openBoard(): HostBoard {
             val stores = HostStores.settle(boardStore, claims.store)
             return HostBoard.open(test.backgroundScope, InMemoryConnectionSource(), dispatcher, stores.board, stores.boardId, claims.clock, Random(0), BoardStar.CONFIG)
@@ -228,7 +356,7 @@ class HostRestartTest {
 
         suspend fun boot(): HostCore = HostCore.start(
             scope = test.backgroundScope,
-            boardSource = InMemoryConnectionSource(),
+            boardSource = InMemoryConnectionSource().also { boardSource = it },
             claimsHost = claims.host,
             stores = HostStores.settle(board = boardStore, claims = claims.store),
             intake = intake,
@@ -271,6 +399,14 @@ class HostRestartTest {
             context = JsonObject(emptyMap()),
             basis = Basis.capture(state, "lunch"),
             at = Instant.parse("2026-11-07T12:01:00Z"),
+        )
+
+        fun agentPresence(identity: PeerIdentity, claimsNode: String) = PresenceEntry(
+            identity = identity,
+            claimsNode = NodeId(claimsNode),
+            status = null,
+            lastActedAt = Instant.DISTANT_FUTURE,
+            waiting = false,
         )
 
         fun presence() = PresenceEntry(
