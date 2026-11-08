@@ -34,8 +34,7 @@ class DeparturesTest {
     private val iain = PeerIdentity.human("iain")
 
     /**
-     * A board link lost for the reconnect window (`PeerLost`) retires the agent whose presence
-     * names it, through the voter, so the claim it held shows orphaned.
+     * A claims node the voter dropped (`PeerLost`) retires the agent whose presence names it, through the voter, so the claim it held shows orphaned.
      */
     @Test
     fun lostLinkRetiresTheAgentAndOrphansItsClaims() = runTest(timeout = 120.seconds) {
@@ -57,8 +56,8 @@ class DeparturesTest {
     }
 
     /**
-     * An agent that redialled has a presence entry naming its new link, so the old link's loss
-     * retires nobody. The new link's loss, as a control, does.
+     * An agent that rebuilt its claims link has a presence entry naming its new node, so the old
+     * node's loss retires nobody. The new link's loss, as a control, does.
      */
     @Test
     fun reconnectedPeerIsNotRetired() = runTest {
@@ -163,10 +162,10 @@ class DeparturesTest {
 
     private fun entry(
         identity: PeerIdentity,
-        link: String,
+        claimsNode: String,
         lastActedAt: Instant = Instant.DISTANT_FUTURE,
         waiting: Boolean = false,
-    ) = PresenceEntry(identity, link, status = null, lastActedAt = lastActedAt, waiting = waiting)
+    ) = PresenceEntry(identity, NodeId(claimsNode), status = null, lastActedAt = lastActedAt, waiting = waiting)
 
     /** A scripted board: fixed presence entries, and a partition-event stream the test drives. */
     private class Board(private val test: TestScope, vararg entries: PresenceEntry) {
@@ -186,8 +185,8 @@ class DeparturesTest {
             return proposed
         }
 
-        suspend fun lose(link: String) {
-            events.emit(PartitionEvent.PeerLost(PeerId(link), clock()))
+        suspend fun lose(claimsNode: String) {
+            events.emit(PartitionEvent.PeerLost(PeerId(claimsNode), clock()))
             test.testScheduler.runCurrent()
         }
     }
