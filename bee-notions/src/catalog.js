@@ -1,0 +1,12 @@
+// The Notions catalog (spec §5.6): the basic catalog's components, plus Sketch, under bee's own
+// id. Board and Poll join it in Task 11. Keep SurfaceValidator.NOTIONS_COMPONENT_TYPES (bee-a2ui)
+// in step with this list: the bridge refuses what the renderer can't draw.
+import { basicCatalog } from '@a2ui/lit/v0_9';
+import { Sketch } from './sketch.js';
+
+export const NOTIONS_CATALOG_ID = 'https://tractat.us/bee/catalogs/notions/v1.json';
+
+export const notionsCatalog = basicCatalog.derive({
+  catalogId: NOTIONS_CATALOG_ID,
+  components: [...basicCatalog.components.keys(), Sketch],
+});
