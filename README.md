@@ -11,7 +11,7 @@ The board remembers. A session that closes, crashes or starts fresh finds the bo
 left it.
 
 **Status:** early. The pieces run on their own: two browsers edit one board live through the host,
-a Claude session's bridge keeps its place through `/clear`, and two peers racing for one task get
+a Claude session's bridge survives `/clear`, and two peers racing for one task get
 exactly one winner. Joining them into one working board is
 [Task 7 of the plan](docs/superpowers/plans/2026-11-06-bee-v1.md#task-7-join-which-completes-spikes-3-and-4),
 and each spike's notes are in [`docs/spikes/`](docs/spikes/).
