@@ -2,6 +2,7 @@ package us.tractat.bee.host
 
 import kotlinx.coroutines.test.runTest
 import us.tractat.bee.core.BoardId
+import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.store.InMemoryDurableStore
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
@@ -57,5 +58,27 @@ class HostStoresTest {
             { assertNotEquals(first, second) },
             { assertEquals(listOf(second, second), kept) },
         )
+    }
+
+    /** Data from before bee#46: `board/` holds an id, `claims/` a Raft log (its `raft/meta`) with none. */
+    @Test
+    fun aClaimsLogFromBeforeIdsAdoptsTheBoardsId() = runTest {
+        val old = BoardId.mint()
+        BoardId.recordIn(board, old)
+        claims.write(DurableStoreRaftStorage.META_KEY, byteArrayOf(1))
+        val settled = HostStores.settle(board, claims).boardId
+        assertAll(
+            { assertEquals(old, settled) },
+            { assertEquals(old, BoardId.keptIn(claims), "claims now records it") },
+            { assertEquals(old, BoardId.keptIn(board)) },
+        )
+    }
+
+    /** A claims log that was moved aside is empty: no `raft/meta`, so the board mints even with an id in `board/`. */
+    @Test
+    fun anEmptyClaimsLogDoesNotAdopt() = runTest {
+        val old = BoardId.mint()
+        BoardId.recordIn(board, old)
+        assertNotEquals(old, HostStores.settle(board, claims).boardId)
     }
 }
