@@ -7,15 +7,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeout
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
@@ -41,8 +40,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
-import kotlin.test.fail
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -77,22 +74,11 @@ class BridgeJoinLinkTest {
         try {
             val link = HostAddress.parse("http://127.0.0.1:${host.port}/?k=${host.pairing.mintJoinKey().value}")
             val bridge = Bridge(link)
-            // Each wait ends on whichever comes first, so a refused bridge fails as refused, not as a timeout.
-            val board = withTimeout(TIMEOUT) {
-                merge(
-                    bridge.board.online.filter { it }.map { "online" },
-                    bridge.board.lastFailure.filterNotNull().filter(::refused).map { "refused: $it" },
-                ).first()
-            }
-            val claims = withTimeout(TIMEOUT) {
-                select {
-                    async { bridge.claims.link.filterNotNull().first() }.onAwait { it }
-                    bridge.claimsRefused.onAwait { fail("the claims socket was refused: $it") }
-                }
-            }
+            val board = withTimeout(TIMEOUT) { bridge.boardOutcome() }
+            val claims = assertIs<ClaimsLink>(withTimeout(TIMEOUT) { bridge.claimsOutcome() }, "the claims link, not a refusal")
             val won = claims.client.claim(ClaimTarget("record:join-link:1"), PeerIdentity.agent("ada", Random(1)))
             assertAll(
-                { assertEquals("online", board, "the board replica") },
+                { assertEquals(ONLINE, board, "the board replica") },
                 { assertIs<ClaimOutcome.Won>(won, "the claims link commits a claim") },
                 { assertEquals(host.boardId, bridge.pin.board.value, "the board, asked over HTTP") },
             )
@@ -107,22 +93,11 @@ class BridgeJoinLinkTest {
         try {
             val root = HostAddress.parse("http://127.0.0.1:${host.port}/")
             val bridge = Bridge(root)
-            // As above, each wait ends on whichever comes first: an admitted bridge fails as admitted.
-            val board = withTimeout(TIMEOUT) {
-                merge(
-                    bridge.board.online.filter { it }.map { "online" },
-                    bridge.board.lastFailure.filterNotNull().filter(::refused).map { "refused" },
-                ).first()
-            }
-            val claims = withTimeout(TIMEOUT) {
-                select {
-                    async { bridge.claims.link.filterNotNull().first() }.onAwait { "admitted" }
-                    bridge.claimsRefused.onAwait { "refused" }
-                }
-            }
+            val board = withTimeout(TIMEOUT) { bridge.boardOutcome() }
+            val claims = withTimeout(TIMEOUT) { bridge.claimsOutcome() }
             assertAll(
-                { assertEquals("refused", board, "the board socket's gate answers 403") },
-                { assertEquals("refused", claims, "the claims socket's gate answers 403") },
+                { assertEquals(REFUSED, board, "the board socket's gate answers 403") },
+                { assertIs<Throwable>(claims, "the claims socket's gate answers 403, not a link") },
                 { assertFalse(bridge.board.online.value, "the board replica never came online") },
                 { assertEquals(host.boardId, bridge.pin.board.value, "rig: /board-id is open, so the bridge learned the board") },
             )
@@ -155,12 +130,26 @@ class BridgeJoinLinkTest {
             onFailure = { failure -> if (refused(failure)) claimsRefused.complete(failure) },
             retryDelay = { 200.milliseconds },
         )
+
+        /**
+         * [ONLINE] once the board replica is online, [REFUSED] once its socket's gate refuses it:
+         * whichever comes first, so a test that meets the other fails saying so, not as a timeout.
+         */
+        suspend fun boardOutcome(): String = merge(
+            board.online.filter { it }.map { ONLINE },
+            board.lastFailure.filterNotNull().filter(::refused).map { REFUSED },
+        ).first()
+
+        /** The claims link once one proves itself, or the gate's refusal of it. */
+        suspend fun claimsOutcome(): Any = merge(claims.link.filterNotNull(), flow { emit(claimsRefused.await()) }).first()
     }
 
     private companion object {
         /** A LAN address, not loopback: where the gate believes every call comes from. */
         const val ANOTHER_MACHINE = "192.168.1.20"
         val TIMEOUT = 15.seconds
+        const val ONLINE = "online"
+        const val REFUSED = "refused"
 
         fun refused(failure: Throwable): Boolean = generateSequence(failure) { it.cause }.any { "403" in it.message.orEmpty() }
     }
