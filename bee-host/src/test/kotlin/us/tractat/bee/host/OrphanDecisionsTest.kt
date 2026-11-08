@@ -151,6 +151,26 @@ class OrphanDecisionsTest {
         )
     }
 
+    /**
+     * A person in presence, or a room screen (a `human:` peer too), is not offered a reassign: a
+     * person has no release path in v1, so the claim would be held for good. An agent arriving in
+     * the same pass is, so the pass ran.
+     */
+    @Test
+    fun aHumanInPresenceIsNotOffered() = rig {
+        val wall = PeerIdentity.human("wall")
+        val cy = PeerIdentity.agent("cy", Random(4))
+        star.relay.mutate { it.postPresence(ReplicaId("web-iain"), PresenceEntry(iain, null, null, star.clock(), waiting = false), 1) }
+        star.relay.mutate { it.postPresence(ReplicaId("web-wall"), PresenceEntry(wall, null, null, star.clock(), waiting = false), 1) }
+        star.relay.mutate { it.postPresence(ReplicaId("mcp-cy"), PresenceEntry(cy, null, null, star.clock(), waiting = false), 1) }
+        delay(10.seconds)
+        assertEquals(
+            listOf(OrphanDecision.reassignOption(bo), OrphanDecision.RELEASE, OrphanDecision.WAIT, OrphanDecision.reassignOption(cy)),
+            optionIds(),
+            "only the agents are offered",
+        )
+    }
+
     /** "Reassign to bo" commits a `Reassign` through Raft: bo holds the record, under a grant. */
     @Test
     fun answerReassignCommitsThroughRaft() = rig {
