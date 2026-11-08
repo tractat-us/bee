@@ -414,12 +414,15 @@ test('a sketch that posts at load creates no record', async ({ browser }) => {
     '<div class="options"><div class="option" id="real" data-choice="real">Real</div></div><script>' +
     'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 900, method: "ui/message", params: ' +
     '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
-    'brainstorm.choice("helper"); let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 25) clearInterval(t); }, 100);' +
+    'brainstorm.choice("helper"); let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 25) { clearInterval(t); document.body.dataset.done = "1"; } }, 100);' +
     '</' + 'script>');
   const kit = await openBoard(browser, 'kit', 'Auto poster');
   const before = await companionRecords(kit.page).count();
   await expect(proposal(kit.page)).toContainText('auto');
-  await kit.page.waitForTimeout(4_000);
+  // Every post made, in view: WebKit throttles the timers of a sketch scrolled out of view.
+  await sketchIframe(kit.page).scrollIntoViewIfNeeded();
+  await expect(kit.frame.locator('body')).toHaveAttribute('data-done', '1', { timeout: 30_000 });
+  await kit.page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
   expect(await companionRecords(kit.page).count()).toBe(before);
 
