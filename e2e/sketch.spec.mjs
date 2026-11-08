@@ -154,14 +154,22 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
   await context.close();
 });
 
-/** Opens the board as `name`, logging every sketch-probe the host answered into `reached`. */
-async function openProbed(browser, name) {
+/**
+ * Opens the board as `name` and clicks `#away` in the sketch. Every sketch-probe the host
+ * answered goes into `reached`, and every one the page's CSP refused into `refused`.
+ */
+async function clickAway(browser, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const reached = [];
+  const refused = [];
   page.on('response', (response) => { if (response.url().includes('sketch-probe')) reached.push(response.url()); });
+  page.on('console', (message) => { if (message.text().includes('sketch-probe')) refused.push(message.text()); });
   const response = await page.goto(`/?name=${name}`);
-  return { context, page, reached, csp: response.headers()['content-security-policy'] };
+  await expect(sketchFrame(page).locator('#away')).toBeVisible({ timeout: 15_000 });
+  await sketchFrame(page).locator('#away').click();
+  await page.waitForTimeout(1_500);
+  return { context, page, reached, refused, csp: response.headers()['content-security-policy'] };
 }
 
 // The sandbox and the frame's own CSP can't stop a frame navigating itself: only the embedding
@@ -169,20 +177,18 @@ async function openProbed(browser, name) {
 test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
   const probe = `http://127.0.0.1:${port}/sketch-probe`;
   pushScreen('nav-link.html', `<h2>Link probe</h2><a id="away" href="${probe}/link">away</a>`);
-  const link = await openProbed(browser, 'lee');
-  await expect(sketchFrame(link.page).locator('#away')).toBeVisible({ timeout: 15_000 });
-  await sketchFrame(link.page).locator('#away').click();
-  await link.page.waitForTimeout(1_500);
+  const link = await clickAway(browser, 'lee');
   expect(link.csp).toBe("frame-src 'none'; child-src 'none'");
   expect(link.reached).toEqual([]);
+  // Control: the navigation was attempted, and the page's policy is what refused it.
+  expect(link.refused.join('\n')).toContain(`${probe}/link`);
   await link.context.close();
 
   pushScreen('nav-location.html', '<h2>Location probe</h2>' +
-    `<script>setTimeout(() => { location = "${probe}/location"; }, 300);</` + 'script>');
-  const located = await openProbed(browser, 'lou');
-  await expect(sketchFrame(located.page).locator('body')).toContainText('Location probe', { timeout: 15_000 });
-  await located.page.waitForTimeout(1_500);
+    `<button id="away" onclick="location = '${probe}/location'">away</button>`);
+  const located = await clickAway(browser, 'lou');
   expect(located.reached).toEqual([]);
+  expect(located.refused.join('\n')).toContain(`${probe}/location`);
   // The page itself is untouched: still online, over the WebSocket the header never touched.
   await expect(located.page.locator('#status')).toHaveText(/^online/);
   await located.context.close();
