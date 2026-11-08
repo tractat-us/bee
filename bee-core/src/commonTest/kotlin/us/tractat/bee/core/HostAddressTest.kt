@@ -81,14 +81,14 @@ class HostAddressTest {
             "",
         )
         val failures = refused.map { text -> text to assertFailsWith<IllegalArgumentException>(text) { HostAddress.parse(text) } }
-        assertAll(failures.map { (text, failure) -> { assertTrue(failure.message.orEmpty().isNotBlank(), "a reason for \"$text\"") } })
+        assertAll(*failures.map { (text, failure) -> { assertTrue(failure.message.orEmpty().isNotBlank(), "a reason for \"$text\"") } }.toTypedArray())
     }
 
     @Test
     fun aRefusalNeverShowsTheKey() {
         val failures = listOf("http://h:8233/board?k=$KEY", "ftp://h:8233/?k=$KEY", "http://h:8233/?k=$KEY&x=1", "http://h:8233/?k=$KEY&k=$KEY")
             .map { assertFailsWith<IllegalArgumentException> { HostAddress.parse(it) } }
-        assertAll(failures.map { failure -> { assertFalse(KEY in failure.message.orEmpty(), failure.message) } })
+        assertAll(*failures.map { failure -> { assertFalse(KEY in failure.message.orEmpty(), failure.message) } }.toTypedArray())
     }
 
     private companion object {
