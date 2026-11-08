@@ -82,7 +82,8 @@ class BoardViewTest {
             ClaimCommand.Complete(tacos, alice, ClaimToken(term = 1, index = 1)),
             ClaimCommand.Depart(alice, DepartReason.Quiet),
         ) + gone.map { ClaimCommand.Depart(it, DepartReason.Crashed) }
-        val state = lastSeen.piece { it.mirrorClaims(HOST, table(commands)) }
+        // Mirrored after each commit, as the host does, so each departure has its own log index.
+        val state = commands.indices.fold(lastSeen) { board, i -> board.piece { it.mirrorClaims(HOST, table(commands.take(i + 1))) } }
         val view = BoardView.of(state, attached(entry(alice, "naming the CLI")))
         val lunch = view.cards.single { it.surfaceId == LUNCH }
         assertAll(

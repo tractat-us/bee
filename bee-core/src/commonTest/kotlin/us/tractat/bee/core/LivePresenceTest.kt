@@ -24,9 +24,11 @@ class LivePresenceTest {
         )
         val roster = LivePresence(board, { NOW }, backgroundScope) { throw it }
         runCurrent()
+        val live = roster.live()
+        val peers = roster.peers()
         assertAll(
-            { assertEquals(3, roster.live().size) },
-            { assertEquals(mapOf(iain to entry(iain, at = 2), alice to entry(alice, at = 1)), roster.peers()) },
+            { assertEquals(3, live.size) },
+            { assertEquals(mapOf(iain to entry(iain, at = 2), alice to entry(alice, at = 1)), peers) },
         )
     }
 
