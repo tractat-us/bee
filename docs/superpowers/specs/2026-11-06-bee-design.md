@@ -240,7 +240,9 @@ Claude session ── bee-mcp                                           ┘     
   record: held as the bridge, and received by nobody. The claim table keeps the provenance. A
   hold a `Reassign` granted is marked as such until the target leaves that hold. The sweep leaves
   such a hold alone. A wait on its record's surface takes it, then returns the record under the
-  `Reassign`'s token, just as it returns a win. The session acts on it and marks it done or
+  `Reassign`'s token, just as it returns a win. That holds even for a wait whose cursor is past
+  the record, because the session passed it over while another held it, and for a wait already
+  open when the `Reassign` commits. The session acts on it and marks it done or
   releases it with that token, like any record it waited for. If the wait ends before returning
   it, the hold stays the session's, for its next wait. `bee_board` shows it held by the session
   in the meantime.
