@@ -305,11 +305,11 @@ class HostRestartTest {
         val tab = rig.tab(ReplicaId("web-iain"), held)
 
         val second = rig.boot()
-        val booted = currentTime
+        val booted = testScheduler.currentTime
         advanceTimeBy(Departures.BOOT_GRACE - 15.seconds)
         tab.connect()
         withTimeoutOrNull(10.seconds) { second.board.relay.state.first { s -> s.latestPresence().any { it.identity == alice } } }
-        val pushedAfter = (currentTime - booted).milliseconds
+        val pushedAfter = (testScheduler.currentTime - booted).milliseconds
         val after = withTimeoutOrNull(Departures.BOOT_GRACE) { second.voter.table.first { it.retired(alice) } }
         assertAll(
             { assertIs<ClaimOutcome.Won>(won, "rig: alice held a claim") },
