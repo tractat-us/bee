@@ -1260,14 +1260,14 @@ class BridgeClaimsTest {
     }
 
     /**
-     * A claim reassigned to a session survives that session's sweep (Task 11, bee#31). An orphan
-     * is reassigned to ada by a person: held as ada, claimed by no wait of hers, received by no
-     * caller, just as a stranded late win is. It's kept, and a wait on its surface passes it over
-     * rather than give it back. The control, a stranded win as ada on another target, is given
-     * back by the same sweep.
+     * A claim reassigned to a session reaches that session through its wait (Task 11, spec §6.4,
+     * bee#31). An orphan is reassigned to ada by a person: held as ada, claimed by no wait of hers,
+     * received by no caller, just as a stranded late win is. Her sweep keeps it, and her wait on its
+     * surface returns the record under the reassign's token, as for a win; a second wait passes it
+     * over. The control, a stranded win as ada on another target, is given back by the same sweep.
      */
     @Test
-    fun aReassignedClaimSurvivesItsBridgesSweep() = runTest(timeout = 120.seconds) {
+    fun aReassignedClaimReachesItsSessionsWait() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
         val target = rig.clickOn(ada)
@@ -1280,15 +1280,19 @@ class BridgeClaimsTest {
         val stray = ClaimTarget("card:s/stray")
         val strayWon = rig.claims.client(NodeId("stray")).claim(stray, ada.bridge.self)
         val strayFreed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(stray) == ClaimStatus.Free } }
-        val waited = ada.wait("s", timeoutSeconds = 3)
+        val waited = ada.wait("s", timeoutSeconds = 10)
+        val again = ada.wait("s", timeoutSeconds = 3)
         delay(10.seconds) // any release a sweep proposed lands
         val releases = token?.let { rig.releasesOf(target, it) }
+        val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
         assertAll(
             { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record before it departed") },
             { assertIs<ClaimOutcome.Won>(strayWon, "rig: the stray claim won as ada") },
             { assertNotNull(strayFreed, "control: the sweep gave the stranded win back") },
             { assertNotNull(token, "rig: the reassign committed") },
-            { assertTrue(waited.timedOut, "a wait passes the reassigned record over") },
+            { assertEquals(target, returned, "the wait returns the reassigned record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), waited.record?.string("token"), "under the reassign's token") },
+            { assertTrue(again.timedOut, "a second wait passes it over: it was handed over") },
             { assertEquals(ClaimStatus.Held(ada.bridge.self, token!!), rig.voter.table.value.status(target), "the reassigned claim is still ada's") },
             { assertEquals(0, releases, "and nothing released it") },
         )
