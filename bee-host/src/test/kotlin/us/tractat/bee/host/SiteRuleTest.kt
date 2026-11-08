@@ -56,6 +56,38 @@ class SiteRuleTest {
             { assertNotNull(rule.refusal("127.0.0.1:8233", "", loopback)) },
         )
     }
+
+    /** bee#54: a subresource or a frame from another site carries no `Origin`, only Fetch Metadata. */
+    @Test
+    fun aCallFromAnotherSiteIsRefusedUnlessItIsATopLevelNavigation() {
+        val own = "127.0.0.1:8233"
+        assertAll(
+            { assertNotNull(rule.refusal(own, null, loopback, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image")) },
+            { assertNotNull(rule.refusal(own, null, loopback, SAME_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: script"), "another port on this machine") },
+            { assertNotNull(rule.refusal(own, null, loopback, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: iframe"), "a frame") },
+            { assertNotNull(rule.refusal(own, null, loopback, CROSS_SITE, "Sec-Fetch-Mode: navigate"), "a navigation, but not of a document") },
+            { assertNotNull(rule.refusal(own, null, loopback, CROSS_SITE, "Sec-Fetch-Dest: document"), "a document, but not navigated to") },
+            { assertNotNull(rule.refusal(own, null, loopback, CROSS_SITE), "no mode or destination") },
+            { assertNotNull(rule.refusal(own, null, loopback, "Sec-Fetch-Site: Cross-Site", "Sec-Fetch-Mode: no-cors"), "in another case") },
+        )
+    }
+
+    @Test
+    fun aNavigationTheHostsOwnCallsAndNoFetchMetadataPass() {
+        val own = "127.0.0.1:8233"
+        assertAll(
+            { assertNull(rule.refusal(own, null, loopback, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "a join link from chat") },
+            { assertNull(rule.refusal(own, null, loopback, SAME_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document")) },
+            { assertNull(rule.refusal(own, "http://$own", loopback, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty")) },
+            { assertNull(rule.refusal(own, null, loopback, "Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "a typed URL") },
+            { assertNull(rule.refusal(own, null, loopback, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "no Sec-Fetch-Site: the bridge, an older browser") },
+        )
+    }
+
+    private companion object {
+        const val CROSS_SITE = "Sec-Fetch-Site: cross-site"
+        const val SAME_SITE = "Sec-Fetch-Site: same-site"
+    }
 }
 
 /** [SiteRule.refusal] of a call with [host], [origin] and these other [headers], each `name: value`. */
