@@ -423,12 +423,15 @@ class BridgeClaimsTest {
      * that link is down, and the fresh one as soon as the link is rebuilt. The host departs a
      * crashed bridge by the node its entry names, so a stale node after a rebuild would retire a
      * live bridge, and no node while down would never retire a bridge that crashed then.
+     *
+     * The rebuild waits 12.5 s, off the 5 s presence beat: on a multiple of it, the beat would
+     * post the fresh node too, and a presence that only posts on the beat would pass.
      */
     @Test
     fun presenceNamesTheNewestClaimsNode() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val breaker = CompletableDeferred<Unit>()
-        val ada = rig.session("ada", retryDelay = { 10.seconds }) { n, linkScope ->
+        val ada = rig.session("ada", retryDelay = { Presence.EVERY * 5 / 2 }) { n, linkScope ->
             if (n == 1) linkScope.launch { breaker.await(); throw IllegalStateException("refused dial (test)") }
         }
         val first = ada.node()
