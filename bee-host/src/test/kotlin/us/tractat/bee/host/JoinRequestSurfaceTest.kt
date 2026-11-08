@@ -88,7 +88,7 @@ class JoinRequestSurfaceTest {
     fun requestNamesTheDeviceButNeverItsCode() = rig {
         val (ticket, _) = post()
         val id = JoinRequestSurface.surfaceId(ticket.id)
-        val wire = Json.encodeToString(BoardState.serializer(), board)
+        val wire = WIRE.encodeToString(BoardState.serializer(), board)
         val shown = data(id).toString() + requireNotNull(board.surfaceDoc(id)).toSurfaceView(id).components.toString()
         assertAll(
             { assertTrue(isOpen(id)) },
@@ -141,10 +141,11 @@ class JoinRequestSurfaceTest {
         val codeAfterOne = data(id).getValue("code")
         type(id, iain, "000001")
         type(id, iain, "000002")
+        val ended = resolution.await()
         assertAll(
             { assertEquals("That code doesn't match. 2 tries left.", afterOne) },
             { assertEquals(JsonPrimitive(""), codeAfterOne, "the field is cleared for the next try") },
-            { assertEquals(Resolution.Ended(PairingEnd.Voided), resolution.await()) },
+            { assertEquals(Resolution.Ended(PairingEnd.Voided), ended) },
             { assertFalse(isOpen(id)) },
             { assertEquals("Three wrong codes: this request is void.", status(id)) },
         )
@@ -156,8 +157,9 @@ class JoinRequestSurfaceTest {
         val id = JoinRequestSurface.surfaceId(ticket.id)
         requests.end(ticket.id, PairingEnd.Expired)
         test.runCurrent()
+        val ended = resolution.await()
         assertAll(
-            { assertEquals(Resolution.Ended(PairingEnd.Expired), resolution.await()) },
+            { assertEquals(Resolution.Ended(PairingEnd.Expired), ended) },
             { assertFalse(isOpen(id)) },
             { assertFalse(pairing.isPending(ticket.id)) },
         )
@@ -192,5 +194,8 @@ class JoinRequestSurfaceTest {
 
     private companion object {
         const val CODE = "730519"
+
+        // The board keys maps by dot, which JSON allows only as structured keys.
+        val WIRE = Json { allowStructuredMapKeys = true }
     }
 }
