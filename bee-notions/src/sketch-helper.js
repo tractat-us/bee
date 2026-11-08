@@ -115,10 +115,44 @@ export function sketchHelper() {
   // content that overflows it.
   var reportedHeight = -1;
   var sizeTimer = null;
+  function scrolls(el) {
+    var overflow = getComputedStyle(el).overflowY;
+    return overflow === 'auto' || overflow === 'scroll';
+  }
+  // A document that hides its own overflow pins itself to the frame and scrolls inside, as the
+  // companion's frame template does (`html, body { height: 100%; overflow: hidden }`, then a
+  // scrolling `.main`): its root and body are always exactly the frame's height. So measure what
+  // it holds: collapse the root and body for one synchronous layout, take what the body still
+  // holds, add what each scrolling element inside holds past its own box, and put them back.
+  // Nothing paints in between, and a ResizeObserver hears only the restored size.
+  function pinnedHeight(root, body) {
+    var rootStyle = root.style.cssText;
+    var bodyStyle = body.style.cssText;
+    [root, body].forEach(function (el) {
+      el.style.setProperty('height', '0', 'important');
+      el.style.setProperty('min-height', '0', 'important');
+    });
+    var margins = getComputedStyle(body);
+    var height = body.scrollHeight + parseFloat(margins.marginTop) + parseFloat(margins.marginBottom);
+    Array.prototype.forEach.call(body.querySelectorAll('*'), function (el) {
+      if (scrolls(el)) height += Math.max(0, el.scrollHeight - el.clientHeight);
+    });
+    root.style.cssText = rootStyle;
+    body.style.cssText = bodyStyle;
+    return height;
+  }
+  function documentHeight() {
+    var root = document.documentElement;
+    var body = document.body;
+    if (!body) return Math.ceil(root.getBoundingClientRect().height);
+    if (getComputedStyle(root).overflowY === 'hidden' || getComputedStyle(body).overflowY === 'hidden') {
+      return Math.ceil(pinnedHeight(root, body));
+    }
+    return Math.ceil(Math.max(root.getBoundingClientRect().height, body.scrollHeight));
+  }
   function reportSize() {
     sizeTimer = null;
-    var root = document.documentElement;
-    var height = Math.ceil(Math.max(root.getBoundingClientRect().height, document.body ? document.body.scrollHeight : 0));
+    var height = documentHeight();
     if (height === reportedHeight) return;
     reportedHeight = height;
     window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: height } }, '*');
