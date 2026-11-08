@@ -17,7 +17,7 @@ exactly one winner. Joining them into one working board is
 and each spike's notes are in [`docs/spikes/`](docs/spikes/).
 
 bee is built on [kuilt](https://github.com/tractat-us/kuilt), which keeps every copy of the board
-in step.
+in step. [bee and kuilt](docs/bee-and-kuilt.md) says which part does what.
 
 ## License
 
