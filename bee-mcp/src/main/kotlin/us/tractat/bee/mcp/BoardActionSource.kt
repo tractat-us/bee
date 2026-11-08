@@ -232,7 +232,7 @@ class BoardActionSource internal constructor(
         val RETRY: Duration = 500.milliseconds
 
         /** The claim target for record [id]: `record:<author>:<seq>`. */
-        fun target(id: RecordId): ClaimTarget = ClaimTarget("record:${recordId(id)}")
+        fun target(id: RecordId): ClaimTarget = id.claimTarget
 
         /** A record's id as tools show it: `<author>:<seq>`. */
         fun recordId(id: RecordId): String = "${id.dot.replica.value}:${id.dot.seq}"

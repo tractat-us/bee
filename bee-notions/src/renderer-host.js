@@ -6,7 +6,8 @@
 // (`version: "v0.9"`). See docs/spikes/2026-11-spike-1-renderer-glue.md.
 import { MessageProcessor, injectBasicCatalogStyles } from '@a2ui/web_core/v0_9';
 // Registers <a2ui-surface>, as a side effect of importing the Lit entry point.
-import '@a2ui/lit/v0_9';
+import { Context } from '@a2ui/lit/v0_9';
+import { renderMarkdown } from '@a2ui/markdown-it';
 import { NOTIONS_CATALOG_ID, notionsCatalog } from './catalog.js';
 
 export { NOTIONS_CATALOG_ID, notionsCatalog };
@@ -14,14 +15,21 @@ export { NOTIONS_CATALOG_ID, notionsCatalog };
 /**
  * Mounts a renderer under `rootElement`.
  *
- * @param rootElement the element the surfaces are mounted in, in creation order
+ * Text in the body variants renders its Markdown through `@a2ui/markdown-it`, which sanitizes the
+ * HTML it makes (DOMPurify): the renderer asks for that renderer through Lit context, and the root
+ * answers. The heading and caption variants show their text as is.
+ *
+ * @param rootElement the element the surfaces are mounted under
  * @param catalogs the catalogs surfaces may name; defaults to the Notions catalog
+ * @param place puts a new surface's `<a2ui-surface>` on the page, given the surface id and the
+ *   element; defaults to appending it to `rootElement`, so surfaces show in creation order
  * @returns `process(messagesJson)`, which applies a JSON array of A2UI messages and
  *   returns a JSON array of the errors the processor reported (empty when none), and
  *   `onAction(handler)`, which calls `handler` with each user action as a JSON string
  */
-export function createRendererHost(rootElement, catalogs = [notionsCatalog]) {
+export function createRendererHost(rootElement, catalogs = [notionsCatalog], place = (id, element) => rootElement.appendChild(element)) {
   injectBasicCatalogStyles();
+  provideMarkdown(rootElement);
   const actionHandlers = [];
   const processor = new MessageProcessor(catalogs, (action) => {
     const json = JSON.stringify(action);
@@ -33,7 +41,7 @@ export function createRendererHost(rootElement, catalogs = [notionsCatalog]) {
     const element = document.createElement('a2ui-surface');
     element.dataset.surfaceId = surface.id;
     element.surface = surface;
-    rootElement.appendChild(element);
+    place(surface.id, element);
     mounted.set(surface.id, element);
   });
   processor.onSurfaceDeleted((id) => {
@@ -50,6 +58,27 @@ export function createRendererHost(rootElement, catalogs = [notionsCatalog]) {
       actionHandlers.push(handler);
     },
   };
+}
+
+/**
+ * A renderer host for the bee page: the Notions catalog, each surface placed by `place(id, element)`.
+ * Kotlin can't leave an argument out, so the page calls this rather than `createRendererHost`.
+ */
+export function createPlacedRendererHost(rootElement, place) {
+  return createRendererHost(rootElement, [notionsCatalog], place);
+}
+
+/**
+ * Answers the basic catalog's request for a Markdown renderer (a `context-request` event, the Lit
+ * context protocol, for `Symbol.for('A2UIMarkdown')`) from under `rootElement`. The renderer never
+ * changes, so a subscriber is answered once.
+ */
+function provideMarkdown(rootElement) {
+  rootElement.addEventListener('context-request', (event) => {
+    if (event.context !== Context.markdown) return;
+    event.stopPropagation();
+    event.callback(renderMarkdown, () => {});
+  });
 }
 
 /** The `<a2ui-surface>` showing `surfaceId` under `rootElement`, or null. */

@@ -25,17 +25,23 @@ external interface RendererHost : JsAny {
 external object Notions : JsAny {
     /** Mounts a renderer under [rootElement], with the Notions catalog. */
     fun createRendererHost(rootElement: Element): RendererHost
+
+    /** Mounts a renderer under [rootElement], with the Notions catalog; [place] puts each new surface's element. */
+    fun createPlacedRendererHost(rootElement: Element, place: (surfaceId: String, element: Element) -> Unit): RendererHost
 }
 
 /**
  * Drives the stock A2UI Lit renderer from Kotlin. The renderer never sees a CRDT: it is
  * handed A2UI messages and hands back user actions.
  *
+ * Each new surface's `<a2ui-surface>` goes where [place][A2uiRenderer] puts it, under the root:
+ * appended to the root unless the page says otherwise (the board puts each in its card).
+ *
  * It tracks which surface ids exist, so creating one that is already open becomes
  * delete + create; the stock processor would refuse it as an integrity error.
  */
-class A2uiRenderer(root: Element) {
-    private val host = Notions.createRendererHost(root)
+class A2uiRenderer(root: Element, place: (surfaceId: String, element: Element) -> Unit = { _, element -> root.appendChild(element) }) {
+    private val host = Notions.createPlacedRendererHost(root, place)
     private val open = mutableSetOf<String>()
     private val received = Channel<A2uiAction>(Channel.UNLIMITED)
 

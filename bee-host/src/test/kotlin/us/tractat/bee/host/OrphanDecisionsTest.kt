@@ -117,7 +117,7 @@ class OrphanDecisionsTest {
         val claims = ClaimsRig(this)
         val voter = ClaimsVoter.start(backgroundScope, claims.host, claims.store, claims.raftConfig, boardMirror(star.relay), claims.clock)
         val roster = LivePresence(star.relay.state, star.clock, backgroundScope) { throw it }
-        OrphanDecisions(star.relay, { roster.live().map { it.identity } }, star.clock).start(backgroundScope)
+        OrphanDecisions(star.relay, { roster.peers().keys.toList() }, star.clock).start(backgroundScope)
         star.relay.mutate { it.postPresence(ReplicaId("mcp-bo"), PresenceEntry(bo, null, null, star.clock(), waiting = false), 1) }
         // Ada's entry outlives her for its TTL: her decision must still not offer her.
         star.relay.mutate { it.postPresence(ReplicaId("mcp-ada"), PresenceEntry(ada, null, null, star.clock(), waiting = false), 1) }

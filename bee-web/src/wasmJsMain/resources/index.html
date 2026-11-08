@@ -3,7 +3,225 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>bee</title>
+  <style>
+    :root {
+      --bg: #f6f5f2;
+      --card: #ffffff;
+      --ink: #1f2328;
+      --muted: #656d76;
+      --line: #d8d6d0;
+      --accent: #b7791f;
+      --waiting: #2f6fdf;
+      --acting: #2e8b57;
+      --alert: #b42318;
+      --alert-bg: #fdecea;
+      --orphan-bg: #fff4e5;
+      --held-bg: #eef3fb;
+      /* The basic catalog's colours follow the page's (its own are set under :where(:root)). */
+      --a2ui-color-background: var(--card);
+      --a2ui-color-on-background: var(--ink);
+      --a2ui-color-on-surface: var(--ink);
+      --a2ui-color-border: var(--line);
+      --a2ui-color-primary: #8a5a12;
+      --a2ui-font-family-title: inherit;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181c;
+        --card: #1f2227;
+        --ink: #e6e6e3;
+        --muted: #9aa1a9;
+        --line: #353a41;
+        --accent: #e0a64a;
+        --waiting: #7aa7ff;
+        --acting: #6fcf97;
+        --alert: #ff8a80;
+        --alert-bg: #3a1d1b;
+        --orphan-bg: #3a2c16;
+        --held-bg: #1d2a3d;
+        --a2ui-color-primary: #e0a64a;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* The bar: bee, who is attached, and whether this page is online. */
+    #bar {
+      order: 0;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+    }
+    #brand { font-weight: 700; letter-spacing: 0.02em; color: var(--accent); }
+    #peers {
+      flex: 1;
+      display: flex;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .bee-peer {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      flex: none;
+      max-width: 320px;
+      padding: 2px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      white-space: nowrap;
+      transition: opacity 0.6s;
+    }
+    .bee-peer::before {
+      content: "";
+      align-self: center;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .bee-peer[data-state="here"]::before { background: var(--accent); }
+    .bee-peer[data-state="acting"]::before { background: var(--acting); }
+    .bee-peer[data-state="waiting"]::before { background: var(--waiting); }
+    .bee-peer[data-state="departed"] { opacity: 0.45; border-style: dashed; }
+    .bee-peer[data-state="departed"] .bee-peer-name { text-decoration: line-through; }
+    .bee-peer-name { font-weight: 600; }
+    .bee-peer-state, .bee-instance { color: var(--muted); font-size: 0.85em; }
+    .bee-instance { margin-left: 1px; font-weight: 400; }
+    .bee-peer-status {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.85em;
+    }
+    .bee-peer-status::before { content: "· "; color: var(--muted); }
+    #status { margin: 0; flex: none; font-size: 0.8em; color: var(--muted); }
+    #status::before {
+      content: "";
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: var(--alert);
+    }
+    #status[data-online="true"]::before { background: var(--acting); }
+
+    #problem {
+      order: 1;
+      margin: 12px 16px 0;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--alert-bg);
+      color: var(--alert);
+    }
+    #problem:empty, #actions:empty { display: none; }
+
+    /* The board: one card per open surface, in the order they were opened. */
+    #board {
+      order: 2;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .bee-card {
+      min-width: 0;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+    }
+    .bee-card-head { padding: 12px 16px 8px; border-bottom: 1px solid var(--line); }
+    .bee-card-title { margin: 0; font-size: 1.05rem; line-height: 1.3; }
+    .bee-card-meta { margin: 2px 0 0; font-size: 0.85em; color: var(--muted); }
+    .bee-card-opener { color: var(--ink); font-weight: 600; }
+    .bee-card-working::before, .bee-card-gone::before { content: " · "; }
+    .bee-card-working { font-style: italic; }
+    .bee-card-gone { color: var(--alert); }
+    .bee-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+    .bee-badge {
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 0.8em;
+      background: var(--held-bg);
+    }
+    .bee-badge[data-claim-status="orphaned"] { background: var(--orphan-bg); color: var(--alert); }
+    .bee-card-body { padding: 12px 16px 16px; overflow-wrap: anywhere; }
+    .bee-card-body a2ui-surface { display: block; }
+    .bee-invalid-surface { color: var(--alert); font-size: 0.9em; }
+    /* A Sketch (bee-notions) is agent HTML in a frame: give it an edge, and a page behind it. */
+    bee-sketch iframe {
+      border: 1px solid var(--line) !important;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    /* Below the board: the history strip, then what the page knows for debugging. */
+    #history {
+      order: 3;
+      width: 100%;
+      max-width: 880px;
+      margin: 0 auto 8px;
+      padding: 0 16px;
+      color: var(--muted);
+      font-size: 0.9em;
+    }
+    #history summary { cursor: pointer; }
+    #history ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+    #history button {
+      padding: 2px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+    #details {
+      order: 4;
+      width: 100%;
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 0 16px 16px;
+      color: var(--muted);
+      font-size: 0.8em;
+    }
+    #details summary { cursor: pointer; }
+    #records { padding-left: 20px; }
+    #pair-again { order: 1; align-self: center; margin-top: 12px; }
+    /* At phone width the strip takes a line of its own, under bee and the online line. */
+    @media (max-width: 600px) {
+      #bar { flex-wrap: wrap; row-gap: 6px; }
+      #status { margin-left: auto; }
+      #peers { order: 1; flex-basis: 100%; }
+      .bee-peer { max-width: 80vw; }
+    }
+  </style>
 </head>
 <body>
   <main id="board"></main>
