@@ -90,14 +90,14 @@ class BoardActionSource internal constructor(
             return WaitResult(record = record, timedOut = false, cursor = encode(passed + got.id.dot))
         } finally {
             withContext(NonCancellable) {
-                if (!handed) won?.let(::unreceived)
+                if (!handed) won?.let { unreceived(it) }
                 bridge.waiting(on = false)
             }
         }
     }
 
     /** A win this wait couldn't return is released; a reassigned claim is left this session's. */
-    private fun unreceived(w: Won) {
+    private suspend fun unreceived(w: Won) {
         if (w.reassigned) bridge.unreserve(target(w.id), w.token) else bridge.releaseUnreceived(target(w.id), w.by, w.token)
     }
 
