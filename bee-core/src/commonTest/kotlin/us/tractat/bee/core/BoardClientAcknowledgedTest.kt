@@ -133,7 +133,7 @@ class BoardClientAcknowledgedTest {
         hub.slow = true
         alex.note("acked")
         var hubHadItOnReturn: Boolean? = null
-        val acknowledged = async { alex.awaitAcknowledged().also { hubHadItOnReturn = str("acked") in hub.notes() } }
+        val acknowledged = backgroundScope.async { alex.awaitAcknowledged().also { hubHadItOnReturn = str("acked") in hub.notes() } }
         advanceTimeBy(SLOW_UPLINK - 1.milliseconds)
         runCurrent()
         val openBeforeTheHubHasIt = !acknowledged.isCompleted
@@ -196,7 +196,8 @@ class BoardClientAcknowledgedTest {
         val alex = online(hub)
         hub.slow = true
         alex.note("lost")
-        val acknowledged = async { alex.awaitAcknowledged() }
+        // On the background scope, so a wait that never ends fails the assertions, not the run.
+        val acknowledged = backgroundScope.async { alex.awaitAcknowledged() }
         advanceTimeBy(100.milliseconds)
         runCurrent()
         val openBeforeTheTear = !acknowledged.isCompleted
@@ -205,11 +206,11 @@ class BoardClientAcknowledgedTest {
         alex.online.first { !it }
         runCurrent()
         val endedAtTheTear = acknowledged.isCompleted && currentTime < tornAt + SLOW_UPLINK.inWholeMilliseconds
-        val result = acknowledged.await()
+        val result = withTimeoutOrNull(SETTLE) { acknowledged.await() }
         assertAll(
             { assertTrue(openBeforeTheTear, "precondition: the wait is open before the tear") },
             { assertTrue(endedAtTheTear, "the wait ended with the connection, before the write could land") },
-            { assertFalse(result, "a connection that ended is not an acknowledgement") },
+            { assertEquals(false, result, "a connection that ended is not an acknowledgement") },
         )
     }
 
