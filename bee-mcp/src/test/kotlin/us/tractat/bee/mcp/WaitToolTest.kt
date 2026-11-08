@@ -194,7 +194,7 @@ class WaitToolTest {
         client.wait(mapOf("surfaceId" to ""))
         client.call(WaitTool.LIST, mapOf("surfaceId" to "  ")).page()
 
-        assertEquals(listOf(ActionScope.Board, ActionScope.Board), source.scopes)
+        assertEquals(listOf<ActionScope>(ActionScope.Board, ActionScope.Board), source.scopes)
     }
 
     private suspend fun TestScope.connect(): Client {

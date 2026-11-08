@@ -140,6 +140,7 @@ class BoardWideWaitTest {
         val listed = ada.listSurfaces()
         val first = ada.waitBoard()
         val second = ada.waitBoard(cursor = first.cursor, timeoutSeconds = 1)
+        val bosOwn = bo.listSurfaces()
         assertAll(
             { assertTrue("theirs" !in listed, "another session's surface is left out: $listed") },
             { assertTrue(companion !in listed, "the companion's surface is left out: $listed") },
@@ -147,7 +148,7 @@ class BoardWideWaitTest {
             { assertEquals(listOf("mine"), listed) },
             { assertEquals("mine", first.record().string("surfaceId")) },
             { assertTrue(second.timedOut, "nothing else is this session's: ${second.record}") },
-            { assertEquals(listOf("theirs"), bo.listSurfaces(), "control: the other session's own surface is its own") },
+            { assertEquals(listOf("theirs"), bosOwn, "control: the other session's own surface is its own") },
         )
         rig.close()
     }
