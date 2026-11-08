@@ -27,6 +27,9 @@ import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.ClaimsConnection
+import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingWire
@@ -34,14 +37,19 @@ import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.pinnedTo
+import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.VersionVector
+import us.tractat.kuilt.raft.NodeId
+import us.tractat.kuilt.raft.RaftConfig
+import us.tractat.kuilt.websocket.KtorClientLoom
 import us.tractat.kuilt.websocket.WebSocketAdvertisement
 import kotlin.random.Random
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -69,9 +77,10 @@ private sealed interface Access {
  * The bee page: this tab's replica of the board, behind the stock renderer.
  *
  * - **Who.** `?screen=<name>` makes a room screen, the human peer `human:<name>` (A7). Otherwise
- *   the person is `human:<name>`, from `?name=` (A7's `localStorage` name is still to come). The
- *   page has no claims client, so neither ever proposes a claim; a screen must stay that way when
- *   the page gains one.
+ *   the person is `human:<name>`, from `?name=` (A7's `localStorage` name is still to come). A
+ *   person's page opens a claims link, to propose its person's answers to orphan decisions
+ *   ([OrphanAnswering]). A screen's page opens none, so it never proposes a claim, and its answers
+ *   are refused (spec §6.4).
  * - **Where.** Every socket goes back to the host and scheme the page came from, so a page opened
  *   as `http://tractatus.local:8233/` dials `ws://tractatus.local:8233/…`.
  * - **The key gate.** A page from a non-loopback address with no key opens the pairing channel and
@@ -97,10 +106,11 @@ private sealed interface Access {
 fun main() {
     val params = URLSearchParams(window.location.search.toJsString())
     val actor = actorOf(params)
+    val screen = params.get(PairingWire.SCREEN_PARAM)?.isNotBlank() == true
     val http = HttpClient { install(WebSockets) }
     when (val access = accessOf(params)) {
-        Access.Loopback, is Access.Keyed -> startBoard(http, actor, access)
-        Access.NeedsPairing -> pair(params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, Access.Keyed(key)) }
+        Access.Loopback, is Access.Keyed -> startBoard(http, actor, screen, access)
+        Access.NeedsPairing -> pair(params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, screen, Access.Keyed(key)) }
     }
 }
 
@@ -207,7 +217,7 @@ private fun endedText(reason: PairingEnd): String = when (reason) {
 }
 
 @OptIn(ExperimentalUuidApi::class)
-private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
+private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, access: Access) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
     val shell = PageShell.around(root)
     val status = shell.status
@@ -249,7 +259,13 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         val onProblem: (String) -> Unit = { problem.textContent = it }
         val inputs = LiveInputs(root, client, author, scope, onProblem)
         val chrome = BoardChrome(root, shell.peers)
-        BoardDriver(client, A2uiRenderer(root, chrome::place), root, author, actor, inputs, clock, onProblem).start(scope)
+        val answering = if (screen) {
+            OrphanAnswering.Refused
+        } else {
+            val claims = claimsConnection(http, pin, query, scope, clock)
+            OrphanAnswering.ByPerson(OrphanAnswers({ claims.link.value?.client }, actor))
+        }
+        BoardDriver(client, A2uiRenderer(root, chrome::place), root, author, actor, inputs, answering, clock, onProblem).start(scope)
         HistoryStrip(client, author, document.body!!, onProblem).start(scope)
         val presence = Presence(client, author, emptyFlow(), clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
         chrome.start(scope, client.state, presence.roster)
@@ -274,6 +290,31 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         if (copy != null) keep(copy, client.state, scope, store)
     }
 }
+
+/**
+ * This page's claims, through the host's voter at [ClaimsLink.PATH], with the same key [query]
+ * and board [pin] as its board socket. Each link dials under a fresh Raft node, as kuilt requires;
+ * the claimant is the person, the same across tabs.
+ */
+@OptIn(ExperimentalUuidApi::class)
+private fun claimsConnection(http: HttpClient, pin: BoardPin, query: String, scope: CoroutineScope, clock: () -> Instant): ClaimsConnection =
+    ClaimsConnection(
+        scope = scope,
+        nextNode = { NodeId("web-${Uuid.random()}") },
+        open = { node, linkScope ->
+            ClaimsLink.open(
+                node = node,
+                loomFor = { peer -> KtorClientLoom(http, selfPeerId = peer).pinnedTo(pin) },
+                endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(socketUrl(ClaimsLink.PATH, query), ClaimsLink.SERVER, ClaimsLink.SESSION))),
+                scope = linkScope,
+                raftConfig = RaftConfig(),
+                clock = clock,
+                random = Random.Default,
+            )
+        },
+        onFailure = { failure -> log.warn(failure) { "The claims link failed; it is rebuilt." } },
+        retryDelay = ClaimsConnection.jitteredBackoff(Random.Default),
+    )
 
 /** What asking the host for its board came to. */
 private sealed interface HostAnswer {

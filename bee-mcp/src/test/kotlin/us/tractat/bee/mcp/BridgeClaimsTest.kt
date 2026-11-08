@@ -27,6 +27,7 @@ import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.DepartReason
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.host.BeeHost
 import us.tractat.bee.host.ClaimsVoter
@@ -1254,6 +1255,119 @@ class BridgeClaimsTest {
             { assertEquals(false, settled, "a link that hasn't folded the claim never reads its release as settled") },
             { assertEquals(listOf(unreceived), queued, "the release stayed queued") },
             { assertNotNull(drained, "control: it settles once the link catches up") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A claim reassigned to a session reaches that session through its wait (Task 11, spec §6.4,
+     * bee#31). An orphan is reassigned to ada by a person: held as ada, claimed by no wait of hers,
+     * received by no caller, just as a stranded late win is. Her sweep keeps it, and her wait on its
+     * surface returns the record under the reassign's token, as for a win; a second wait passes it
+     * over. The control, a stranded win as ada on another target, is given back by the same sweep.
+     */
+    @Test
+    fun aReassignedClaimReachesItsSessionsWait() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
+
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val stray = ClaimTarget("card:s/stray")
+        val strayWon = rig.claims.client(NodeId("stray")).claim(stray, ada.bridge.self)
+        val strayFreed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(stray) == ClaimStatus.Free } }
+        val waited = ada.wait("s", timeoutSeconds = 10)
+        val again = ada.wait("s", timeoutSeconds = 3)
+        delay(10.seconds) // any release a sweep proposed lands
+        val releases = token?.let { rig.releasesOf(target, it) }
+        val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record before it departed") },
+            { assertIs<ClaimOutcome.Won>(strayWon, "rig: the stray claim won as ada") },
+            { assertNotNull(strayFreed, "control: the sweep gave the stranded win back") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertEquals(target, returned, "the wait returns the reassigned record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), waited.record?.string("token"), "under the reassign's token") },
+            { assertTrue(again.timedOut, "a second wait passes it over: it was handed over") },
+            { assertEquals(ClaimStatus.Held(ada.bridge.self, token!!), rig.voter.table.value.status(target), "the reassigned claim is still ada's") },
+            { assertEquals(0, releases, "and nothing released it") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A claim reassigned to a session reaches the wait it already has open, past a cursor that
+     * names the record (spec §6.4). Ada's first wait passes the record over while zed holds it,
+     * so her cursor names it, as an agent's loop leaves it. Her next wait, from that cursor, is
+     * open when a person reassigns the orphan to her; it returns the record under the reassign's token.
+     */
+    @Test
+    fun aReassignedClaimReachesAWaitAlreadyPastIt() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        val first = ada.wait("s", timeoutSeconds = 2)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
+
+        val open = async { ada.wait("s", cursor = first.cursor, timeoutSeconds = 30) }
+        delay(3.seconds) // the wait is holding, its cursor past the record
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val waited = open.await()
+        val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record") },
+            { assertTrue(first.timedOut, "rig: the first wait passed the record over") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertEquals(target, returned, "the open wait returns the reassigned record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), waited.record?.string("token"), "under the reassign's token") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A wait that ends after taking a reassigned claim, before returning it, leaves the hold this
+     * session's (spec §6.4). Ada's first wait passes the record over while zed holds it, so her
+     * cursor names it. A person reassigns the orphan to her; her next wait takes it into its hands,
+     * and the hook cancels the wait there. Ada still holds the record under the reassign's token,
+     * nothing released that token, and her next wait from the old cursor returns the record under it.
+     */
+    @Test
+    fun aWaitEndedAfterTakingAReassignedClaimLeavesItForTheNextWait() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        val first = ada.wait("s", timeoutSeconds = 2)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+
+        val taken = CompletableDeferred<Unit>()
+        val early = launch { BoardActionSource(ada.bridge) { taken.complete(Unit); awaitCancellation() }.next("s", first.cursor, 60.seconds) }
+        val reachedHook = withTimeoutOrNull(30.seconds) { taken.await() }
+        early.cancelAndJoin()
+        delay(10.seconds) // any release the ended wait proposed lands
+        val atVoter = rig.voter.table.value.status(target)
+        val releases = token?.let { rig.releasesOf(target, it) }
+        val next = ada.wait("s", cursor = first.cursor, timeoutSeconds = 10)
+        val returned = next.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record") },
+            { assertTrue(first.timedOut, "rig: the first wait passed the record over") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertNotNull(reachedHook, "rig: the ended wait took the reassigned claim") },
+            { assertEquals<ClaimStatus?>(token?.let { ClaimStatus.Held(ada.bridge.self, it) }, atVoter, "ada still holds it under the grant") },
+            { assertEquals(0, releases, "nothing released the grant's token") },
+            { assertEquals(target, returned, "the next wait returns the record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), next.record?.string("token"), "under the grant's token") },
         )
         rig.close()
     }

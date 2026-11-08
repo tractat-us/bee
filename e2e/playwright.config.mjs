@@ -42,8 +42,9 @@ export default defineConfig({
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
   // Every spec shares one host, its board and its seeded fixtures, so spec files run one at a
-  // time. In parallel, a second file's board activity broke two-browsers' caret test (PR #42), and
-  // a test that counts the board's records (the basis tests) read another file's writes as its own.
+  // time: a test that counts the board's records (the basis tests) read another file's writes as
+  // its own. (The caret failure once blamed on parallel activity was Playwright's: an End key on a
+  // scrollable macOS page, and a press on an unfocused field resetting the caret. See #43.)
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
