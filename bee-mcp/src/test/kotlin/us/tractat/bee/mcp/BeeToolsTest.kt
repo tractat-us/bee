@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -295,7 +296,7 @@ internal class JoinRig(private val test: TestScope) {
             retryDelay = retryDelay,
         )
         val identity = BridgeIdentity(name, Random(n)) { old, reason -> connection.depart(old, reason) }
-        val presence = Presence(client, author, claims.clock, scope) { throw it }
+        val presence = Presence(client, author, connection.link.filterNotNull().map { it.node }, claims.clock, scope) { throw it }
         val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock).also { it.announce() }
         connection.link.filterNotNull().first()
         return Session(bridge, client, connection, identity, failures, connect(bridge))
