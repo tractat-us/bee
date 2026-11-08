@@ -152,6 +152,42 @@ class BeeToolsTest {
         rig.close()
     }
 
+    /**
+     * An agent can't wait on or list a join request. The host handles its admit records without a
+     * claim, so a record an agent took would hand it the code a person typed (bee#72).
+     */
+    @Test
+    fun waitAndListRefuseAJoinRequest() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        val request = rig.joinRequest()
+        browser.state.first { request in it.openSurfaces() }
+        browser.mutate { state ->
+            val admit = ActionRecord(
+                surfaceId = request,
+                componentId = JoinRequestSurface.ADMIT_BUTTON,
+                actor = PeerIdentity.human("iain"),
+                name = JoinRequestSurface.ADMIT_ACTION,
+                context = buildJsonObject { put("code", "000000") },
+                basis = Basis.capture(state, request),
+                at = kotlin.time.Instant.fromEpochMilliseconds(0),
+            )
+            state.appendRecord(ReplicaId("web-iain"), admit)
+        }
+        ada.client.state.first { it.records(request).isNotEmpty() }
+
+        val waited = ada.call(WaitTool.WAIT, mapOf("surfaceId" to request, "timeoutSeconds" to 1))
+        val listed = ada.call(WaitTool.LIST, mapOf("surfaceId" to request))
+        val control = ada.call(WaitTool.LIST, mapOf("surfaceId" to "none"))
+        assertAll(
+            { assertTrue(waited.isError == true && "the host's" in waited.text(), "wait: ${waited.text()}") },
+            { assertTrue(listed.isError == true && "the host's" in listed.text(), "list: ${listed.text()}") },
+            { assertEquals(null, control.isError, "control: listing any other surface still works") },
+        )
+        rig.close()
+    }
+
     /** `bee_board` lists who is attached: both sessions, by identity. */
     @Test
     fun boardListsWhoIsAttached() = runTest(timeout = 120.seconds) {
