@@ -407,9 +407,14 @@ async function chooseBesideAThief(browser, ownSurface, ownLines) {
   await expect.poll(ownLines, { timeout: 10_000 }).toHaveLength(1);
   // The thief swaps its proposal every 300 ms, so its Send never arms: clicks on the spot where
   // it sits, as a viewer's click on its way would land, record nothing.
-  const send = await proposal(page).getByRole('button', { name: 'Send', exact: true }).boundingBox();
+  const thiefSend = proposal(page).getByRole('button', { name: 'Send', exact: true });
+  await thiefSend.scrollIntoViewIfNeeded();
+  const send = await thiefSend.boundingBox();
+  const at = { x: send.x + send.width / 2, y: send.y + send.height / 2 };
+  // Precondition: the clicks land on the thief's Send, not on whatever is beside it.
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className, at)).toBe('bee-proposal-send');
   for (let i = 0; i < 5; i++) {
-    await page.mouse.click(send.x + send.width / 2, send.y + send.height / 2);
+    await page.mouse.click(at.x, at.y);
     await page.waitForTimeout(150);
   }
   await page.waitForTimeout(3_000);
