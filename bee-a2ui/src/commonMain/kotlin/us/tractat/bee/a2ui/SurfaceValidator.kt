@@ -35,6 +35,14 @@ object SurfaceValidator {
         BOARD to listOf("cards", "columns"),
     )
 
+    /**
+     * The bindings of each Notions type whose data a basis must name, so each holds appended
+     * entries, never data (spec §5.6, §6.1): a Poll's options and question revisions.
+     */
+    private val APPENDED_BINDINGS: Map<String, List<String>> = mapOf(
+        POLL to listOf("options", "question"),
+    )
+
     /** Agent-written HTML in a sandboxed frame (spec §5.6): properties `html` and `title?`. */
     const val SKETCH = "Sketch"
 
@@ -53,6 +61,46 @@ object SurfaceValidator {
                 .filter { it !in view.components }
                 .forEach { add("Component \"$id\" names child \"$it\", which no component has as its id.") }
         }
+    }
+
+    /**
+     * Every binding in [view] that a basis must name but whose data isn't appended: a Poll's
+     * question or options written as data, as a whole array or a scalar (bee#81). A bound path
+     * that holds nothing yet is fine, since entries can be appended later.
+     *
+     * Writers check this; [errors] doesn't, so a Poll written before the bridge could append still
+     * renders, without its options basis.
+     */
+    fun appendErrors(view: SurfaceView): List<String> = view.components.keys.sorted().flatMap { id ->
+        val component = view.components.getValue(id)
+        val type = component["component"]?.stringOrNull()
+        APPENDED_BINDINGS[type].orEmpty().mapNotNull { binding ->
+            val path = (component[binding] as? JsonObject)?.get("path")?.stringOrNull() ?: return@mapNotNull null
+            val pointer = heldAt(view.data, path) ?: return@mapNotNull null
+            if (pointer in view.appended) {
+                null
+            } else {
+                "Component \"$id\" is a $type whose $binding at $path isn't appended: put it in append, not data, " +
+                    "so a vote's basis can name each entry."
+            }
+        }
+    }
+
+    /** The normalized pointer of [path] if [data] holds a value there, else null. */
+    private fun heldAt(data: JsonObject, path: String): String? {
+        val segments = try {
+            SurfaceFormat.segments(path)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+        val held = segments.fold<String, JsonElement?>(data) { at, key ->
+            when (at) {
+                is JsonObject -> at[key]
+                is JsonArray -> key.toIntOrNull()?.let(at::getOrNull)
+                else -> null
+            }
+        }
+        return held?.let { SurfaceFormat.pointer(segments) }
     }
 
     private fun typeErrors(id: String, component: JsonObject): List<String> {

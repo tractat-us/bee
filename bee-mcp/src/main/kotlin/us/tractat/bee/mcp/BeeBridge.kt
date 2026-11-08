@@ -187,31 +187,59 @@ class BeeBridge(
             status is ClaimStatus.Held && status.holder == who && table.reassigned(target) && (target to status.token) !in ledger.reservations
         }.keys
 
-    /** Opens surface [surfaceId] with [components] and [data]. */
-    suspend fun open(surfaceId: String, title: String, components: List<JsonObject>, data: JsonObject) {
+    /**
+     * Opens surface [surfaceId] with [components] and [data], then appends each of [appends], in
+     * order, as a new entry of the append-only array at its pointer (A12).
+     */
+    suspend fun open(
+        surfaceId: String,
+        title: String,
+        components: List<JsonObject>,
+        data: JsonObject,
+        appends: List<Pair<String, JsonElement>>,
+    ) {
         val by = beforeWrite()
         write(surfaceId) { state ->
             require(state.surfaceDoc(surfaceId) == null) { "Surface $surfaceId is already on the board; update or reopen it." }
-            state.openSurface(author, surfaceId, SurfaceMeta(title, NOTIONS_CATALOG_ID, by, clock()), components, data)
+            val opening: (BoardState) -> Patch<BoardState> = {
+                it.openSurface(author, surfaceId, SurfaceMeta(title, NOTIONS_CATALOG_ID, by, clock()), components, data)
+            }
+            joined(state, listOf(opening) + appendsTo(surfaceId, appends))
         }
     }
 
-    /** Upserts [components] by id, then writes each of [data]'s pointers in order. */
-    suspend fun update(surfaceId: String, components: List<JsonObject>, data: List<Pair<String, JsonElement>>) {
+    /**
+     * Upserts [components] by id, writes each of [data]'s pointers in order, then appends each of
+     * [appends] as a new entry of the append-only array at its pointer (A12).
+     */
+    suspend fun update(
+        surfaceId: String,
+        components: List<JsonObject>,
+        data: List<Pair<String, JsonElement>>,
+        appends: List<Pair<String, JsonElement>>,
+    ) {
         beforeWrite()
         write(surfaceId) { state ->
             requireNotNull(state.surfaceDoc(surfaceId)) { "No surface $surfaceId on the board." }
-            // Each write reads the state the previous ones left (A13); the patch is their deltas joined.
             val writes = buildList<(BoardState) -> Patch<BoardState>> {
                 if (components.isNotEmpty()) add { it.updateComponents(author, surfaceId, components) }
                 data.forEach { (path, value) -> add { it.updateData(author, surfaceId, path, value) } }
+                addAll(appendsTo(surfaceId, appends))
             }
-            val (_, delta) = writes.fold(state to BoardState.EMPTY) { (s, d), w ->
-                val step = w(s).delta
-                s.piece(step) to d.piece(step)
-            }
-            Patch(delta)
+            joined(state, writes)
         }
+    }
+
+    private fun appendsTo(surfaceId: String, appends: List<Pair<String, JsonElement>>): List<(BoardState) -> Patch<BoardState>> =
+        appends.map { (path, entry) -> { s: BoardState -> s.appendEntry(author, surfaceId, path, entry) } }
+
+    /** Each of [writes] reads the state the previous ones left (A13); the patch is their deltas joined. */
+    private fun joined(state: BoardState, writes: List<(BoardState) -> Patch<BoardState>>): Patch<BoardState> {
+        val (_, delta) = writes.fold(state to BoardState.EMPTY) { (s, d), w ->
+            val step = w(s).delta
+            s.piece(step) to d.piece(step)
+        }
+        return Patch(delta)
     }
 
     /** Closes surface [surfaceId]; it keeps its content and records. */
@@ -425,8 +453,10 @@ class BeeBridge(
     }
 
     /**
-     * Applies [f]'s patch only if surface [surfaceId] passes the Notions validator afterwards.
-     * The check runs against the very state the patch lands on.
+     * Applies [f]'s patch only if surface [surfaceId] passes the Notions validator afterwards, and
+     * leaves no binding unappended that wasn't already ([SurfaceValidator.appendErrors]), so a Poll
+     * written before the bridge could append still takes updates. The check runs against the very
+     * state the patch lands on.
      */
     private suspend fun write(surfaceId: String, f: (BoardState) -> Patch<BoardState>) {
         var errors = emptyList<String>()
@@ -438,8 +468,9 @@ class BeeBridge(
                 refused = bad
                 return@mutateOrSkip null
             }
+            val before = state.surfaceDoc(surfaceId)?.toSurfaceView(surfaceId)?.let(SurfaceValidator::appendErrors).orEmpty()
             val after = state.piece(patch.delta).surfaceDoc(surfaceId)?.toSurfaceView(surfaceId)
-            errors = after?.let(SurfaceValidator::errors).orEmpty()
+            errors = after?.let { SurfaceValidator.errors(it) + (SurfaceValidator.appendErrors(it) - before.toSet()) }.orEmpty()
             patch.takeIf { errors.isEmpty() }
         }
         refused?.let { throw BridgeRefusal(it.message ?: "The write was refused.") }

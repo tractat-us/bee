@@ -167,7 +167,8 @@ object SurfaceFormat {
  *
  * Every leaf shows one value, the greatest under [SurfaceFormat.VALUE_ORDER]. A data leaf holding
  * several concurrent values also lists them all, in that order, in [SurfaceView.conflicts] under
- * its pointer. An append-only array shows its entries in sequence order. A whole array shows as
+ * its pointer. An append-only array shows its entries in sequence order, and its pointer is in
+ * [SurfaceView.appended]. A whole array shows as
  * its writer wrote it: it's one leaf, so a merge can't put an id in it twice, and nothing is
  * deduped.
  */
@@ -182,27 +183,35 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
         SurfaceFormat.winner(componentMap[key] as JsonNode.Leaf).jsonObject
     }
     val conflicts = mutableMapOf<String, List<JsonElement>>()
+    val appended = mutableSetOf<String>()
     val dataNode = requireNotNull(this[SurfaceFormat.DATA] as? JsonNode.Object) { "Surface $id has no data object." }
-    val data = project(dataNode, "", conflicts) as JsonObject
+    val data = project(dataNode, "", conflicts, appended) as JsonObject
     return SurfaceView(
         id = id,
         catalogId = catalogId,
         components = components,
         data = data,
         conflicts = conflicts.toMap(),
+        appended = appended.toSet(),
     )
 }
 
-private fun project(node: JsonNode, pointer: String, conflicts: MutableMap<String, List<JsonElement>>): JsonElement =
+private fun project(
+    node: JsonNode,
+    pointer: String,
+    conflicts: MutableMap<String, List<JsonElement>>,
+    appended: MutableSet<String>,
+): JsonElement =
     when (node) {
         is JsonNode.Object -> JsonObject(
             node.map.keys.sorted().associateWith { key ->
-                project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts)
+                project(node.map[key]!!, "$pointer/${SurfaceFormat.escapeSegment(key)}", conflicts, appended)
             },
         )
-        is JsonNode.Array -> JsonArray(
-            node.rga.toList().mapIndexed { index, entry -> project(entry, "$pointer/$index", conflicts) },
-        )
+        is JsonNode.Array -> {
+            appended += pointer
+            JsonArray(node.rga.toList().mapIndexed { index, entry -> project(entry, "$pointer/$index", conflicts, appended) })
+        }
         is JsonNode.Leaf -> {
             val values = node.register.values.sortedWith(SurfaceFormat.VALUE_ORDER)
             if (values.size > 1) conflicts[pointer] = values.map(SurfaceFormat::decodeLeaf)
