@@ -71,6 +71,12 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * connection already cancels its job under the same mutex, so a late mirror can't run; the guard
  * keeps an offline edit safe even if that ever changes.
  *
+ * **A write too big for the link is refused, never dropped** (Review Focus 5). A seam drops a
+ * broadcast over its `maxPayloadBytes` without a word, so each delta is weighed as the Quilter
+ * will frame it, against the live seam's budget, or offline against the last link's, and a delta
+ * over it throws [BoardWriteTooLarge] with the board unchanged. A seam that publishes no budget
+ * (kuilt's WebSocket link today) refuses nothing.
+ *
  * **Failures are state.** A failed dial, a dial that outlasts [dialTimeout], a failed pump or a
  * failed seam close lands in
  * [lastFailure], and a failed pump also ends its connection, so a broken mirror can't let the held
@@ -126,6 +132,9 @@ class BoardClient(
     private var connections = 0
     private var attempt = 0
 
+    /** The last live seam's payload budget, which an offline write is weighed against. Held under [mutex]. */
+    private var budget: Int? = null
+
     /** The board as this peer holds it, online or not. */
     val state: StateFlow<BoardState> = held.asStateFlow()
 
@@ -161,7 +170,11 @@ class BoardClient(
         driver.cancelAndJoin()
     }
 
-    /** Applies [f]'s patch to the board, online or offline. Never waits on the network. */
+    /**
+     * Applies [f]'s patch to the board, online or offline. Never waits on the network.
+     *
+     * @throws BoardWriteTooLarge if the patch's delta won't fit the board link; nothing is written
+     */
     suspend fun mutate(f: (BoardState) -> Patch<BoardState>) {
         mutateOrSkip(f)
     }
@@ -169,11 +182,16 @@ class BoardClient(
     /**
      * [mutate], for a transform that may decline by returning null. Returns whether it wrote. The
      * decision is made against the very state the patch lands on.
+     *
+     * @throws BoardWriteTooLarge if the patch's delta won't fit the board link; nothing is written
      */
     suspend fun mutateOrSkip(f: (BoardState) -> Patch<BoardState>?): Boolean = mutex.withLock {
         val connection = live
         if (connection != null && connection.seam.state.value !is SeamState.Torn) {
-            val wrote = writeOnline(connection, f)
+            // Read per write: a seam's budget is a reading, not a lease (kuilt's Seam.maxPayloadBytes).
+            val wrote = writeOnline(connection) { state ->
+                f(state)?.also { WireBudget.check(connection.quilter.replica, it.delta, connection.seam.maxPayloadBytes) }
+            }
             if (wrote != null) {
                 held.value = connection.quilter.state.value
                 return@withLock wrote
@@ -183,6 +201,7 @@ class BoardClient(
         // goes onto the held board, and the next connection's FullState carries it.
         connection?.let { partLocked(it) }
         val patch = f(held.value) ?: return@withLock false
+        WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, budget)
         held.value = held.value.piece(patch.delta)
         true
     }
@@ -281,6 +300,7 @@ class BoardClient(
         attempt = 0
         held.value = connection.quilter.state.value
         _link.value = connection.seam.selfId.value
+        budget = connection.seam.maxPayloadBytes
         _lastFailure.value = null
         _online.value = true
     }
