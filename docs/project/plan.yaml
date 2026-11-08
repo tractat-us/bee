@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T03:26Z"
+as_of: "2026-11-08T03:28Z"
 
 sources:
   - title: "v1 plan"
@@ -57,6 +57,7 @@ order:
   - task-8
   - task-9
   - task-10
+  - bee-42-calls
   - task-11
   - bee-21
   - kuilt-3126
@@ -212,8 +213,8 @@ items:
   task-10:
     kind: task
     title: "A second screen, joined by LAN pairing (spike 7)"
-    status: waiting-on-iain
-    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. The review's fixes are in; #42 waits on four calls for Iain in its body and his hand check on a second device."
+    status: in-flight
+    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. #42 is in its second review-fix round and lands once the review clears it; Iain reviews after the fact."
     depends_on: [bee-27]
     started: "2026-11-08T02:20Z"
     estimate:
@@ -224,6 +225,15 @@ items:
       confidence: low
     links:
       - { title: "Plan, Task 10", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-10-a-second-screen-spike-7" }
+      - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
+
+  bee-42-calls:
+    kind: decision
+    title: "Task 10's follow-up calls"
+    status: waiting-on-iain
+    summary: "Four calls from #42 — the host's PeerKind, claim-free join records, no local copy for LAN pages, and the one-worker e2e — plus the hand check on a second device. Follow-up decisions, not merge gates."
+    started: "2026-11-08T03:10Z"
+    links:
       - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
 
   task-11:
