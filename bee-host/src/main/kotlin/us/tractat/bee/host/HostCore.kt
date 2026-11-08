@@ -27,7 +27,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
-import kotlin.time.Duration
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -64,8 +63,7 @@ class HostCore private constructor(
         /**
          * Opens the board from [stores], relays it to [boardSource], and starts the voter on
          * [claimsHost]. Background work runs on [scope]. [intake] is what brings writes in from
-         * outside, the server: [close] stops it before the board's last save. [bootGrace] is how
-         * long a claim holder has to show up before it is departed ([Departures.BOOT_GRACE]).
+         * outside, the server: [close] stops it before the board's last save.
          */
         @Suppress("LongParameterList")
         suspend fun start(
@@ -79,11 +77,10 @@ class HostCore private constructor(
             clock: () -> Instant,
             random: Random = Random.Default,
             quilterConfig: QuilterConfig = BEE_QUILTER_CONFIG,
-            bootGrace: Duration = Departures.BOOT_GRACE,
         ): HostCore {
             val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, stores.boardId, clock, random, quilterConfig)
             val voter = ClaimsVoter.start(scope, claimsHost, stores.claims, raftConfig, boardMirror(board.relay), clock)
-            val departures = hostDepartures(voter, board.relay.state, clock, bootGrace).start(scope)
+            val departures = hostDepartures(voter, board.relay.state, clock).start(scope)
             return HostCore(board, voter, departures, intake)
         }
     }

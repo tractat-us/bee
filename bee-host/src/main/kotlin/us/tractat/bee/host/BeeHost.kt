@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
@@ -21,7 +22,6 @@ import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.RaftConfig
 import java.security.SecureRandom
 import kotlin.time.Clock
-import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -127,20 +127,17 @@ fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.m
  * lists as departed is dropped here: the log rebuilds that list on boot, and re-proposing would
  * cost a durable append per historical agent per boot.
  *
- * The boot check (bee#44) reads the same entries, and its holders off [voter]'s table. It relies
- * on [board] having booted without presence ([HostBoard]): every entry on it reached this boot.
+ * The boot check (bee#44) watches [board]'s presence slots from boot, and reads its holders off
+ * [voter]'s table. A slot on [board] says nothing on its own: a surviving peer's first-contact push
+ * brings back entries made before the host went down, a dead agent's among them. Only a slot that
+ * advances while this boot watches it shows its poster is alive.
  */
-internal fun hostDepartures(
-    voter: ClaimsVoter,
-    board: StateFlow<BoardState>,
-    clock: () -> Instant,
-    bootGrace: Duration = Departures.BOOT_GRACE,
-): Departures = Departures(
+internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures = Departures(
     claimsLinkLoss(voter.membership, clock),
     presence = { board.value.undeparted() },
+    postings = board.map { it.presence },
     holders = { voter.table.value.holders() },
     depart = voter::depart,
-    bootGrace = bootGrace,
     clock = clock,
 )
 
