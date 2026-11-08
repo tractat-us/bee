@@ -1331,6 +1331,47 @@ class BridgeClaimsTest {
         rig.close()
     }
 
+    /**
+     * A wait that ends after taking a reassigned claim, before returning it, leaves the hold this
+     * session's (spec §6.4). Ada's first wait passes the record over while zed holds it, so her
+     * cursor names it. A person reassigns the orphan to her; her next wait takes it into its hands,
+     * and the hook cancels the wait there. Ada still holds the record under the reassign's token,
+     * nothing released that token, and her next wait from the old cursor returns the record under it.
+     */
+    @Test
+    fun aWaitEndedAfterTakingAReassignedClaimLeavesItForTheNextWait() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        val first = ada.wait("s", timeoutSeconds = 2)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+
+        val taken = CompletableDeferred<Unit>()
+        val early = launch { BoardActionSource(ada.bridge) { taken.complete(Unit); awaitCancellation() }.next("s", first.cursor, 60.seconds) }
+        val reachedHook = withTimeoutOrNull(30.seconds) { taken.await() }
+        early.cancelAndJoin()
+        delay(10.seconds) // any release the ended wait proposed lands
+        val atVoter = rig.voter.table.value.status(target)
+        val releases = token?.let { rig.releasesOf(target, it) }
+        val next = ada.wait("s", cursor = first.cursor, timeoutSeconds = 10)
+        val returned = next.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record") },
+            { assertTrue(first.timedOut, "rig: the first wait passed the record over") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertNotNull(reachedHook, "rig: the ended wait took the reassigned claim") },
+            { assertEquals<ClaimStatus?>(token?.let { ClaimStatus.Held(ada.bridge.self, it) }, atVoter, "ada still holds it under the grant") },
+            { assertEquals(0, releases, "nothing released the grant's token") },
+            { assertEquals(target, returned, "the next wait returns the record") },
+            { assertEquals(token?.let(BoardActionSource::tokenText), next.record?.string("token"), "under the grant's token") },
+        )
+        rig.close()
+    }
+
     private data class Waited(val record: JsonObject?, val timedOut: Boolean, val cursor: String) {
         fun record(): JsonObject = checkNotNull(record) { "the wait timed out" }
     }
