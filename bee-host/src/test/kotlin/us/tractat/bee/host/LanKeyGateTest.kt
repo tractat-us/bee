@@ -6,6 +6,10 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
@@ -33,12 +37,24 @@ import kotlin.time.Clock
  * The test engine has no sockets, so every request names the address it comes from in
  * [TEST_PEER], and the gate reads it through an injected [PeerAddress]. Production reads the
  * TCP peer ([PeerAddress.DIRECT]), whose loopback test is [onlyLoopbackLiteralsAreLoopback].
+ *
+ * The test engine's WebSocket client doesn't say why a handshake failed, and won't send an
+ * `Upgrade` header by hand. So each gated route also gets a plain [PROBE] route below it, on the
+ * same route node the gate is installed on: a refused dial is one whose WebSocket failed and whose
+ * probe, with the same peer and query, got the gate's 403. Anything else is a broken rig.
  */
 class LanKeyGateTest {
     private val pairing = Pairing({ Clock.System.now() }, SecureSecrets(SecureRandom()))
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
-        application { mountEndpoints(pairing, TEST_PEERS, CompletableDeferred()) }
+        application {
+            mountEndpoints(pairing, TEST_PEERS, CompletableDeferred(), clock = { Clock.System.now() })
+            routing {
+                for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
+                    route(gated) { get(PROBE) { call.respondText("through the gate") } }
+                }
+            }
+        }
         test(createClient { install(WebSockets) })
     }
 
@@ -54,10 +70,13 @@ class LanKeyGateTest {
 
     @Test
     fun loopbackNeedsNoKey() = gated { client ->
+        val d1 = client.dial(BOARD, "127.0.0.1")
+        val d2 = client.dial(CLAIMS, "127.0.0.1")
+        val d3 = client.dial(BOARD, "::1")
         assertAll(
-            { assertEquals(Dial.Upgraded, client.dial(BOARD, "127.0.0.1")) },
-            { assertEquals(Dial.Upgraded, client.dial(CLAIMS, "127.0.0.1")) },
-            { assertEquals(Dial.Upgraded, client.dial(BOARD, "::1")) },
+            { assertEquals(Dial.Upgraded, d1) },
+            { assertEquals(Dial.Upgraded, d2) },
+            { assertEquals(Dial.Upgraded, d3) },
         )
     }
 
@@ -66,10 +85,13 @@ class LanKeyGateTest {
         val ticket = assertIs<Opened.Ticket>(pairing.open())
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val joinKey = pairing.mintJoinKey()
+        val d1 = client.dial("$BOARD&k=${key.value}", LAN)
+        val d2 = client.dial("$CLAIMS&k=${key.value}", LAN)
+        val d3 = client.dial("$BOARD&k=${joinKey.value}", LAN)
         assertAll(
-            { assertEquals(Dial.Upgraded, client.dial("$BOARD&k=${key.value}", LAN)) },
-            { assertEquals(Dial.Upgraded, client.dial("$CLAIMS&k=${key.value}", LAN)) },
-            { assertEquals(Dial.Upgraded, client.dial("$BOARD&k=${joinKey.value}", LAN), "the printed join link's key") },
+            { assertEquals(Dial.Upgraded, d1) },
+            { assertEquals(Dial.Upgraded, d2) },
+            { assertEquals(Dial.Upgraded, d3, "the printed join link's key") },
         )
     }
 
@@ -77,12 +99,17 @@ class LanKeyGateTest {
     fun wrongUrlKeyIsRefused() = gated { client ->
         val ticket = assertIs<Opened.Ticket>(pairing.open())
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
+        val d1 = client.dial("$BOARD&k=${key.value}", LAN)
+        val d2 = client.dial("$BOARD&k=${key.value.dropLast(1)}x", LAN)
+        val d3 = client.dial("$CLAIMS&k=${key.value.dropLast(1)}x", LAN)
+        val d4 = client.dial("$BOARD&k=", LAN)
+        val d5 = client.dial("$BOARD&k=${ticket.code}", LAN)
         assertAll(
-            { assertEquals(Dial.Upgraded, client.dial("$BOARD&k=${key.value}", LAN), "rig: the right key admits") },
-            { assertEquals(Dial.Refused, client.dial("$BOARD&k=${key.value.dropLast(1)}x", LAN)) },
-            { assertEquals(Dial.Refused, client.dial("$CLAIMS&k=${key.value.dropLast(1)}x", LAN)) },
-            { assertEquals(Dial.Refused, client.dial("$BOARD&k=", LAN)) },
-            { assertEquals(Dial.Refused, client.dial("$BOARD&k=${ticket.code}", LAN), "a pairing code is not a key") },
+            { assertEquals(Dial.Upgraded, d1, "rig: the right key admits") },
+            { assertEquals(Dial.Refused, d2) },
+            { assertEquals(Dial.Refused, d3) },
+            { assertEquals(Dial.Refused, d4) },
+            { assertEquals(Dial.Refused, d5, "a pairing code is not a key") },
         )
     }
 
@@ -127,14 +154,16 @@ class LanKeyGateTest {
     private suspend fun HttpClient.dial(path: String, peer: String): Dial = try {
         webSocket(path, request = { header(TEST_PEER, peer) }) { close() }
         Dial.Upgraded
-    } catch (@Suppress("TooGenericExceptionCaught") refused: Exception) {
-        // Anything but the gate's 403 is a broken rig, not a refusal.
-        check("403" in refused.message.orEmpty()) { "the dial failed, but not with the gate's 403: $refused" }
+    } catch (@Suppress("TooGenericExceptionCaught") failed: Exception) {
+        val (route, query) = path.split('?', limit = 2)
+        val status = get("$route/$PROBE?$query") { header(TEST_PEER, peer) }.status
+        check(status == HttpStatusCode.Forbidden) { "the dial failed, but its probe got $status, not the gate's 403: $failed" }
         Dial.Refused
     }
 
     private companion object {
         const val TEST_PEER = "X-Bee-Test-Peer"
+        const val PROBE = "gate-probe"
         const val LAN = "192.168.1.20"
 
         // kuilt's server looms read the dialler's fabric id from `peer`.
