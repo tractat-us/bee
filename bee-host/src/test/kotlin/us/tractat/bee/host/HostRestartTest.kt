@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -124,6 +126,40 @@ class HostRestartTest {
             { assertEquals(listOf("lunch"), restored, "close saves what the throttle hadn't") },
             { assertEquals(listOf("intake stopped", "write"), events.take(2), "the server stops before the last save") },
         )
+    }
+
+    /** A host closed from a cancelled coroutine (a shutdown hook's scope) still makes its last save. */
+    @Test
+    fun closeFromACancelledCoroutineStillSaves() = runTest(timeout = 120.seconds) {
+        val logged = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger("us.tractat.bee.host.HostBoard") as Logger
+        logger.addAppender(logged)
+        try {
+            val rig = Rig(this)
+            val first = rig.boot()
+            runCurrent()
+            first.board.relay.mutate { it.openSurface(ada, "lunch", meta(), listOf(root), JsonObject(emptyMap())) }
+            val closing = launch {
+                try {
+                    awaitCancellation()
+                } finally {
+                    first.close()
+                }
+            }
+            runCurrent()
+            closing.cancel()
+            runCurrent()
+
+            val board = rig.openBoard()
+            val restored = board.relay.state.value.openSurfaces()
+            board.close()
+            assertAll(
+                { assertEquals(listOf("lunch"), restored, "the last save happened") },
+                { assertEquals(emptyList(), logged.list.filter { it.level == Level.ERROR }.map { it.formattedMessage }, "no store failure logged") },
+            )
+        } finally {
+            logger.detachAppender(logged)
+        }
     }
 
     @Test

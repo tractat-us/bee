@@ -220,14 +220,16 @@ class QuiltedPersistenceTest {
     }
 
     /**
-     * Well-formed JSON whose inner decoders refuse (here a peer identity) throws a plain
-     * [IllegalArgumentException], not a [SerializationException]. It is still an unreadable copy.
+     * Well-formed JSON whose inner decoders refuse (here a peer identity) is still an unreadable
+     * copy. kotlinx 1.12 wraps such a refusal as a [SerializationException]; the catch is wider
+     * ([IllegalArgumentException]) so a version that doesn't can't stop the page.
      */
     @Test
     fun aWellFormedSnapshotWithABadIdentityIsReplacedNotFatal() = runTest {
         val store = InMemoryDurableStore()
         val boards = QuiltedPersistence(store, key, BoardState.serializer())
-        val written = boards.saveOnChange(MutableStateFlow(BoardFixtures.opened()), backgroundScope)
+        val withRecord = BoardFixtures.opened().piece { it.appendRecord(ReplicaId("web-a"), BoardFixtures.record(it)) }
+        val written = boards.saveOnChange(MutableStateFlow(withRecord), backgroundScope)
         runCurrent()
         written.stop()
         val good = store.read(key)!!.decodeToString()
@@ -244,12 +246,13 @@ class QuiltedPersistenceTest {
         runCurrent()
         val writeFailure = saver.lastFailure.value
         saver.stop()
+        val replaced = boards.load { it }
 
         assertAll(
-            { assertNotEquals(good, bad, "the fixture carries an identity to corrupt") },
+            { assertNotEquals(good, bad, "the fixture carries a record actor to corrupt") },
             { assertNotNull(loadFailure) },
             { assertNull(writeFailure, "the writer is not stuck on the bad copy") },
-            { assertEquals(BoardState.EMPTY, boards.load { it }) },
+            { assertEquals(BoardState.EMPTY, replaced) },
         )
     }
 

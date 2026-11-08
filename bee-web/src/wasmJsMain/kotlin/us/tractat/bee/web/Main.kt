@@ -107,37 +107,58 @@ fun main() {
     }
 }
 
-/**
- * The board the host names at [BoardId.PATH], or null if the host didn't answer. A plain `fetch`
- * that settles either way: Ktor's wasm engine reports a refused fetch as a `kotlin.Error`, which
- * no `catch (Exception)` sees.
- */
-private suspend fun askBoardId(): BoardId? {
-    val answer = CompletableDeferred<String?>()
-    fetchText(BoardId.PATH) { answer.complete(it) }
-    return answer.await()?.takeIf { it.isNotBlank() }?.let(::BoardId)
+/** What asking the host for its board came to. */
+private sealed interface HostAnswer {
+    /** The host named its board. */
+    data class Named(val board: BoardId) : HostAnswer
+
+    /** The fetch itself failed: no host answered, so the last-known board is the best there is. */
+    data object Silent : HostAnswer
+
+    /** A host answered, but named nothing (a non-OK status, or no text): its board is not known. */
+    data object Declined : HostAnswer
 }
 
-/** Fetches [path] past every cache and calls [onDone] with its text, or null if it failed. */
+/**
+ * The board the host names at [BoardId.PATH]. A plain `fetch` that settles either way: Ktor's
+ * wasm engine reports a refused fetch as a `kotlin.Error`, which no `catch (Exception)` sees.
+ */
+private suspend fun askBoardId(): HostAnswer {
+    val answer = CompletableDeferred<Pair<String?, Boolean>>()
+    fetchText(BoardId.PATH) { text, rejected -> answer.complete(text to rejected) }
+    val (text, rejected) = answer.await()
+    return when {
+        rejected -> HostAnswer.Silent
+        text.isNullOrBlank() -> HostAnswer.Declined
+        else -> HostAnswer.Named(BoardId(text))
+    }
+}
+
+/**
+ * Fetches [path] past every cache and calls [onDone] with its text, or null for a non-OK status;
+ * `rejected` is true only when the fetch itself failed.
+ */
 @JsFun(
     """(path, onDone) => {
         fetch(path, { cache: 'no-store' })
             .then((r) => (r.ok ? r.text() : null))
-            .then((text) => onDone(text), () => onDone(null));
+            .then((text) => onDone(text, false), () => onDone(null, true));
     }""",
 )
-private external fun fetchText(path: String, onDone: (String?) -> Unit)
+private external fun fetchText(path: String, onDone: (String?, Boolean) -> Unit)
 
 /** The copy this tab reads and may keep: one [board]'s, in [store]. */
 private class Copy(val store: BrowserStore, val board: BoardId)
 
 /**
- * This browser's copy of the board the host named ([served]), and the board it holds, under
+ * This browser's copy of the board the host named ([answer]), and the board it holds, under
  * [author]. A browser that can't keep one (no IndexedDB, no Web Locks, or no board known) starts
  * from an empty board, and [line] says why: the host still has the board. A copy that doesn't
  * read is logged and kept, to be replaced by the writer.
  */
-private suspend fun restore(served: BoardId?, author: ReplicaId, line: Element): Pair<Copy?, BoardState> {
+private suspend fun restore(answer: HostAnswer, author: ReplicaId, line: Element): Pair<Copy?, BoardState> {
+    if (answer is HostAnswer.Declined) return notKept(line, "the host didn't name its board")
+    val served = (answer as? HostAnswer.Named)?.board
     val copy = try {
         BrowserStore.open().let { store -> store.board(served)?.let { Copy(store, it) } }
             ?: return notKept(line, "the host didn't name its board")

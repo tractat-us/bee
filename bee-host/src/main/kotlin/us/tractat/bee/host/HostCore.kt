@@ -4,11 +4,13 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.plus
-import kotlinx.serialization.SerializationException
 import us.tractat.bee.core.BEE_QUILTER_CONFIG
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
@@ -43,7 +45,7 @@ class HostCore private constructor(
     private val intake: AutoCloseable,
 ) {
     /** Stops departures and the voter, then [intake], then saves the board one last time. */
-    suspend fun close() {
+    suspend fun close() = withContext(NonCancellable) {
         try {
             departures.cancelAndJoin()
             voter.close()
@@ -118,6 +120,8 @@ class HostBoard private constructor(
     suspend fun close() {
         try {
             saver.stop()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (failure: Exception) {
             log.error(failure) { "The board's last save failed: what changed since the save before is lost." }
         } finally {
@@ -130,7 +134,8 @@ class HostBoard private constructor(
         /**
          * Restores the board from [store] and relays it to spokes from [source]. Background work runs on [scope].
          *
-         * @throws IllegalStateException if the snapshot in [store] doesn't decode
+         * @throws IllegalStateException if the snapshot in [store] doesn't decode, whether as a
+         *   serialization failure or a nested decoder's own refusal
          */
         @OptIn(ExperimentalUuidApi::class)
         @Suppress("LongParameterList")
@@ -148,7 +153,7 @@ class HostBoard private constructor(
             val snapshot = QuiltedPersistence(store, id.snapshotKey, BoardState.serializer())
             val initial = try {
                 snapshot.load { it.withReplica(author) } ?: BoardState.EMPTY
-            } catch (unreadable: SerializationException) {
+            } catch (unreadable: IllegalArgumentException) {
                 throw IllegalStateException(
                     "Board $id's snapshot doesn't decode. Move the data dir's board/ aside to boot an empty board.",
                     unreadable,

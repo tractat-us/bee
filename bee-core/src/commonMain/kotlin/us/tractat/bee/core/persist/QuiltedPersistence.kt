@@ -54,7 +54,8 @@ class QuiltedPersistence<S : Quilted<S>>(
     /**
      * The saved state, passed through [restore], or null if nothing was ever saved under [key].
      *
-     * @throws SerializationException if the snapshot doesn't decode
+     * @throws IllegalArgumentException if the snapshot doesn't decode (a [SerializationException],
+     *   or a nested decoder's own refusal)
      */
     suspend fun load(restore: (S) -> S): S? = store.read(key)?.let(::decode)?.let(restore)
 
@@ -145,7 +146,8 @@ class QuiltedPersistence<S : Quilted<S>>(
             val bytes = stored { store.read(key) } ?: return null
             return try {
                 decode(bytes)
-            } catch (unreadable: SerializationException) {
+            } catch (unreadable: IllegalArgumentException) {
+                // SerializationException is one; a nested decoder's refusal (a bad identity) may be another.
                 null
             }
         }

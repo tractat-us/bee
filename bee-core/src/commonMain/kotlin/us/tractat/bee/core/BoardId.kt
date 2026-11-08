@@ -9,7 +9,9 @@ import kotlin.uuid.Uuid
 /**
  * Which board a copy belongs to. The host mints one at its first boot and keeps it beside its
  * snapshot, so a wiped or different host has a different id. A copy is kept under its board's
- * id ([snapshotKey]), so a browser never feeds an old board, or its claim views, to a new host.
+ * id ([snapshotKey]). A page checks the id once, at load: a browser reloading against a new host
+ * starts from that board's copy, not an old board's. A tab left open across a wipe is not
+ * covered, and keeps feeding its old board and claim views to the new host (bee#46).
  *
  * The id travels to a page as the plain-text body of `GET` [PATH]: nothing else on the wire
  * changes.
