@@ -18,6 +18,7 @@ import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.crdt.Patch
 import kotlin.time.Instant
@@ -41,13 +42,17 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
  *   revision on the same surface, reopened if it was closed.
  * - **Answers belong to one orphaning.** The `Poll` binds its answers to
  *   `/rounds/<token>/answers`, and a new orphaning rebinds it to its own, empty, so no answer to an
- *   earlier one shows or counts as an answer to this one. Earlier answers keep their path.
+ *   earlier one shows as an answer to this one. Earlier answers keep their path. The proposal an
+ *   answer makes isn't fenced: a stale one applies to the current orphaning (tractat-us/bee#83).
  * - **One surface it can't write stops no other.** A surface someone else wrote under an orphan id,
  *   in a shape this can't extend, is logged once and skipped; every other decision goes on. An
  *   orphaned view naming no holder or token is a broken mirror, and that propagates.
  * - **A decision closes once its target isn't orphaned**, and keeps its content and records, in
  *   the history strip. A person who clears the board closes an open decision too; it stays closed
  *   until the target is orphaned again, so the host never fights a clear.
+ * - **Only agents are offered a reassign.** A person has no release path in v1, so a claim
+ *   reassigned to one would be held for good. This filters for liveness; the table still commits
+ *   any `Reassign`.
  * - **Options only grow.** They're an append-only array (A12): a peer who arrives later is
  *   appended, and one who leaves keeps its option, whose `Reassign` the table rejects once that
  *   peer is retired.
@@ -69,7 +74,10 @@ class OrphanDecisions(
         val orphans = state.claims.entries.filterValues { it.status == ClaimView.ORPHANED }.map { (key, view) -> Orphan.of(ClaimTarget(key), view) }
         if (orphans.isNotEmpty()) {
             val retired = state.departures().map { it.identity }.toSet()
-            val peers = present().filter { it !in retired && it != JoinRequestSurface.HOST }.distinct()
+            // Only agents are offered: a person has no release path in v1, so a claim reassigned to
+            // one would be held for good. This filters for liveness, like `Departures`; the table still
+            // commits any `Reassign`.
+            val peers = present().filter { it.kind == PeerKind.Agent && it !in retired && it != JoinRequestSurface.HOST }.distinct()
             orphans.forEach { orphan -> isolated(OrphanDecision.surfaceId(orphan.target)) { decide(orphan, peers) } }
         }
         relay.state.value.openSurfaces()
