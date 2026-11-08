@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T03:51Z"
+as_of: "2026-11-08T04:51Z"
 
 sources:
   - title: "v1 plan"
@@ -52,6 +52,8 @@ order:
   - bee-45
   - bee-46
   - bee-49
+  - bee-53
+  - bee-54
   - bee-14
   - bee-19
   - bee-23
@@ -76,6 +78,7 @@ order:
   - kuilt-3143
   - kuilt-3144
   - kuilt-3145
+  - kuilt-3146
   - out-cla
   - out-kuilt-references
 
@@ -349,20 +352,43 @@ items:
   bee-45:
     kind: issue
     title: "Any website open on the laptop can use the board: check Origin and Host on /ws/*"
-    status: next
-    summary: "A bug, ready to start."
+    status: done
+    summary: "Fixed by #51, which refuses a board socket from another site or a rebinding host name."
     started: "2026-11-08T02:44Z"
+    landed: "2026-11-08T04:40Z"
     links:
       - { title: "bee#45", url: "https://github.com/tractat-us/bee/issues/45" }
+      - { title: "bee#51", url: "https://github.com/tractat-us/bee/pull/51" }
 
   bee-46:
     kind: issue
     title: "A tab left open across a host wipe pushes its old board, claim views included, into the new host"
-    status: next
-    summary: "A bug, ready to start."
+    status: done
+    summary: "Fixed by #52: a board socket names its board, the host adopts an existing board on upgrade, and a bridge refused by another board exits loudly."
     started: "2026-11-08T03:07Z"
+    landed: "2026-11-08T04:49Z"
     links:
       - { title: "bee#46", url: "https://github.com/tractat-us/bee/issues/46" }
+      - { title: "bee#52", url: "https://github.com/tractat-us/bee/pull/52" }
+
+  bee-53:
+    kind: issue
+    title: "ClaimsSmokeTest and FrameBoundTest fail intermittently in the smoke job"
+    status: next
+    summary: "A bug, ready to start."
+    started: "2026-11-08T04:31Z"
+    links:
+      - { title: "bee#53", url: "https://github.com/tractat-us/bee/issues/53" }
+
+  bee-54:
+    kind: issue
+    title: "Refuse cross-site requests by Fetch Metadata: a no-Origin GET can still fill the pairing slots"
+    status: in-flight
+    summary: "A follow-up to #51."
+    started: "2026-11-08T04:40Z"
+    links:
+      - { title: "bee#54", url: "https://github.com/tractat-us/bee/issues/54" }
+      - { title: "bee#55", url: "https://github.com/tractat-us/bee/pull/55" }
 
   bee-49:
     kind: issue
@@ -562,6 +588,15 @@ items:
     started: "2026-11-08T03:25Z"
     links:
       - { title: "kuilt#3145", url: "https://github.com/tractat-us/kuilt/issues/3145" }
+
+  kuilt-3146:
+    kind: kuilt
+    title: "Server looms accept a WebSocket handshake from any web page: no Origin or Host check"
+    status: next
+    summary: "bee checks Origin and Host itself since #51, so it doesn't wait on the fix."
+    started: "2026-11-08T04:01Z"
+    links:
+      - { title: "kuilt#3146", url: "https://github.com/tractat-us/kuilt/issues/3146" }
 
   # ── Outside the code ─────────────────────────────────────────────────
   out-cla:
