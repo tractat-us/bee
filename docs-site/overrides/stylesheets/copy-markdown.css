@@ -1,0 +1,23 @@
+/* The copy button shows one icon at a time; copy-markdown.js sets data-state. */
+.bee-copy-markdown > span {
+  display: block;
+}
+
+.bee-copy-markdown__done,
+.bee-copy-markdown__failed,
+.bee-copy-markdown[data-state] .bee-copy-markdown__idle {
+  display: none !important;
+}
+
+.bee-copy-markdown[data-state="done"] .bee-copy-markdown__done,
+.bee-copy-markdown[data-state="failed"] .bee-copy-markdown__failed {
+  display: block !important;
+}
+
+.bee-copy-markdown[data-state="done"] {
+  color: #2e7d32;
+}
+
+.bee-copy-markdown[data-state="failed"] {
+  color: #c62828;
+}

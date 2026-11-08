@@ -32,6 +32,9 @@ extra:
 extra_javascript:
   - javascripts/copy-markdown.js
 
+extra_css:
+  - stylesheets/copy-markdown.css
+
 theme:
   name: material
   # main.html adds the "View as Markdown" and "Copy page as Markdown" buttons.

@@ -1,13 +1,16 @@
 {#- Adds two page actions beside Material's own: a link to the page's Markdown
     copy (written by the llmstxt plugin) and a button that copies it.
-    hooks.py sets page.meta.markdown_url only for a page that has a copy. -#}
+    hooks.py sets page.meta.markdown_url only for a page that has a copy.
+    copy-markdown.js sets data-state on the button; copy-markdown.css picks the icon. -#}
 {% extends "base.html" %}
 
 {% block content %}
   {% if page.meta and page.meta.markdown_url %}
     {% set markdown = page.meta.markdown_url | url %}
-    <button type="button" class="md-content__button md-icon bee-copy-markdown" data-markdown="{{ markdown }}" title="Copy page as Markdown">
-      {% include ".icons/material/content-copy.svg" %}
+    <button type="button" class="md-content__button md-icon bee-copy-markdown" data-markdown="{{ markdown }}" title="Copy page as Markdown" aria-label="Copy page as Markdown">
+      <span class="bee-copy-markdown__idle">{% include ".icons/material/content-copy.svg" %}</span>
+      <span class="bee-copy-markdown__done">{% include ".icons/material/check.svg" %}</span>
+      <span class="bee-copy-markdown__failed">{% include ".icons/material/alert-circle-outline.svg" %}</span>
     </button>
     <a href="{{ markdown }}" class="md-content__button md-icon" title="View as Markdown" type="text/markdown">
       {% include ".icons/material/language-markdown-outline.svg" %}
