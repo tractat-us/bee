@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.ClaimStatus
+import us.tractat.bee.core.ClaimTable
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
@@ -18,6 +21,7 @@ import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.RaftConfig
 import java.security.SecureRandom
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -122,11 +126,29 @@ fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.m
  * Entries are never pruned and a booted [Departures] has proposed nothing, so an identity the board
  * lists as departed is dropped here: the log rebuilds that list on boot, and re-proposing would
  * cost a durable append per historical agent per boot.
+ *
+ * The boot check (bee#44) reads the same entries, and its holders off [voter]'s table. It relies
+ * on [board] having booted without presence ([HostBoard]): every entry on it reached this boot.
  */
-internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures =
-    Departures(claimsLinkLoss(voter.membership, clock), { board.value.undeparted() }, voter::depart, clock = clock)
+internal fun hostDepartures(
+    voter: ClaimsVoter,
+    board: StateFlow<BoardState>,
+    clock: () -> Instant,
+    bootGrace: Duration = Departures.BOOT_GRACE,
+): Departures = Departures(
+    claimsLinkLoss(voter.membership, clock),
+    presence = { board.value.undeparted() },
+    holders = { voter.table.value.holders() },
+    depart = voter::depart,
+    bootGrace = bootGrace,
+    clock = clock,
+)
 
 private fun BoardState.undeparted(): List<PresenceEntry> {
     val gone = departures().map { it.identity }.toSet()
     return latestPresence().filterNot { it.identity in gone }
 }
+
+/** Whoever holds a claim now. An orphaned claim's holder is retired, so it isn't one. */
+private fun ClaimTable.holders(): Set<PeerIdentity> =
+    targets.values.filterIsInstance<ClaimStatus.Held>().map { it.holder }.toSet()

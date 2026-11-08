@@ -120,7 +120,7 @@ class ClaimsLinkLossTest {
         val (learner, kill) = learner(rig, node)
         val won = learner.claim(target, ada)
         val entries = listOf(entry(ada, node))
-        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, voter::depart, clock = rig.clock)
+        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, { emptySet() }, voter::depart, clock = rig.clock)
             .start(backgroundScope)
 
         val killedAt = testScheduler.currentTime
@@ -150,7 +150,7 @@ class ClaimsLinkLossTest {
         val (first, killFirst) = learner(rig, old)
         first.claim(ClaimTarget("record:web-1:1"), ada)
         var entries = listOf(entry(ada, old))
-        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, voter::depart, clock = rig.clock)
+        Departures(claimsLinkLoss(voter.membership, rig.clock), { entries }, { emptySet() }, voter::depart, clock = rig.clock)
             .start(backgroundScope)
 
         killFirst()

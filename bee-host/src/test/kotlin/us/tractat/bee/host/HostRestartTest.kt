@@ -4,9 +4,13 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -25,6 +29,7 @@ import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimView
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
@@ -212,6 +217,61 @@ class HostRestartTest {
         }
     }
 
+    /**
+     * bee#44's scenario. alice and bo each hold a claim, the host stops, and alice dies while it is
+     * down. The host boots with no presence, since presence isn't saved. bo reconnects inside the
+     * boot grace, on a fresh claims link as `ClaimsConnection` rebuilds one, and posts it: he keeps
+     * his claim. alice is departed `Crashed` once the grace ends, so her claim shows orphaned, and
+     * the departure is logged.
+     */
+    @Test
+    fun anAgentThatDiedWhileTheHostWasDownIsDepartedAfterTheBootGrace() = runTest(timeout = 120.seconds) {
+        val logged = ListAppender<ILoggingEvent>().apply { start() }
+        val logger = LoggerFactory.getLogger("us.tractat.bee.host.Departures") as Logger
+        logger.addAppender(logged)
+        try {
+            val rig = Rig(this)
+            val bo = PeerIdentity.agent("bo", Random(2))
+            val hers = ClaimTarget("record:lunch:1")
+            val his = ClaimTarget("record:lunch:2")
+            val first = rig.boot()
+            // The host going down ends every claims link of the first boot.
+            val firstLinks = Job(backgroundScope.coroutineContext[Job])
+            val linkScope = CoroutineScope(backgroundScope.coroutineContext + firstLinks)
+            val aliceWon = rig.claims.client(NodeId("claims-alice-1"), linkScope).claim(hers, alice)
+            val boWon = rig.claims.client(NodeId("claims-bo-1"), linkScope).claim(his, bo)
+            first.close()
+            firstLinks.cancelAndJoin()
+
+            val second = rig.boot()
+            advanceTimeBy(10.seconds)
+            rig.claims.client(NodeId("claims-bo-2"))
+            second.board.relay.mutate { it.postPresence(ReplicaId("mcp-bo"), agentPresence(bo, "claims-bo-2"), clock = 1) }
+            advanceTimeBy(Departures.BOOT_GRACE - 11.seconds)
+            runCurrent()
+            val inGrace = second.voter.table.value
+            val after = withTimeoutOrNull(Departures.BOOT_GRACE) { second.voter.table.first { it.retired(alice) } }
+            // A check later, so a Depart of bo proposed after alice's would have committed.
+            advanceTimeBy(Departures.CHECK_EVERY)
+            runCurrent()
+            val settled = second.voter.table.value
+            val lines = logged.list.map { it.formattedMessage }
+            assertAll(
+                { assertIs<ClaimOutcome.Won>(aliceWon, "rig: alice held a claim") },
+                { assertIs<ClaimOutcome.Won>(boWon, "rig: bo held a claim") },
+                { assertIs<ClaimStatus.Held>(inGrace.status(hers), "alice keeps her claim until the grace ends") },
+                { assertEquals(DepartReason.Crashed, after?.departReason(alice), "then she is departed Crashed") },
+                { assertEquals(ClaimStatus.Orphaned(alice, (aliceWon as ClaimOutcome.Won).token), after?.status(hers)) },
+                { assertEquals(ClaimStatus.Held(bo, (boWon as ClaimOutcome.Won).token), settled.status(his), "bo, seen inside the grace, keeps his") },
+                { assertEquals(null, settled.departReason(bo), "and isn't departed") },
+                { assertTrue(lines.any { "$alice" in it && "Crashed" in it }, "the departure is logged: $lines") },
+            )
+            second.close()
+        } finally {
+            logger.detachAppender(logged)
+        }
+    }
+
     /** The host's stores, kept across its boots, and its endpoints in memory. */
     private class Rig(
         private val test: TestScope,
@@ -271,6 +331,14 @@ class HostRestartTest {
             context = JsonObject(emptyMap()),
             basis = Basis.capture(state, "lunch"),
             at = Instant.parse("2026-11-07T12:01:00Z"),
+        )
+
+        fun agentPresence(identity: PeerIdentity, claimsNode: String) = PresenceEntry(
+            identity = identity,
+            claimsNode = NodeId(claimsNode),
+            status = null,
+            lastActedAt = Instant.DISTANT_FUTURE,
+            waiting = false,
         )
 
         fun presence() = PresenceEntry(

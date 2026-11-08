@@ -158,6 +158,95 @@ class DeparturesTest {
         voter.close()
     }
 
+    /**
+     * bee#44: after a host restart, a claim holder with no presence entry once the boot grace is
+     * over is departed `Crashed`: not a moment before the grace ends, and once it has.
+     */
+    @Test
+    fun anUnseenHolderIsDepartedCrashedOnceTheBootGraceEnds() = runTest {
+        val board = Board(this).apply { holders = setOf(ada) }
+        val departed = board.start()
+
+        advanceTimeBy(Departures.BOOT_GRACE - 1.seconds)
+        runCurrent()
+        val before = departed.toList()
+        advanceTimeBy(1.seconds)
+        runCurrent()
+        assertAll(
+            { assertEquals(emptyList(), before, "not before the grace ends") },
+            { assertEquals(listOf(ada to DepartReason.Crashed), departed, "departed Crashed once it has") },
+        )
+    }
+
+    /**
+     * A holder that reconnects inside the boot grace, so its presence reaches the host, keeps its
+     * claims. A holder beside it that never reconnects, the control, is departed.
+     */
+    @Test
+    fun aHolderSeenInsideTheBootGraceKeepsItsClaims() = runTest {
+        val board = Board(this).apply { holders = setOf(ada, bo) }
+        val departed = board.start()
+
+        advanceTimeBy(Departures.BOOT_GRACE - 1.seconds)
+        board.post(entry(ada, "mcp-ada-2"))
+        advanceTimeBy(2.hours)
+        runCurrent()
+        assertEquals(listOf(bo to DepartReason.Crashed), departed, "only the holder nobody saw departs")
+    }
+
+    /** A person holding a claim is never departed for being unseen. An agent beside them, the control, is. */
+    @Test
+    fun theBootGraceNeverDepartsAHuman() = runTest {
+        val board = Board(this).apply { holders = setOf(iain, ada) }
+        val departed = board.start()
+
+        advanceTimeBy(2.hours)
+        runCurrent()
+        assertEquals(listOf(ada to DepartReason.Crashed), departed, "the agent departs, the human never")
+    }
+
+    /**
+     * The boot check is one pass, not a rule that keeps running: a holder that claims after it,
+     * still with no presence entry, isn't departed by it. Nor is the unseen holder proposed twice
+     * when its old claims node is dropped too.
+     */
+    @Test
+    fun theBootGraceProposesEachUnseenHolderOnce() = runTest {
+        val cy = PeerIdentity.agent("cy", Random(3))
+        val board = Board(this).apply { holders = setOf(ada) }
+        val departed = board.start()
+
+        advanceTimeBy(Departures.BOOT_GRACE)
+        runCurrent()
+        board.holders = setOf(ada, cy)
+        board.post(entry(ada, "mcp-ada-1"))
+        board.lose("mcp-ada-1")
+        advanceTimeBy(2.hours)
+        runCurrent()
+        assertEquals(listOf(ada to DepartReason.Crashed), departed, "ada once, and not cy, who claimed after the check")
+    }
+
+    /**
+     * A boot departure that fails is tried again on the next check, so one failed proposal doesn't
+     * leave a dead holder with its claims. Once it succeeds, it is never proposed again.
+     */
+    @Test
+    fun aFailedBootDepartureIsRetried() = runTest {
+        var failures = 1
+        val board = Board(this).apply { holders = setOf(ada) }
+        val departed = board.start(depart = { _, _ -> check(failures-- <= 0) { "voter unavailable" } })
+
+        advanceTimeBy(Departures.BOOT_GRACE)
+        runCurrent()
+        val once = departed.toList()
+        advanceTimeBy(Departures.CHECK_EVERY * 10)
+        runCurrent()
+        assertAll(
+            { assertEquals(listOf(ada to DepartReason.Crashed), once, "rig: the first proposal was made, and failed") },
+            { assertEquals(List(2) { ada to DepartReason.Crashed }, departed, "tried once more, then never again") },
+        )
+    }
+
     private val board0 = Instant.fromEpochMilliseconds(0)
 
     private fun entry(
@@ -167,11 +256,17 @@ class DeparturesTest {
         waiting: Boolean = false,
     ) = PresenceEntry(identity, NodeId(claimsNode), status = null, lastActedAt = lastActedAt, waiting = waiting)
 
-    /** A scripted board: fixed presence entries, and a partition-event stream the test drives. */
+    /**
+     * A scripted board: presence entries the test can [post], the claim [holders] the voter's
+     * table shows, and a partition-event stream the test drives.
+     */
     private class Board(private val test: TestScope, vararg entries: PresenceEntry) {
-        private val presence = entries.toList()
+        private val presence = entries.toMutableList()
         private val events = MutableSharedFlow<PartitionEvent>(extraBufferCapacity = 16)
         private val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
+
+        /** Whoever holds a claim, as the voter's committed table shows it. */
+        var holders: Set<PeerIdentity> = emptySet()
 
         /** Starts [Departures] on the test's background scope; returns what it proposed, in order. */
         fun start(
@@ -179,10 +274,24 @@ class DeparturesTest {
             depart: (suspend (PeerIdentity, DepartReason) -> Unit)? = null,
         ): MutableList<Pair<PeerIdentity, DepartReason>> {
             val proposed = mutableListOf<Pair<PeerIdentity, DepartReason>>()
-            Departures(events, { presence }, { who, why -> proposed += who to why; depart?.invoke(who, why) }, quietAfter, clock)
-                .start(test.backgroundScope)
+            Departures(
+                events,
+                { presence.toList() },
+                { holders },
+                { who, why ->
+                    proposed += who to why
+                    depart?.invoke(who, why)
+                },
+                quietAfter,
+                clock = clock,
+            ).start(test.backgroundScope)
             test.testScheduler.runCurrent()
             return proposed
+        }
+
+        /** A peer's presence reaches the host. */
+        fun post(entry: PresenceEntry) {
+            presence += entry
         }
 
         suspend fun lose(claimsNode: String) {
