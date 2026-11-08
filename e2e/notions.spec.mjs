@@ -189,18 +189,20 @@ test('concurrent drops never duplicate a card', async ({ browser }) => {
 test('a card dragged onto another board moves nothing', async ({ browser }) => {
   const alex = await openPeer(browser, 'alex');
   peers = [alex];
-  // Both fixtures hold a card `c1` in `todo`: ids are unique only within one board.
+  // Both fixtures hold a card `c1`: ids are unique only within one board. Earlier tests may have
+  // moved either, so compare against the state before the drag.
+  const whereIs = (id) => surface(alex.page, id).locator('bee-board').evaluate(
+    (el) => [...el.querySelectorAll('[data-column]')].map((col) => `${col.dataset.column}:${[...col.querySelectorAll('[data-card]')].map((c) => c.dataset.card)}`).join('|'));
   await expect(card(alex.page, 'board-drop', 'c1')).toBeVisible();
   await expect(card(alex.page, 'board-race', 'c1')).toBeVisible();
+  const before = [await whereIs('board-drop'), await whereIs('board-race')];
+  const recordsBefore = [await records(alex.page, 'board-drop').count(), await records(alex.page, 'board-race').count()];
 
   await card(alex.page, 'board-race', 'c1').dragTo(column(alex.page, 'board-drop', 'doing'));
   await alex.page.waitForTimeout(1_000);
 
-  for (const id of ['board-drop', 'board-race']) {
-    await expect(column(alex.page, id, 'todo').locator('[data-card="c1"]')).toBeVisible();
-    await expect(column(alex.page, id, 'doing').locator('[data-card="c1"]')).toHaveCount(0);
-    await expect(records(alex.page, id)).toHaveCount(0);
-  }
+  expect([await whereIs('board-drop'), await whereIs('board-race')]).toEqual(before);
+  expect([await records(alex.page, 'board-drop').count(), await records(alex.page, 'board-race').count()]).toEqual(recordsBefore);
 });
 
 test('clear the board then reopen from history keeps the votes', async ({ browser }) => {
