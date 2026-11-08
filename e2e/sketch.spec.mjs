@@ -215,7 +215,8 @@ const forgeFrom = (frame, choice) => frame.locator('body').evaluate((body, c) =>
 // A sandboxed frame can scroll the page (scrollIntoView, in Chromium), so a sketch can move its
 // own armed Send under a pointer that is still. Send re-arms whenever it moves, so a click that
 // lands just after the move records nothing; once Send has stayed put, the same click sends.
-test('a sketch that scrolls its armed Send under the pointer records nothing', async ({ browser }) => {
+test('a sketch that scrolls its armed Send under the pointer records nothing', async ({ browser, browserName }) => {
+  test.skip(browserName === 'webkit', "WebKit keeps a sandboxed frame's scrollIntoView off the page, so a sketch can't scroll Send this way");
   pushScreen('scroller.html', '<h2>Scroller</h2><div style="height:420px"></div><div id="mark" style="height:4px"></div>');
   const max = await openBoard(browser, 'max', 'Scroller');
   const { page, frame } = max;
@@ -231,6 +232,8 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
   // Where the sketch's scroll puts Send: a dry run, then back to the top.
   const scroll = () => frame.locator('#mark').evaluate((mark) => mark.scrollIntoView({ block: 'start' }));
   await scroll();
+  // Precondition: the sketch's scrollIntoView scrolls the page.
+  expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0);
   const box = await send.boundingBox();
   const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await page.evaluate(() => scrollTo(0, 0));
