@@ -48,12 +48,15 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => {
   // ada holds the record the Reassign handed her. Completing it before her bridge dies keeps the
   // host from departing her ~30 s later and reopening the decision while later spec files run.
-  if (rig.reassigned) {
-    await rig.ada.call('bee_action_done', { recordId: rig.reassigned.recordId, token: rig.reassigned.token });
+  try {
+    if (rig.reassigned) {
+      await rig.ada.call('bee_action_done', { recordId: rig.reassigned.recordId, token: rig.reassigned.token });
+    }
+  } finally {
+    rig.ada?.kill();
+    rig.zed?.kill();
+    await rig.context?.close();
   }
-  rig.ada?.kill();
-  rig.zed?.kill();
-  await rig.context?.close();
 });
 
 test("a screen's answer to an orphan decision is refused and records nothing", async ({ browser }) => {
