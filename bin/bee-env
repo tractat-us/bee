@@ -21,7 +21,7 @@ else
     bee_host="$bee_root/bee-host/build/install/bee-host/bin/bee-host"
     if [ ! -x "$bee_mcp" ] || [ ! -x "$bee_host" ] || [ "${BEE_BUILD:-}" = 1 ]; then
         echo "Building the bee host and bridge (./gradlew installDist)…" >&2
-        (cd "$bee_root" && ./gradlew :bee-host:installDist :bee-mcp:installDist --console=plain -q) >&2
+        (cd "$bee_root" && ./gradlew :bee-host:installDist :bee-mcp:installDist --no-watch-fs --console=plain -q) >&2
     fi
 fi
 
