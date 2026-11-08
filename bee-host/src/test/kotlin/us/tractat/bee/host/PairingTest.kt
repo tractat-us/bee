@@ -29,7 +29,12 @@ class PairingTest {
         now += by
     }
 
-    private fun ticket(): Opened.Ticket = assertIs<Opened.Ticket>(pairing.open())
+    private var addresses = 0
+
+    /** A LAN address no pairing here has used yet. */
+    private fun fresh(): String = "192.168.1.${++addresses}"
+
+    private fun ticket(from: String = fresh()): Opened.Ticket = assertIs<Opened.Ticket>(pairing.open(from))
 
     @Test
     fun matchingCodeFromHumanAdmits() {
@@ -124,15 +129,15 @@ class PairingTest {
         )
     }
 
-    /** Pending pairings are capped, so a device on the LAN can't fill the board with join requests. */
+    /** Pending pairings are capped, from every address together. */
     @Test
     fun pendingPairingsAreCapped() {
         val open = List(Pairing.MAX_PENDING) { ticket() }
-        val refused = pairing.open()
+        val refused = pairing.open(fresh())
         pairing.end(open.first().id)
-        val afterOneEnds = pairing.open()
+        val afterOneEnds = pairing.open(fresh())
         advance(2.minutes)
-        val afterExpiry = List(Pairing.MAX_PENDING) { pairing.open() }
+        val afterExpiry = List(Pairing.MAX_PENDING) { pairing.open(fresh()) }
         assertAll(
             { assertEquals(Opened.Busy, refused) },
             { assertIs<Opened.Ticket>(afterOneEnds) },
@@ -140,10 +145,74 @@ class PairingTest {
         )
     }
 
+    /**
+     * An expired pairing holds no place, but it stays pending until its owner ends it: the host's
+     * timer for it may not have fired yet, and that timer is what closes its request on the board.
+     */
+    @Test
+    fun expiredPairingStaysUntilItsOwnerEndsIt() {
+        val expired = ticket()
+        advance(2.minutes)
+        val next = pairing.open(fresh())
+        assertAll(
+            { assertIs<Opened.Ticket>(next) },
+            { assertTrue(pairing.isPending(expired.id), "another open left the expired pairing to its owner") },
+            { assertTrue(pairing.end(expired.id), "its owner's end finds it") },
+        )
+    }
+
+    @Test
+    fun secondPairingFromOneAddressIsRefusedWhileTheFirstWaits() {
+        val first = ticket(LAN)
+        advance(Pairing.COOLDOWN)
+        val second = pairing.open(LAN)
+        val elsewhere = pairing.open(OTHER_LAN)
+        pairing.end(first.id)
+        val afterTheFirstEnds = pairing.open(LAN)
+        assertAll(
+            { assertEquals(Opened.AlreadyPairing, second) },
+            { assertIs<Opened.Ticket>(elsewhere, "another address isn't held up") },
+            { assertIs<Opened.Ticket>(afterTheFirstEnds) },
+        )
+    }
+
+    @Test
+    fun anAddressOpensOncePerCooldown() {
+        pairing.end(ticket(LAN).id)
+        val again = pairing.open(LAN)
+        val elsewhere = pairing.open(OTHER_LAN)
+        advance(Pairing.COOLDOWN - 1.milliseconds)
+        val justBefore = pairing.open(LAN)
+        advance(1.milliseconds)
+        val after = pairing.open(LAN)
+        assertAll(
+            { assertEquals(Opened.TooSoon, again) },
+            { assertIs<Opened.Ticket>(elsewhere, "another address pairs while one is throttled") },
+            { assertEquals(Opened.TooSoon, justBefore) },
+            { assertIs<Opened.Ticket>(after) },
+        )
+    }
+
+    /** Loopback reaches the board without a key, so limiting its pairing would protect nothing. */
+    @Test
+    fun loopbackIsLimitedOnlyByTheCap() {
+        val opened = listOf("127.0.0.1", "127.0.0.1", "::1").map { pairing.open(it) }
+        val past = pairing.open("127.0.0.1")
+        assertAll(
+            { opened.forEach { assertIs<Opened.Ticket>(it) } },
+            { assertEquals(Opened.Busy, past) },
+        )
+    }
+
     @Test
     fun joinKeyAdmits() {
         val key = pairing.mintJoinKey()
         assertTrue(pairing.admits(key.value))
+    }
+
+    private companion object {
+        const val LAN = "192.168.1.200"
+        const val OTHER_LAN = "192.168.1.201"
     }
 
     /** Pairing ids `p1`, `p2`…, codes `111111`, `111112`…, keys `key-1`, `key-2`… */
