@@ -13,7 +13,7 @@
 // sketch replaces it.
 //
 // The frame fits its document's height, within [SKETCH_MIN_HEIGHT_PX, SKETCH_MAX_HEIGHT], from the
-// helper's `ui/notifications/size-changed` notifications. A sketch so moves Send, its own and every
+// helper's `ui/notifications/size-changed` notifications. A fit moves this sketch's Send and every
 // Send below it, so each fit re-arms every shown proposal at once (see `fit`).
 //
 // Not covered: WebRTC sits outside CSP, so a sketch can still reach the network, through an
