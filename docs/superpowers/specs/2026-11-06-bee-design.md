@@ -374,7 +374,9 @@ entries void it.
 Before any key check, every call must come from the host's own site (bee#45, bee#54). Its `Host`
 must name the host, and its `Origin`, if any, must be the host's own. Its Fetch Metadata, if any,
 depends on the path. The page alone takes a top-level navigation from anywhere, such as a join
-link or a typed URL. Every other path, `/pair` included, takes only the page's own `same-origin`
+link or a typed URL, but never a prefetch or a prerender (`Sec-Purpose`): Chrome would admit the
+page, then see its subresources and sockets refused, and activate it blank, whereas a refusal makes
+Chrome drop the speculation and navigate normally. Every other path, `/pair` included, takes only the page's own `same-origin`
 calls and no prefetch, since no legitimate caller navigates there.
 
 **This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is

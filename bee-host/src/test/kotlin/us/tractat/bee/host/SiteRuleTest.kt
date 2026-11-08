@@ -82,7 +82,7 @@ class SiteRuleTest {
             { assertNull(rule.refusal(own, null, loopback, CROSS_SITE, NAVIGATE, DOCUMENT, path = "/index.html"), "the page by its file name") },
             { assertNull(rule.refusal(own, null, loopback, NONE, NAVIGATE, DOCUMENT), "a typed URL") },
             { assertNull(rule.refusal(own, null, loopback, SAME_ORIGIN, NAVIGATE, DOCUMENT), "a reload") },
-            { assertNull(rule.refusal(own, null, loopback, NONE, NAVIGATE, DOCUMENT, PREFETCH), "the browser's own prefetch of a typed URL") },
+            { assertNotNull(rule.refusal(own, null, loopback, NONE, NAVIGATE, DOCUMENT, PREFETCH), "the browser's own prefetch of a typed URL: its subresources would be refused, so the board would activate blank") },
             { assertNull(rule.refusal(own, null, loopback), "no Fetch Metadata: an older browser") },
         )
     }

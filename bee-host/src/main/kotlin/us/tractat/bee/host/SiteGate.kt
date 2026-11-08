@@ -40,12 +40,15 @@ fun interface ArrivalAddress {
  *   - **the page**, at a path in [PAGE_PATHS], takes a top-level navigation from anywhere:
  *     `Sec-Fetch-Mode: navigate` with `Sec-Fetch-Dest: document` from another site, so a join
  *     link opened from chat still works, and `none`, a typed URL or a bookmark. A call from another
- *     site that isn't such a navigation is refused, so no site frames the page.
+ *     site that isn't such a navigation is refused, so no site frames the page. A prefetch or a
+ *     prerender (`Sec-Purpose`) is refused here too, even from the host's own site: Chrome would
+ *     admit the page, then see its subresources and sockets refused, and activate it blank. On a
+ *     refusal Chrome drops the speculation and navigates normally.
  *   - **every other path** (`/pair`, `/board-id`, the sockets, the page's scripts) takes only
  *     `same-origin`, which is the page's own calls. No legitimate caller navigates to one, and a
  *     browser marks a navigation it can't attribute `none`: Chromium marks another site's
- *     speculation-rules prefetch that way. A call carrying `Sec-Purpose`, a prefetch or a
- *     prerender, is refused too.
+ *     speculation-rules prefetch that way. A call carrying `Sec-Purpose` is refused
+ *     on every path, as above.
  *
  *   A call with no `Sec-Fetch-Site` passes on any path: the bridge sends none, nor does a browser
  *   older than these headers. The page paths are an allow-list, so any other spelling of a path,
@@ -71,9 +74,9 @@ class SiteRule(names: Set<String>) {
         return when {
             named == null || !answersTo(named, arrival) -> "This host doesn't go by \"$host\"."
             origin != null && origin.lowercase() != "http://${named.spelled}" -> "Only the board's own page may call this host, not one from $origin."
+            headers[SEC_PURPOSE] != null -> "This host doesn't answer a prefetch or a prerender."
             path in PAGE_PATHS -> "Another site may only link to the board's page, not load it.".takeIf { fromAnotherSite(headers) && !topLevelNavigation(headers) }
             !fromOwnOriginOrUnmarked(headers) -> "Only the board's own page may call this; another site may only link to the page."
-            headers[SEC_PURPOSE] != null -> "This host doesn't answer a prefetch or a prerender here."
             else -> null
         }
     }

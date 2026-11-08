@@ -172,3 +172,21 @@ async function watchBoard(browser) {
     laptop.locator('a2ui-surface[data-surface-id^="bee-pair-"]').filter({ hasText: `"${screen}"` });
   return { context, request };
 }
+
+// A prerender of the board's own page carries `Sec-Purpose`. Admitted, Chrome would run the page,
+// get a 403 on its scripts and sockets, then activate it blank. Refused, Chrome drops the prerender
+// and navigates normally, so the board comes up online.
+test('a prerender of the board page activates online, not blank', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    const rules = document.createElement('script');
+    rules.type = 'speculationrules';
+    rules.textContent = JSON.stringify({ prerender: [{ source: 'list', urls: ['/?name=x'] }] });
+    document.head.append(rules);
+  });
+  await page.waitForTimeout(1_000);
+  await page.evaluate(() => {
+    window.location.href = '/?name=x';
+  });
+  await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
+});
