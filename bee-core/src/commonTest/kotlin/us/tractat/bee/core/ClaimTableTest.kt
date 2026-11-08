@@ -86,6 +86,20 @@ class ClaimTableTest {
         )
     }
 
+    /**
+     * A bridge that leaves proposes `Depart(Left)` itself; the host, not knowing, proposes
+     * `Depart(Crashed)` for the same identity once its link is gone. The first committed reason stands.
+     */
+    @Test
+    fun theFirstDepartReasonStandsAgainstALaterOne() {
+        val t = table(ClaimCommand.Depart(alice, DepartReason.Left), ClaimCommand.Depart(alice, DepartReason.Crashed))
+        assertAll(
+            { assertEquals(DepartReason.Left, t.departReason(alice), "the host's later Crashed doesn't overwrite Left") },
+            { assertEquals(mapOf(alice to DepartReason.Left), t.retiredIdentities) },
+            { assertEquals(2L, t.appliedIndex, "the rejected Depart still advances the index") },
+        )
+    }
+
     @Test
     fun staleTokenCompleteIsRejected() {
         val t = table(
