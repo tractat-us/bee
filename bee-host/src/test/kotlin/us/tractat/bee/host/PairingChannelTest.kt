@@ -8,7 +8,6 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -26,8 +25,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -65,9 +64,7 @@ class PairingChannelTest {
             }
         }
         val id = PairingId(withTimeout(10.seconds) { code.await() }.pairing)
-        delay(500.milliseconds) // DIAG85 forcing knob
         val pendingWhileOn = pairing.isPending(id)
-        System.err.println("DIAG85 test pendingWhileOn=$pendingWhileOn t=${System.nanoTime()}")
         device.cancel()
         val endedAfterHangUp = withTimeout(5.seconds) {
             while (pairing.isPending(id)) delay(50.milliseconds)

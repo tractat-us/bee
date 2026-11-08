@@ -64,18 +64,11 @@ class PairingDesk(
             is Opened.Refused -> return send(PairingMessage.Ended(opened.wire))
             is Opened.Ticket -> opened
         }
-        System.err.println("DIAG85 serve start ${ticket.id} t=${System.nanoTime()} thread=${Thread.currentThread().name}")
         try {
             send(PairingMessage.Code(ticket.id.value, ticket.code, ticket.expiresAt))
-            System.err.println("DIAG85 code sent ${ticket.id} t=${System.nanoTime()}")
             delay(dwell)
             send(onTheBoard(ticket, device, joinRequests.await()))
-        } catch (e: Throwable) {
-            System.err.println("DIAG85 serve ended by ${e} t=${System.nanoTime()} cause=${e.cause}")
-            e.printStackTrace()
-            throw e
         } finally {
-            System.err.println("DIAG85 serve finally ${ticket.id} t=${System.nanoTime()}")
             // A device gone before its request was posted leaves no pairing behind.
             pairing.end(ticket.id)
         }
