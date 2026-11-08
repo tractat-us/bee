@@ -3,6 +3,8 @@ package us.tractat.bee.core
 import io.ktor.http.URLBuilder
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
+import io.ktor.http.encodeURLParameter
+import io.ktor.http.encodeURLQueryComponent
 import io.ktor.http.encodedPath
 import io.ktor.http.parseUrl
 
@@ -10,7 +12,8 @@ import io.ktor.http.parseUrl
  * Where a bee host is, for a peer that dials it from a process (the bridge, a companion): its
  * root, and the key its sockets carry if it has one. Invariant: **every socket dialled through
  * this address carries its key, and nothing prints the key.** [toString] says only that there is
- * one.
+ * one, and a failure from one of its sockets, which can name the URL it dialled, is logged as
+ * [describe] renders it, with the key [redact]ed.
  *
  * A key is what lets a peer off the host's machine past the socket gate: the host refuses a
  * non-loopback socket without one in its `?k=`. A `--lan` host prints a join link that holds one,
@@ -31,7 +34,9 @@ class HostAddress private constructor(private val root: Url, private val key: St
     }.buildString()
 
     /** [text] with this address's key, as given or URL-encoded, replaced by `…` wherever it appears. */
-    fun redact(text: String): String = text
+    fun redact(text: String): String =
+        key?.let { listOf(it.encodeURLParameter(), it.encodeURLQueryComponent(), it).distinct() }.orEmpty()
+            .fold(text) { redacted, written -> redacted.replace(written, REDACTED) }
 
     /**
      * [failure] as a log line may show it: each throwable in its cause chain, its class and its
@@ -39,11 +44,20 @@ class HostAddress private constructor(private val root: Url, private val key: St
      * connect timeout does), so a failure from this address's sockets is logged through this,
      * never as the raw throwable.
      */
-    fun describe(failure: Throwable): String = failure.toString()
+    fun describe(failure: Throwable): String =
+        generateSequence(failure) { it.cause.takeUnless { cause -> cause === it } }
+            .take(MAX_CAUSES)
+            .joinToString("; caused by ") { "${it::class.simpleName}: ${redact(it.message.orEmpty())}" }
 
     override fun toString(): String = if (key == null) http else "$http, with a join key"
 
     companion object {
+        /** What [redact] puts where the key was. */
+        private const val REDACTED = "…"
+
+        /** How much of a cause chain [describe] shows: a cycle can't make it endless. */
+        private const val MAX_CAUSES = 16
+
         private val SCHEMES = mapOf(
             "ws" to URLProtocol.HTTP,
             "http" to URLProtocol.HTTP,
@@ -77,6 +91,8 @@ class HostAddress private constructor(private val root: Url, private val key: St
             val keys = url.parameters.getAll(PairingWire.KEY_PARAM).orEmpty()
             require(keys.size <= 1) { "\"${shown(trimmed)}\" carries more than one key." }
             require(keys.all { it.isNotBlank() }) { "\"${shown(trimmed)}\" carries an empty key: copy the whole join link." }
+            // A link cut off at `?k` or `?` parses with no key at all, and would meet the gate's 403 on every dial.
+            require('?' !in trimmed || keys.size == 1) { "\"${shown(trimmed)}\" ends where its key should be: copy the whole join link." }
             val root = URLBuilder(protocol = protocol, host = url.host, port = url.specifiedPort).build()
             return HostAddress(root, keys.singleOrNull())
         }
