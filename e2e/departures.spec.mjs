@@ -1,9 +1,14 @@
 // How a departed session reads on the page (spec §6.4). A session that ends normally, by its stdin
-// closing or by SIGTERM, departs itself as left: muted, not struck through, not red. A SIGKILLed
-// one says no goodbye, so the host departs it as crashed after the learner grace.
+// closing, by SIGTERM, or by SIGINT with a SIGKILL 400 ms behind it (as Claude Code's `/exit` is
+// reported to), departs itself as left: muted, not struck through, not red. A SIGKILLed one says no
+// goodbye, so the host departs it as crashed after the learner grace. The host proposes that same
+// Crashed for the ones that left, so the last test checks their left still stands.
 // The agents are real bee-mcp bridges (`:bee-mcp:installDist`), driven over stdio (agent.mjs).
 import { test, expect } from '@playwright/test';
 import { startAgent } from './agent.mjs';
+
+/** The agents, by how each ends. */
+const AGENTS = ['closes-stdin', 'gets-sigterm', 'gets-claude-exit', 'gets-sigkill'];
 
 /** Each agent's surface: one card apiece, so each card's opener line shows how it went. */
 const surfaceOf = (name) => `departures-${name}`;
@@ -14,8 +19,8 @@ test.describe.configure({ mode: 'serial' });
 const rig = {};
 
 test.beforeAll(async () => {
-  test.setTimeout(90_000);
-  for (const name of ['closes-stdin', 'gets-sigterm', 'gets-sigkill']) {
+  test.setTimeout(120_000);
+  for (const name of AGENTS) {
     const agent = await startAgent(name);
     rig[name] = agent;
     await agent.call('bee_surface_open', {
@@ -32,11 +37,11 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   const janitor = await startAgent('departures-janitor');
   try {
-    for (const name of ['closes-stdin', 'gets-sigterm', 'gets-sigkill']) {
+    for (const name of AGENTS) {
       await janitor.call('bee_surface_close', { surfaceId: surfaceOf(name) }).catch(() => {});
     }
   } finally {
-    for (const name of ['closes-stdin', 'gets-sigterm', 'gets-sigkill']) await rig[name]?.kill();
+    for (const name of AGENTS) await rig[name]?.kill();
     await janitor.end();
   }
 });
@@ -81,10 +86,26 @@ test('a session ended with SIGTERM reads as left, not crashed', async ({ page })
   await expectDeparted(page, 'gets-sigterm', 'left', { alarm: false, timeout: 10_000 });
 });
 
+test('a session ended as /exit is reported to, SIGINT then SIGKILL, reads as left', async ({ page }) => {
+  await open(page);
+  const agent = rig['gets-claude-exit'];
+  const how = await agent.end('claude-exit');
+  // Kept with the result whichever way it goes. A SIGKILL alone isn't a failure: the Depart can
+  // commit before the deadline and the rest of the shutdown hooks run past it.
+  test.info().annotations.push({ type: 'claude-exit', description: JSON.stringify(how) });
+  console.log(`gets-claude-exit ended ${JSON.stringify(how)}\n${agent.said()}`);
+  await expectDeparted(page, 'gets-claude-exit', 'left', { alarm: false, timeout: 10_000 });
+});
+
 test('a SIGKILLed session still reads as crashed', async ({ page }) => {
   test.setTimeout(120_000);
   await open(page);
   await rig['gets-sigkill'].kill();
   // The voter drops its node after the 30 s learner grace; then the host departs it.
   await expectDeparted(page, 'gets-sigkill', 'crashed', { alarm: true, timeout: 90_000 });
+  // By now the grace has run out for the ones that left, too, and the host has proposed Crashed for
+  // each of them. Their own Left committed first, and the first reason stands.
+  for (const name of ['closes-stdin', 'gets-sigterm', 'gets-claude-exit']) {
+    await expectDeparted(page, name, 'left', { alarm: false, timeout: 1_000 });
+  }
 });
