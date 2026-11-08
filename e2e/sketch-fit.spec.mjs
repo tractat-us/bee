@@ -183,6 +183,9 @@ test('a sketch that fits its own Send under a resting pointer records nothing un
 
   // A tremor while Send re-arms, and another after it has, then the click: nothing.
   await resize(page, 'lure', 251);
+  await expect.poll(() => inner(page, 'lure'), { timeout: 5_000, intervals: [5] }).toBe(251);
+  // Precondition: the tremor lands while Send re-arms.
+  expect(await send(page, 'lure').isDisabled()).toBe(true);
   await page.mouse.move(at.x + 1, at.y);
   await page.waitForTimeout(600);
   await page.mouse.move(at.x + 2, at.y + 1);
