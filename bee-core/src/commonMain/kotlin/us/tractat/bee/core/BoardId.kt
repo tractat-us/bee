@@ -31,6 +31,9 @@ value class BoardId(val value: String) {
         /** The host's route that names its board, as text. */
         const val PATH: String = "/board-id"
 
+        /** The query parameter a board or claims socket names its board in. */
+        const val PARAM: String = "board"
+
         /** Where a store records which board it keeps a copy of. */
         val KEY: StoreKey = StoreKey("board/id")
 
