@@ -139,6 +139,8 @@ export function sketchHelper() {
     });
     root.style.cssText = rootStyle;
     body.style.cssText = bodyStyle;
+    // This measurement's own style changes aren't the document changing.
+    changes.takeRecords();
     return height;
   }
   function documentHeight() {
@@ -161,6 +163,10 @@ export function sketchHelper() {
     if (sizeTimer === null) sizeTimer = setTimeout(reportSize, 50);
   }
   new ResizeObserver(scheduleSize).observe(document.documentElement);
+  // A pinned root never changes size, so a ResizeObserver on it hears nothing of what it holds:
+  // any change to the document re-measures too.
+  var changes = new MutationObserver(scheduleSize);
+  changes.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
   window.addEventListener('load', scheduleSize);
 
   // The frame's status pill, when the screen has one: it's on the board, not a companion server.
