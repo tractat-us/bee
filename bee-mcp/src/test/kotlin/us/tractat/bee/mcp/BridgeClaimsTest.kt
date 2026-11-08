@@ -24,6 +24,7 @@ import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.DepartReason
+import us.tractat.bee.core.Presence
 import us.tractat.bee.host.BeeHost
 import us.tractat.bee.host.ClaimsVoter
 import us.tractat.bee.host.InMemoryClaimsHost
@@ -413,6 +414,39 @@ class BridgeClaimsTest {
             { assertEquals(DepartReason.Cleared, departed.departReason(old), "the Depart committed on the new link") },
             { assertEquals(emptyList(), pendingAfter) },
             { assertEquals(1, ada.linkFailures.size, "the failure was heard, not swallowed") },
+        )
+        rig.close()
+    }
+
+    /**
+     * The bridge's presence names its claims node (bee#28): the live one, still the same one while
+     * that link is down, and the fresh one as soon as the link is rebuilt. The host departs a
+     * crashed bridge by the node its entry names, so a stale node after a rebuild would retire a
+     * live bridge, and no node while down would never retire a bridge that crashed then.
+     *
+     * The rebuild waits 12.5 s, off the 5 s presence beat: on a multiple of it, the beat would
+     * post the fresh node too, and a presence that only posts on the beat would pass.
+     */
+    @Test
+    fun presenceNamesTheNewestClaimsNode() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val breaker = CompletableDeferred<Unit>()
+        val ada = rig.session("ada", retryDelay = { Presence.EVERY * 5 / 2 }) { n, linkScope ->
+            if (n == 1) linkScope.launch { breaker.await(); throw IllegalStateException("refused dial (test)") }
+        }
+        val first = ada.node()
+        val namesFirst = withTimeoutOrNull(1.seconds) { ada.awaitPostedClaimsNode(first) }
+        breaker.complete(Unit)
+        ada.connection.link.first { it == null }
+        delay(Presence.EVERY * 3 / 2)
+        val whileDown = ada.postedClaimsNode()
+        val second = ada.node()
+        val namesSecond = withTimeoutOrNull(100.milliseconds) { ada.awaitPostedClaimsNode(second) }
+        assertAll(
+            { assertNotEquals(first, second, "rig: the rebuilt link has a fresh node") },
+            { assertNotNull(namesFirst, "the live link's node is posted") },
+            { assertEquals(first, whileDown, "while the link is down, the entry still names its node") },
+            { assertNotNull(namesSecond, "the rebuilt link's node is posted at once, not on the next beat") },
         )
         rig.close()
     }

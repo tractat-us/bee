@@ -1,6 +1,5 @@
 package us.tractat.bee.host
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.http.content.staticResources
@@ -11,26 +10,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardState
-import us.tractat.bee.core.LivePresence
+import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
-import us.tractat.kuilt.liveness.PartitionEvent
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
 import java.nio.file.Files
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-
-private val log = KotlinLogging.logger("us.tractat.bee.host.BeeHost")
 
 /**
  * The always-on host (spec §5.4): it serves the page at `/`, relays the board at
@@ -77,23 +72,14 @@ class BeeHost private constructor(
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
         /**
-         * The board links the host has seen lost for the reconnect window.
-         *
-         * TODO(#28): nothing feeds this yet. Whether a crash is read from the claims link (the
-         * learner grace) or from a per-spoke view over the board hub is tractat-us/bee#28. Until
-         * then no agent departs `Crashed`; `Quiet` still works.
-         */
-        val UNDETECTED_LINK_LOSS: Flow<PartitionEvent> = emptyFlow()
-
-        /**
-         * Starts a host on [config]'s address. Background work runs on [scope]. [linkLoss] feeds
-         * [Departures]' `Crashed`.
+         * Starts a host on [config]'s address. Background work runs on [scope]. [Departures]
+         * reads a crash off the claims voter: a node it drops after the learner grace
+         * ([claimsLinkLoss], bee#28).
          */
         @OptIn(ExperimentalUuidApi::class)
         suspend fun start(
             scope: CoroutineScope,
             config: HostConfig,
-            linkLoss: Flow<PartitionEvent> = UNDETECTED_LINK_LOSS,
         ): BeeHost {
             // Task 9 keeps the board here. Until then the host only makes sure the directory exists.
             Files.createDirectories(config.dataDir)
@@ -123,8 +109,7 @@ class BeeHost private constructor(
                     boardMirror(relay),
                     clock,
                 )
-                val roster = LivePresence(relay.state, clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
-                val departures = Departures(linkLoss, roster::live, voter::depart, clock = clock).start(scope)
+                val departures = hostDepartures(voter, relay.state, clock).start(scope)
                 return BeeHost(bound, relay, voter, departures, server)
             } catch (failure: Throwable) {
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
@@ -136,3 +121,23 @@ class BeeHost private constructor(
 
 /** The voter's [ClaimMirror] onto [relay]'s board: the claims mirror and the departed list (A2). */
 fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.mutate { it.mirrorClaims(relay.replica, table) } }
+
+/**
+ * The host's [Departures]: a crash is a claims node [voter] drops ([claimsLinkLoss], bee#28),
+ * matched against each poster's newest entry on [board]; `Depart`s go through [voter].
+ *
+ * Not the live roster ([us.tractat.bee.core.LivePresence]): an entry leaves it a TTL (30 s) after
+ * its last post, and the voter drops a node a learner grace (30 s) after its link went, so a
+ * killed bridge's entry has always aged out by the time its node is dropped.
+ *
+ * Entries are never pruned and a booted [Departures] has proposed nothing, so an identity the board
+ * lists as departed is dropped here: the log rebuilds that list on boot, and re-proposing would
+ * cost a durable append per historical agent per boot.
+ */
+internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures =
+    Departures(claimsLinkLoss(voter.membership, clock), { board.value.undeparted() }, voter::depart, clock = clock)
+
+private fun BoardState.undeparted(): List<PresenceEntry> {
+    val gone = departures().map { it.identity }.toSet()
+    return latestPresence().filterNot { it.identity in gone }
+}

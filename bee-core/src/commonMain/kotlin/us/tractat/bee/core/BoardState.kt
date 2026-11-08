@@ -25,13 +25,19 @@ import us.tractat.kuilt.crdt.Quilted
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.Rga
 import us.tractat.kuilt.crdt.VersionVector
+import us.tractat.kuilt.raft.NodeId
 import kotlin.time.Instant
 
-/** A peer shown as attached, with what it's on and when it last acted (§6.4). */
+/**
+ * A peer shown as attached, with what it's on and when it last acted (§6.4).
+ *
+ * [claimsNode] is the Raft node of the peer's newest claims link, or null before its first one
+ * came up. The host departs an agent `Crashed` when the voter drops that node (bee#28).
+ */
 @Serializable
 data class PresenceEntry(
     @Serializable(with = PeerIdentityAsString::class) val identity: PeerIdentity,
-    val link: String,
+    val claimsNode: NodeId?,
     val status: String?,
     val lastActedAt: Instant,
     val waiting: Boolean,
@@ -223,6 +229,12 @@ class BoardState internal constructor(
 
     /** Every committed `Depart` the host has mirrored. */
     fun departures(): Set<Departure> = departed.elements
+
+    /**
+     * Each poster's newest presence entry, however old: a dead peer's last entry stays here. Who
+     * is attached now is [LivePresence]'s view, which ages entries out.
+     */
+    fun latestPresence(): List<PresenceEntry> = presence.entries.values.mapNotNull { it.value }
 
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }

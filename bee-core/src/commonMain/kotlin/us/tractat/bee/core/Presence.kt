@@ -3,6 +3,7 @@ package us.tractat.bee.core
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -13,6 +14,7 @@ import us.tractat.kuilt.core.PumpVerdict
 import us.tractat.kuilt.core.pumpIn
 import us.tractat.kuilt.crdt.EphemeralMapTracker
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.raft.NodeId
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -22,22 +24,33 @@ import kotlin.time.Instant
  * re-posted every [EVERY], so a live peer never ages out of [LivePresence] and a gone one does
  * within [LivePresence.TTL].**
  *
- * The entry is whatever [update] last set, posted under [author] with the live board link
- * ([BoardClient.link]), or `""` while offline. Each post carries a clock that only grows, so the
- * newest post wins on every replica.
+ * The entry is whatever [update] last set, posted under [author] with the node of the peer's
+ * newest claims link ([PresenceEntry.claimsNode]). Each post carries a clock that only grows, so
+ * the newest post wins on every replica.
+ *
+ * The node is the newest one [claimsNodes] gave, and it stays named while that link is down: the
+ * host departs this peer `Crashed` once the voter drops the node it names (bee#28). A rebuilt link
+ * is posted at once, so the old node's removal finds nobody naming it. A peer whose claims link
+ * stays down for the learner grace is departed, the cost bee#28's ruling accepts: it can't claim
+ * anything in that state. Naming nothing while down would instead leave a peer that crashed then
+ * departed by nothing.
  *
  * @param author the [client]'s CRDT author, which the entry is posted under.
+ * @param claimsNodes the node of each claims link as it comes up: for a bridge, the nodes of its
+ *   `ClaimsConnection.link`.
  * @param onFailure hears a failure of the roster's tracker, which the roster survives.
  */
 class Presence(
     private val client: BoardClient,
     private val author: ReplicaId,
+    claimsNodes: Flow<NodeId>,
     private val clock: () -> Instant,
     scope: CoroutineScope,
     onFailure: (Throwable) -> Unit,
 ) {
     private val mutex = Mutex()
     private val facts = MutableStateFlow<Facts?>(null)
+    private val claimsNode = MutableStateFlow<NodeId?>(null)
     private var lastClock = 0L
 
     /** Everyone attached, as this peer's replica sees them. */
@@ -48,6 +61,13 @@ class Presence(
             while (true) {
                 post()
                 delay(EVERY)
+            }
+        }
+        // A fresh node is posted at once: the old node's removal must find the new one named.
+        scope.launch(CoroutineName("presence-${author.value}-claims")) {
+            claimsNodes.collect { node ->
+                claimsNode.value = node
+                post()
             }
         }
     }
@@ -71,13 +91,13 @@ class Presence(
             val current = facts.value ?: return
             val now = clock().toEpochMilliseconds()
             lastClock = maxOf(lastClock + 1, now)
-            current.entry(client.link.value.orEmpty()) to lastClock
+            current.entry(claimsNode.value) to lastClock
         }
         client.mutate { it.postPresence(author, entry, at) }
     }
 
     private data class Facts(val identity: PeerIdentity, val status: String?, val lastActedAt: Instant, val waiting: Boolean) {
-        fun entry(link: String) = PresenceEntry(identity, link, status, lastActedAt, waiting)
+        fun entry(claimsNode: NodeId?) = PresenceEntry(identity, claimsNode, status, lastActedAt, waiting)
     }
 
     companion object {

@@ -132,7 +132,7 @@ class BoardClient(
     /** Whether a connection to the relay is live. */
     val online: StateFlow<Boolean> = _online.asStateFlow()
 
-    /** The live connection's fabric peer id, or null offline. Presence names the link by it. */
+    /** The live connection's fabric peer id, or null offline. Tests read it. */
     val link: StateFlow<String?> = _link.asStateFlow()
 
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
