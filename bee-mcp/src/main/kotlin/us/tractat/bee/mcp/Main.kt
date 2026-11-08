@@ -153,8 +153,13 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
 
 /**
  * How long an ending bridge waits for its `Depart(Left)` to commit. A single voter commits it
- * inline, so this only bounds a host that's gone, and stays inside the grace a client gives an
- * MCP server between asking it to stop and a SIGKILL.
+ * inline, so this only bounds a host that's gone, for an exit no SIGKILL follows (stdin closing).
+ *
+ * Measured (e2e `departures.spec.mjs`, host on loopback): from SIGINT to the bridge's exit, `Left`
+ * committed, took about 330 ms. Not measured: Claude Code's own grace. Public reports say `/exit`
+ * sends SIGINT, SIGTERM about 100 ms later, then SIGKILL about 400 ms after that; some say SIGKILL
+ * at once. So this bound is longer than that grace, and a SIGKILL before the commit leaves the
+ * host to depart the identity `Crashed`.
  */
 private val LEAVE_BOUND = 1.seconds
 
