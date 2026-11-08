@@ -45,6 +45,10 @@ sealed interface ClaimStatus {
  *
  * A rejected command still advances [appliedIndex]: every committed index is accounted for.
  *
+ * **It keeps each hold's provenance** ([reassigned]): a hold a `Reassign` granted is told from one
+ * its holder won, so a bridge's sweep, which gives back every hold of its own that no caller of it
+ * received, keeps a reassigned one (bee#31, Task 11).
+ *
  * **It relies on each proposal reaching the log at most once.** It folds every entry, so a second
  * entry carrying the same `Claim`, committed after that claim's `Release`, wins the target again
  * under a token nobody holds. No duplicate arrives on kuilt `0.7.0-dev.1692` within one incarnation,
@@ -56,6 +60,8 @@ sealed interface ClaimStatus {
 class ClaimTable private constructor(
     private val claims: Map<ClaimTarget, ClaimStatus>,
     private val departed: Map<PeerIdentity, DepartReason>,
+    /** The token each reassigned target was granted under, kept until the target leaves that hold. */
+    private val grants: Map<ClaimTarget, ClaimToken>,
     val appliedIndex: Long,
 ) {
     fun status(target: ClaimTarget): ClaimStatus = claims[target] ?: ClaimStatus.Free
@@ -65,6 +71,15 @@ class ClaimTable private constructor(
         claims.filterValues { it.holder() == identity }.keys
 
     fun retired(identity: PeerIdentity): Boolean = identity in departed
+
+    /**
+     * Whether [target] is held under a token a [ClaimCommand.Reassign] minted: a participant's
+     * decision handed it to its holder, who never claimed it. False for a hold its holder won.
+     */
+    fun reassigned(target: ClaimTarget): Boolean {
+        val held = status(target) as? ClaimStatus.Held ?: return false
+        return grants[target] == held.token
+    }
 
     /** Why [identity] was retired, or null if it wasn't. */
     fun departReason(identity: PeerIdentity): DepartReason? = departed[identity]
@@ -125,12 +140,12 @@ class ClaimTable private constructor(
             null -> current is ClaimStatus.Orphaned
             else -> current is ClaimStatus.Held && current.holder == c.by && current.token == c.token
         }
-        return if (allowed) copy(claims = claims - c.target) else null
+        return if (allowed) copy(claims = claims - c.target, grants = grants - c.target) else null
     }
 
     private fun reassign(c: ClaimCommand.Reassign, token: ClaimToken): ClaimTable? =
         if (!retired(c.by) && !retired(c.to) && status(c.target) is ClaimStatus.Orphaned) {
-            set(c.target, ClaimStatus.Held(c.to, token))
+            set(c.target, ClaimStatus.Held(c.to, token)).copy(grants = grants + (c.target to token))
         } else {
             null
         }
@@ -140,7 +155,7 @@ class ClaimTable private constructor(
         // No retired check: a retired identity can't hold a Held target (Depart orphans it, and a
         // retired identity's claims and reassigns to it are rejected).
         val allowed = current is ClaimStatus.Held && current.holder == c.by && current.token == c.token
-        return if (allowed) set(c.target, ClaimStatus.Done(c.by)) else null
+        return if (allowed) set(c.target, ClaimStatus.Done(c.by)).copy(grants = grants - c.target) else null
     }
 
     private fun depart(c: ClaimCommand.Depart): ClaimTable? {
@@ -148,7 +163,8 @@ class ClaimTable private constructor(
         val orphaned = claims.mapValues { (_, s) ->
             if (s is ClaimStatus.Held && s.holder == c.identity) ClaimStatus.Orphaned(s.holder, s.token) else s
         }
-        return copy(claims = orphaned, departed = departed + (c.identity to c.reason))
+        val stillHeld = grants.filterKeys { orphaned[it] is ClaimStatus.Held }
+        return copy(claims = orphaned, departed = departed + (c.identity to c.reason), grants = stillHeld)
     }
 
     private fun set(target: ClaimTarget, status: ClaimStatus) = copy(claims = claims + (target to status))
@@ -156,33 +172,45 @@ class ClaimTable private constructor(
     private fun copy(
         claims: Map<ClaimTarget, ClaimStatus> = this.claims,
         departed: Map<PeerIdentity, DepartReason> = this.departed,
+        grants: Map<ClaimTarget, ClaimToken> = this.grants,
         appliedIndex: Long = this.appliedIndex,
-    ) = ClaimTable(claims, departed, appliedIndex)
+    ) = ClaimTable(claims, departed, grants, appliedIndex)
 
     private fun toEncoded() = Encoded(
         appliedIndex = appliedIndex,
         claims = claims.map { (t, s) -> EncodedClaim(t, s) },
         departed = departed.map { (i, r) -> EncodedDeparture(i, r) },
+        grants = grants.map { (t, token) -> EncodedGrant(t, token) },
     )
 
     override fun equals(other: Any?): Boolean =
-        other is ClaimTable && claims == other.claims && departed == other.departed && appliedIndex == other.appliedIndex
+        other is ClaimTable && claims == other.claims && departed == other.departed && grants == other.grants &&
+            appliedIndex == other.appliedIndex
 
-    override fun hashCode(): Int = (claims.hashCode() * 31 + departed.hashCode()) * 31 + appliedIndex.hashCode()
+    override fun hashCode(): Int = ((claims.hashCode() * 31 + departed.hashCode()) * 31 + grants.hashCode()) * 31 + appliedIndex.hashCode()
 
-    override fun toString(): String = "ClaimTable(appliedIndex=$appliedIndex, claims=$claims, departed=$departed)"
+    override fun toString(): String = "ClaimTable(appliedIndex=$appliedIndex, claims=$claims, departed=$departed, reassigned=$grants)"
 
     @Serializable
-    private data class Encoded(val appliedIndex: Long, val claims: List<EncodedClaim>, val departed: List<EncodedDeparture>)
+    private data class Encoded(
+        val appliedIndex: Long,
+        val claims: List<EncodedClaim>,
+        val departed: List<EncodedDeparture>,
+        // Absent from a table encoded before Task 11, which had no reassigns to keep.
+        val grants: List<EncodedGrant> = emptyList(),
+    )
 
     @Serializable
     private data class EncodedClaim(val target: ClaimTarget, val status: ClaimStatus)
 
     @Serializable
+    private data class EncodedGrant(val target: ClaimTarget, val token: ClaimToken)
+
+    @Serializable
     private data class EncodedDeparture(@Serializable(PeerIdentityAsString::class) val identity: PeerIdentity, val reason: DepartReason)
 
     companion object {
-        val EMPTY: ClaimTable = ClaimTable(emptyMap(), emptyMap(), 0L)
+        val EMPTY: ClaimTable = ClaimTable(emptyMap(), emptyMap(), emptyMap(), 0L)
 
         private val json = Json { classDiscriminator = "type" }
 
@@ -192,6 +220,7 @@ class ClaimTable private constructor(
             return ClaimTable(
                 claims = e.claims.associate { it.target to it.status },
                 departed = e.departed.associate { it.identity to it.reason },
+                grants = e.grants.associate { it.target to it.token },
                 appliedIndex = e.appliedIndex,
             )
         }
