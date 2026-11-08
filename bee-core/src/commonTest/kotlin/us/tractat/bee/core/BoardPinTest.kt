@@ -20,9 +20,10 @@ class BoardPinTest {
     @Test
     fun aPinToABoardNeverAsks() = runTest {
         val pin = BoardPin.to(first)
+        val resolved = pin.resolve()
         assertAll(
             { assertEquals(first, pin.board.value) },
-            { assertEquals(first, pin.resolve()) },
+            { assertEquals(first, resolved) },
         )
     }
 

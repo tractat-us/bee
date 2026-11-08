@@ -2,7 +2,6 @@ package us.tractat.bee.host
 
 import kotlinx.coroutines.test.runTest
 import us.tractat.bee.core.BoardId
-import us.tractat.kuilt.store.DurableStore
 import us.tractat.kuilt.store.InMemoryDurableStore
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
@@ -17,10 +16,7 @@ class HostStoresTest {
     @Test
     fun aFirstBootRecordsItsNewBoardInBothStores() = runTest {
         val id = HostStores.settle(board, claims).boardId
-        assertAll(
-            { assertEquals(id, BoardId.keptIn(board)) },
-            { assertEquals(id, BoardId.keptIn(claims)) },
-        )
+        assertEquals(listOf(id, id), listOf(BoardId.keptIn(board), BoardId.keptIn(claims)))
     }
 
     @Test
@@ -35,10 +31,12 @@ class HostStoresTest {
         val first = HostStores.settle(board, claims).boardId
         val freshLog = InMemoryDurableStore()
         val second = HostStores.settle(board, freshLog).boardId
+        val boardKeeps = BoardId.keptIn(board)
+        val after = HostStores.settle(board, freshLog).boardId
         assertAll(
             { assertNotEquals(first, second) },
-            { assertEquals(second, BoardId.keptIn(board), "the board store now keeps the new board") },
-            { assertEquals(second, HostStores.settle(board, freshLog).boardId, "and keeps it after") },
+            { assertEquals(second, boardKeeps, "the board store now keeps the new board") },
+            { assertEquals(second, after, "and keeps it after") },
         )
     }
 
@@ -54,11 +52,10 @@ class HostStoresTest {
         val first = HostStores.settle(board, claims).boardId
         BoardId.recordIn(claims, BoardId.mint())
         val second = HostStores.settle(board, claims).boardId
+        val kept = listOf(BoardId.keptIn(board), BoardId.keptIn(claims))
         assertAll(
             { assertNotEquals(first, second) },
-            { assertEquals(listOf(second, second), listOf(board, claims).map { keptIn(it) }) },
+            { assertEquals(listOf(second, second), kept) },
         )
     }
-
-    private suspend fun keptIn(store: DurableStore) = BoardId.keptIn(store)
 }
