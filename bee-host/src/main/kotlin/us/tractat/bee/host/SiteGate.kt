@@ -32,6 +32,13 @@ fun interface ArrivalAddress {
  * - its `Origin`, if it has one, is the host's own: `http://` and the call's `Host`. A page from
  *   any other site, or from another port on this machine, has another origin, and a browser
  *   always says so on a WebSocket. The JVM bridge sends no `Origin`, so a missing one passes.
+ * - its Fetch Metadata, if it has any, doesn't say another site sent it (bee#54). A page loading
+ *   the host as an `<img>`, a `<script>`, a frame or a no-cors `fetch` sends no `Origin`, but a
+ *   browser marks it `Sec-Fetch-Site: cross-site`, or `same-site` from another port on this
+ *   machine. Only a top-level navigation from another site passes, `Sec-Fetch-Mode: navigate` with
+ *   `Sec-Fetch-Dest: document`, so a join link opened from chat still works. `same-origin` and
+ *   `none` (a typed URL, a bookmark) pass, and so does a call with no `Sec-Fetch-Site`: the bridge
+ *   sends none, nor does a browser older than these headers.
  *
  * A browser can reach a loopback host from any page it shows, and loopback needs no key
  * ([mountEndpoints]), so without this any site open on the laptop could read and write the board.
@@ -50,15 +57,25 @@ class SiteRule(names: Set<String>) {
         return when {
             named == null || !answersTo(named, arrival) -> "This host doesn't go by \"$host\"."
             origin != null && origin.lowercase() != "http://${named.spelled}" -> "Only the board's own page may call this host, not one from $origin."
+            fromAnotherSite(headers) && !topLevelNavigation(headers) -> "Another site may only link to this host, not load it."
             else -> null
         }
     }
+
+    private fun fromAnotherSite(headers: Headers): Boolean =
+        headers[FETCH_SITE].let { it.equals("cross-site", ignoreCase = true) || it.equals("same-site", ignoreCase = true) }
+
+    private fun topLevelNavigation(headers: Headers): Boolean =
+        headers[FETCH_MODE].equals("navigate", ignoreCase = true) && headers[FETCH_DEST].equals("document", ignoreCase = true)
 
     private fun answersTo(named: Authority, arrival: Arrival): Boolean =
         named.port == arrival.port && (named.name in names || sameAddress(named.name, arrival.address))
 
     private companion object {
         const val LOCALHOST = "localhost"
+        const val FETCH_SITE = "Sec-Fetch-Site"
+        const val FETCH_MODE = "Sec-Fetch-Mode"
+        const val FETCH_DEST = "Sec-Fetch-Dest"
         const val HTTP_PORT = 80
         const val MAX_PORT = 65_535
     }
@@ -102,7 +119,9 @@ class SiteRule(names: Set<String>) {
 /**
  * Refuses, with a 403 before any route runs, every call [rule] says isn't from the host's own site.
  * Installed on the application, not on chosen routes, so a route added later, anywhere, is behind
- * it too: the board and claims sockets, `/pair`, `/board-id` and the page alike.
+ * it too: the board and claims sockets, `/pair`, `/board-id` and the page alike. A browser marks a
+ * call from another site by its `Origin` or its Fetch Metadata, so no page on another site reaches
+ * any of them, except in a browser too old to send Fetch Metadata ([SiteRule]).
  *
  * Workaround for kuilt#3146, which asks kuilt's server looms for a handshake check of their own.
  */
