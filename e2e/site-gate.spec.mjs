@@ -65,11 +65,27 @@ test('a page from another origin cannot open a pairing channel without a navigat
     const request = (screen) =>
       laptop.locator('a2ui-surface[data-surface-id^="bee-pair-"]').filter({ hasText: `"${screen}"` });
     const pair = (screen) => `http://127.0.0.1:${port}/pair?screen=${screen}`;
-    /** Runs `load` on `page` with `/pair` for `screen`, and returns the host's status for it. */
+    /**
+     * Runs `load` on `page` with `/pair` for `screen`, and returns the host's status for it, or the
+     * browser's error if the request failed: Chromium's ORB fails an admitted cross-origin stream.
+     */
     const status = async (screen, load) => {
-      const answered = page.waitForResponse((r) => r.url() === pair(screen));
-      await page.evaluate(load, pair(screen));
-      return (await answered).status();
+      const url = pair(screen);
+      let onResponse;
+      let onFailed;
+      const answered = new Promise((resolve) => {
+        onResponse = (r) => r.url() === url && resolve(r.status());
+        onFailed = (r) => r.url() === url && resolve(r.failure()?.errorText);
+        page.on('response', onResponse);
+        page.on('requestfailed', onFailed);
+      });
+      await page.evaluate(load, url);
+      try {
+        return await answered;
+      } finally {
+        page.off('response', onResponse);
+        page.off('requestfailed', onFailed);
+      }
     };
     const asImage = (src) => document.body.append(Object.assign(new Image(), { src }));
     // Keeps the response, so the stream stays open past the dwell.
