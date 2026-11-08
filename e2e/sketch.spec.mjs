@@ -145,8 +145,8 @@ test('a later proposal replaces the earlier one and Send records it once', async
   await expect(proposal(pat.page)).not.toContainText('Option A');
   // The page answers the replaced proposal, and the sketch keeps the later one's selection.
   await expect(pat.frame.locator('.option.selected')).toHaveText('Option B');
-  // A proposal never records itself, nor does a click a script dispatches on Send.
-  await pat.page.waitForTimeout(1_500);
+  // A proposal never records itself, nor does a click a script dispatches on an armed Send.
+  await expect(proposal(pat.page).locator('.bee-proposal-send')).toBeEnabled();
   await proposal(pat.page).locator('.bee-proposal-send').evaluate((send) => send.click());
   await pat.page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
@@ -194,6 +194,113 @@ test('a new screen drops the proposal the old one made', async ({ browser }) => 
   await ray.page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
   await ray.context.close();
+});
+
+/** Proposes `choice` from inside the sketch, as its own script could, with no viewer gesture. */
+const forgeFrom = (frame, choice) => frame.locator('body').evaluate((body, c) => parent.postMessage({
+  jsonrpc: '2.0', id: 77, method: 'ui/message',
+  params: { role: 'user', content: { type: 'text', text: c }, _meta: { 'us.tractat.bee/choice': c } },
+}, '*'), choice);
+
+// A sandboxed frame can scroll the page (scrollIntoView, in Chromium), so a sketch can move its
+// own armed Send under a pointer that is still. Send re-arms whenever it moves, so a click that
+// lands just after the move records nothing; once Send has stayed put, the same click sends.
+test('a sketch that scrolls its armed Send under the pointer records nothing', async ({ browser }) => {
+  pushScreen('scroller.html', '<h2>Scroller</h2><div style="height:420px"></div><div id="mark" style="height:4px"></div>');
+  const max = await openBoard(browser, 'max', 'Scroller');
+  const { page, frame } = max;
+  await page.evaluate(() => {
+    // Room to scroll the sketch to the top of the viewport, wherever it sits on the board.
+    const room = document.createElement('div');
+    room.style.height = '2000px';
+    document.body.append(room);
+  });
+  await forgeFrom(frame, 'moved');
+  const send = proposal(page).getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeEnabled();
+  // Where the sketch's scroll puts Send: a dry run, then back to the top.
+  const scroll = () => frame.locator('#mark').evaluate((mark) => mark.scrollIntoView({ block: 'start' }));
+  await scroll();
+  const box = await send.boundingBox();
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  await page.waitForTimeout(1_000);
+  await expect(send).toBeEnabled();
+  // The pointer rests on whatever is there before the scroll, not on Send.
+  await page.mouse.move(at.x, at.y);
+  const under = ({ x, y }) => document.elementFromPoint(x, y)?.className;
+  expect(await page.evaluate(under, at)).not.toBe('bee-proposal-send');
+
+  await scroll();
+  // Precondition: the scroll put Send under the pointer.
+  expect(await page.evaluate(under, at)).toBe('bee-proposal-send');
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(1_500);
+  expect(eventLines()).toEqual([]);
+
+  // Control: once Send has stayed put, the same click sends.
+  await expect(send).toBeEnabled();
+  await page.mouse.click(at.x, at.y);
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'moved', text: 'moved' });
+  await max.context.close();
+});
+
+// Tab out of a sketch lands on its own Send, so Enter, meant for the sketch, would send it. A
+// keyboard press on Send counts only once Send has had focus for a moment.
+test('Enter just after tabbing out of a sketch records nothing', async ({ browser }) => {
+  pushScreen('tabber.html', options.replace('Which layout?', 'Tab layout?') + '<input id="last">');
+  const tia = await openBoard(browser, 'tia', 'Tab layout?');
+  const { page, frame } = tia;
+  await frame.locator('[data-choice="a"]').click();
+  const send = proposal(page).getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeEnabled();
+  await frame.locator('#last').click();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  // Precondition: Tab took focus to Send, so Enter reached it.
+  expect(await page.evaluate(() => document.activeElement?.className)).toBe('bee-proposal-send');
+  await page.waitForTimeout(1_500);
+  expect(eventLines()).toEqual([]);
+
+  // Control: Enter on Send, once it has had focus a while, sends.
+  await page.keyboard.press('Enter');
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'a', text: 'Option A' });
+  await tia.context.close();
+});
+
+// In a `data-multiselect` container the companion lets the viewer select several options. Each
+// needs its own Send: a later click replaces an unsent one, and the frame drops that one's
+// selection, so what it shows selected is what was sent, plus the one proposed.
+test('multiselect shows selected only what was sent and the proposal', async ({ browser }) => {
+  const multi = '<h2>Pick several</h2><div class="options" data-multiselect>' +
+    ['a', 'b', 'c'].map((c) => `<div class="option" data-choice="${c}" onclick="toggleSelect(this)">Option ${c.toUpperCase()}</div>`).join('') +
+    '</div>';
+  pushScreen('multi.html', multi);
+  const mo = await openBoard(browser, 'mo', 'Pick several');
+  const { page, frame } = mo;
+  const selected = frame.locator('.option.selected');
+
+  await frame.locator('[data-choice="a"]').click();
+  await confirm(page);
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  await frame.locator('[data-choice="b"]').click();
+  await frame.locator('[data-choice="c"]').click();
+  await expect(proposal(page)).toContainText('Option C');
+  // B was replaced unsent, so it no longer shows selected; A was sent, so it still does.
+  await expect(selected).toHaveText(['Option A', 'Option C']);
+  await proposal(page).getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await expect(selected).toHaveText(['Option A']);
+
+  await frame.locator('[data-choice="b"]').click();
+  await confirm(page);
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(2);
+  await expect(selected).toHaveText(['Option A', 'Option B']);
+  expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['a', 'b']);
+  await mo.context.close();
 });
 
 test('sketch cannot reach the parent DOM or the network', async ({ browser }) => {
@@ -351,8 +458,8 @@ test('a sketch that steals focus during a click in another sketch records nothin
     'addEventListener("message", (e) => { if (e.data?.id !== 903) return; tally[e.data.error ? "refused" : "accepted"]++; show(); });' +
     'const forge = (choice) => { tally.sent++; show(); parent.postMessage({ jsonrpc: "2.0", id: 903, method: "ui/message", params: ' +
     '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*"); };' +
-    'const grab = setInterval(() => { window.focus(); document.getElementById("grab").focus(); }, 50);' +
-    'let n = 0; const t = setInterval(() => { forge("stolen"); if (++n >= 100) { clearInterval(t); clearInterval(grab); } }, 300);' +
+    'setInterval(() => { window.focus(); document.getElementById("grab").focus(); }, 50);' +
+    'setInterval(() => forge("stolen"), 300);' +
     '</' + 'script>');
   // The chooser: a second companion's sketch, on its own directories, with a real choice.
   const own = mkdtempSync(join(tmpdir(), 'bee-e2e-chooser-'));
@@ -421,9 +528,10 @@ async function chooseBesideAThief(browser, ownSurface, ownLines) {
   expect(eventLines()).toEqual([]);
   expect(ownLines().map((l) => JSON.parse(l))).toMatchObject([{ choice: 'b', text: 'Option B' }]);
   // Control: the thief kept posting through every click, and none was taken.
-  const tally = JSON.parse(await sketchFrame(page).locator('#tally').textContent());
+  const tallied = async () => JSON.parse(await sketchFrame(page).locator('#tally').textContent());
+  const tally = await tallied();
   expect(tally.accepted).toBe(0);
-  expect(tally.sent).toBeGreaterThanOrEqual(20);
+  await expect.poll(async () => (await tallied()).sent, { timeout: 5_000 }).toBeGreaterThan(tally.sent);
   await context.close();
 }
 
