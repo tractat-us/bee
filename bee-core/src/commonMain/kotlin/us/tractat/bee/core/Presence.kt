@@ -138,6 +138,14 @@ class LivePresence(
     /** The live entries, one per posting replica. */
     suspend fun live(): List<PresenceEntry> = mutex.withLock { tracker.live().values.toList() }
 
+    /**
+     * The attached peers, one entry per identity: its newest by [PresenceEntry.lastActedAt]. A
+     * person with two tabs open posts from two replicas, and a reloaded tab leaves its old entry
+     * live for up to [TTL]; each shows here once.
+     */
+    suspend fun peers(): Map<PeerIdentity, PresenceEntry> =
+        live().groupBy { it.identity }.mapValues { (_, entries) -> entries.maxBy { it.lastActedAt } }
+
     companion object {
         /** How long an entry stays live without a fresh post: the spec's 30 s reconnect window. */
         val TTL: Duration = 30.seconds
