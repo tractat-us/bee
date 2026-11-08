@@ -13,6 +13,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
@@ -128,6 +129,15 @@ fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.m
  * Not the live roster ([us.tractat.bee.core.LivePresence]): an entry leaves it a TTL (30 s) after
  * its last post, and the voter drops a node a learner grace (30 s) after its link went, so a
  * killed bridge's entry has always aged out by the time its node is dropped.
+ *
+ * Entries are never pruned and a booted [Departures] has proposed nothing, so an identity the board
+ * lists as departed is dropped here: the log rebuilds that list on boot, and re-proposing would
+ * cost a durable append per historical agent per boot.
  */
 internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures =
-    Departures(claimsLinkLoss(voter.membership, clock), { board.value.latestPresence() }, voter::depart, clock = clock)
+    Departures(claimsLinkLoss(voter.membership, clock), { board.value.undeparted() }, voter::depart, clock = clock)
+
+private fun BoardState.undeparted(): List<PresenceEntry> {
+    val gone = departures().map { it.identity }.toSet()
+    return latestPresence().filterNot { it.identity in gone }
+}
