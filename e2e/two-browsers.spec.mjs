@@ -106,8 +106,10 @@ test('typing in one browser appears in the other', async ({ browser }, testInfo)
   await blur(alex.page);
   await alex.page.waitForTimeout(1_500);
   const from = Date.now();
-  await field(alex.page, 'typing').press('End');
-  await field(alex.page, 'typing').press('!');
+  // Playwright resets the caret to 0 on a locator press against an unfocused field (bee#43, #63).
+  await field(alex.page, 'typing').focus();
+  await field(alex.page, 'typing').evaluate((el) => el.setSelectionRange(el.value.length, el.value.length));
+  await alex.page.keyboard.press('!');
   await expect(field(sam.page, 'typing')).toHaveValue('hello!', { timeout: 2_000 });
   await alex.page.waitForTimeout(1_000);
   const frames = alex.link.frames.filter((f) => f.at >= from);

@@ -260,6 +260,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, screen: Boolean, a
             OrphanAnswering.ByPerson(OrphanAnswers({ claims.link.value?.client }, actor))
         }
         BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, answering, clock, onProblem).start(scope)
+        HistoryStrip(client, author, document.body!!, onProblem).start(scope)
         if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
         reloadOnAnotherBoard(scope, client, pin)
 

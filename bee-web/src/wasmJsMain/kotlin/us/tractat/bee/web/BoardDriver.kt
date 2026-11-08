@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import org.w3c.dom.Element
 import us.tractat.bee.a2ui.A2uiAction
 import us.tractat.bee.a2ui.A2uiMessage
+import us.tractat.bee.a2ui.NotionActions
 import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.SurfaceValidator
 import us.tractat.bee.a2ui.SurfaceView
@@ -23,6 +24,8 @@ import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.kuilt.crdt.JsonCrdt
+import us.tractat.kuilt.crdt.Patch
+import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.crdt.ReplicaId
 import kotlin.time.Instant
 
@@ -130,9 +133,12 @@ class BoardDriver(
     }
 
     /**
-     * Appends [action] as a record, true if it did. An action on a surface the board doesn't hold
-     * is refused by `Basis.capture`, and a screen's answer to an orphan decision by this page; the
-     * person is told either way, and nothing is dropped quietly.
+     * Appends [action] as a record, after the data write a Notions action makes ([NotionActions]):
+     * a `Poll` answer writes this actor's answer, a `Board` drop the card's column, each from the
+     * register just read (A13), in the same transform as the record. An action on a surface the
+     * board doesn't hold is refused by `Basis.capture`, and an answer or drop naming nothing the
+     * surface holds by [NotionActions.edit], and a screen's answer to an orphan decision by this page;
+     * the person is told, and it's never dropped quietly. True if it appended.
      */
     private suspend fun record(action: A2uiAction): Boolean {
         if (answering == OrphanAnswering.Refused && action.answersAnOrphan()) {
@@ -150,7 +156,12 @@ class BoardDriver(
                     basis = Basis.capture(state, action.surfaceId),
                     at = clock(),
                 )
-                state.appendRecord(author, record)
+                val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
+                val written = NotionActions.edit(view, action, actor.toString())
+                    ?.let { state.updateData(author, action.surfaceId, it.path, it.value) }
+                    ?: return@mutate state.appendRecord(author, record)
+                val recorded = state.piece(written).appendRecord(author, record)
+                Patch(written.delta.piece(recorded.delta))
             }
             return true
         } catch (refused: IllegalArgumentException) {

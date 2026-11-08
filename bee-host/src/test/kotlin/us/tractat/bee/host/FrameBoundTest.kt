@@ -29,6 +29,9 @@ import kotlin.time.Clock
  * (`WebSocketReader.parseLoop`), so a close with code 1009 (too big) in answer to a header alone is
  * the refusal before allocation. Unbounded, the host allocates the announced size and waits for the
  * body, and no close comes: the read times out.
+ *
+ * A hang-up with no close frame fails too. Before Ktor 3.6.1 the host sometimes dropped its 1009
+ * and hung up (bee#58, KTOR-9987 and KTOR-10035); [UpgradedCloseTest] forces that order.
  */
 class FrameBoundTest {
     private val clock = { Clock.System.now() }

@@ -59,7 +59,12 @@ object BeeTools {
             name = OPEN,
             description = "Puts a new surface $SHARED. Takes surfaceId, title, components (A2UI v0.9 components " +
                 "from the Notions catalog, one with id \"root\") and an optional data object. A malformed surface " +
-                "is refused, naming the bad id or type, and the board is unchanged.",
+                "is refused, naming the bad id or type, and the board is unchanged. Notions adds Poll, which binds " +
+                "question, options and answers by {\"path\": \"/…\"}: question and options are arrays (options as " +
+                "strings or {id, label}), and answers an object keyed by peer, which each answer writes. It also adds " +
+                "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +
+                "owner?} and a card {label, column}; a drop moves a card to another column. Each answer or drop is " +
+                "also an action record.",
             inputSchema = schema(required = listOf("surfaceId", "title", "components")) {
                 putJsonObject("surfaceId") { put("type", "string") }
                 putJsonObject("title") { put("type", "string") }
