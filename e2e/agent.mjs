@@ -10,10 +10,20 @@ import { fileURLToPath } from 'node:url';
 
 const BRIDGE = join(dirname(fileURLToPath(import.meta.url)), '..', 'bee-mcp', 'build', 'install', 'bee-mcp', 'bin', 'bee-mcp');
 
+/** How long a request waits for its answer: longer than `bee_wait_action`'s 60 s cap. */
+const REQUEST_TIMEOUT_MS = 75_000;
+
+/** How many of the bridge's last stderr lines a failure quotes. */
+const STDERR_LINES = 40;
+
 /**
  * Starts a bridge named `name` against the e2e host and completes the MCP handshake. Resolves to
- * `{ identity, call(tool, args), kill() }` once the bridge has said who it is: `identity` is its
- * peer identity (`agent:<name>#<hex>`), and `call` resolves to a tool's parsed JSON answer.
+ * `{ identity, call(tool, args), kill(signal) }` once the bridge has said who it is: `identity` is
+ * its peer identity (`agent:<name>#<hex>`), and `call` resolves to a tool's parsed JSON answer.
+ *
+ * A request with no answer in REQUEST_TIMEOUT_MS fails, as does one in flight when the bridge
+ * exits on its own; each failure quotes the bridge's last stderr lines. A request in flight when
+ * `kill` ends the bridge is dropped: the test chose to end it.
  */
 export async function startAgent(name) {
   const child = spawn(BRIDGE, [], {
@@ -27,27 +37,51 @@ export async function startAgent(name) {
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+  const stderr = [];
+  const said = () => stderr.join('\n');
   const pending = new Map();
+  let killed = false;
   let next = 1;
+  const settle = (id) => {
+    const waiting = pending.get(id);
+    if (!waiting) return null;
+    pending.delete(id);
+    clearTimeout(waiting.timer);
+    return waiting;
+  };
   createInterface({ input: child.stdout }).on('line', (line) => {
     const message = JSON.parse(line);
-    const waiting = message.id !== undefined && pending.get(message.id);
+    const waiting = message.id !== undefined && settle(message.id);
     if (!waiting) return;
-    pending.delete(message.id);
     if (message.error) waiting.reject(new Error(`${name}: ${JSON.stringify(message.error)}`));
     else waiting.resolve(message.result);
   });
+  const exited = new Promise((resolve) => child.on('exit', resolve));
+  child.on('exit', (code, signal) => {
+    for (const [id, { method }] of [...pending]) {
+      const waiting = settle(id);
+      if (!killed) waiting.reject(new Error(`${name}'s bridge exited (${code ?? signal}) during ${method}\n${said()}`));
+    }
+  });
   const identity = new Promise((resolve, reject) => {
     createInterface({ input: child.stderr }).on('line', (line) => {
-      const said = line.match(/starts as (agent:\S+),/);
-      if (said) resolve(said[1]);
+      stderr.push(line);
+      if (stderr.length > STDERR_LINES) stderr.shift();
+      const starts = line.match(/starts as (agent:\S+),/);
+      if (starts) resolve(starts[1]);
     });
-    child.on('exit', (code) => reject(new Error(`${name}'s bridge exited (${code}) before it said who it is`)));
+    child.on('exit', (code) => reject(new Error(`${name}'s bridge exited (${code}) before it said who it is\n${said()}`)));
   });
+  // Awaited below once the handshake is done; a bridge that dies before then fails the handshake.
+  identity.catch(() => {});
   const send = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
   const request = (method, params) => new Promise((resolve, reject) => {
     const id = next++;
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      if (settle(id)) reject(new Error(`${name}: no answer to ${method} in ${REQUEST_TIMEOUT_MS / 1000} s\n${said()}`));
+    }, REQUEST_TIMEOUT_MS);
+    timer.unref();
+    pending.set(id, { method, resolve, reject, timer });
     send({ jsonrpc: '2.0', id, method, params });
   });
 
@@ -55,15 +89,20 @@ export async function startAgent(name) {
   send({ jsonrpc: '2.0', method: 'notifications/initialized' });
   return {
     identity: await identity,
-    async call(tool, args) {
+    async call(tool, args = {}) {
       const result = await request('tools/call', { name: tool, arguments: args });
       const text = result.content?.[0]?.text ?? '';
       if (result.isError) throw new Error(`${name}'s ${tool} was refused: ${text}`);
       return JSON.parse(text);
     },
-    /** Ends the bridge as a crash does: no goodbye, so the host departs it after the learner grace. */
-    kill() {
-      child.kill('SIGKILL');
+    /**
+     * Ends the bridge and resolves once it has exited. The default, SIGKILL, ends it as a crash
+     * does: no goodbye, so the host departs it after the learner grace.
+     */
+    async kill(signal = 'SIGKILL') {
+      killed = true;
+      if (child.exitCode == null && child.signalCode == null) child.kill(signal);
+      await exited;
     },
   };
 }

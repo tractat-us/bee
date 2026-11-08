@@ -1,8 +1,8 @@
 // The page reads as a shared board: a card per surface with its title and opener, and a strip of
 // who is attached. The agent here is a real bee-mcp bridge (`:bee-mcp:installDist`), the one a
-// Claude session runs, driven over its stdio MCP transport (mcp-bridge.mjs).
+// Claude session runs, driven over its stdio MCP transport (agent.mjs).
 import { test, expect } from '@playwright/test';
-import { startBridge } from './mcp-bridge.mjs';
+import { startAgent } from './agent.mjs';
 
 const WORKING_ON = 'drawing the board page';
 const SURFACE = 'board-page-card';
@@ -18,8 +18,9 @@ let identity;
 let token;
 
 test.beforeAll(async () => {
-  agent = await startBridge(process.env.BEE_E2E_PORT, 'e2e-agent');
-  ({ as: identity } = await agent.call('bee_presence', { status: WORKING_ON }));
+  agent = await startAgent('e2e-agent');
+  identity = agent.identity;
+  await agent.call('bee_presence', { status: WORKING_ON });
   await agent.call('bee_surface_open', {
     surfaceId: SURFACE,
     title: TITLE,
@@ -40,7 +41,8 @@ test.afterAll(async () => {
     if (token) expect((await agent.call('bee_release', { target: CLAIM, token })).released).toBe(true);
   } finally {
     for (const surfaceId of [SURFACE, OLDER, FIELD]) await agent?.call('bee_surface_close', { surfaceId }).catch(() => {});
-    await agent?.kill();
+    // A goodbye, not a crash: the host has nothing to depart.
+    await agent?.kill('SIGTERM');
   }
 });
 
@@ -84,17 +86,27 @@ test('a claimed card shows who holds it', async ({ page }) => {
   await expect(badge).toHaveText('claimed by e2e-agent');
 });
 
-test('a focused field keeps its focus when a card is reopened from history ahead of it', async ({ browser, page }) => {
+test('a focused field keeps its focus, and a Sketch its frame, when a card is reopened from history ahead of them', async ({ browser, page }) => {
   await agent.call('bee_surface_open', { surfaceId: OLDER, title: 'Older', components: [{ id: 'root', component: 'Text', text: 'older' }] });
   await agent.call('bee_surface_open', {
     surfaceId: FIELD,
     title: 'Field',
-    components: [{ id: 'root', component: 'TextField', label: 'Note', value: { path: '/note' } }],
+    components: [
+      { id: 'root', component: 'Column', children: ['note', 'sketch'] },
+      { id: 'note', component: 'TextField', label: 'Note', value: { path: '/note' } },
+      { id: 'sketch', component: 'Sketch', html: '<p id="drawn">drawn</p>' },
+    ],
     data: { note: '' },
   });
   await agent.call('bee_surface_close', { surfaceId: OLDER });
   await open(page, 'alex');
   const field = page.locator(`a2ui-surface[data-surface-id="${FIELD}"] a2ui-basic-textfield input`);
+  const sketch = page.locator(`a2ui-surface[data-surface-id="${FIELD}"] bee-sketch iframe`);
+  await expect(sketch.contentFrame().locator('#drawn')).toHaveText('drawn');
+  // The page's edge rule beats the frame's own inline `border:0`.
+  expect(await sketch.evaluate((frame) => getComputedStyle(frame).borderTopWidth)).toBe('1px');
+  // A re-attached frame gets a fresh window, and reloads its srcdoc and drops its proposal.
+  await sketch.evaluate((frame) => { window.__sketchWindow = frame.contentWindow; });
   await field.focus();
   await field.pressSequentially('half a thought');
 
@@ -110,6 +122,7 @@ test('a focused field keeps its focus when a card is reopened from history ahead
     await expect(older.locator('.bee-card-title')).toHaveText('Older', { timeout: 10_000 });
     await expect(field).toBeFocused();
     await expect(field).toHaveValue('half a thought');
+    expect(await sketch.evaluate((frame) => frame.contentWindow === window.__sketchWindow)).toBe(true);
     // Shown in the board's order by style, so no card was moved.
     const position = (id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`).evaluate((e) => Number(e.style.order));
     expect(await position(OLDER)).toBeLessThan(await position(FIELD));
