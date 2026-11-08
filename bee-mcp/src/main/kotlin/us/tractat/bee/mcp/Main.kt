@@ -2,8 +2,6 @@ package us.tractat.bee.mcp
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.websocket.WebSockets
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -66,7 +64,7 @@ fun main() {
     val clock = { Clock.System.now() }
     // The bridge's own work (the board, claims, a retire on /clear) runs here; one failure must not end the rest.
     val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val http = HttpClient(CIO) { install(WebSockets) }
+    val http = peerHttpClient()
     val author = ReplicaId("mcp-${Uuid.random()}")
     // The bridge's replica starts empty, so it belongs to the first board the host names; both
     // its sockets name that board from then on, and a wiped host refuses them (bee#46).

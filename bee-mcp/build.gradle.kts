@@ -29,6 +29,8 @@ dependencies {
     testImplementation(libs.kuilt.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mcp.kotlin.sdk.client)
+    // PeerHttpTest serves a WebSocket that never pings, so only the client's ping can find a dead link.
+    testImplementation(libs.ktor.server.websockets)
     // bee-host's in-memory voter and relay, for the bridge's claims and board tests (Task 7).
     testImplementation(testFixtures(project(":bee-host")))
 }
