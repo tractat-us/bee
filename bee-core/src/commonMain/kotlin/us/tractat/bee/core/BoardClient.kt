@@ -99,9 +99,13 @@ class BoardClient(
     private val config: QuilterConfig = BEE_QUILTER_CONFIG,
     random: Random = Random.Default,
     private val dialTimeout: Duration = 5.seconds,
+    private val maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
+    private val settleAfter: Duration = 5.seconds,
 ) {
     init {
         require(dialTimeout.isPositive()) { "dialTimeout must be positive, was $dialTimeout" }
+        require(maxPayloadBytes > 0) { "maxPayloadBytes must be positive, was $maxPayloadBytes" }
+        require(settleAfter.isPositive()) { "settleAfter must be positive, was $settleAfter" }
     }
 
     /** One connection: its seam, its Quilter, and the job they and their pumps run under. */
@@ -121,6 +125,7 @@ class BoardClient(
     private val _online = MutableStateFlow(false)
     private val _link = MutableStateFlow<String?>(null)
     private val _lastFailure = MutableStateFlow<Throwable?>(null)
+    private val _tooLarge = MutableStateFlow<BoardTooLarge?>(null)
     private val wanted = MutableStateFlow(false)
     private var live: Connection? = null
     private var connections = 0
@@ -137,6 +142,9 @@ class BoardClient(
 
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
+
+    /** Why the board can't sync, if it can't: a frame it would send is over the link's bound. */
+    val tooLarge: StateFlow<BoardTooLarge?> = _tooLarge.asStateFlow()
 
     private val driver: Job = scope.launch(CoroutineName("board-client-${author.value}")) {
         wanted.collectLatest { if (it) stayConnected() }
@@ -354,6 +362,13 @@ class BoardClient(
         val SEAM_CLOSE_TIMEOUT = 2.seconds
     }
 }
+
+/**
+ * The board can't sync: the client would have sent a frame of [bytes] bytes, over the link's bound
+ * of [limit], and sent nothing instead.
+ */
+class BoardTooLarge(val bytes: Int, val limit: Int) :
+    Exception("can't sync: board too large ($bytes bytes to send, over the link's bound of $limit)")
 
 /** A [BoardClient] dial that didn't answer within [timeout]; it was cancelled and goes round the redial. */
 class DialTimeoutException(val timeout: Duration) : Exception("dial took over $timeout")
