@@ -147,7 +147,7 @@ bee's open asks are collected on one kuilt tracking issue,
 it was written, under
 [kuilt tracking-issue items](superpowers/plans/2026-11-06-bee-v1.md#kuilt-tracking-issue-items).
 kuilt's issues describe each gap on its own terms and don't name bee, because kuilt is public and
-its policy, for now, is not to reference other projects
+its policy, for now, is not to reference other `tractat-us` projects
 ([spec §11](superpowers/specs/2026-11-06-bee-design.md#11-follow-ups-outside-bee)).
 
 ## How bee gets kuilt
@@ -164,7 +164,8 @@ worktrees have no checkout beside them, so they always build against the release
 
 ## A paused kuilt project bee borrows from
 
-kuilt#2869 explores shared workspaces for people and agents. It's paused, and bee is separate from
+[kuilt#2869](https://github.com/tractat-us/kuilt/issues/2869) explores shared workspaces for
+people and agents. It's paused, and bee is separate from
 it. bee borrows its rule for records: a result keeps a record of what it was based on, so a click
 can never later look as though it saw something it hadn't. The plan's
 [checkpoint](superpowers/plans/2026-11-06-bee-v1.md#kuilt2869-checkpoint-after-the-plan) lists what
