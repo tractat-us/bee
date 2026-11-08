@@ -56,15 +56,16 @@ class PairingChannelTest {
         val code = CompletableDeferred<PairingMessage.Code>()
         val device = launch {
             client.sse("http://127.0.0.1:$port${PairingWire.PATH}") {
-                System.err.println("DIAG85 client open t=${System.nanoTime()}")
-                val first = incoming.first()
-                System.err.println("DIAG85 client got first t=${System.nanoTime()}")
-                code.complete(assertIs<PairingMessage.Code>(Json.decodeFromString(PairingMessage.serializer(), requireNotNull(first.data))))
-                try { delay(10.minutes) } finally { System.err.println("DIAG85 client block exit t=${System.nanoTime()}") }
+                // The device stays on, reading its stream as a browser's EventSource does, until it
+                // is cancelled. Not `incoming.first()`: Ktor's client hangs up the moment a collection
+                // of `incoming` ends, so the device would leave as soon as it saw its code (bee#85).
+                incoming.collect { event ->
+                    code.complete(assertIs<PairingMessage.Code>(Json.decodeFromString(PairingMessage.serializer(), requireNotNull(event.data))))
+                }
             }
-            System.err.println("DIAG85 client sse returned t=${System.nanoTime()}")
         }
         val id = PairingId(withTimeout(10.seconds) { code.await() }.pairing)
+        delay(500.milliseconds) // DIAG85 forcing knob
         val pendingWhileOn = pairing.isPending(id)
         System.err.println("DIAG85 test pendingWhileOn=$pendingWhileOn t=${System.nanoTime()}")
         device.cancel()
