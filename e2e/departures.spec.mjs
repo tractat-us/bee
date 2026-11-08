@@ -1,8 +1,8 @@
 // How a departed session reads on the page (spec §6.4). A session that ends normally, by its stdin
 // closing, by SIGTERM, or by SIGINT with a SIGKILL 400 ms behind it (as Claude Code's `/exit` is
 // reported to), departs itself as left: muted, not struck through, not red. A SIGKILLed one says no
-// goodbye, so the host departs it as crashed after the learner grace. The host proposes that same
-// Crashed for the ones that left, so the last test checks their left still stands.
+// goodbye, so the host departs it as crashed after the learner grace. The last test also checks that
+// the ones that left still read left once that grace is over.
 // The agents are real bee-mcp bridges (`:bee-mcp:installDist`), driven over stdio (agent.mjs).
 import { test, expect } from '@playwright/test';
 import { startAgent } from './agent.mjs';
@@ -103,9 +103,10 @@ test('a SIGKILLed session still reads as crashed', async ({ page }) => {
   await rig['gets-sigkill'].kill();
   // The voter drops its node after the 30 s learner grace; then the host departs it.
   await expectDeparted(page, 'gets-sigkill', 'crashed', { alarm: true, timeout: 90_000 });
-  // By now the grace has run out for the ones that left, too, and the host has proposed Crashed for
-  // each of them. Their own Left committed first, and the first reason stands. Read on the cards:
-  // the strip keeps only the newest three departures (RECENT_DEPARTURES), so the first has left it.
+  // By now the voter has dropped the nodes of the ones that left, too, and they still read left.
+  // The host proposes no Crashed for them, since the board already lists them as departed
+  // (`hostDepartures`); the claim table's first-reason rule is unit-tested in ClaimTableTest. Read
+  // on the cards: the strip keeps only the newest three departures (RECENT_DEPARTURES).
   for (const name of ['closes-stdin', 'gets-sigterm', 'gets-claude-exit']) {
     const gone = card(page, name).locator('.bee-card-gone');
     await expect(gone, `${name} still reads left`).toHaveAttribute('data-reason', 'left', { timeout: 1_000 });

@@ -87,8 +87,11 @@ class ClaimTableTest {
     }
 
     /**
-     * A bridge that leaves proposes `Depart(Left)` itself; the host, not knowing, proposes
-     * `Depart(Crashed)` for the same identity once its link is gone. The first committed reason stands.
+     * A bridge that leaves proposes `Depart(Left)` itself. The host skips an identity the board
+     * already lists as departed, but it can read the board just before the `Left` commits, as when
+     * its quiet check fires while the session is ending, and then commit its own `Depart` second.
+     * The first committed reason stands: the host's `Departures` relies on the table ignoring a
+     * second `Depart`.
      */
     @Test
     fun theFirstDepartReasonStandsAgainstALaterOne() {
