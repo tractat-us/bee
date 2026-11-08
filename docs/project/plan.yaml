@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T05:38Z"
+as_of: "2026-11-08T06:02Z"
 
 sources:
   - title: "v1 plan"
@@ -55,6 +55,7 @@ order:
   - bee-53
   - bee-54
   - bee-58
+  - bee-60
   - bee-14
   - bee-19
   - bee-23
@@ -191,9 +192,9 @@ items:
   task-8:
     kind: task
     title: "Sketch and the companion adapter (spike 5, the acceptance test)"
-    status: in-flight
-    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 is in review fixes, and holds before merge until the kuilt gap its KDoc names is filed."
-    depends_on: [bee-27]
+    status: waiting-on-iain
+    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 holds before merge for Iain's ruling on #60, and until the kuilt gap its KDoc names is filed."
+    depends_on: [bee-27, bee-60]
     started: "2026-11-08T02:13Z"
     estimate:
       low: 2
@@ -396,13 +397,22 @@ items:
       - { title: "bee#55", url: "https://github.com/tractat-us/bee/pull/55" }
 
   bee-58:
-    kind: issue
+    kind: decision
     title: "The host can hang up on an over-bound frame without its 1009 close frame"
     status: waiting-on-iain
     summary: "Iain decides whether the host must deliver the 1009 or a hang-up is an acceptable refusal. If it must, the fix lives in Ktor or kuilt."
     started: "2026-11-08T05:15Z"
     links:
       - { title: "bee#58", url: "https://github.com/tractat-us/bee/issues/58" }
+
+  bee-60:
+    kind: decision
+    title: "Decision: a Sketch can forge the viewer's choice in Chromium, by focusing itself"
+    status: waiting-on-iain
+    summary: "Iain decides whether a Sketch only proposes a choice and the page commits it outside the frame, or v1 accepts and documents the Chromium-only forgery. Found by #38's fifth review; WebKit blocks the focus steal, and Firefox is untested."
+    started: "2026-11-08T06:01Z"
+    links:
+      - { title: "bee#60", url: "https://github.com/tractat-us/bee/issues/60" }
 
   bee-49:
     kind: issue
