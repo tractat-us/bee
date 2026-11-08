@@ -62,8 +62,13 @@ import kotlin.time.Duration.Companion.milliseconds
  * ends the wait with the bridge's refusal, which names the retired identity, why, and its
  * orphaned claims. While the claims link is down, the wait holds for it rather than failing.
  *
- * The cursor names every record on the surface this caller has passed: returned, or held by
- * another. It's opaque to callers, and grows with the surface's records, which v1 accepts.
+ * The cursor names every record in its scope this caller has passed: returned, or held by
+ * another. It's opaque to callers, and grows with the scope's records, which v1 accepts. It's a
+ * set of record ids, `<author>:<seq>`, not a position in any order. A record id is its CRDT dot:
+ * unique across authors, never reused, and the same after a host restart. So a board-wide cursor
+ * never skips a record on a surface opened later, or one a slow author's replica delivers out of
+ * order, and never repeats one. Any cursor is good in any scope: a one-surface wait passes over the
+ * other surfaces' ids it carries, and keeps them in the cursor it hands back.
  */
 class BoardActionSource internal constructor(
     private val bridge: BeeBridge,
