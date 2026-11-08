@@ -87,6 +87,38 @@ class SiteGateTest {
         )
     }
 
+    /**
+     * A page on another site that loads `/pair` as an `<img>`, a `<script>` or a no-cors `fetch`
+     * sends no `Origin`, only Fetch Metadata (bee#54). Admitted, it would hold a pairing slot open
+     * and post its `?screen=` text to the board as a join request.
+     */
+    @Test
+    fun aSubresourceFromAnotherSiteIsRefusedByItsFetchMetadata() {
+        assertAll(
+            { assertEquals(FORBIDDEN, fetch(PAIR, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "an <img> on another site") },
+            { assertEquals(FORBIDDEN, fetch(PAIR, SAME_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "an <img> on another loopback port") },
+            { assertEquals(FORBIDDEN, fetch(PAIR, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: empty"), "a no-cors fetch") },
+            { assertEquals(FORBIDDEN, fetch("/", CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: iframe"), "the board page framed by another site") },
+            { assertEquals(FORBIDDEN, fetch(BoardId.PATH, CROSS_SITE, "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty")) },
+        )
+    }
+
+    /** A join link opened from chat is a top-level navigation from another site, and the page's own calls are same-origin. */
+    @Test
+    fun aNavigationTheBoardsOwnCallsAndNoFetchMetadataAreAdmitted() {
+        assertAll(
+            { assertEquals(OK, fetch(PAIR, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "a link from another site") },
+            { assertEquals(OK, fetch("/", CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "the board page, from a link") },
+            { assertEquals(OK, fetch(PAIR, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty"), "the board page's own channel") },
+            { assertEquals(OK, fetch(PAIR, "Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "a typed URL or a bookmark") },
+            { assertEquals(OK, fetch(PAIR), "no Fetch Metadata: the bridge, or an older browser") },
+        )
+    }
+
+    /** The status line of a plain `GET` of [path] by the host's own address, with no `Origin` and these [headers]. */
+    private fun fetch(path: String, vararg headers: String): String =
+        exchange("GET $path HTTP/1.1\r\nHost: $own\r\n" + headers.joinToString("") { "$it\r\n" } + "Connection: close\r\n\r\n")
+
     /** The status line of a WebSocket handshake for [path], with [hostHeader] and, if any, [origin]. */
     private fun upgrade(path: String, hostHeader: String, origin: String?): String {
         val key = Base64.getEncoder().encodeToString(ByteArray(16).also(SecureRandom()::nextBytes))
@@ -124,6 +156,10 @@ class SiteGateTest {
         // kuilt's server looms read the dialler's fabric id from `peer`.
         const val BOARD = "${BoardRelay.PATH}?peer=probe"
         const val CLAIMS = "${BeeHost.CLAIMS_PATH}?peer=probe"
+        const val PAIR = "${PairingWire.PATH}?${PairingWire.SCREEN_PARAM}=probe"
+
+        const val CROSS_SITE = "Sec-Fetch-Site: cross-site"
+        const val SAME_SITE = "Sec-Fetch-Site: same-site"
 
         /** The status code of the response's first line, `HTTP/1.1 <code> <reason>`. */
         fun InputStream.statusCode(): String {
