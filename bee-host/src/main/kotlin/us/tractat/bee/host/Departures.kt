@@ -98,12 +98,14 @@ class Departures(
                 departQuiet()
             }
         }
-        departures.launch(CoroutineName("departures-postings")) {
-            postings.collect { slots -> mutex.withLock { posted.observe(slots) } }
-        }
         departures.launch(CoroutineName("departures-boot")) {
+            // Watched from boot until the boot check is done: after it, no one reads [posted].
+            val watching = launch(CoroutineName("departures-postings")) {
+                postings.collect { slots -> mutex.withLock { posted.observe(slots) } }
+            }
             delay(BOOT_GRACE)
             departUnseen()
+            watching.cancel()
         }
         return job
     }
