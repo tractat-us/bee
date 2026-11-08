@@ -2,6 +2,9 @@
 
 package us.tractat.bee.core
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -42,9 +45,15 @@ private const val BOUND = 2_048
 /**
  * A relay that hangs up on a spoke the moment the spoke sends it a payload over [hangUpOver]
  * bytes, as the host does with 1009 on a frame over its bound, and counts what it saw. Its spokes
- * are woven from [mesh], whose host seam the test opens.
+ * are woven from [mesh], whose host seam the test opens. A spoke's own close takes [closeTakes],
+ * as a socket's close handshake does.
  */
-private class HangUpRelay(val mesh: Loom, private val now: () -> Long, var hangUpOver: Int) : Loom {
+private class HangUpRelay(
+    val mesh: Loom,
+    private val now: () -> Long,
+    var hangUpOver: Int,
+    private val closeTakes: Duration = Duration.ZERO,
+) : Loom {
     /** The virtual time of each dial. */
     val dials = mutableListOf<Long>()
 
@@ -53,6 +62,10 @@ private class HangUpRelay(val mesh: Loom, private val now: () -> Long, var hangU
 
     /** The last spoke woven. */
     var current: Seam? = null
+
+    /** Spoke closes begun, and finished. */
+    var closesBegun = 0
+    var closesDone = 0
 
     override suspend fun weave(rendezvous: Rendezvous): Seam {
         dials += now()
@@ -63,6 +76,13 @@ private class HangUpRelay(val mesh: Loom, private val now: () -> Long, var hangU
         override suspend fun broadcast(payload: ByteArray) = refuseOr(payload) { inner.broadcast(payload) }
 
         override suspend fun sendTo(peer: PeerId, payload: ByteArray) = refuseOr(payload) { inner.sendTo(peer, payload) }
+
+        override suspend fun close() {
+            closesBegun++
+            delay(closeTakes)
+            inner.close()
+            closesDone++
+        }
 
         private suspend fun refuseOr(payload: ByteArray, send: suspend () -> Unit) {
             if (payload.size <= hangUpOver) return send()
@@ -80,10 +100,12 @@ private fun TestScope.client(loom: Loom, initial: BoardState, maxPayloadBytes: I
     initial, CONFIG, Random(0), maxPayloadBytes = maxPayloadBytes, settleAfter = settleAfter,
 )
 
-private fun TestScope.relay(hangUpOver: Int): HangUpRelay {
+private fun TestScope.relay(hangUpOver: Int, closeTakes: Duration = Duration.ZERO): HangUpRelay {
     val mesh = InMemoryLoom()
-    return HangUpRelay(mesh, { testScheduler.currentTime }, hangUpOver)
+    return HangUpRelay(mesh, { testScheduler.currentTime }, hangUpOver, closeTakes)
 }
+
+private fun TestScope.now(): Instant = Instant.fromEpochMilliseconds(testScheduler.currentTime)
 
 /** bee#65: a board over the link's frame bound, and links that die before they are any use. */
 class BoardClientFrameBoundTest {
@@ -111,9 +133,12 @@ class BoardClientFrameBoundTest {
         )
     }
 
-    /** A board too large to sync tries again when it changes, once, and still sends nothing over the bound. */
+    /**
+     * An edit that leaves the board too large to sync doesn't redial: the client measures the
+     * board's `FullState` itself, and the same board less one small edit would be refused again.
+     */
     @Test
-    fun aBoardTooLargeToSyncTriesAgainOnlyWhenItChanges() = runTest(StandardTestDispatcher()) {
+    fun anEditThatLeavesTheBoardTooLargeDoesNotRedial() = runTest(StandardTestDispatcher()) {
         val relay = relay(hangUpOver = BOUND)
         relay.openHost()
         val alex = client(relay, overBound())
@@ -125,8 +150,62 @@ class BoardClientFrameBoundTest {
         runCurrent()
         assertAll(
             { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
-            { assertEquals(2, relay.dials.size, "one more dial, for the change: dials at ${relay.dials}") },
+            { assertEquals(1, relay.dials.size, "no dial for an edit that still doesn't fit: dials at ${relay.dials}") },
             { assertNotNull(alex.tooLarge.value, "still too large") },
+        )
+    }
+
+    /**
+     * A peer's presence, posted every 5 s with a growing clock, changes the board but never makes
+     * it fit, so it never redials a board too large to sync. Waiting for any change at all, a
+     * bridge redials every 5 to 10 s, each time a fresh socket, a full encode and a refusal.
+     */
+    @Test
+    fun presencePostsDoNotRedialABoardTooLargeToSync() = runTest(StandardTestDispatcher()) {
+        val relay = relay(hangUpOver = BOUND)
+        relay.openHost()
+        val alex = client(relay, overBound())
+        val presence = Presence(alex, A, emptyFlow(), { now() }, backgroundScope, onFailure = {})
+        presence.update(PeerIdentity.human("alex"), status = null, lastActedAt = now(), waiting = false)
+        val boards = mutableListOf<BoardState>()
+        backgroundScope.launch { alex.state.collect { boards += it } }
+        alex.connect()
+        advanceTimeBy(60.seconds)
+        runCurrent()
+        assertAll(
+            { assertTrue(boards.size >= 10, "precondition: presence posts changed the board: ${boards.size} boards") },
+            { assertEquals(1, relay.dials.size, "no redial for a presence post: dials at ${relay.dials}") },
+            { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
+            { assertNotNull(alex.tooLarge.value, "still too large") },
+        )
+    }
+
+    /**
+     * A board too large to sync that shrinks syncs, and [BoardClient.tooLarge] clears once the
+     * link settles. The shrinking edit lands while the refused connection is still closing, after
+     * it parted: a wait that snapshots the board only once the close is done misses that edit and
+     * never dials again.
+     */
+    @Test
+    fun aBoardThatShrinksWhileItsLinkClosesSyncsAndClearsTooLarge() = runTest(StandardTestDispatcher()) {
+        val relay = relay(hangUpOver = BOUND, closeTakes = 1.seconds)
+        relay.openHost()
+        val alex = client(relay, overBound(), settleAfter = 5.seconds)
+        alex.connect()
+        advanceTimeBy(500.milliseconds)
+        runCurrent()
+        val closing = relay.closesBegun == 1 && relay.closesDone == 0
+        val parted = !alex.online.value
+        alex.mutate { it.updateData(A, SURFACE, "/note", str("short")) }
+        advanceTimeBy(30.seconds)
+        runCurrent()
+        assertAll(
+            { assertTrue(closing, "precondition: the edit lands while the refused link closes") },
+            { assertTrue(parted, "precondition: the refused link has parted") },
+            { assertEquals(2, relay.dials.size, "one more dial, for the shrunk board: dials at ${relay.dials}") },
+            { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
+            { assertTrue(alex.online.value, "the shrunk board's link stays up") },
+            { assertNull(alex.tooLarge.value, "a settled link clears tooLarge") },
         )
     }
 
