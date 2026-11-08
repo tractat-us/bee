@@ -94,7 +94,7 @@ class BeeHost private constructor(
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(pairing, PeerAddress.DIRECT, desk)
+                endpoints = mountEndpoints(pairing, config.siteRule(), PeerAddress.DIRECT, ArrivalAddress.DIRECT, desk)
                 routing {
                     // A page asks before it reads its copy, so this must never come from a cache.
                     get(BoardId.PATH) {
