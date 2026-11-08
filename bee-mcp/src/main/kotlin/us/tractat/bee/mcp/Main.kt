@@ -9,6 +9,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,15 +17,20 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardId
+import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
+import us.tractat.bee.core.askBoardId
+import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
@@ -34,6 +40,7 @@ import java.io.PrintStream
 import java.nio.file.Path
 import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
+import kotlin.system.exitProcess
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -66,9 +73,12 @@ fun main() {
     val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val http = HttpClient(CIO) { install(WebSockets) }
     val author = ReplicaId("mcp-${Uuid.random()}")
+    // The bridge's replica starts empty, so it belongs to the first board the host names; both
+    // its sockets name that board from then on, and a wiped host refuses them (bee#46).
+    val pin = BoardPin.learnedFrom { http.askBoardId(host) }
     val board = BoardClient(
         author,
-        SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock),
+        SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock).pinnedTo(pin),
         Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
         bridgeScope,
         clock,
@@ -78,7 +88,7 @@ fun main() {
     val claims = ClaimsConnection(
         scope = bridgeScope,
         nextNode = { NodeId("mcp-${Uuid.random()}") },
-        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, linkScope, clock, random) },
+        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
         onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )
@@ -89,6 +99,8 @@ fun main() {
     val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, bridgeScope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
     val bridge = BeeBridge(board, author, claims, identity, presence, clock, bridgeScope)
     board.connect()
+    val anotherBoard = CompletableDeferred<AnotherBoard>()
+    endOnAnotherBoard(board, pin, http, host, bridgeScope, anotherBoard)
     runBlocking { bridge.announce() }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }
 
@@ -108,6 +120,7 @@ fun main() {
             val closed = CompletableDeferred<Unit>()
             val session = server.createSession(transport)
             session.onClose { closed.complete(Unit) }
+            anotherBoard.invokeOnCompletion { closed.complete(Unit) }
             closed.await()
             board.close()
         }
@@ -115,6 +128,36 @@ fun main() {
     bridgeScope.cancel()
     http.close()
     logger.info { "bee-mcp ends." }
+    // Closed up first: the run file went with ClearControl's use-block, the clients just above.
+    if (anotherBoard.isCompleted) exitProcess(EXIT_ANOTHER_BOARD)
+}
+
+/**
+ * A host that keeps another board than [pin]'s was wiped, or had its claims log moved aside, and
+ * refuses this bridge for good: its replica holds the old board. After a failed dial, the bridge
+ * asks, and when the host names another board it says so on stderr and completes [ended], which
+ * ends the process with [EXIT_ANOTHER_BOARD] once it has closed up. It doesn't follow the host: a
+ * restart does.
+ */
+private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: String, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
+    scope.launch {
+        val another = awaitAnotherBoard(board.lastFailure, pin) { namedBy(http, host) }
+        System.err.println(another.message)
+        ended.complete(another)
+    }
+}
+
+/** The exit status of a bridge that ended because its host keeps another board. */
+private const val EXIT_ANOTHER_BOARD = 2
+
+/** The board the host names, or null if it can't be asked. */
+private suspend fun namedBy(http: HttpClient, host: String): BoardId? = try {
+    http.askBoardId(host)
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (@Suppress("TooGenericExceptionCaught") unanswered: Exception) {
+    logger.debug(unanswered) { "The host didn't name its board." }
+    null
 }
 
 /** `$BEE_SESSION_NAME`, else the working directory's basename (spec §5.2). */

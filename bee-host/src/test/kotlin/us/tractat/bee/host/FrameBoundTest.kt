@@ -4,6 +4,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import us.tractat.bee.core.BoardId
 import us.tractat.kuilt.test.assertAll
 import java.io.DataInputStream
 import java.io.InputStream
@@ -31,8 +32,9 @@ import kotlin.time.Clock
 class FrameBoundTest {
     private val clock = { Clock.System.now() }
     private val pairing = Pairing(clock, SecureSecrets(SecureRandom()))
+    private val board = BoardId.mint()
     private val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
-        mountEndpoints(pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock))
+        mountEndpoints(board, pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock))
     }.start(wait = false)
     private val port = runBlocking { server.engine.resolvedConnectors().first().port }
 
@@ -46,7 +48,7 @@ class FrameBoundTest {
             socket.soTimeout = TIMEOUT_MS
             val out = socket.getOutputStream()
             val input = DataInputStream(socket.getInputStream())
-            out.write(upgrade(port).encodeToByteArray())
+            out.write(upgrade(port, board).encodeToByteArray())
             out.flush()
             val status = input.readHeaders().lineSequence().first()
             out.write(binaryFrameHeader(MAX_FRAME_BYTES + 1))
@@ -68,9 +70,9 @@ class FrameBoundTest {
         const val PAYLOAD_LEN_16 = 126
         const val PAYLOAD_LEN_64 = 127
 
-        fun upgrade(port: Int): String {
+        fun upgrade(port: Int, board: BoardId): String {
             val key = Base64.getEncoder().encodeToString(ByteArray(16).also(SecureRandom()::nextBytes))
-            return "GET ${BoardRelay.PATH}?peer=probe HTTP/1.1\r\n" +
+            return "GET ${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$board HTTP/1.1\r\n" +
                 "Host: 127.0.0.1:$port\r\n" +
                 "Upgrade: websocket\r\n" +
                 "Connection: Upgrade\r\n" +

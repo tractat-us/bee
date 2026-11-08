@@ -178,11 +178,13 @@ class HostRestartTest {
     @Test
     fun aSnapshotThatWontDecodeStopsTheBoot() = runTest(timeout = 120.seconds) {
         val store = InMemoryDurableStore()
+        val rig = Rig(this, store)
         val id = BoardId.mint()
         BoardId.recordIn(store, id)
+        BoardId.recordIn(rig.claims.store, id)
         store.write(id.snapshotKey, "not a board".encodeToByteArray())
 
-        val refused = assertFailsWith<IllegalStateException> { Rig(this, store).openBoard() }
+        val refused = assertFailsWith<IllegalStateException> { rig.openBoard() }
         assertTrue(refused.message!!.contains("board/ aside"), refused.message)
     }
 
@@ -219,14 +221,16 @@ class HostRestartTest {
         val claims = ClaimsRig(test)
         private val dispatcher = StandardTestDispatcher(test.testScheduler)
 
-        suspend fun openBoard(): HostBoard =
-            HostBoard.open(test.backgroundScope, InMemoryConnectionSource(), dispatcher, boardStore, claims.clock, Random(0), BoardStar.CONFIG)
+        suspend fun openBoard(): HostBoard {
+            val stores = HostStores.settle(boardStore, claims.store)
+            return HostBoard.open(test.backgroundScope, InMemoryConnectionSource(), dispatcher, stores.board, stores.boardId, claims.clock, Random(0), BoardStar.CONFIG)
+        }
 
         suspend fun boot(): HostCore = HostCore.start(
             scope = test.backgroundScope,
             boardSource = InMemoryConnectionSource(),
             claimsHost = claims.host,
-            stores = HostStores(board = boardStore, claims = claims.store),
+            stores = HostStores.settle(board = boardStore, claims = claims.store),
             intake = intake,
             dispatcher = dispatcher,
             raftConfig = claims.raftConfig,

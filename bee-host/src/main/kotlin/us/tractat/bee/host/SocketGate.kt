@@ -1,18 +1,23 @@
 package us.tractat.bee.host
 
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.application.install
 import io.ktor.server.http.content.staticResources
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.server.sse.SSE
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.websocket.KtorConnectionSource
@@ -55,32 +60,37 @@ fun isLoopback(literal: String): Boolean = try {
  */
 const val MAX_FRAME_BYTES: Long = 64L * 1024 * 1024
 
-/** The host's two key-gated endpoints, mounted by [mountEndpoints]. */
+/** The host's two gated sockets, mounted by [mountEndpoints]. */
 class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
 
 /**
  * Mounts every route the host serves (spec §5.4, §5.7):
  *
  * - the board relay at [BoardRelay.PATH] and the claims voter at [BeeHost.CLAIMS_PATH], **behind
- *   the key gate**: a call from a loopback address passes, and any other passes only with a key
- *   [Pairing] minted in its `?k=`. Anything else gets a 403 before the WebSocket upgrade, so it
- *   never reaches the hub or the voter.
- * - the pairing channel at [PairingWire.PATH] and the page at `/`, open to all: they are what a
- *   keyless device needs, and neither carries board state, presence or claims.
+ *   the socket gate**. A socket must name [board] in its `?board=` ([BoardId], bee#46), and come
+ *   from a loopback address or hold a key [Pairing] minted in its `?k=`. Anything else gets a 403
+ *   before the WebSocket upgrade, so it never reaches the hub or the voter, and a replica of
+ *   another board never pushes its state.
+ * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and the page at
+ *   `/`, open to all: they are what a keyless device needs, and none carries board state, presence
+ *   or claims.
  *
  * The gate is installed on the route nodes kuilt's own `webSocket(path)` created, so it applies to
- * whatever request Ktor routes there, however its path was spelled. It is on whatever [Reach] the
- * host binds; on [Reach.Loopback] no call can fail it.
+ * whatever request Ktor routes there, however its path was spelled. Its key half is on whatever
+ * [Reach] the host binds; on [Reach.Loopback] no call can fail it.
  *
  * Before any of that, **every** call passes [site], on every route, keyed or not ([installSiteGate],
  * bee#45): loopback needs no key, so the key gate alone would let any site open in a browser on
  * the laptop reach the board.
  *
+ * @param board the board this host keeps: the only one a socket may name
  * @param peers where each call came from; production passes [PeerAddress.DIRECT]
  * @param arrivals where each call arrived; production passes [ArrivalAddress.DIRECT]
  * @param desk serves the pairing channel, over [pairing]
  */
+@Suppress("LongParameterList")
 fun Application.mountEndpoints(
+    board: BoardId,
     pairing: Pairing,
     site: SiteRule,
     peers: PeerAddress,
@@ -90,19 +100,29 @@ fun Application.mountEndpoints(
     installSiteGate(site, arrivals)
     installBoundedWebSockets()
     install(SSE)
-    val board = KtorConnectionSource(this, BoardRelay.PATH)
+    val relay = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
-    val admits = { call: ApplicationCall ->
-        isLoopback(peers.of(call)) || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
+    val refusal = { call: ApplicationCall ->
+        val query = call.request.queryParameters
+        when {
+            query[BoardId.PARAM] != board.value -> "This socket names another board, or none: reload the page."
+            !isLoopback(peers.of(call)) && !pairing.admits(query[PairingWire.KEY_PARAM]) -> "This device needs a key: open the page to pair it."
+            else -> null
+        }
     }
     routing {
         for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
-            route(gated) { install(KeyGate) { this.admits = admits } }
+            route(gated) { install(SocketGate) { this.refusal = refusal } }
+        }
+        // A page asks before it reads its copy, so this must never come from a cache.
+        get(BoardId.PATH) {
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respondText(board.value)
         }
         pairingEndpoint(desk, peers)
         staticResources("/", "web")
     }
-    return HostEndpoints(board, claims)
+    return HostEndpoints(relay, claims)
 }
 
 /**
@@ -120,17 +140,18 @@ private fun Application.installBoundedWebSockets() {
     }
 }
 
-/** [KeyGate]'s rule. The default refuses every call, so a gate installed unconfigured fails closed. */
-class KeyGateConfig {
-    var admits: (ApplicationCall) -> Boolean = { false }
+/**
+ * [SocketGate]'s rule: why a call may not open its socket, or null if it may. The default refuses
+ * every call, so a gate installed unconfigured fails closed.
+ */
+class SocketGateConfig {
+    var refusal: (ApplicationCall) -> String? = { "This socket's gate isn't configured." }
 }
 
-/** Refuses, with a 403, every call [KeyGateConfig.admits] doesn't pass, before the route's handler runs. */
-private val KeyGate = createRouteScopedPlugin("BeeKeyGate", ::KeyGateConfig) {
-    val admits = pluginConfig.admits
+/** Refuses, with a 403, every call [SocketGateConfig.refusal] names a reason for, before the route's handler runs. */
+private val SocketGate = createRouteScopedPlugin("BeeSocketGate", ::SocketGateConfig) {
+    val refusal = pluginConfig.refusal
     onCall { call ->
-        if (!admits(call)) {
-            call.respond(HttpStatusCode.Forbidden, "This device needs a key: open the page to pair it.")
-        }
+        refusal(call)?.let { call.respond(HttpStatusCode.Forbidden, it) }
     }
 }
