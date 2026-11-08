@@ -48,11 +48,12 @@ export const SKETCH_MAX_HEIGHT = 'min(80vh, 720px)';
 const connected = new Set();
 
 /**
- * How many fits a frame gets in a second before its height is pinned until its next screen. A
- * document whose height follows the frame's (`height: calc(1000px - 100vh)`) would otherwise
- * refit, and re-arm every Send it moves, many times a second, for as long as it's shown.
+ * How many times in a second a frame's fits may turn from growing to shrinking, or back, before
+ * its height is pinned until its next screen. A document whose height follows the frame's
+ * (`height: calc(1000px - 100vh)`) would otherwise refit, and re-arm every Send it moves, many
+ * times a second, for as long as it's shown. Content that only grows, or only shrinks, never turns.
  */
-const FITS_PER_SECOND = 10;
+const TURNS_PER_SECOND = 4;
 
 /** The A2UI action a choice becomes, and the record name bee-companion handles. */
 export const CHOICE_ACTION = 'choice';
@@ -124,8 +125,9 @@ export class SketchElement extends A2uiLitElement {
     this.focusedAt = -Infinity;
     /** The height the frame was last fitted to, as CSS. */
     this.fitted = null;
-    /** When this screen's recent fits happened, and whether its height is pinned (see `fit`). */
-    this.fitTimes = [];
+    /** This screen's last fit's direction, when its fits recently turned, and whether it's pinned (see `fit`). */
+    this.fitDirection = 0;
+    this.turns = [];
     this.pinned = false;
     this.onMessage = (event) => this.receive(event);
     // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
@@ -187,7 +189,8 @@ export class SketchElement extends A2uiLitElement {
       // A proposal belongs to the screen that made it: a new screen's viewer never saw it.
       this.drop();
       this.shown = doc;
-      this.fitTimes = [];
+      this.fitDirection = 0;
+      this.turns = [];
       this.pinned = false;
       this.frame.srcdoc = doc;
     }
@@ -290,7 +293,7 @@ export class SketchElement extends A2uiLitElement {
    * hears it. So each shown proposal whose Send has moved re-arms here, in the same task that
    * moved it, before any click can land on a Send in its new place.
    *
-   * After FITS_PER_SECOND fits in a second, the frame keeps its height until its next screen.
+   * After TURNS_PER_SECOND turns in a second, the frame keeps its height until its next screen.
    */
   fit(height) {
     if (this.pinned || typeof height !== 'number' || !Number.isFinite(height) || height < 0) return;
@@ -298,17 +301,19 @@ export class SketchElement extends A2uiLitElement {
     const border = this.frame.offsetHeight - this.frame.clientHeight;
     const css = `clamp(${SKETCH_MIN_HEIGHT_PX}px, ${Math.ceil(height) + border}px, ${SKETCH_MAX_HEIGHT})`;
     if (css === this.fitted) return;
-    const now = performance.now();
-    this.fitTimes = this.fitTimes.filter((at) => now - at < 1_000);
-    if (this.fitTimes.length >= FITS_PER_SECOND) {
-      this.pinned = true;
-      return;
-    }
-    this.fitTimes.push(now);
     this.fitted = css;
     const before = this.frame.offsetHeight;
     this.frame.style.height = css;
-    if (this.frame.offsetHeight === before) return;
+    const after = this.frame.offsetHeight;
+    if (after === before) return;
+    const direction = Math.sign(after - before);
+    if (this.fitDirection && direction !== this.fitDirection) {
+      const now = performance.now();
+      this.turns = this.turns.filter((at) => now - at < 1_000);
+      this.turns.push(now);
+      if (this.turns.length >= TURNS_PER_SECOND) this.pinned = true;
+    }
+    this.fitDirection = direction;
     for (const sketch of connected) sketch.rearmIfMoved();
   }
 
