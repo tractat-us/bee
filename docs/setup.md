@@ -4,9 +4,71 @@ Two pieces join a Claude Code session to bee: the **bridge** (`bee-mcp`, an MCP 
 **`SessionStart` hook** that tells the bridge when you `/clear`. You install both yourself, in your
 own Claude Code settings. The bridge doesn't write to `~/.claude`.
 
-So far the bridge serves `bee_wait_action` and `bee_list_actions` over an empty source, and the
-`/clear` channel. It joins the board in Task 7 of the
-[v1 plan](superpowers/plans/2026-11-06-bee-v1.md).
+The bridge gives a session 11 tools: `bee_board`, `bee_presence`, `bee_surface_open`,
+`bee_surface_update`, `bee_surface_close`, `bee_board_clear`, `bee_wait_action`,
+`bee_list_actions`, `bee_action_done`, `bee_claim` and `bee_release`.
+
+Want a board running in five minutes? Start with [Run a board](#run-a-board). The numbered steps
+after it set bee up for every session you start.
+
+## Run a board
+
+This is the shortest path from a clone to a Claude session and you sharing one board.
+
+1. Build the host and the bridge, from the root of your checkout:
+
+    ```sh
+    source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.5.0+8-tem
+    ./gradlew installDist
+    BEE=$(pwd)
+    ```
+
+2. Start the host in one terminal:
+
+    ```sh
+    $BEE/bee-host/build/install/bee-host/bin/bee-host --data-dir /tmp/bee-demo-data
+    ```
+
+    It listens on port 8233 (`--port <n>` changes it), answers only this machine, and logs
+    `bee host on http://127.0.0.1:8233/`. Without `--data-dir` it keeps the board in
+    `~/.bee/host`. A fresh directory gives you a fresh board, and a restart on the same directory
+    brings the board back. `--lan` lets other devices on your network reach it; see
+    [Showing the board on another screen](#showing-the-board-on-another-screen).
+
+3. Open `http://localhost:8233/?name=<you>` in a browser. The board is empty and says
+   `online as human:<you>`. Without `?name=` you join as `human:guest`.
+
+4. Write an MCP config that points a session at the bridge:
+
+    ```sh
+    cat > /tmp/bee-mcp.json <<EOF
+    { "mcpServers": { "bee": { "type": "stdio",
+      "command": "$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp",
+      "env": { "JAVA_HOME": "$HOME/.sdkman/candidates/java/25.0.5.0+8-tem", "BEE_SESSION_NAME": "demo" } } } }
+    EOF
+    ```
+
+    The bridge dials `ws://127.0.0.1:8233`. If you gave the host another port, add
+    `"BEE_HOST": "ws://127.0.0.1:<port>"` to `env`.
+
+5. Start a session with it:
+
+    ```sh
+    claude --mcp-config /tmp/bee-mcp.json --strict-mcp-config --allowedTools "mcp__bee__*"
+    ```
+
+    Try this first prompt: *Put a question with three buttons on the board. Wait for my click,
+    mark it done, then update the surface to thank me.*
+
+To check it worked:
+
+- Buttons appear on the board in your browser within about 10 seconds.
+- After you click one, the session redraws the surface to answer you.
+- `/mcp` in the session lists `bee` with its 11 tools.
+- Ask a second session, started the same way, to "read the bee board". It sees the same surface,
+  opened by `agent:demo#…`.
+
+The numbered steps below make bee available in every session, with the `/clear` hook.
 
 ## 1. Build the bridge
 

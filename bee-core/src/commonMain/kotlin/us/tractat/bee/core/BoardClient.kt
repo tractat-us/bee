@@ -8,7 +8,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +20,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -34,6 +38,7 @@ import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.quilter.QuiltMessage
 import us.tractat.kuilt.quilter.Quilter
 import us.tractat.kuilt.quilter.QuilterConfig
+import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -85,6 +90,12 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * under [mutex], and reads the connection's current state rather than the emission. Parting a
  * connection already cancels its job under the same mutex, so a late mirror can't run; the guard
  * keeps an offline edit safe even if that ever changes.
+ *
+ * **A write too big for the link is refused, never dropped** (Review Focus 5). A seam drops a
+ * broadcast over its `maxPayloadBytes` without a word, so each delta is weighed as the Quilter
+ * will frame it, against the live seam's budget, or offline against the last link's, and a delta
+ * over it throws [BoardWriteTooLarge] with the board unchanged. A seam that publishes no budget
+ * (kuilt's WebSocket link today) refuses nothing.
  *
  * **Failures are state.** A failed dial, a dial that outlasts [dialTimeout], a failed pump or a
  * failed seam close lands in
@@ -141,6 +152,12 @@ class BoardClient(
          * read by the redial loop after [end] has taken that mutex.
          */
         var settled = false
+
+        /**
+         * The writes published through [quilter], each under its next sequence number, so the last
+         * one's is this count. Changed under the client's mutex.
+         */
+        var writes = 0L
     }
 
     private val backoff = ExponentialBackoff(base = 250.milliseconds, cap = 5.seconds, random = random)
@@ -155,6 +172,9 @@ class BoardClient(
     private var connections = 0
     private var attempt = 0
 
+    /** The last live seam's payload budget, which an offline write is weighed against. Written under [mutex]. */
+    @Volatile private var budget: Int? = null
+
     /** The board as this peer holds it, online or not. */
     val state: StateFlow<BoardState> = held.asStateFlow()
 
@@ -163,6 +183,13 @@ class BoardClient(
 
     /** The live connection's fabric peer id, or null offline. Tests read it. */
     val link: StateFlow<String?> = _link.asStateFlow()
+
+    /**
+     * The board link's payload budget in bytes, as the last link to go live published it. Null when
+     * no link has published one, and then no write is refused for its size. An online write is
+     * weighed against the live seam's own reading, which may have moved since.
+     */
+    val maxPayloadBytes: Int? get() = budget
 
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
@@ -193,7 +220,11 @@ class BoardClient(
         driver.cancelAndJoin()
     }
 
-    /** Applies [f]'s patch to the board, online or offline. Never waits on the network. */
+    /**
+     * Applies [f]'s patch to the board, online or offline. Never waits on the network.
+     *
+     * @throws BoardWriteTooLarge if the patch's delta won't fit the board link; nothing is written
+     */
     suspend fun mutate(f: (BoardState) -> Patch<BoardState>) {
         mutateOrSkip(f)
     }
@@ -201,12 +232,18 @@ class BoardClient(
     /**
      * [mutate], for a transform that may decline by returning null. Returns whether it wrote. The
      * decision is made against the very state the patch lands on.
+     *
+     * @throws BoardWriteTooLarge if the patch's delta won't fit the board link; nothing is written
      */
     suspend fun mutateOrSkip(f: (BoardState) -> Patch<BoardState>?): Boolean = mutex.withLock {
         val connection = live
         if (connection != null && connection.seam.state.value !is SeamState.Torn) {
-            val wrote = writeOnline(connection, f)
+            // Read per write: a seam's budget is a reading, not a lease (kuilt's Seam.maxPayloadBytes).
+            val wrote = writeOnline(connection) { state ->
+                f(state)?.also { WireBudget.check(connection.quilter.replica, it.delta, connection.seam.maxPayloadBytes) }
+            }
             if (wrote != null) {
+                if (wrote) connection.writes++
                 held.value = connection.quilter.state.value
                 return@withLock wrote
             }
@@ -215,8 +252,33 @@ class BoardClient(
         // goes onto the held board, and the next connection's FullState carries it.
         connection?.let { partLocked(it) }
         val patch = f(held.value) ?: return@withLock false
+        WireBudget.check(ReplicaId("${author.value}#c${connections + 1}"), patch.delta, budget)
         held.value = held.value.piece(patch.delta)
         true
+    }
+
+    /**
+     * Waits until every peer of the live connection (on a spoke, the relay) has acknowledged every
+     * write made on it, so a process may end without losing them. Unbounded: the caller bounds it.
+     *
+     * kuilt's `Quilter.mutate` doesn't return the sequence number it published, so this counts the
+     * writes made through each connection's Quilter, the only local writes it numbers. A kuilt gap,
+     * tracked as tractat-us/kuilt#3147: a Quilter caller can't wait for its own write to be
+     * acknowledged. This workaround waits on that issue.
+     *
+     * @return true once they're acknowledged; false at once when offline (an offline write rides
+     *   the next connection's FullState), or when the connection ends first
+     */
+    suspend fun awaitAcknowledged(): Boolean {
+        val (connection, writes) = mutex.withLock { live?.let { it to it.writes } } ?: return false
+        return coroutineScope {
+            val acknowledged = async { connection.quilter.universalAckFlow.first { it >= writes } }
+            val ended = async { connection.ended.await() }
+            select {
+                acknowledged.onAwait { true }
+                ended.onAwait { false }
+            }.also { coroutineContext.cancelChildren() }
+        }
     }
 
     /** The result of [f] through [connection]'s Quilter, or null if that Quilter has closed. */
@@ -362,6 +424,7 @@ class BoardClient(
         live = connection
         held.value = connection.quilter.state.value
         _link.value = connection.seam.selfId.value
+        budget = connection.seam.maxPayloadBytes
         _lastFailure.value = null
         _online.value = true
     }

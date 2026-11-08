@@ -330,9 +330,11 @@ call: in sewing, notions are the buttons, snaps and fasteners.** It holds the ba
 components plus these:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
-  (`sandbox` without `allow-same-origin`, and no network beyond the page). It's the mockup escape
-  hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
-  `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
+  (`sandbox` without `allow-same-origin`, and a CSP of `default-src 'none'`). It's the mockup escape
+  hatch the visual companion needs. A sketch only proposes: a click inside it shows its choice in a
+  bar the page draws under the frame, and the page records the choice, as an A2UI action, only when
+  the viewer clicks that bar's own Send (bee#60). When A2UI gains its own way to embed content, bee
+  switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
   appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
@@ -366,6 +368,33 @@ design call:
 **Only human peers may admit a device (Iain: humans only, for now).** This departs from the
 orphan-decision rule in §6.4 on purpose: admission is access control, and a typed code proves
 someone can see the new screen.
+
+**The rule checks the kind a record declares, not a verified person (design call, bee#64).**
+Nothing ties a record's actor to the connection that wrote it (bee#60). So any board writer can
+enter a code as a person: every process on the host's machine, every keyed device, and an agent
+driving a real browser. The code is the real proof: only the new screen shows it, so a forged
+admit still needs someone who can see that screen. The rule stops a well-behaved agent, never a
+hostile process on the host's machine, which already holds what an admit grants, since loopback
+needs no key. "Admitted by <name>" names the declared actor.
+
+- `Pairing.attempt` enforces the declared-kind check (`Attempt.NotHuman`, `PairingTest`).
+- No new gate may rest on peer kind until actors are attested. Review holds that until the type
+  below exists.
+- **Open (bee#64), before a second person or a keyed agent attaches:** a keyed connection's actor
+  must match the identity its key was minted for. That's generic, so it's tractat-us/kuilt#3149:
+  the relay attests each record's author by its connection. `Pairing.attempt` then takes the attested
+  type, so a declared identity no longer compiles there. Loopback stays trusted, because the host
+  can't tell a person's browser from a process on its own machine.
+
+Rejected for v1 (bee#64):
+
+- **A host-served admit page with a CSRF-bound token, or a cookie set at page load.** Any local
+  process can fetch the page and replay its token, and an agent can drive the page in a browser.
+- **The #60 page-confirm.** The admit button is already page-owned UI, and this forgery is a
+  hand-written record, not a confused deputy.
+- **WebAuthn user verification on admit.** It alone stops a driven browser, but enrolment needs
+  its own trusted channel, and a room screen has no authenticator. Revisit it if bee runs
+  untrusted code on the host's machine.
 
 The other details are design calls too. Loopback connections need no key. A key in the URL
 (`?k=`) still admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong
@@ -483,6 +512,12 @@ table over the committed log:
 - **Crashed** means the agent's claims link is gone: the voter drops its claims node after the 30 s
   learner grace, and bee departs the agent whose newest presence entry names that node (bee#28).
   The peer's claims show as **orphaned**: still held, flagged, and never auto-reassigned **(Iain)**.
+- **Crashed while the host was down** can slip past that rule: presence isn't saved, so when the
+  voter drops a restored node, no entry may name it yet. So once a boot grace of 60 s (twice the
+  learner grace) has passed, bee departs any agent still holding a claim that hasn't posted to
+  this boot **(Iain, bee#44)**. Posting means one of its presence slots advanced while the host was
+  watching it. An entry a surviving peer pushes back on reconnect doesn't count, because a dead
+  agent's last entry never advances.
 - **Quiet** means the agent hasn't acted for a while (for example, a long build). It shows as
   "quiet since …" until a timeout, then **the session is declared dead, exactly as if it had
   crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a reasonable
@@ -547,6 +582,19 @@ At each one, look for pieces to pick up in either direction.
   sent, by its `Host`, `Origin` and Fetch Metadata headers (§5.7).
 - **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
   host nor the bee client ever executes surface content outside that sandbox.
+- **A `Sketch` can still reach the network, and v1 accepts that (bee#49).** CSP doesn't cover
+  WebRTC. A sketch can open an `RTCPeerConnection` and use STUN or TURN, which gives it a DNS
+  lookup, UDP carrying data, and the viewer's public IP. No engine ships a CSP `webrtc` directive,
+  and no sandbox flag or permissions policy covers it. The helper's removal of the WebRTC globals
+  is a speed bump, not a boundary: a nested `srcdoc` iframe gets past it, and a closed declarative
+  shadow root gets past a hardened version. `frame-src 'none'` doesn't block `about:srcdoc`. In
+  WebKit, `<link rel=preconnect>` also opens a TCP connection despite `default-src 'none'`.
+  **So treat a sketch's HTML as able to exfiltrate whatever it's shown.** In v1 that's what the
+  agent drew for the board, which the board already shares with every peer, so the sandbox's job
+  is to keep a sketch off the page, the host and the keys, not to keep it quiet. Don't put a
+  secret in a sketch. Revisit when an engine ships a real control. Chromium's
+  `Connection-Allowlist` header exists from Chrome 152, but in 156 it crashes the tab when a
+  nested `srcdoc` frame opens a peer connection, so bee doesn't adopt it yet.
 - **IP.** bee is built on Iain's own time and equipment as open source. It's brought to an employer
   hackathon as an existing tool, never built there. Hosting there is the employer's call.
 - **Keep it small.** Each piece earns its place by being needed in the first hour of real use.

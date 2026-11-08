@@ -8,9 +8,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.ClaimStatus
+import us.tractat.bee.core.ClaimTable
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
@@ -75,6 +79,19 @@ class BeeHost private constructor(
         const val CLAIMS_SESSION: String = "claims"
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
+        internal const val CSP_HEADER = "Content-Security-Policy"
+
+        /**
+         * The page's policy, sent with the page's files ([mountEndpoints]): no frame may load a
+         * URL. A `Sketch` frame shows its `srcdoc` (which this policy doesn't block, in Chromium
+         * or WebKit), but can't navigate itself to a URL, by `location` or a link (spec §5.6).
+         * That isn't "no network": WebRTC and DNS hints sit outside CSP (bee#49). CSP has no
+         * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
+         * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
+         * so the page's sockets and its pairing stream need nothing more.
+         */
+        const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
+
         /**
          * Starts a host on [config]'s address, with its board and claims log under
          * [HostConfig.dataDir]. Background work runs on [scope]. [Departures] reads a crash off
@@ -122,11 +139,26 @@ fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.m
  * Entries are never pruned and a booted [Departures] has proposed nothing, so an identity the board
  * lists as departed is dropped here: the log rebuilds that list on boot, and re-proposing would
  * cost a durable append per historical agent per boot.
+ *
+ * The boot check (bee#44) watches [board]'s presence slots from boot, and reads its holders off
+ * [voter]'s table. A slot on [board] says nothing on its own: a surviving peer's first-contact push
+ * brings back entries made before the host went down, a dead agent's among them. Only a slot that
+ * advances while this boot watches it shows its poster is alive.
  */
-internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures =
-    Departures(claimsLinkLoss(voter.membership, clock), { board.value.undeparted() }, voter::depart, clock = clock)
+internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures = Departures(
+    claimsLinkLoss(voter.membership, clock),
+    presence = { board.value.undeparted() },
+    postings = board.map { it.presence },
+    holders = { voter.table.value.holders() },
+    depart = voter::depart,
+    clock = clock,
+)
 
 private fun BoardState.undeparted(): List<PresenceEntry> {
     val gone = departures().map { it.identity }.toSet()
     return latestPresence().filterNot { it.identity in gone }
 }
+
+/** Whoever holds a claim now. An orphaned claim's holder is retired, so it isn't one. */
+private fun ClaimTable.holders(): Set<PeerIdentity> =
+    targets.values.filterIsInstance<ClaimStatus.Held>().map { it.holder }.toSet()

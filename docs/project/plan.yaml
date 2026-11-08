@@ -415,11 +415,15 @@ items:
       - { title: "bee#60", url: "https://github.com/tractat-us/bee/issues/60" }
 
   bee-49:
-    kind: issue
+    kind: decision
     title: "A Sketch can still reach the network through WebRTC, which CSP doesn't cover"
-    status: later
-    summary: "A bug that needs a design before work starts."
+    status: done
     started: "2026-11-08T03:41Z"
+    landed: "2026-11-08T17:30Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Accepted as a v1 limit and documented in the spec; revisit when an engine ships a control."
+      url: "https://github.com/tractat-us/bee/issues/49#issuecomment-6724762977"
     links:
       - { title: "bee#49", url: "https://github.com/tractat-us/bee/issues/49" }
 
