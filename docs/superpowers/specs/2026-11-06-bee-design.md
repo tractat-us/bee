@@ -178,7 +178,7 @@ Claude session ── bee-mcp                                           ┘     
   same client core as the browser, compiled for the JVM, holding its own replica and connecting to
   the host the same way. Its lifetime *is* the session's **(design call)**: when it disconnects,
   the session crashed or ended.
-- **A session that ends says so (Iain, 2026-11-08).** When the MCP session closes normally, by
+- **A session that ends says so (design call).** When the MCP session closes normally, by
   stdin closing or by the signal Claude Code ends its servers with, the bridge departs its own
   identity as `Left` (§6.4) before it exits. It waits at most 1 s, so an exit never hangs on a
   host that's gone, and it queues nothing: a `Depart` that doesn't commit leaves the host to
