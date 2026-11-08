@@ -182,7 +182,26 @@
     }
 
     /* Below the board: the history strip, then what the page knows for debugging. */
-    #history { order: 3; }
+    #history {
+      order: 3;
+      width: 100%;
+      max-width: 880px;
+      margin: 0 auto 8px;
+      padding: 0 16px;
+      color: var(--muted);
+      font-size: 0.9em;
+    }
+    #history summary { cursor: pointer; }
+    #history ol { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+    #history button {
+      padding: 2px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
     #details {
       order: 4;
       width: 100%;
