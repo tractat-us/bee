@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# bee-join: join someone else's bee board, in your browser and from your Claude sessions.
+#
+#   bee-join '<join link>' [--name <you>] [--no-open]
+#
+# The join link is what the board's owner got from bee-up (or from bee-host --lan): it looks like
+# http://<their machine>:8233/?k=<key>. This checks that you can reach it, opens the board in your
+# browser as <you>, and writes ~/.bee/mcp.json so a Claude session draws on that board.
+set -euo pipefail
+. "$(dirname "$0")/bee-env"
+
+link=""
+name=${USER:-guest}
+while [ $# -gt 0 ]; do
+    case $1 in
+        --name) name=$2; shift 2 ;;
+        --no-open) BEE_NO_OPEN=1; shift ;;
+        -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        http://*|https://*) link=$1; shift ;;
+        *) echo "bee-join: unknown argument $1 (try --help)" >&2; exit 2 ;;
+    esac
+done
+case $link in
+    *\?k=?*) ;;
+    *) echo "bee-join: give the join link, http://<host>:<port>/?k=<key>, quoted." >&2; exit 2 ;;
+esac
+
+base=${link%%\?*}
+base=${base%/}
+status=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$base/board-id" || true)
+if [ "$status" != 200 ]; then
+    cat >&2 <<EOF
+bee-join: can't reach the board at $base (got ${status:-nothing}).
+  - Are you on the same network as its owner? Guest and office Wi-Fi often keep laptops apart;
+    a phone hotspot both laptops join is the quick way round.
+  - On its owner's Mac, macOS may have asked whether java may accept incoming connections: allow it.
+  - If the link uses a .local name, try the numeric address bee-up also printed.
+EOF
+    exit 1
+fi
+
+bee_write_mcp_config "$bee_home/mcp.json" "$link" "$name-claude"
+page="$link&name=$name"
+
+echo
+echo "Joined: $base is reachable."
+echo
+echo "  You, in a browser:    $page"
+echo "  Your Claude session:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
+echo "                        then type  /mcp__bee__whiteboard"
+echo
+echo "  The link's key is now in $bee_home/mcp.json (readable only by you); it stops working when"
+echo "  the board's host stops."
+echo
+bee_open "$page"

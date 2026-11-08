@@ -95,14 +95,14 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
         }
 
         /**
-         * [open] over a real WebSocket to the host's [PATH], under [hostWsUrl] (`ws://host:port`),
+         * [open] over a real WebSocket to the host's [PATH] at [host], with its key if it has one,
          * naming [board]'s board: the host refuses a link to any other (bee#46).
          */
         @Suppress("LongParameterList")
         fun overWebSocket(
             node: NodeId,
             http: HttpClient,
-            hostWsUrl: String,
+            host: HostAddress,
             board: BoardPin,
             scope: CoroutineScope,
             clock: () -> Instant,
@@ -110,7 +110,7 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
         ): ClaimsLink = open(
             node = node,
             loomFor = { peer -> KtorClientLoom(http, selfPeerId = peer).pinnedTo(board) },
-            endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement("$hostWsUrl$PATH", SERVER, SESSION))),
+            endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(host.socket(PATH), SERVER, SESSION))),
             scope = scope,
             raftConfig = RaftConfig(),
             clock = clock,
