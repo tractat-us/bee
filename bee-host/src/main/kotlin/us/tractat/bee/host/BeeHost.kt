@@ -14,7 +14,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardState
-import us.tractat.bee.core.LivePresence
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
@@ -112,7 +111,7 @@ class BeeHost private constructor(
                     boardMirror(relay),
                     clock,
                 )
-                val departures = hostDepartures(voter, relay.state, scope, clock).start(scope)
+                val departures = hostDepartures(voter, relay.state, clock).start(scope)
                 return BeeHost(bound, relay, voter, departures, server)
             } catch (failure: Throwable) {
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
@@ -127,9 +126,11 @@ fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.m
 
 /**
  * The host's [Departures]: a crash is a claims node [voter] drops ([claimsLinkLoss], bee#28),
- * matched against the presence on [board]; `Depart`s go through [voter].
+ * matched against each poster's newest entry on [board]; `Depart`s go through [voter].
+ *
+ * Not the live roster ([us.tractat.bee.core.LivePresence]): an entry leaves it a TTL (30 s) after
+ * its last post, and the voter drops a node a learner grace (30 s) after its link went, so a
+ * killed bridge's entry has always aged out by the time its node is dropped.
  */
-internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, scope: CoroutineScope, clock: () -> Instant): Departures {
-    val roster = LivePresence(board, clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
-    return Departures(claimsLinkLoss(voter.membership, clock), roster::live, voter::depart, clock = clock)
-}
+internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures =
+    Departures(claimsLinkLoss(voter.membership, clock), { board.value.latestPresence() }, voter::depart, clock = clock)
