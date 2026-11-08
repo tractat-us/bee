@@ -1,6 +1,6 @@
 // bee#43: a surface opening, changing or closing elsewhere on the board leaves the field someone
 // is typing in alone. A real bee-companion is the agent: it opens its own Sketch surface, shows a
-// second screen on it, and closes it, while alex keeps typing in another surface's field.
+// second screen on it, and closes it, while ines keeps typing in another surface's field.
 //
 // The caret is never moved with Playwright's End, and the field is never re-focused with a
 // locator action: on macOS, End moves the caret only when the page can't scroll, and a locator
@@ -19,6 +19,7 @@ const TEMPLATE = '<!DOCTYPE html><html><head></head><body><div class="header"><!
   '<div class="status">Connecting</div></div><div id="frame-content"><!-- CONTENT --></div></body></html>';
 
 let companion;
+let exited;
 let screenDir;
 let screens = 0;
 
@@ -40,6 +41,7 @@ test.beforeAll(async () => {
     env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${process.env.BEE_E2E_PORT}` },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
+  exited = new Promise((resolve) => companion.once('exit', resolve));
   companion.lines = [];
   companion.stdout.on('data', (chunk) => companion.lines.push(...chunk.toString().split('\n').filter(Boolean)));
   await expect.poll(() => companion.lines.some((l) => l.includes('server-started')), { timeout: 60_000 }).toBe(true);
@@ -48,9 +50,12 @@ test.beforeAll(async () => {
   companion.surface = JSON.parse(readFileSync(kept, 'utf8')).surface;
 });
 
-// SIGTERM: the companion closes its own surface before it ends, so the board keeps no Sketch.
+// SIGTERM: the companion closes its own surface in its shutdown hook, before it exits. Waiting for
+// the exit keeps the next spec from starting while that Sketch is still on the board.
 test.afterAll(async () => {
-  companion?.kill('SIGTERM');
+  if (!companion) return;
+  companion.kill('SIGTERM');
+  await exited;
 });
 
 /** Writes screen `name`, newer than every screen before it. */
@@ -96,63 +101,60 @@ function fate(locator, tag) {
 test('a surface opening, changing and closing elsewhere leaves the typing field in place', async ({ browser }) => {
   test.setTimeout(60_000);
   const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto('/?name=ines');
-  await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
-  const sketch = page.locator(`a2ui-surface[data-surface-id="${companion.surface}"] bee-sketch iframe`);
-  const sketchSurface = page.locator(`a2ui-surface[data-surface-id="${companion.surface}"]`);
-  // Another surface's field from the fixtures global-setup seeded, the one sketch.spec.mjs also
-  // types in and clears. Its starting value is whatever the board holds.
-  const field = page.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input');
-  const start = await field.inputValue();
+  let otherContext;
+  try {
+    const page = await context.newPage();
+    await page.goto('/?name=ines');
+    await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
+    const sketch = page.locator(`a2ui-surface[data-surface-id="${companion.surface}"] bee-sketch iframe`);
+    const sketchSurface = page.locator(`a2ui-surface[data-surface-id="${companion.surface}"]`);
+    // This spec's own fixture, seeded empty: no other spec types in it.
+    const fieldOf = (p) => p.locator('a2ui-surface[data-surface-id="board-change"] a2ui-basic-textfield input');
+    const field = fieldOf(page);
+    await expect(field).toHaveValue('');
 
-  await field.evaluate((input) => {
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-  });
-  await page.keyboard.type('a', { delay: 40 });
-  await watch(field, 'field');
-  const typed = (s) => ({ same: true, connected: true, removed: 0, focused: true, value: start + s, caret: [(start + s).length, (start + s).length] });
+    await field.evaluate((input) => input.focus());
+    await page.keyboard.type('a');
+    await watch(field, 'field');
+    const typed = (s) => ({ same: true, connected: true, removed: 0, focused: true, value: s, caret: [s.length, s.length] });
 
-  // A surface opens elsewhere.
-  pushScreen('one.html', '<h2>First screen</h2>');
-  await expect(sketch).toHaveCount(1, { timeout: 15_000 });
-  await watch(sketchSurface, 'sketch');
-  await page.keyboard.type('b');
-  expect(await fate(field, 'field')).toEqual(typed('ab'));
+    // A surface opens elsewhere.
+    pushScreen('one.html', '<h2>First screen</h2>');
+    await expect(sketch).toHaveCount(1, { timeout: 15_000 });
+    await watch(sketchSurface, 'sketch');
+    await page.keyboard.type('b');
+    expect(await fate(field, 'field')).toEqual(typed('ab'));
 
-  // It changes.
-  pushScreen('two.html', '<h2>Second screen</h2>');
-  await expect(page.frameLocator(`a2ui-surface[data-surface-id="${companion.surface}"] bee-sketch iframe`).locator('h2'))
-    .toHaveText('Second screen', { timeout: 15_000 });
-  await page.keyboard.type('c');
-  expect(await fate(field, 'field')).toEqual(typed('abc'));
+    // It changes.
+    pushScreen('two.html', '<h2>Second screen</h2>');
+    await expect(page.frameLocator(`a2ui-surface[data-surface-id="${companion.surface}"] bee-sketch iframe`).locator('h2'))
+      .toHaveText('Second screen', { timeout: 15_000 });
+    await page.keyboard.type('c');
+    expect(await fate(field, 'field')).toEqual(typed('abc'));
 
-  // It closes, and opens again: the renderer drops that surface's element and mounts a new one.
-  pushScreen('waiting.html', '<p>Continuing in terminal...</p>');
-  await expect(sketchSurface).toHaveCount(0, { timeout: 15_000 });
-  await page.keyboard.type('d');
-  expect(await fate(field, 'field')).toEqual(typed('abcd'));
-  pushScreen('three.html', '<h2>Third screen</h2>');
-  await expect(sketch).toHaveCount(1, { timeout: 15_000 });
-  await page.keyboard.type('e');
-  expect(await fate(field, 'field')).toEqual(typed('abcde'));
+    // It closes, and opens again: the renderer drops that surface's element and mounts a new one.
+    pushScreen('waiting.html', '<p>Continuing in terminal...</p>');
+    await expect(sketchSurface).toHaveCount(0, { timeout: 15_000 });
+    await page.keyboard.type('d');
+    expect(await fate(field, 'field')).toEqual(typed('abcd'));
+    pushScreen('three.html', '<h2>Third screen</h2>');
+    await expect(sketch).toHaveCount(1, { timeout: 15_000 });
+    await page.keyboard.type('e');
+    expect(await fate(field, 'field')).toEqual(typed('abcde'));
 
-  // Control: the watch sees a re-created element. The sketch's surface, closed and reopened, is
-  // a new node, and its old one was removed.
-  const control = await fate(sketchSurface, 'sketch');
-  expect(control).toMatchObject({ same: false, connected: false, removed: 1 });
+    // Control: the watch sees a re-created element. The sketch's surface, closed and reopened, is
+    // a new node, and its old one was removed.
+    const control = await fate(sketchSurface, 'sketch');
+    expect(control).toMatchObject({ same: false, connected: false, removed: 1 });
 
-  // And the typing reached the board: a second page sees it once ines leaves the field.
-  await page.locator('#status').click();
-  const other = await (await browser.newContext()).newPage();
-  await other.goto('/?name=otto');
-  await expect(other.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input'))
-    .toHaveValue(start + 'abcde', { timeout: 5_000 });
-  // Leave the field as sketch.spec.mjs expects to find it: whatever it was.
-  await field.fill(start);
-  await expect(other.locator('a2ui-surface[data-surface-id="records"] a2ui-basic-textfield input'))
-    .toHaveValue(start, { timeout: 5_000 });
-  await other.context().close();
-  await context.close();
+    // And the typing reached the board: a second page sees it once ines leaves the field.
+    await page.locator('#status').click();
+    otherContext = await browser.newContext();
+    const other = await otherContext.newPage();
+    await other.goto('/?name=otto');
+    await expect(fieldOf(other)).toHaveValue('abcde', { timeout: 5_000 });
+  } finally {
+    await otherContext?.close();
+    await context.close();
+  }
 });
