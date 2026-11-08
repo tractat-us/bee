@@ -82,7 +82,7 @@ private val logger = KotlinLogging.logger {}
  * @param report receives what the companion did, as the companion server's stdout lines do:
  *   `screen-shown`, `screen-closed`, `screen-refused` (with its `reason`) and `click-dropped`.
  * @param settle how long to wait, once online, for an existing companion surface to arrive before
- *   opening a new one. kuilt has no "caught up with the relay" signal (tractat-us/kuilt#3146), so
+ *   opening a new one. kuilt has no "caught up with the relay" signal (tractat-us/kuilt#3142), so
  *   it's a bound, not a proof.
  */
 @Suppress("LongParameterList")
@@ -201,7 +201,14 @@ class CompanionAdapter(
     private suspend fun handleClicks() {
         var cursor: String? = null
         while (true) {
-            val result = actions.next(SURFACE, cursor, WAIT)
+            val result = try {
+                actions.next(SURFACE, cursor, WAIT)
+            } catch (refused: BridgeRefusal) {
+                // Retired mid-wait (the host lost this companion's link): it acts under a fresh
+                // identity now, and its orphaned claims wait for a participant to decide.
+                logger.warn { refused.message }
+                continue
+            }
             cursor = result.cursor
             result.record?.let { handle(it) }
         }
