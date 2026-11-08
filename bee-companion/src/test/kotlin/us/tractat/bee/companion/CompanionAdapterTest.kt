@@ -4,8 +4,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonPrimitive
+import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.toSurfaceView
+import us.tractat.bee.core.BoardState
+import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.bee.companion.CompanionRig.Companion.WAIT
 import us.tractat.bee.companion.CompanionRig.Companion.sketchHtml
 import us.tractat.kuilt.test.assertAll
@@ -19,6 +23,12 @@ import kotlin.time.Duration.Companion.seconds
 
 class CompanionAdapterTest {
     private fun rig(test: kotlinx.coroutines.test.TestScope) = CompanionRig(test, Files.createTempDirectory("w8-companion-"))
+
+    /** How many concurrent values the surface's `root` component holds: one, unless two writers raced. */
+    private fun rootWrites(state: BoardState): Int {
+        val components = state.surfaceDoc(CompanionAdapter.SURFACE)!![SurfaceFormat.COMPONENTS] as JsonNode.Object
+        return (components.map["root"] as JsonNode.Leaf).register.values.size
+    }
 
     /** The newest screen by mtime, not the last written name, becomes the companion surface's one Sketch. */
     @Test
@@ -107,6 +117,41 @@ class CompanionAdapterTest {
         assertAll(
             { assertTrue(cleared, "the new screen cleared the events file") },
             { assertEquals(listOf("""{"type":"click","choice":"b","text":"B","timestamp":1706000103}"""), lines) },
+        )
+        rig.close()
+    }
+
+    /**
+     * A restarted companion whose board arrives after the settle bound never opens the surface a
+     * second time: it waits for the board's surface and writes the next screen onto it. A second
+     * open would race the first, leaving two concurrent writes of the Sketch for the projection to
+     * pick between, so the board could show the older screen.
+     *
+     * The rig loses every large hub frame to the new companion until it's released, so its
+     * replica is online and empty for longer than the settle bound.
+     */
+    @Test
+    fun restartWaitsForTheSurfaceItOpened() = runTest(timeout = 120.seconds) {
+        val rig = rig(this).apply { start() }
+        // Big enough that the board's FullState is a large frame.
+        rig.screen("layout.html", "<p>layout</p>" + "<!-- ${"x".repeat(3 * CompanionRig.LATE_FRAME_BYTES)} -->")
+        val first = rig.companion()
+        val browser = rig.browser()
+        rig.shows(browser) { "layout" in it }
+        first.stop()
+
+        rig.screen("second.html", "<p>second</p>")
+        rig.holdBoardBack("companion-2")
+        val second = rig.companion()
+        // Long past the settle bound: a companion that opens a surface has done it by now.
+        withTimeoutOrNull(10.seconds) { while (second.reports.isEmpty()) delay(100) }
+        rig.releaseBoard("companion-2")
+
+        val state = rig.shows(browser) { "second" in it }
+        assertAll(
+            { assertEquals(1, rootWrites(state), "one write of the Sketch, not two concurrent ones") },
+            { assertEquals(2, CompanionAdapter.screensShown(state), "both screens in /screens") },
+            { assertEquals(listOf(CompanionAdapter.SURFACE), state.openSurfaces()) },
         )
         rig.close()
     }
