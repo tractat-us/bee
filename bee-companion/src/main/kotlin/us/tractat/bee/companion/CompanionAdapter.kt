@@ -13,10 +13,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.long
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.a2ui.SurfaceFormat
@@ -38,12 +39,13 @@ import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
-import kotlin.io.path.getLastModifiedTime
-import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
@@ -58,32 +60,38 @@ private val logger = KotlinLogging.logger {}
 /**
  * The brainstorming visual companion's contract, kept on the board (spec §3). Invariant: **what
  * the agent reads from `state_dir/events` is exactly the clicks made on the screen it last pushed,
- * each once.**
+ * each once**, or the line saying that screen was refused.
  *
  * - The newest `.html` file in [screenDir] (by mtime) is the surface [SURFACE], holding one
  *   `Sketch`. A fragment is wrapped in [frameTemplate], so it gets the companion's CSS; a full
- *   document (`<!DOCTYPE` or `<html`) is shown as written.
+ *   document (`<!DOCTYPE` or `<html`) is shown as written. A file that vanishes between the
+ *   listing and the read is skipped; the next poll sees whatever replaced it.
  * - Every new screen is appended to the surface's append-only `/screens`, so a click's basis names
- *   the screen it was made on. A click whose basis didn't see the latest screen was made on one
- *   the agent has moved past, and is dropped, never written into the new screen's events.
+ *   the screen it was made on. A click is written only if its basis saw the latest screen and the
+ *   surface is open; any other was made on a screen the agent has moved past, and is dropped.
  * - Each new screen clears `stateDir/events`. A `waiting*.html` screen closes the surface instead
  *   ("clear the board" never deletes).
+ * - A screen the board refuses (too big for its link, [BoardWriteTooLarge], or an invalid surface,
+ *   [ScreenInvalid]) is handled as a close: the surface closes and `/screens` advances, so no
+ *   click on the screen before it is written. Its events hold one line,
+ *   `{"type":"screen-refused","file":…,"reason":…}`, which the agent reads as it reads clicks.
  * - Each `choice` record on the surface is claimed through Raft ([actions]), appended to
  *   `stateDir/events` as `{"type":"click","choice":…,"text":…,"timestamp":<epoch s>}`, then
  *   completed, so no restart writes it twice. The timestamp is when the click was made.
- * - The last screen pushed is kept in `stateDir/bee-companion.json`, so a restart neither pushes
- *   it again nor clears its events.
+ * - The last screen handled is kept in `stateDir/bee-companion.json`, written whole or not at all,
+ *   so a restart neither pushes it again nor clears its events. It also says whether the board
+ *   had the surface then; if it did, a restart waits for the surface to arrive and never opens a
+ *   second one.
  *
  * The companion joins the board as a session does: [bridge] carries its identity, presence and
  * claims. It writes the surface through [client] as [author], validating it first (A11), because
- * the bridge's tools have no append or reopen. A screen too big for the board link is refused
- * ([BoardWriteTooLarge]) and reported; the board keeps the screen before it.
+ * the bridge's tools have no append or reopen.
  *
  * @param report receives what the companion did, as the companion server's stdout lines do:
  *   `screen-shown`, `screen-closed`, `screen-refused` (with its `reason`) and `click-dropped`.
- * @param settle how long to wait, once online, for an existing companion surface to arrive before
- *   opening a new one. kuilt has no "caught up with the relay" signal (tractat-us/kuilt#3142), so
- *   it's a bound, not a proof.
+ * @param settle how long a companion that never saw the surface waits, once online, for an
+ *   existing one to arrive before opening a new one. kuilt has no "caught up with the relay"
+ *   signal (tractat-us/kuilt#3142), so it's a bound, not a proof.
  */
 @Suppress("LongParameterList")
 class CompanionAdapter(
@@ -106,10 +114,10 @@ class CompanionAdapter(
     /** Screen pushes and event writes, one at a time: a click is checked against the screen it lands under. */
     private val turn = Mutex()
 
-    /** Starts watching [screenDir] and handling clicks, once the board link is up and has settled. */
+    /** Starts watching [screenDir] and handling clicks, once the board link is up and holds what it must. */
     fun start(scope: CoroutineScope): Job = scope.launch {
         client.online.first { it }
-        withTimeoutOrNull(settle) { client.state.first { it.surfaceDoc(SURFACE) != null } }
+        awaitSurface()
         launch { handleClicks() }
         while (true) {
             sync()
@@ -117,34 +125,62 @@ class CompanionAdapter(
         }
     }
 
-    /** Pushes the newest screen if it isn't the one last pushed. */
-    private suspend fun sync() = turn.withLock {
-        val newest = newestScreen() ?: return@withLock
-        val stamp = Shown(newest.name, newest.getLastModifiedTime().toMillis())
-        if (stamp == lastShown()) return@withLock
-        try {
-            push(newest)
-            report(event("screen-${if (isWaiting(newest)) "closed" else "shown"}", newest.name))
-        } catch (refused: IllegalArgumentException) {
-            // BoardWriteTooLarge, or a surface the validator refused: the board keeps the screen before.
-            logger.warn { "Screen ${newest.name} was refused: ${refused.message}" }
-            report(event("screen-refused", newest.name) { put("reason", refused.message.orEmpty()) })
+    /**
+     * Waits for the board's companion surface. A companion whose state says the board had it waits
+     * as long as that takes, because opening it again would race the one on the board. One that
+     * never saw it can only wait [settle] (tractat-us/kuilt#3142).
+     */
+    private suspend fun awaitSurface() {
+        val held = { state: BoardState -> state.surfaceDoc(SURFACE) != null }
+        if (lastShown()?.surface == true) {
+            logger.info { "$SHOWN says the board has surface $SURFACE: waiting for it to arrive." }
+            client.state.first(held)
+        } else {
+            withTimeoutOrNull(settle) { client.state.first(held) }
         }
-        // A refused screen counts as handled too, so it isn't retried every poll.
-        shownFile.writeText(Json.encodeToString(JsonObject.serializer(), stamp.json()))
     }
 
-    private suspend fun push(screen: Path) {
-        val waiting = isWaiting(screen)
-        val html = if (waiting) null else framed(screen.readText())
-        // Board first: if the write is refused, the events of the screen still shown are kept.
-        client.mutateOrSkip { state -> screenPatch(state, screen.name, html) }
+    /** Shows the newest screen if it isn't the one last handled. */
+    private suspend fun sync() = turn.withLock {
+        val screen = newestScreen(screenDir.listDirectoryEntries("*.html")) ?: return@withLock
+        val last = lastShown()
+        if (last != null && last.file == screen.name && last.mtime == screen.mtime) return@withLock
+        // Gone since it was listed: the next poll sees whatever replaced it.
+        val content = readOrNull(screen.path) ?: return@withLock
+        val waiting = isWaiting(screen.name)
+        val refusal = try {
+            write(screen.name, if (waiting) null else framed(content))
+            null
+        } catch (refused: BoardWriteTooLarge) {
+            refused.message
+        } catch (refused: ScreenInvalid) {
+            refused.message
+        }
+        // A refused screen closes the surface and advances /screens, so the screen before it takes no more clicks.
+        if (refusal != null) write(screen.name, null)
         events.deleteIfExists()
+        if (refusal == null) {
+            report(event(if (waiting) "screen-closed" else "screen-shown", screen.name))
+        } else {
+            logger.warn { "Screen ${screen.name} was refused: $refusal" }
+            val line = event("screen-refused", screen.name) { put("reason", refusal) }
+            append(line)
+            report(line)
+        }
+        // A refused screen counts as handled too, so it isn't retried every poll.
+        writeShown(Shown(screen.name, screen.mtime, surface = client.state.value.surfaceDoc(SURFACE) != null))
+    }
+
+    /** Writes screen [file] to the board: [html] as the Sketch, or a close when null. */
+    private suspend fun write(file: String, html: String?) {
+        client.mutateOrSkip { state -> screenPatch(state, file, html) }
     }
 
     /**
      * The surface write for [file]: [html] as the Sketch, or a close when null, plus its `/screens`
-     * entry. Null when there's nothing to write: a waiting screen before any surface exists.
+     * entry. Null when there's nothing to write: a close before any surface exists.
+     *
+     * @throws ScreenInvalid if the surface it would leave fails validation
      */
     private fun screenPatch(state: BoardState, file: String, html: String?): Patch<BoardState>? {
         val exists = state.surfaceDoc(SURFACE) != null
@@ -166,9 +202,8 @@ class CompanionAdapter(
             val step = write(s).delta
             s.piece(step) to d.piece(step)
         }
-        after.surfaceDoc(SURFACE)?.toSurfaceView(SURFACE)?.let(SurfaceValidator::errors)?.takeIf { it.isNotEmpty() }?.let {
-            throw IllegalArgumentException("Surface $SURFACE was not written: ${it.joinToString(" ")}")
-        }
+        val errors = after.surfaceDoc(SURFACE)?.toSurfaceView(SURFACE)?.let(SurfaceValidator::errors).orEmpty()
+        if (errors.isNotEmpty()) throw ScreenInvalid(errors)
         return Patch(delta)
     }
 
@@ -188,16 +223,24 @@ class CompanionAdapter(
         return template.replace(BRANDING, "").replace(CONTENT, content)
     }
 
-    private fun newestScreen(): Path? = screenDir.listDirectoryEntries("*.html")
-        .filter { !it.name.startsWith(".") && it.isRegularFile() }
-        .maxWithOrNull(compareBy<Path> { it.getLastModifiedTime().toMillis() }.thenBy { it.name })
-
-    private fun isWaiting(screen: Path) = screen.name.startsWith("waiting")
+    private fun isWaiting(file: String) = file.startsWith("waiting")
 
     private fun lastShown(): Shown? {
         if (!shownFile.exists()) return null
         val json = Json.parseToJsonElement(shownFile.readText()).jsonObject
-        return Shown(json.getValue("file").jsonPrimitive.content, json.getValue("mtime").jsonPrimitive.long)
+        return Shown(
+            file = json.getValue("file").jsonPrimitive.content,
+            mtime = json.getValue("mtime").jsonPrimitive.long,
+            // A file from before this field was kept: it exists, so a surface may well be on the board.
+            surface = json["surface"]?.jsonPrimitive?.boolean ?: true,
+        )
+    }
+
+    /** Replaces [shownFile] whole, so a crash mid-write never leaves a file a restart can't read. */
+    private fun writeShown(shown: Shown) {
+        val temp = Files.createTempFile(stateDir, ".$SHOWN", ".tmp")
+        temp.writeText(Json.encodeToString(JsonObject.serializer(), shown.json()))
+        Files.move(temp, shownFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     }
 
     // ---- Clicks ----
@@ -226,9 +269,11 @@ class CompanionAdapter(
             val state = bridge.board.value
             val made = state.records(SURFACE).single { it.first == id }.second
             val latest = latestScreen(state)
+            // A closed surface's latest screen is a waiting or refused one, which takes no clicks.
+            val open = state.meta(SURFACE)?.closedAt == null
             when {
                 made.name != CHOICE -> Unit
-                latest != null && made.basis.saw(SCREENS, latest) -> append(click(made.context, made.at))
+                open && latest != null && made.basis.saw(SCREENS, latest) -> append(click(made.context, made.at))
                 else -> report(event("click-dropped", null) { put("recordId", record.getValue("recordId")) })
             }
         }
@@ -267,12 +312,22 @@ class CompanionAdapter(
         more()
     }
 
-    private data class Shown(val file: String, val mtime: Long) {
+    /** The last screen handled, by name and mtime, and whether the board had the surface after it. */
+    private data class Shown(val file: String, val mtime: Long, val surface: Boolean) {
         fun json() = buildJsonObject {
             put("file", file)
             put("mtime", mtime)
+            put("surface", surface)
         }
     }
+
+    /** A screen file as one listing saw it. */
+    internal data class Screen(val path: Path, val mtime: Long) {
+        val name: String get() = path.name
+    }
+
+    /** A surface the validator refused: the companion's own write, so the board is unchanged (A11). */
+    class ScreenInvalid(errors: List<String>) : Exception("Surface $SURFACE was not written: ${errors.joinToString(" ")}")
 
     companion object {
         /** The one surface the companion keeps on the board. */
@@ -296,6 +351,28 @@ class CompanionAdapter(
 
         /** The dot of the latest screen pushed, as [state] holds the surface. */
         internal fun latestScreen(state: BoardState): Dot? = screens(state).lastOrNull()
+
+        /**
+         * The newest of [entries] by mtime (ties by name), skipping dot files, anything not a
+         * regular file, and any file gone since it was listed.
+         */
+        internal fun newestScreen(entries: List<Path>): Screen? = entries
+            .filter { !it.name.startsWith(".") }
+            .mapNotNull(::statOrNull)
+            .maxWithOrNull(compareBy<Screen> { it.mtime }.thenBy { it.name })
+
+        private fun statOrNull(path: Path): Screen? = try {
+            val attributes = Files.readAttributes(path, BasicFileAttributes::class.java)
+            if (attributes.isRegularFile) Screen(path, attributes.lastModifiedTime().toMillis()) else null
+        } catch (_: NoSuchFileException) {
+            null
+        }
+
+        private fun readOrNull(path: Path): String? = try {
+            path.readText()
+        } catch (_: NoSuchFileException) {
+            null
+        }
 
         private fun screens(state: BoardState): List<Dot> {
             val data = state.surfaceDoc(SURFACE)?.get(SurfaceFormat.DATA) as? JsonNode.Object ?: return emptyList()
