@@ -3,6 +3,8 @@
 package us.tractat.bee.host
 
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -13,8 +15,11 @@ import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.crdt.EphemeralMap
+import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.liveness.PartitionEvent
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
@@ -179,19 +184,45 @@ class DeparturesTest {
     }
 
     /**
-     * A holder that reconnects inside the boot grace, so its presence reaches the host, keeps its
-     * claims. A holder beside it that never reconnects, the control, is departed.
+     * A holder that reconnects inside the boot grace and posts, then re-posts as a live peer does,
+     * keeps its claims. A holder beside it that never reconnects, the control, is departed.
      */
     @Test
     fun aHolderSeenInsideTheBootGraceKeepsItsClaims() = runTest {
         val board = Board(this).apply { holders = setOf(ada, bo) }
         val departed = board.start()
 
-        advanceTimeBy(Departures.BOOT_GRACE - 1.seconds)
+        advanceTimeBy(Departures.BOOT_GRACE - 6.seconds)
+        board.post(entry(ada, "mcp-ada-2"))
+        advanceTimeBy(Presence.EVERY)
         board.post(entry(ada, "mcp-ada-2"))
         advanceTimeBy(2.hours)
         runCurrent()
         assertEquals(listOf(bo to DepartReason.Crashed), departed, "only the holder nobody saw departs")
+    }
+
+    /**
+     * bee#44's pushed-back entry: a holder whose entry reaches the host inside the boot grace, as
+     * a surviving peer's first-contact push brings back a dead agent's last one, but never
+     * advances, is departed all the same. A holder whose entry arrives then and advances, the
+     * control, keeps its claims.
+     */
+    @Test
+    fun anEntryThatNeverAdvancesIsNotSeen() = runTest {
+        val board = Board(this).apply { holders = setOf(ada, bo) }
+        val departed = board.start()
+
+        advanceTimeBy(Departures.BOOT_GRACE - 15.seconds)
+        board.post(entry(ada, "mcp-ada-1"))
+        board.post(entry(bo, "mcp-bo-1"))
+        advanceTimeBy(Presence.EVERY)
+        board.post(entry(bo, "mcp-bo-1"))
+        advanceTimeBy(2.hours)
+        runCurrent()
+        assertAll(
+            { assertEquals(setOf(ada, bo), board.posters(), "rig: both entries reached the host") },
+            { assertEquals(listOf(ada to DepartReason.Crashed), departed, "only the entry that never advanced departs") },
+        )
     }
 
     /** A person holding a claim is never departed for being unseen. An agent beside them, the control, is. */
@@ -257,11 +288,11 @@ class DeparturesTest {
     ) = PresenceEntry(identity, NodeId(claimsNode), status = null, lastActedAt = lastActedAt, waiting = waiting)
 
     /**
-     * A scripted board: presence entries the test can [post], the claim [holders] the voter's
-     * table shows, and a partition-event stream the test drives.
+     * A scripted board: presence slots the test can [post] to, one per identity, the claim
+     * [holders] the voter's table shows, and a partition-event stream the test drives.
      */
     private class Board(private val test: TestScope, vararg entries: PresenceEntry) {
-        private val presence = entries.toMutableList()
+        private val slots = MutableStateFlow(EphemeralMap.empty<PresenceEntry>())
         private val events = MutableSharedFlow<PartitionEvent>(extraBufferCapacity = 16)
         private val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
 
@@ -276,7 +307,8 @@ class DeparturesTest {
             val proposed = mutableListOf<Pair<PeerIdentity, DepartReason>>()
             Departures(
                 events,
-                { presence.toList() },
+                { slots.value.entries.values.mapNotNull { it.value } },
+                slots,
                 { holders },
                 { who, why ->
                     proposed += who to why
@@ -289,10 +321,19 @@ class DeparturesTest {
             return proposed
         }
 
-        /** A peer's presence reaches the host. */
-        fun post(entry: PresenceEntry) {
-            presence += entry
+        init {
+            entries.forEach(::post)
         }
+
+        /** A post of [entry] reaches the host, at a clock one past its slot's last. */
+        fun post(entry: PresenceEntry) {
+            val replica = ReplicaId(entry.identity.toString())
+            slots.update { it.put(replica, entry, (it.entries[replica]?.clock ?: 0) + 1) }
+            test.testScheduler.runCurrent()
+        }
+
+        /** Whoever has an entry on the board. */
+        fun posters(): Set<PeerIdentity> = slots.value.entries.values.mapNotNull { it.value?.identity }.toSet()
 
         suspend fun lose(claimsNode: String) {
             events.emit(PartitionEvent.PeerLost(PeerId(claimsNode), clock()))
