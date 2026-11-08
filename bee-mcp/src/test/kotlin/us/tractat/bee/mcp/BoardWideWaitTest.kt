@@ -82,6 +82,7 @@ class BoardWideWaitTest {
         iainPage.mutate { it.appendRecord(iain, click(it, "kanban", "go")) }
         ada.client.state.first { it.records().size == 3 }
 
+        val listedBefore = ada.listBoard(since = null)
         val before = ada.drain(cursor = null)
         ada.call(BeeTools.OPEN, openArgs("diagram"))
         boPage.state.first { "diagram" in it.openSurfaces() }
@@ -89,17 +90,20 @@ class BoardWideWaitTest {
         iainPage.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
         ada.client.state.first { it.records().size == 5 }
         val after = ada.drain(cursor = before.cursor)
-        val left = ada.call(WaitTool.LIST, mapOf("since" to after.cursor)).json().getValue("records").jsonArray
+        val listedAfter = ada.listBoard(since = listedBefore.second)
+        val left = ada.listBoard(since = after.cursor).first
 
         val onBoard = ada.client.state.value.records().map { (id, _) -> BoardActionSource.recordId(id) }
         val returned = before.ids + after.ids
+        val listed = listedBefore.first + listedAfter.first
         assertAll(
+            { assertEquals(onBoard, listed, "the lists, resumed from a board-wide cursor, read every record once, in order") },
             { assertEquals(3, before.ids.size, "rig: the first drain met three records: ${before.ids}") },
             { assertEquals(returned.distinct(), returned, "no record was returned twice") },
             { assertEquals(onBoard.toSet(), returned.toSet(), "every record on the board was returned") },
             { assertEquals(setOf("poll", "kanban", "diagram"), (before.surfaces + after.surfaces).toSet()) },
             { assertEquals(setOf(iain.value, bo.value), returned.map { it.substringBeforeLast(':') }.toSet(), "from both authors") },
-            { assertEquals(0, left.size, "a board-wide list from the last cursor finds nothing left") },
+            { assertEquals(emptyList(), left, "a board-wide list from the last wait's cursor finds nothing left") },
         )
         rig.close()
     }
@@ -166,6 +170,12 @@ class BoardWideWaitTest {
             records += waited.record()
         }
         return Drained(records.map { it.string("recordId") }, records.map { it.string("surfaceId") }, checkNotNull(at))
+    }
+
+    /** A board-wide list's record ids and cursor. */
+    private suspend fun Session.listBoard(since: String?): Pair<List<String>, String> {
+        val json = call(WaitTool.LIST, buildMap { since?.let { put("since", it) } }).json()
+        return json.getValue("records").jsonArray.map { it.jsonObject.string("recordId") } to json.getValue("cursor").jsonPrimitive.content
     }
 
     private suspend fun Session.waitBoard(cursor: String? = null, timeoutSeconds: Int = 30): Waited {
