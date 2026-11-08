@@ -31,7 +31,7 @@ import kotlin.time.Duration.Companion.seconds
  *   inside its card under [root], so a surface and its header are one element on the page.
  *   A card is made by whichever comes first, the renderer or the board's view.
  * - **Cards never move.** [root] is a flex column, and each card's CSS `order` is its place in
- *   the board's order. Moving a node would re-attach its surface: a focused field loses focus,
+ *   [BoardView]'s order, newest first. Moving a node would re-attach its surface: a focused field loses focus,
  *   and a Sketch iframe reloads and drops its pending proposals.
  * - **A placeholder joins its card.** [BoardDriver] puts an invalid surface's placeholder in
  *   [root]; the chrome moves it into that surface's card as soon as it appears.

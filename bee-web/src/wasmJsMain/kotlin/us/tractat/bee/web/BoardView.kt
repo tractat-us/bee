@@ -64,8 +64,13 @@ data class CardView(
 )
 
 /**
- * What the page shows around the renderer: a card per open surface, in the board's order, and the
- * attached strip. Pure: it reads a board and the live presence, and the DOM is [BoardChrome]'s.
+ * What the page shows around the renderer: a card per open surface, and the attached strip. Pure:
+ * it reads a board and the live presence, and the DOM is [BoardChrome]'s.
+ *
+ * **The cards.** Newest first: the board's open order ([BoardState.openSurfaces], by each
+ * surface's `openedAt`) reversed, so a surface an agent draws mid-meeting shows on top, where the
+ * room sees it appear, not below a tall card off-screen. An update leaves `openedAt` alone, so a
+ * card someone is reading never moves; a reopened surface keeps its original place.
  *
  * **The strip.** Every attached peer: people first, then agents, by name. An agent the host
  * departed shows as [PeerState.Departed], faded, while its last entry is still on this board,
@@ -113,7 +118,7 @@ data class BoardView(val cards: List<CardView>, val peers: List<PeerView>) {
 
         private fun cards(state: BoardState, attached: Map<PeerIdentity, PresenceEntry>, departed: Map<PeerIdentity, DepartReason>): List<CardView> {
             val claims = claimsBySurface(state)
-            return state.openSurfaces().map { id ->
+            return state.openSurfaces().asReversed().map { id ->
                 val meta = requireNotNull(state.meta(id)) { "Open surface $id has no meta." }
                 CardView(
                     surfaceId = id,

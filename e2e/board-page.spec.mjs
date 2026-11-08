@@ -8,9 +8,14 @@ const WORKING_ON = 'drawing the board page';
 const SURFACE = 'board-page-card';
 const TITLE = 'Pick a lunch spot';
 const CLAIM = `card:${SURFACE}/tacos`;
-// Opened before FIELD (ids tie-break the same way), so reopening it puts its card ahead of FIELD's.
+// Opened before FIELD (ids tie-break the same way), so reopening it puts its card back behind FIELD's.
 const OLDER = 'board-page-a-older';
 const FIELD = 'board-page-b-field';
+// Opened after FIELD, so its card lands ahead of FIELD's.
+const NEWER = 'board-page-c-newer';
+// Opened one after the other, for the newest-first order.
+const FIRST = 'board-page-d-first';
+const SECOND = 'board-page-e-second';
 
 let agent;
 let identity;
@@ -44,7 +49,7 @@ test.afterAll(async () => {
   try {
     if (token) expect((await agent.call('bee_release', { target: CLAIM, token })).released).toBe(true);
   } finally {
-    for (const surfaceId of [SURFACE, OLDER, FIELD]) await agent?.call('bee_surface_close', { surfaceId }).catch(() => {});
+    for (const surfaceId of [SURFACE, OLDER, FIELD, NEWER, FIRST, SECOND]) await agent?.call('bee_surface_close', { surfaceId }).catch(() => {});
     // The bridge ends as a crash does, so the host departs it after the learner grace.
     await agent?.kill();
   }
@@ -57,6 +62,8 @@ async function open(page, name) {
 
 const peer = (page, who) => page.locator(`#peers li.bee-peer[data-peer="${who}"]`);
 const card = (page) => page.locator(`#board article.bee-card[data-surface-id="${SURFACE}"]`);
+/** Where card [id] shows on [page]: its CSS `order`, which the chrome sets instead of moving cards. */
+const position = (page, id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`).evaluate((e) => Number(e.style.order));
 
 test('the strip shows an attached agent with its working-on line, and the person', async ({ page }) => {
   await open(page, 'alex');
@@ -90,7 +97,7 @@ test('a claimed card shows who holds it', async ({ page }) => {
   await expect(badge).toHaveText('claimed by e2e-agent');
 });
 
-test('a focused field keeps its focus, and a Sketch its frame, when a card is reopened from history ahead of them', async ({ browser, page }) => {
+test('a focused field keeps its focus, and a Sketch its frame, when a card is reopened from history or a newer one opens ahead of them', async ({ browser, page }) => {
   await agent.call('bee_surface_open', { surfaceId: OLDER, title: 'Older', components: [{ id: 'root', component: 'Text', text: 'older' }] });
   await agent.call('bee_surface_open', {
     surfaceId: FIELD,
@@ -127,12 +134,38 @@ test('a focused field keeps its focus, and a Sketch its frame, when a card is re
     await expect(field).toBeFocused();
     await expect(field).toHaveValue('half a thought');
     expect(await sketch.evaluate((frame) => frame.contentWindow === window.__sketchWindow)).toBe(true);
-    // Shown in the board's order by style, so no card was moved.
-    const position = (id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`).evaluate((e) => Number(e.style.order));
-    expect(await position(OLDER)).toBeLessThan(await position(FIELD));
+    // Shown newest first by style, so no card was moved: a reopened card keeps its place behind.
+    expect(await position(page, OLDER)).toBeGreaterThan(await position(page, FIELD));
+
+    // A newer surface opens on top, ahead of the field's card, without re-attaching it.
+    await agent.call('bee_surface_open', { surfaceId: NEWER, title: 'Newer', components: [{ id: 'root', component: 'Text', text: 'newer' }] });
+    await expect(page.locator(`#board article.bee-card[data-surface-id="${NEWER}"] .bee-card-title`)).toHaveText('Newer', { timeout: 10_000 });
+    expect(await position(page, NEWER)).toBeLessThan(await position(page, FIELD));
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue('half a thought');
+    expect(await sketch.evaluate((frame) => frame.contentWindow === window.__sketchWindow)).toBe(true);
   } finally {
     await other.close();
   }
+});
+
+test('the newest surface shows on top, and an update leaves a card where it is', async ({ page }) => {
+  await open(page, 'alex');
+  await agent.call('bee_surface_open', { surfaceId: FIRST, title: 'First', components: [{ id: 'root', component: 'Text', text: 'first' }] });
+  await agent.call('bee_surface_open', { surfaceId: SECOND, title: 'Second', components: [{ id: 'root', component: 'Text', text: 'second' }] });
+  const first = page.locator(`#board article.bee-card[data-surface-id="${FIRST}"]`);
+  const second = page.locator(`#board article.bee-card[data-surface-id="${SECOND}"]`);
+  await expect(second.locator('.bee-card-title')).toHaveText('Second', { timeout: 10_000 });
+  await expect(first.locator('.bee-card-title')).toHaveText('First');
+  const top = async (card) => (await card.boundingBox()).y;
+  // Above on the page, where the room sees it, and newest in the style order.
+  expect(await top(second)).toBeLessThan(await top(first));
+  expect(await position(page, SECOND)).toBeLessThan(await position(page, FIRST));
+
+  await agent.call('bee_surface_update', { surfaceId: FIRST, components: [{ id: 'root', component: 'Text', text: 'first, changed' }] });
+  await expect(first.locator('a2ui-surface')).toContainText('first, changed', { timeout: 10_000 });
+  expect(await top(second)).toBeLessThan(await top(first));
+  expect(await position(page, SECOND)).toBeLessThan(await position(page, FIRST));
 });
 
 test('the debug lines sit under a collapsed Details, off the board', async ({ page }) => {
