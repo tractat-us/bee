@@ -122,9 +122,15 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
     '})();</script>');
   const context = await browser.newContext();
   const page = await context.newPage();
-  const probed = [];
-  page.on('request', (request) => { if (request.url().includes('sketch-probe')) probed.push(request.url()); });
-  page.on('websocket', (ws) => { if (ws.url().includes('sketch-probe')) probed.push(ws.url()); });
+  // Chromium reports a load the CSP blocked as a request that failed, never sent. So what counts
+  // is a probe that got an answer from the host (a 404 is an answer) or a socket that opened.
+  const reached = [];
+  const blocked = [];
+  page.on('response', (response) => { if (response.url().includes('sketch-probe')) reached.push(response.url()); });
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('sketch-probe')) blocked.push(`${request.url()} ${request.failure()?.errorText}`);
+  });
+  page.on('websocket', (ws) => { if (ws.url().includes('sketch-probe')) reached.push(ws.url()); });
   await page.goto('/?name=kim');
   const frame = sketchFrame(page);
   await expect(frame.locator('#probe')).not.toHaveText('running', { timeout: 15_000 });
@@ -135,7 +141,9 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
   expect(outcome.fetch).toBe('blocked');
   // CSP blocks a WebSocket either by throwing or by never sending it; the request log decides.
   await page.waitForTimeout(1_000);
-  expect(probed).toEqual([]);
+  expect(reached).toEqual([]);
+  // Control: the image load was attempted and refused, so the probe could have seen one.
+  expect(blocked.some((b) => b.includes('/img.png'))).toBe(true);
   // The parent's DOM is untouched by the sketch: the page still shows the board as before.
   await expect(page.locator('#status')).toHaveText(/^online/);
   await context.close();
