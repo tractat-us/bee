@@ -24,6 +24,7 @@ import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
 import java.nio.file.Files
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -111,8 +112,7 @@ class BeeHost private constructor(
                     boardMirror(relay),
                     clock,
                 )
-                val roster = LivePresence(relay.state, clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
-                val departures = Departures(claimsLinkLoss(voter.membership, clock), roster::live, voter::depart, clock = clock).start(scope)
+                val departures = hostDepartures(voter, relay.state, scope, clock).start(scope)
                 return BeeHost(bound, relay, voter, departures, server)
             } catch (failure: Throwable) {
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
@@ -124,3 +124,12 @@ class BeeHost private constructor(
 
 /** The voter's [ClaimMirror] onto [relay]'s board: the claims mirror and the departed list (A2). */
 fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.mutate { it.mirrorClaims(relay.replica, table) } }
+
+/**
+ * The host's [Departures]: a crash is a claims node [voter] drops ([claimsLinkLoss], bee#28),
+ * matched against the presence on [board]; `Depart`s go through [voter].
+ */
+internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, scope: CoroutineScope, clock: () -> Instant): Departures {
+    val roster = LivePresence(board, clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
+    return Departures(claimsLinkLoss(voter.membership, clock), roster::live, voter::depart, clock = clock)
+}
