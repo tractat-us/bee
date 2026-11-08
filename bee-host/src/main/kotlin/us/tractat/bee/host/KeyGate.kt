@@ -72,10 +72,22 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * whatever request Ktor routes there, however its path was spelled. It is on whatever [Reach] the
  * host binds; on [Reach.Loopback] no call can fail it.
  *
+ * Before any of that, **every** call passes [site], on every route, keyed or not ([installSiteGate],
+ * bee#45): loopback needs no key, so the key gate alone would let any site open in a browser on
+ * the laptop reach the board.
+ *
  * @param peers where each call came from; production passes [PeerAddress.DIRECT]
+ * @param arrivals where each call arrived; production passes [ArrivalAddress.DIRECT]
  * @param desk serves the pairing channel, over [pairing]
  */
-fun Application.mountEndpoints(pairing: Pairing, peers: PeerAddress, desk: PairingDesk): HostEndpoints {
+fun Application.mountEndpoints(
+    pairing: Pairing,
+    site: SiteRule,
+    peers: PeerAddress,
+    arrivals: ArrivalAddress,
+    desk: PairingDesk,
+): HostEndpoints {
+    installSiteGate(site, arrivals)
     installBoundedWebSockets()
     install(SSE)
     val board = KtorConnectionSource(this, BoardRelay.PATH)
