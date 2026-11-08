@@ -26,9 +26,9 @@ internal class Handshakes(private val port: Int) {
         )
     }
 
-    /** The status of a plain `GET` of [path], with [host]. */
-    fun get(path: String, host: String = "127.0.0.1:$port"): String =
-        exchange("GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n")
+    /** The status of a plain `GET` of [path], with [host] and these other [headers], each `name: value`. */
+    fun get(path: String, host: String = "127.0.0.1:$port", vararg headers: String): String =
+        exchange("GET $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Connection: close\r\n\r\n")
 
     private fun exchange(request: String): String = Socket().use { socket ->
         socket.connect(InetSocketAddress("127.0.0.1", port), TIMEOUT_MS)

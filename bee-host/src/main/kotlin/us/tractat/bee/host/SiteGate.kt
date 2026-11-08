@@ -1,11 +1,13 @@
 package us.tractat.bee.host
 
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
+import io.ktor.server.request.path
 import io.ktor.server.response.respond
 import java.net.InetAddress
 
@@ -31,6 +33,26 @@ fun interface ArrivalAddress {
  * - its `Origin`, if it has one, is the host's own: `http://` and the call's `Host`. A page from
  *   any other site, or from another port on this machine, has another origin, and a browser
  *   always says so on a WebSocket. The JVM bridge sends no `Origin`, so a missing one passes.
+ * - its Fetch Metadata, if it has any, says what the call's path allows (bee#54). A page loading
+ *   the host as an `<img>`, a `<script>`, a frame or a no-cors `fetch` sends no `Origin`, but a
+ *   browser marks it `Sec-Fetch-Site: cross-site`, or `same-site` from another port on this
+ *   machine. So:
+ *   - **the page**, at a path in [PAGE_PATHS], takes a top-level navigation from anywhere:
+ *     `Sec-Fetch-Mode: navigate` with `Sec-Fetch-Dest: document` from another site, so a join
+ *     link opened from chat still works, and `none`, a typed URL or a bookmark. A call from another
+ *     site that isn't such a navigation is refused, so no site frames the page. A prefetch or a
+ *     prerender (`Sec-Purpose`) is refused here too, even from the host's own site: Chrome would
+ *     admit the page, then see its subresources and sockets refused, and activate it blank. On a
+ *     refusal Chrome drops the speculation and navigates normally.
+ *   - **every other path** (`/pair`, `/board-id`, the sockets, the page's scripts) takes only
+ *     `same-origin`, which is the page's own calls. No legitimate caller navigates to one, and a
+ *     browser marks a navigation it can't attribute `none`: Chromium marks another site's
+ *     speculation-rules prefetch that way. A call carrying `Sec-Purpose` is refused
+ *     on every path, as above.
+ *
+ *   A call with no `Sec-Fetch-Site` passes on any path: the bridge sends none, nor does a browser
+ *   older than these headers. The page paths are an allow-list, so any other spelling of a path,
+ *   such as `/%70air`, gets the stricter rule.
  *
  * A browser can reach a loopback host from any page it shows, and loopback needs no key
  * ([mountEndpoints]), so without this any site open on the laptop could read and write the board.
@@ -41,21 +63,44 @@ fun interface ArrivalAddress {
 class SiteRule(names: Set<String>) {
     private val names: Set<String> = names.mapTo(mutableSetOf(LOCALHOST)) { it.lowercase() }
 
-    /** Why a call with these headers, arriving at [arrival], isn't from the host's site; null if it is. */
-    fun refusal(host: String?, origin: String?, arrival: Arrival): String? {
+    /**
+     * Why a call to [path] (as sent, before any decoding, without its query), with [headers] and
+     * arriving at [arrival], isn't from the host's site; null if it is.
+     */
+    fun refusal(path: String, headers: Headers, arrival: Arrival): String? {
+        val host = headers[HttpHeaders.Host]
+        val origin = headers[HttpHeaders.Origin]
         val named = host?.let(::authority)
         return when {
             named == null || !answersTo(named, arrival) -> "This host doesn't go by \"$host\"."
             origin != null && origin.lowercase() != "http://${named.spelled}" -> "Only the board's own page may call this host, not one from $origin."
+            headers[SEC_PURPOSE] != null -> "This host doesn't answer a prefetch or a prerender."
+            path in PAGE_PATHS -> "Another site may only link to the board's page, not load it.".takeIf { fromAnotherSite(headers) && !topLevelNavigation(headers) }
+            !fromOwnOriginOrUnmarked(headers) -> "Only the board's own page may call this; another site may only link to the page."
             else -> null
         }
     }
+
+    private fun fromAnotherSite(headers: Headers): Boolean =
+        headers[FETCH_SITE].let { it.equals("cross-site", ignoreCase = true) || it.equals("same-site", ignoreCase = true) }
+
+    private fun topLevelNavigation(headers: Headers): Boolean =
+        headers[FETCH_MODE].equals("navigate", ignoreCase = true) && headers[FETCH_DEST].equals("document", ignoreCase = true)
+
+    private fun fromOwnOriginOrUnmarked(headers: Headers): Boolean =
+        headers[FETCH_SITE].let { it == null || it.equals("same-origin", ignoreCase = true) }
 
     private fun answersTo(named: Authority, arrival: Arrival): Boolean =
         named.port == arrival.port && (named.name in names || sameAddress(named.name, arrival.address))
 
     private companion object {
+        /** The page's own paths, the only ones another site may navigate to: what `staticResources("/", "web")` serves as `index.html`. */
+        val PAGE_PATHS = setOf("/", "/index.html")
         const val LOCALHOST = "localhost"
+        const val SEC_PURPOSE = "Sec-Purpose"
+        const val FETCH_SITE = "Sec-Fetch-Site"
+        const val FETCH_MODE = "Sec-Fetch-Mode"
+        const val FETCH_DEST = "Sec-Fetch-Dest"
         const val HTTP_PORT = 80
         const val MAX_PORT = 65_535
     }
@@ -99,7 +144,11 @@ class SiteRule(names: Set<String>) {
 /**
  * Refuses, with a 403 before any route runs, every call [rule] says isn't from the host's own site.
  * Installed on the application, not on chosen routes, so a route added later, anywhere, is behind
- * it too: the board and claims sockets, `/pair`, `/board-id` and the page alike.
+ * it too: the board and claims sockets, `/pair`, `/board-id` and the page alike. A browser marks a
+ * call from another site by its `Origin` or its Fetch Metadata, so no page on another site reaches
+ * any of them except by a top-level navigation to the page itself, which only opens the board's
+ * own page, or in a browser too old to send Fetch Metadata ([SiteRule]). The rule sees the path
+ * as the call spelled it, so a route added later is held to the stricter, non-page rule.
  *
  * Workaround for kuilt#3146, which asks kuilt's server looms for a handshake check of their own.
  */
@@ -107,7 +156,7 @@ fun Application.installSiteGate(rule: SiteRule, arrivals: ArrivalAddress) {
     install(
         createApplicationPlugin("BeeSiteGate") {
             onCall { call ->
-                val refusal = rule.refusal(call.request.headers[HttpHeaders.Host], call.request.headers[HttpHeaders.Origin], arrivals.of(call))
+                val refusal = rule.refusal(call.request.path(), call.request.headers, arrivals.of(call))
                 if (refusal != null) call.respond(HttpStatusCode.Forbidden, refusal)
             }
         },

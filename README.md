@@ -10,11 +10,11 @@ list of who's doing what, then a code review. After that, maybe nothing at all, 
 The board remembers. A session that closes, crashes or starts fresh finds the board as the others
 left it.
 
-**Status:** early. The pieces run on their own: two browsers edit one board live through the host,
-a Claude session's bridge survives `/clear`, and two peers racing for one task get
-exactly one winner. Joining them into one working board is
-[Task 7 of the plan](docs/superpowers/plans/2026-11-06-bee-v1.md#task-7-join-which-completes-spikes-3-and-4),
-and each spike's notes are in [`docs/spikes/`](docs/spikes/).
+**Status:** early, but a board runs end to end. A Claude session draws a question on the board,
+you click it in a browser, and the session reads the click and redraws. The board survives a host
+restart. [Run a board](docs/setup.md#run-a-board) is the shortest way to try it. The plan's
+[remaining tasks](docs/superpowers/plans/2026-11-06-bee-v1.md) and each spike's notes in
+[`docs/spikes/`](docs/spikes/) say what is still open.
 
 bee is built on [kuilt](https://github.com/tractat-us/kuilt), which keeps every copy of the board
 in step. [bee and kuilt](docs/bee-and-kuilt.md) says which part does what.

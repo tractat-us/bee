@@ -90,4 +90,55 @@ class SiteGateTest {
             { assertEquals(OK, calls.get(BoardId.PATH, named)) },
         )
     }
+
+    /**
+     * A page on another site that loads `/pair` as an `<img>`, a `<script>` or a no-cors `fetch`
+     * sends no `Origin`, only Fetch Metadata (bee#54). Admitted, it would hold a pairing slot open
+     * and post its `?screen=` text to the board as a join request.
+     */
+    @Test
+    fun aSubresourceFromAnotherSiteIsRefusedByItsFetchMetadata() {
+        assertAll(
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "an <img> on another site") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, SAME_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "an <img> on another loopback port") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: empty"), "a no-cors fetch") },
+            { assertEquals(FORBIDDEN, calls.get("/", own, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: iframe"), "the board page framed by another site") },
+            { assertEquals(FORBIDDEN, calls.get(BoardId.PATH, own, CROSS_SITE, "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty")) },
+        )
+    }
+
+    /**
+     * No legitimate caller navigates to `/pair`: the page opens it as an event stream, and a join
+     * link opens the page. Chromium marks a speculation-rules prefetch from another site's page
+     * `none` with `Sec-Purpose: prefetch`, and another site setting `location.href` is a
+     * `cross-site` navigation, so `/pair` takes neither (bee#55's review).
+     */
+    @Test
+    fun aNavigationOrAPrefetchOfThePairingChannelIsRefused() {
+        assertAll(
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, NONE, NAVIGATE, DOCUMENT, "Sec-Purpose: prefetch"), "another site's speculation rules") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, CROSS_SITE, NAVIGATE, DOCUMENT), "another site setting location.href") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, NONE, NAVIGATE, DOCUMENT), "a typed URL") },
+        )
+    }
+
+    /** A join link opened from chat navigates to the page, and the page's own calls are same-origin. */
+    @Test
+    fun aNavigationToThePageTheBoardsOwnCallsAndNoFetchMetadataAreAdmitted() {
+        assertAll(
+            { assertEquals(OK, calls.get("/", own, CROSS_SITE, NAVIGATE, DOCUMENT), "the board page, from a link") },
+            { assertEquals(OK, calls.get("/", own, NONE, NAVIGATE, DOCUMENT), "the board page, typed or bookmarked") },
+            { assertEquals(OK, calls.get(PAIR, own, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty"), "the board page's own channel") },
+            { assertEquals(OK, calls.get(PAIR, own), "no Fetch Metadata: the bridge, or an older browser") },
+        )
+    }
+
+    private companion object {
+        const val PAIR = "${PairingWire.PATH}?${PairingWire.SCREEN_PARAM}=probe"
+        const val CROSS_SITE = "Sec-Fetch-Site: cross-site"
+        const val SAME_SITE = "Sec-Fetch-Site: same-site"
+        const val NONE = "Sec-Fetch-Site: none"
+        const val NAVIGATE = "Sec-Fetch-Mode: navigate"
+        const val DOCUMENT = "Sec-Fetch-Dest: document"
+    }
 }

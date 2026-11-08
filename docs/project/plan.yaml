@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T04:51Z"
+as_of: "2026-11-08T06:02Z"
 
 sources:
   - title: "v1 plan"
@@ -54,6 +54,8 @@ order:
   - bee-49
   - bee-53
   - bee-54
+  - bee-58
+  - bee-60
   - bee-14
   - bee-19
   - bee-23
@@ -79,6 +81,7 @@ order:
   - kuilt-3144
   - kuilt-3145
   - kuilt-3146
+  - kuilt-own-write-ack
   - out-cla
   - out-kuilt-references
 
@@ -189,9 +192,9 @@ items:
   task-8:
     kind: task
     title: "Sketch and the companion adapter (spike 5, the acceptance test)"
-    status: in-flight
-    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 needs a rebase onto #51 and #52."
-    depends_on: [bee-27]
+    status: waiting-on-iain
+    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 holds before merge for Iain's ruling on #60, and until the kuilt gap its KDoc names is filed."
+    depends_on: [bee-27, bee-60]
     started: "2026-11-08T02:13Z"
     estimate:
       low: 2
@@ -374,28 +377,53 @@ items:
   bee-53:
     kind: issue
     title: "ClaimsSmokeTest and FrameBoundTest fail intermittently in the smoke job"
-    status: next
-    summary: "A bug, ready to start."
+    status: done
+    summary: "Fixed by #57 for ClaimsSmokeTest, which now waits on conditions, not time. FrameBoundTest's missing 1009 close frame is #58."
     started: "2026-11-08T04:31Z"
+    landed: "2026-11-08T05:27Z"
     links:
       - { title: "bee#53", url: "https://github.com/tractat-us/bee/issues/53" }
+      - { title: "bee#57", url: "https://github.com/tractat-us/bee/pull/57" }
 
   bee-54:
     kind: issue
     title: "Refuse cross-site requests by Fetch Metadata: a no-Origin GET can still fill the pairing slots"
-    status: in-flight
-    summary: "A follow-up to #51."
+    status: done
+    summary: "A follow-up to #51, fixed by #55."
     started: "2026-11-08T04:40Z"
+    landed: "2026-11-08T05:36Z"
     links:
       - { title: "bee#54", url: "https://github.com/tractat-us/bee/issues/54" }
       - { title: "bee#55", url: "https://github.com/tractat-us/bee/pull/55" }
 
+  bee-58:
+    kind: decision
+    title: "The host can hang up on an over-bound frame without its 1009 close frame"
+    status: waiting-on-iain
+    summary: "Iain decides whether the host must deliver the 1009 or a hang-up is an acceptable refusal. If it must, the fix lives in Ktor or kuilt."
+    started: "2026-11-08T05:15Z"
+    links:
+      - { title: "bee#58", url: "https://github.com/tractat-us/bee/issues/58" }
+
+  bee-60:
+    kind: decision
+    title: "Decision: a Sketch can forge the viewer's choice in Chromium, by focusing itself"
+    status: waiting-on-iain
+    summary: "Iain decides whether a Sketch only proposes a choice and the page commits it outside the frame, or v1 accepts and documents the Chromium-only forgery. Found by #38's fifth review; WebKit blocks the focus steal, and Firefox is untested."
+    started: "2026-11-08T06:01Z"
+    links:
+      - { title: "bee#60", url: "https://github.com/tractat-us/bee/issues/60" }
+
   bee-49:
-    kind: issue
+    kind: decision
     title: "A Sketch can still reach the network through WebRTC, which CSP doesn't cover"
-    status: later
-    summary: "A bug that needs a design before work starts."
+    status: done
     started: "2026-11-08T03:41Z"
+    landed: "2026-11-08T17:30Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Accepted as a v1 limit and documented in the spec; revisit when an engine ships a control."
+      url: "https://github.com/tractat-us/bee/issues/49#issuecomment-6724762977"
     links:
       - { title: "bee#49", url: "https://github.com/tractat-us/bee/issues/49" }
 
@@ -597,6 +625,14 @@ items:
     started: "2026-11-08T04:01Z"
     links:
       - { title: "kuilt#3146", url: "https://github.com/tractat-us/kuilt/issues/3146" }
+
+  kuilt-own-write-ack:
+    kind: kuilt
+    title: "Quilter: a caller can't wait until its own write is acknowledged"
+    status: next
+    summary: "Not yet filed. Quilter.mutate doesn't return its sequence number, so #38 counts writes against universalAckFlow instead. #38's KDoc holds the PR until the issue is filed and named there."
+    links:
+      - { title: "bee#38", url: "https://github.com/tractat-us/bee/pull/38" }
 
   # ── Outside the code ─────────────────────────────────────────────────
   out-cla:
