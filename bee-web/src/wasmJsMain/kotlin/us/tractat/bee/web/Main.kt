@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -285,16 +286,18 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
         reloadOnAnotherBoard(scope, client, pin)
 
         scope.launch {
-            combine(client.online, client.lastFailure) { online, failure ->
-                when {
-                    online -> "online as $actor"
-                    failure != null -> "offline: ${failure.message ?: failure::class.simpleName}"
-                    else -> "offline"
+            combine(client.online, client.lastFailure) { online, failure -> StatusLine.of(online, actor, failure) }
+                .distinctUntilChanged()
+                .collect { line ->
+                    status.textContent = line.text
+                    if (line.detail.isEmpty()) {
+                        status.removeAttribute("title")
+                    } else {
+                        status.setAttribute("title", line.detail)
+                        log.info { "Offline: ${line.detail}" }
+                    }
+                    status.setAttribute("data-online", client.online.value.toString())
                 }
-            }.collect {
-                status.textContent = it
-                status.setAttribute("data-online", client.online.value.toString())
-            }
         }
         scope.launch { client.state.collect { showRecords(records, it) } }
         client.connect()

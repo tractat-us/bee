@@ -123,6 +123,8 @@ test('an edit made while the host is down reaches it from a closed tab', async (
 
   await host.stop();
   await expect(page.locator('#status')).toHaveText(/^offline/, { timeout: 15_000 });
+  // A person reads the bar: the socket's failure, a serialized event in a browser, is only its tooltip.
+  await expect(page.locator('#status')).toHaveText('offline — reconnecting…', { timeout: 15_000 });
   await field(page, 'typing').fill('made while the host was down');
   await expect.poll(() => savedCopy(page), { timeout: 10_000 }).toContain('made while the host was down');
   await page.close();
