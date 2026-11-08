@@ -153,15 +153,16 @@ its policy, for now, is not to reference other `tractat-us` projects
 
 ## How bee gets kuilt
 
-bee builds against published kuilt releases, the same way any outside app would. A single version
-number, `kuilt` in `gradle/libs.versions.toml`, lines up every kuilt module bee uses, so moving to
-a new kuilt is a one-line change.
+bee builds against published kuilt dev builds, fetched as packages by their Maven coordinates
+rather than built from kuilt's source. They come from tractat-us's own private package store, so a
+build needs its credentials. A single version number, `kuilt` in `gradle/libs.versions.toml`, lines
+up every kuilt module bee uses, so moving to a new kuilt build is a one-line change.
 
 To work on both at once, put a kuilt checkout beside bee's, at `../kuilt`. Gradle then builds bee
-against that checkout instead of the release, which is called a *composite build*. The switch is
-one line in `settings.gradle.kts`:
+against that checkout instead of the published build, which is called a *composite build*. The
+switch is one line in `settings.gradle.kts`:
 `if (file("../kuilt").exists()) includeBuild("../kuilt")`. CI and agents working in their own
-worktrees have no checkout beside them, so they always build against the release.
+worktrees have no checkout beside them, so they always build against the published build.
 
 ## A paused kuilt project bee borrows from
 
