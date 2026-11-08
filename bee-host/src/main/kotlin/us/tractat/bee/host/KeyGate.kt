@@ -9,10 +9,14 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.response.respond
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
+import io.ktor.server.websocket.pingPeriod
+import io.ktor.server.websocket.timeout
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
+import us.tractat.kuilt.websocket.KtorServerLoom
 import java.net.InetAddress
 
 /** The address a call came from, as an IP literal. */
@@ -71,6 +75,7 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * @param desk serves the pairing socket, over [pairing]
  */
 fun Application.mountEndpoints(pairing: Pairing, peers: PeerAddress, desk: PairingDesk): HostEndpoints {
+    installBoundedWebSockets()
     val board = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
     val admits = { call: ApplicationCall ->
@@ -84,6 +89,21 @@ fun Application.mountEndpoints(pairing: Pairing, peers: PeerAddress, desk: Pairi
         staticResources("/", "web")
     }
     return HostEndpoints(board, claims)
+}
+
+/**
+ * Installs Ktor's [WebSockets] with a [MAX_FRAME_BYTES] bound, before kuilt's endpoints would
+ * install it unbounded. kuilt skips its own install when the plugin is already there, so this sets
+ * kuilt's ping too: [KtorServerLoom.DEFAULT_PING_PERIOD] as both period and pong timeout, exactly
+ * what kuilt installs, or a half-open link would never be torn down. Workaround for kuilt#3145,
+ * which asks kuilt's install to take a frame bound.
+ */
+private fun Application.installBoundedWebSockets() {
+    install(WebSockets) {
+        pingPeriod = KtorServerLoom.DEFAULT_PING_PERIOD
+        timeout = KtorServerLoom.DEFAULT_PING_PERIOD
+        maxFrameSize = MAX_FRAME_BYTES
+    }
 }
 
 /** [KeyGate]'s rule. The default refuses every call, so a gate installed unconfigured fails closed. */
