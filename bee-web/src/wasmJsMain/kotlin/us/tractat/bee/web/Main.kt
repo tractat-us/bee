@@ -2,20 +2,28 @@ package us.tractat.bee.web
 
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
 import kotlinx.browser.document
+import kotlinx.browser.sessionStorage
 import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import org.w3c.dom.Element
 import org.w3c.dom.url.URLSearchParams
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.PairingEnd
+import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.kuilt.core.PeerId
@@ -32,22 +40,152 @@ import kotlin.uuid.Uuid
 /** The host's board relay route (bee-host's `BoardRelay.PATH`). */
 private const val BOARD_PATH = "/ws/board"
 
+/** Where this tab keeps the key pairing gave it. A tab's own storage: a new tab on a LAN device pairs again. */
+private const val KEY_STORAGE = "bee.lan.key"
+
+/** How this page may reach the host's board (spec §5.7). */
+private sealed interface Access {
+    /** The page came from this machine: the host needs no key from it. */
+    data object Loopback : Access
+
+    /** The page holds [key], from a join link's `?k=` or from pairing. */
+    data class Keyed(val key: String) : Access
+
+    /** The page came over the network with no key: it pairs before it sees anything. */
+    data object NeedsPairing : Access
+}
+
 /**
  * The bee page: this tab's replica of the board, behind the stock renderer.
  *
- * The person is `human:<name>`, from `?name=` (A7's `localStorage` name comes with join, Task 7).
+ * - **Who.** `?screen=<name>` makes a room screen, the human peer `human:<name>` (A7). Otherwise
+ *   the person is `human:<name>`, from `?name=` (A7's `localStorage` name is still to come). The
+ *   page has no claims client, so neither ever proposes a claim; a screen must stay that way when
+ *   the page gains one.
+ * - **Where.** Every socket goes back to the host and scheme the page came from, so a page opened
+ *   as `http://tractatus.local:8233/` dials `ws://tractatus.local:8233/…`.
+ * - **The key gate.** A page from a non-loopback address with no key opens the pairing socket and
+ *   shows its code full screen, and dials the board only once a person typing the code there gives
+ *   it a key (§5.7).
+ *
  * The CRDT author is fresh per page load, `web-<uuid>`. The page shows whether it is online, and
  * why not, and lists the board's action records with what each one's basis saw.
  */
-@OptIn(ExperimentalUuidApi::class)
 fun main() {
+    val params = URLSearchParams(window.location.search.toJsString())
+    val actor = actorOf(params)
+    val http = HttpClient { install(WebSockets) }
+    when (val access = accessOf(params)) {
+        Access.Loopback, is Access.Keyed -> startBoard(http, actor, access)
+        Access.NeedsPairing -> pair(http, params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, Access.Keyed(key)) }
+    }
+}
+
+private fun actorOf(params: URLSearchParams): PeerIdentity {
+    val screen = params.get(PairingWire.SCREEN_PARAM)?.takeIf { it.isNotBlank() }
+    val name = screen ?: params.get("name")?.takeIf { it.isNotBlank() } ?: "guest"
+    return PeerIdentity.human(name)
+}
+
+/** A join link's key is kept for this tab, so a reload keeps it once the link is gone from the address bar. */
+private fun accessOf(params: URLSearchParams): Access {
+    params.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() }?.let { sessionStorage.setItem(KEY_STORAGE, it) }
+    val key = sessionStorage.getItem(KEY_STORAGE)
+    return when {
+        key != null -> Access.Keyed(key)
+        isLoopbackHost(window.location.hostname) -> Access.Loopback
+        else -> Access.NeedsPairing
+    }
+}
+
+/** Whether [hostname] (as `location.hostname` gives it) names this machine. */
+private fun isLoopbackHost(hostname: String): Boolean =
+    hostname == "localhost" || hostname.endsWith(".localhost") || hostname == "[::1]" ||
+        Regex("127\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}").matches(hostname)
+
+/** `ws:` or `wss:`, after the page's own scheme, to the host the page came from, at [path]. */
+private fun socketUrl(path: String, query: String): String {
+    val scheme = if (window.location.protocol == "https:") "wss" else "ws"
+    return "$scheme://${window.location.host}$path${if (query.isEmpty()) "" else "?$query"}"
+}
+
+private fun param(name: String, value: String): String = "$name=${encodeURIComponent(value)}"
+
+private fun encodeURIComponent(value: String): String = js("encodeURIComponent(value)")
+
+/**
+ * Shows the pairing code full screen until a person types it on the board, then hands the key to
+ * [admitted]. Nothing from the board reaches this page before then: the pairing socket carries only
+ * the code and the key.
+ */
+private fun pair(http: HttpClient, screen: String?, admitted: (String) -> Unit) {
+    val panel = document.body!!.appendElement("section", "pairing")
+    panel.setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;background:#fff")
+    val prompt = panel.appendElement("p", "pairing-prompt")
+    val code = panel.appendElement("p", "pairing-code")
+    code.setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums")
+    val again = panel.appendElement("button", "pairing-again")
+    again.textContent = "Show a new code"
+    again.setAttribute("hidden", "")
+    prompt.textContent = "Asking the host for a code…"
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val query = screen?.let { param(PairingWire.SCREEN_PARAM, it) }.orEmpty()
+
+    fun ended(why: String) {
+        prompt.textContent = why
+        code.textContent = ""
+        again.removeAttribute("hidden")
+    }
+
+    fun request() {
+        again.setAttribute("hidden", "")
+        scope.launch {
+            // The socket's last word: a key, or why there is none.
+            var last: PairingMessage? = null
+            try {
+                http.webSocket(socketUrl(PairingWire.PATH, query)) {
+                    for (frame in incoming) {
+                        val text = (frame as? Frame.Text)?.readText() ?: continue
+                        val message = Json.decodeFromString(PairingMessage.serializer(), text)
+                        if (message is PairingMessage.Code) {
+                            prompt.textContent = "Enter this code on the board to join"
+                            code.textContent = message.code
+                        } else {
+                            last = message
+                        }
+                    }
+                }
+            } catch (@Suppress("TooGenericExceptionCaught") lost: Exception) {
+                return@launch ended("Lost the host: ${lost.message ?: lost::class.simpleName}")
+            }
+            val admittedKey = when (val outcome = last) {
+                is PairingMessage.Key -> outcome.key
+                is PairingMessage.Ended -> return@launch ended(endedText(outcome.reason))
+                else -> return@launch ended("The host closed the pairing.")
+            }
+            sessionStorage.setItem(KEY_STORAGE, admittedKey)
+            panel.remove()
+            scope.cancel()
+            admitted(admittedKey)
+        }
+    }
+    again.addEventListener("click", { request() })
+    request()
+}
+
+private fun endedText(reason: PairingEnd): String = when (reason) {
+    PairingEnd.Expired -> "Nobody typed the code in time."
+    PairingEnd.Voided -> "Three wrong codes were typed."
+    PairingEnd.Busy -> "Other devices are pairing right now. Try again in a moment."
+}
+
+@OptIn(ExperimentalUuidApi::class)
+private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
     val root = document.getElementById("board") ?: error("index.html has no #board element")
     val status = document.body!!.appendElement("p", "status")
     val problem = document.body!!.appendElement("p", "problem")
     val records = document.body!!.appendElement("ol", "records")
 
-    val name = URLSearchParams(window.location.search.toJsString()).get("name")?.takeIf { it.isNotBlank() } ?: "guest"
-    val actor = PeerIdentity.human(name)
     val author = ReplicaId("web-${Uuid.random()}")
     val clock = { Clock.System.now() }
     // A page whose rendering died must never go on saying "online": a coroutine that fails stops
@@ -59,10 +197,11 @@ fun main() {
         problem.textContent = "The page stopped: ${failure.message ?: failure::class.simpleName}"
     }
     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + crashed)
-    val http = HttpClient { install(WebSockets) }
-    val rendezvous = Rendezvous.Existing(
-        WebSocketAdvertisement("ws://${window.location.host}$BOARD_PATH", PeerId("bee-host"), "board"),
-    )
+    val query = when (access) {
+        is Access.Keyed -> param(PairingWire.KEY_PARAM, access.key)
+        else -> ""
+    }
+    val rendezvous = Rendezvous.Existing(WebSocketAdvertisement(socketUrl(BOARD_PATH, query), PeerId("bee-host"), "board"))
     val client = BoardClient(
         author = author,
         loom = SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock),
@@ -73,6 +212,7 @@ fun main() {
     val onProblem: (String) -> Unit = { problem.textContent = it }
     val inputs = LiveInputs(root, client, author, scope, onProblem)
     BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, clock, onProblem).start(scope)
+    if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
 
     scope.launch {
         combine(client.online, client.lastFailure) { online, failure ->
@@ -85,6 +225,23 @@ fun main() {
     }
     scope.launch { client.state.collect { showRecords(records, it) } }
     client.connect()
+}
+
+/**
+ * A browser can't see why a socket was refused, so a key the host no longer holds (it restarted)
+ * looks like any outage. While offline, a keyed LAN page offers to drop its key and pair again.
+ */
+private fun offerRepair(scope: CoroutineScope, client: BoardClient) {
+    val repair = document.body!!.appendElement("button", "pair-again")
+    repair.textContent = "Pair this screen again"
+    repair.addEventListener("click", {
+        sessionStorage.removeItem(KEY_STORAGE)
+        val params = URLSearchParams(window.location.search.toJsString()).apply { delete(PairingWire.KEY_PARAM) }
+        window.location.search = params.toString()
+    })
+    scope.launch {
+        client.online.collect { online -> if (online) repair.setAttribute("hidden", "") else repair.removeAttribute("hidden") }
+    }
 }
 
 private fun Element.appendElement(tag: String, id: String): Element =
