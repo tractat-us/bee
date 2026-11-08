@@ -7,7 +7,9 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -595,6 +597,8 @@ class BridgeClaimsTest {
      * loser reaches the claim in that window. A claim of the target is still in flight, so the
      * loser waits it out rather than giving the claim back, then passes the record. Without that,
      * the loser gives back the token the winner is about to take, and claims the record again.
+     * The rig checks that the loser's give-back ran during the park and found the claim in reach,
+     * so the test can't pass on a schedule that never reaches that guard.
      */
     @Test
     fun aGiveBackNeverRacesTheWaitThatWon() = runTest(timeout = 120.seconds) {
@@ -604,13 +608,17 @@ class BridgeClaimsTest {
         val judged = CompletableDeferred<ClaimStatus>()
         val seenByWinner = CompletableDeferred<ClaimStatus>()
         val gaveBack = CompletableDeferred<Boolean>()
+        val found = MutableStateFlow(emptyList<OwnClaim>())
+        val foundInPark = CompletableDeferred<List<OwnClaim>>()
         val source = BoardActionSource(
             ada.bridge,
             beforeReserve = {
                 val won = judged.await()
                 seenByWinner.complete(rig.voter.table.value.status(target))
                 gaveBack.complete(withTimeoutOrNull(5.seconds) { rig.voter.table.first { it.status(target) != won } } != null)
+                foundInPark.complete(found.value)
             },
+            afterGiveBack = { own -> found.update { it + own } },
             afterWin = {},
         )
         val hold = rig.claims.host.holdFor(ada.node())
@@ -627,10 +635,12 @@ class BridgeClaimsTest {
         val token = results.firstNotNullOfOrNull { it.record }?.let { BoardActionSource.parseToken(it.string("token")) }
         val seen = seenByWinner.await()
         val gaveBackWhileParked = gaveBack.await()
+        val inPark = foundInPark.await()
         assertAll(
             { assertIs<ClaimStatus.Held>(won, "rig: the voter judged the first claim a win") },
             { assertTrue(parked > 0, "rig: both verdicts were held back") },
             { assertEquals(won, seen, "rig: the winner was parked as the verdicts landed") },
+            { assertEquals(listOf(OwnClaim.InReach), inPark, "the loser's give-back ran during the park and found the claim in reach") },
             { assertEquals(false, gaveBackWhileParked, "nothing gave the claim back while the winner was parked") },
             { assertEquals(1, ids.size, "exactly one wait got the click: $results") },
             { assertEquals((won as? ClaimStatus.Held)?.token, token, "under the token the winner won") },
@@ -647,7 +657,8 @@ class BridgeClaimsTest {
      * win as handed over, and the wait reaches the claim in that window. A claim of the target is
      * still in flight, so the wait waits it out, then passes the record as handed over. Without
      * that, the wait gives back the token the tool then reports as won, and claims the record
-     * again: one click, two callers, one of them holding a token the voter no longer holds.
+     * again: one click, two callers, one of them holding a token the voter no longer holds. The
+     * rig checks that the wait's give-back ran during the park and found the claim in reach.
      */
     @Test
     fun aGiveBackNeverRacesABeeClaimWin() = runTest(timeout = 120.seconds) {
@@ -657,27 +668,33 @@ class BridgeClaimsTest {
         val hold = rig.claims.host.holdFor(ada.node())
         hold.hold()
         val gaveBack = CompletableDeferred<Boolean>()
+        val found = MutableStateFlow(emptyList<OwnClaim>())
+        val foundInPark = CompletableDeferred<List<OwnClaim>>()
 
         val tool = async {
             ada.bridge.claim(target) { outcome ->
                 val won = rig.voter.table.value.status(target)
                 gaveBack.complete(withTimeoutOrNull(5.seconds) { rig.voter.table.first { it.status(target) != won } } != null)
+                foundInPark.complete(found.value)
                 ada.bridge.keptForCaller(target, outcome)
             }
         }
         val won = rig.voter.table.first { it.status(target) is ClaimStatus.Held }.status(target) // the tool's claim
         val wonAt = rig.voter.table.value.appliedIndex
-        val wait = async { BoardActionSource(ada.bridge).next("s", null, 20.seconds) }
+        val source = BoardActionSource(ada.bridge, afterGiveBack = { own -> found.update { it + own } }, afterWin = {})
+        val wait = async { source.next("s", null, 20.seconds) }
         val judged = rig.voter.table.first { it.appliedIndex > wonAt } // the wait's claim, rejected: held as ada
         val parked = hold.parkedSends
         hold.releaseAll()
         val outcome = tool.await()
         val waited = wait.await()
         val gaveBackWhileParked = gaveBack.await()
+        val inPark = foundInPark.await()
         assertAll(
             { assertEquals(ada.bridge.self, (won as? ClaimStatus.Held)?.holder, "rig: the tool's claim won, as ada") },
             { assertEquals(won, judged.status(target), "rig: the wait's claim was judged a loss to ada") },
             { assertTrue(parked > 0, "rig: both verdicts were held back") },
+            { assertEquals(listOf(OwnClaim.InReach), inPark, "the wait's give-back ran during the park and found the claim in reach") },
             { assertEquals(false, gaveBackWhileParked, "nothing gave the claim back while the tool was parked") },
             { assertEquals<ClaimOutcome?>((won as? ClaimStatus.Held)?.token?.let { ClaimOutcome.Won(it) }, outcome, "the tool reports its win") },
             { assertEquals(won, rig.voter.table.value.status(target), "and the voter still holds it under that token") },
