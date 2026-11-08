@@ -41,6 +41,9 @@ export default defineConfig({
   testMatch: '*.spec.mjs',
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
+  // Every spec shares one host and its seeded fixtures, so spec files run one at a time too.
+  // In parallel, a second file's board activity broke two-browsers' caret test (PR #42).
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
