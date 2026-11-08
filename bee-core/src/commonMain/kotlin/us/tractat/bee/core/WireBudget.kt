@@ -25,6 +25,14 @@ class BoardWriteTooLarge(val bytes: Int, val limit: Int) :
  * What a board delta weighs as the Quilter frames it: a `QuiltMessage.Delta` in CBOR, the
  * Quilter's default format. The sequence number is the largest there is, so the measure never
  * falls short of the frame the Quilter sends.
+ *
+ * A workaround for tractat-us/kuilt#3144: the Quilter drops a `Delta` or `FullState` over its
+ * seam's budget at debug level, so bee weighs each write itself, guessing the Quilter's framing.
+ * Only a delta is weighed. An online write's delta goes on the wire as it is, so it is covered.
+ * An offline write is weighed alone against the last link's budget, but it reaches the wire inside
+ * the next connection's `FullState`, which nobody weighs: offline writes that each fit can still
+ * add up past the budget, and so can the board a joiner is sent on first contact. bee doesn't
+ * chunk a `FullState`; that belongs to the Quilter (kuilt#3144).
  */
 internal object WireBudget {
     private val messages = QuiltMessage.serializer(BoardState.serializer())
