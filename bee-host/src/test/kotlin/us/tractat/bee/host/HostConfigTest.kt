@@ -1,5 +1,7 @@
 package us.tractat.bee.host
 
+import io.ktor.http.HttpHeaders
+import io.ktor.http.headersOf
 import us.tractat.kuilt.test.assertAll
 import java.nio.file.Path
 import kotlin.test.Test
@@ -47,8 +49,8 @@ class HostConfigTest {
         assertAll(
             { assertEquals(setOf("bee-lan.test"), named.hostNames) },
             { assertEquals(emptySet(), HostConfig.fromArgs(emptyList(), home).hostNames, "none by default") },
-            { assertNull(named.siteRule().refusal("bee-lan.test:8233", null, local)) },
-            { assertNotNull(HostConfig(dataDir = home).siteRule().refusal("bee-lan.test:8233", null, local), "not without the flag") },
+            { assertNull(named.siteRule().refusal("/", headersOf(HttpHeaders.Host, "bee-lan.test:8233"), local)) },
+            { assertNotNull(HostConfig(dataDir = home).siteRule().refusal("/", headersOf(HttpHeaders.Host, "bee-lan.test:8233"), local), "not without the flag") },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--host-name", "a", "--host-name", "b"), home) } },
         )
     }
