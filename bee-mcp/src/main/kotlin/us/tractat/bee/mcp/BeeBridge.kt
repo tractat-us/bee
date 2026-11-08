@@ -141,6 +141,12 @@ class BeeBridge(
     /** The identity the bridge acts as now. */
     val self: PeerIdentity get() = identity.current.value
 
+    /**
+     * Whether this bridge process opened surface [surfaceId] on [state], under its identity now or
+     * any it held before a `/clear`. A surface whose meta hasn't reached this replica isn't.
+     */
+    fun opened(state: BoardState, surfaceId: String): Boolean = state.meta(surfaceId)?.openedBy in identity.held
+
     /** Whether a claims link is up. */
     val claimsOnline: Boolean get() = claims.link.value != null
 
