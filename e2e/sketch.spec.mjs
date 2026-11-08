@@ -391,7 +391,7 @@ test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
   pushScreen('nav-link.html', `<h2>Link probe</h2><a id="away" href="${probe}/link">away</a>`);
   const link = await clickAway(browser, 'lee', 'Link probe');
   expect(link.reached).toEqual([]);
-  expect(link.csp).toBe("frame-src 'none'; child-src 'none'; img-src 'self' data:");
+  expect(link.csp).toBe("frame-src 'none'; child-src 'none'");
   // Control: the navigation was attempted, and the page's policy is what refused it.
   expect(link.refused.join('\n')).toContain(`${probe}/link`);
   await link.context.close();

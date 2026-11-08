@@ -18,7 +18,7 @@ const STDERR_LINES = 40;
 
 /**
  * Starts a bridge named `name` against the e2e host and completes the MCP handshake. Resolves to
- * `{ identity, call(tool, args), kill(signal) }` once the bridge has said who it is: `identity` is
+ * `{ identity, call(tool, args), kill() }` once the bridge has said who it is: `identity` is
  * its peer identity (`agent:<name>#<hex>`), and `call` resolves to a tool's parsed JSON answer.
  *
  * A request with no answer in REQUEST_TIMEOUT_MS fails, as does one in flight when the bridge
@@ -96,12 +96,12 @@ export async function startAgent(name) {
       return JSON.parse(text);
     },
     /**
-     * Ends the bridge and resolves once it has exited. The default, SIGKILL, ends it as a crash
-     * does: no goodbye, so the host departs it after the learner grace.
+     * Ends the bridge with SIGKILL and resolves once it has exited. That is a crash: no goodbye,
+     * so the host departs it after the learner grace.
      */
-    async kill(signal = 'SIGKILL') {
+    async kill() {
       killed = true;
-      if (child.exitCode == null && child.signalCode == null) child.kill(signal);
+      if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL');
       await exited;
     },
   };

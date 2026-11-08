@@ -17,7 +17,11 @@ let identity;
 /** The token of the claim on CLAIM, once won, for afterAll to release it under. */
 let token;
 
+test.describe.configure({ mode: 'serial' });
+
 test.beforeAll(async () => {
+  // The 30 s poll below would use up the default hook timeout on its own.
+  test.setTimeout(90_000);
   agent = await startAgent('e2e-agent');
   identity = agent.identity;
   await agent.call('bee_presence', { status: WORKING_ON });
@@ -41,8 +45,8 @@ test.afterAll(async () => {
     if (token) expect((await agent.call('bee_release', { target: CLAIM, token })).released).toBe(true);
   } finally {
     for (const surfaceId of [SURFACE, OLDER, FIELD]) await agent?.call('bee_surface_close', { surfaceId }).catch(() => {});
-    // A goodbye, not a crash: the host has nothing to depart.
-    await agent?.kill('SIGTERM');
+    // The bridge ends as a crash does, so the host departs it after the learner grace.
+    await agent?.kill();
   }
 });
 
