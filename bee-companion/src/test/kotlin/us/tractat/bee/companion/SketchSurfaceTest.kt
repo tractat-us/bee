@@ -35,16 +35,17 @@ class SketchSurfaceTest {
         val budget = assertNotNull(companion.client.maxPayloadBytes, "rig: the link publishes a budget")
 
         rig.screen("huge.html", "<p>" + "x".repeat(4 * LIMIT) + "</p>")
+        // Whatever the companion did with the screen, it reports it: shown, or refused.
         val refusal = withTimeout(WAIT) {
-            while (companion.reports.none { it["type"] == JsonPrimitive("screen-refused") }) delay(100)
-            companion.reports.single { it["type"] == JsonPrimitive("screen-refused") }
+            while (companion.reports.none { it["file"] == JsonPrimitive("huge.html") }) delay(100)
+            companion.reports.single { it["file"] == JsonPrimitive("huge.html") }
         }
         val onBoard = companion.client.state.value
         rig.screen("next.html", "<p>next</p>")
         rig.shows(browser) { "next" in it }
-        val reason = (refusal["reason"] as JsonPrimitive).content
+        val reason = (refusal["reason"] as? JsonPrimitive)?.content.orEmpty()
         assertAll(
-            { assertEquals(JsonPrimitive("huge.html"), refusal["file"]) },
+            { assertEquals(JsonPrimitive("screen-refused"), refusal["type"], "the oversized screen was refused: $refusal") },
             { assertTrue("limit of $budget bytes" in reason, "the refusal states the limit: $reason") },
             { assertTrue("small" in sketchHtml(onBoard)!!, "the board still shows the screen before it") },
             { assertEquals(1, CompanionAdapter.screensShown(onBoard), "nothing of the refused screen was written") },
