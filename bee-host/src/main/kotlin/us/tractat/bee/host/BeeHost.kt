@@ -110,18 +110,20 @@ class BeeHost private constructor(
                 endpoints = mountEndpoints(pairing, PeerAddress.DIRECT, joinRequests, clock)
             }
             server.start(wait = false)
+            val source = endpoints.board
+            val claimsHost = endpoints.claims
             try {
                 val bound = server.engine.resolvedConnectors().first().port
                 val relay = BoardRelay.hosted(
                     scope = scope,
-                    source = endpoints.board,
+                    source = source,
                     dispatcher = Dispatchers.Default,
                     replica = ReplicaId("host-${Uuid.random()}"),
                     clock = clock,
                 )
                 val voter = ClaimsVoter.start(
                     scope,
-                    endpoints.claims,
+                    claimsHost,
                     config.dataDir.resolve("claims").toFile(),
                     RaftConfig(),
                     boardMirror(relay),
