@@ -41,8 +41,9 @@ export default defineConfig({
   testMatch: '*.spec.mjs',
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
-  // Every spec shares the one host and its board, and a test that counts the board's records (the
-  // basis tests) reads another file's writes as its own. One worker runs the files one at a time.
+  // Every spec shares one host, its board and its seeded fixtures, so spec files run one at a
+  // time. In parallel, a second file's board activity broke two-browsers' caret test (PR #42), and
+  // a test that counts the board's records (the basis tests) read another file's writes as its own.
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,

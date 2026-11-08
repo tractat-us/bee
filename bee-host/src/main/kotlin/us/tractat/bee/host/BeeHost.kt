@@ -2,7 +2,6 @@ package us.tractat.bee.host
 
 import io.ktor.http.HttpHeaders
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.response.header
 import io.ktor.server.response.respondText
@@ -11,18 +10,18 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PresenceEntry
-import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.RaftConfig
-import us.tractat.kuilt.websocket.KtorConnectionSource
-import us.tractat.kuilt.websocket.KtorRoomHost
+import java.security.SecureRandom
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -30,9 +29,12 @@ import kotlin.time.Instant
  * The always-on host (spec §5.4): it serves the page at `/`, names its board at [BoardId.PATH],
  * relays the board at [BoardRelay.PATH], and runs the claims voter at [CLAIMS_PATH]. Invariant:
  * **the host writes to the board only through its own replica**; it has no write route. Its
- * writes are the claims mirror and the departed list, from the voter's fold, and nothing else.
+ * writes are the claims mirror and the departed list, from the voter's fold, and the join
+ * requests of LAN pairing ([JoinRequestSurface]), and nothing else.
  *
- * Everything but the Netty server is a [HostCore]. The server is never parented to a caller's
+ * Off loopback, the board and claims endpoints take only a device with a key ([mountEndpoints]).
+ *
+ * Everything but the Netty server and pairing is a [HostCore]. The server is never parented to a caller's
  * coroutine (kuilt has hung on an `embeddedServer` parented to `runBlocking`), so [close] stops
  * it. Everything else runs on the scope given to [start], which the caller cancels.
  */
@@ -40,6 +42,9 @@ class BeeHost private constructor(
     /** The bound port: pass `port = 0` for an ephemeral one. */
     val port: Int,
     private val core: HostCore,
+    /** LAN pairing (§5.7): it mints the keys the board and claims endpoints accept off loopback. */
+    val pairing: Pairing,
+    private val joinRequests: Job,
 ) : AutoCloseable {
     /** The claims voter at [CLAIMS_PATH]. */
     val voter: ClaimsVoter get() = core.voter
@@ -57,9 +62,15 @@ class BeeHost private constructor(
     @Suppress("RedundantSuspendModifier")
     suspend fun mutate(f: (BoardState) -> Patch<BoardState>) = core.board.relay.mutate(f)
 
-    /** Stops the host: the voter's last mirror and the server's last write are on the board before its last save. */
+    /**
+     * Stops the host: join requests first, since they write through the relay, then the core, whose
+     * voter's last mirror and server's last write are on the board before its last save.
+     */
     override fun close() {
-        runBlocking { core.close() }
+        runBlocking {
+            joinRequests.cancelAndJoin()
+            core.close()
+        }
     }
 
     companion object {
@@ -68,16 +79,16 @@ class BeeHost private constructor(
         const val CLAIMS_SESSION: String = "claims"
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
-        private const val CSP_HEADER = "Content-Security-Policy"
+        internal const val CSP_HEADER = "Content-Security-Policy"
 
         /**
-         * The page's policy: no frame may load a URL. A `Sketch` frame shows its `srcdoc` (which
-         * this policy doesn't block, in Chromium or WebKit), but can't navigate itself to a URL,
-         * by `location` or a link (spec §5.6). That isn't "no network": WebRTC and DNS hints sit
-         * outside CSP (bee#49). CSP has no
+         * The page's policy, sent with the page's files ([mountEndpoints]): no frame may load a
+         * URL. A `Sketch` frame shows its `srcdoc` (which this policy doesn't block, in Chromium
+         * or WebKit), but can't navigate itself to a URL, by `location` or a link (spec §5.6).
+         * That isn't "no network": WebRTC and DNS hints sit outside CSP (bee#49). CSP has no
          * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
          * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
-         * so the page needs nothing more.
+         * so the page's sockets and its pairing stream need nothing more.
          */
         const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
 
@@ -90,14 +101,14 @@ class BeeHost private constructor(
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
             val boardId = CompletableDeferred<BoardId>()
-            lateinit var source: KtorConnectionSource
-            lateinit var claimsHost: KtorRoomHost
+            // Task 10: keys live in this host's memory, so a restart re-pairs every LAN device.
+            val pairing = Pairing(clock, SecureSecrets(SecureRandom()), budget = config.pairingBudget)
+            val joinRequests = CompletableDeferred<JoinRequestSurface>()
+            val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
+            lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                source = KtorConnectionSource(this, BoardRelay.PATH)
-                claimsHost = KtorRoomHost(this, CLAIMS_PATH, CLAIMS_SERVER, Pattern(CLAIMS_SESSION))
+                endpoints = mountEndpoints(pairing, PeerAddress.DIRECT, desk)
                 routing {
-                    // The page's files only: the WebSocket routes above never get the header.
-                    staticResources("/", "web") { modify { _, call -> call.response.header(CSP_HEADER, PAGE_CSP) } }
                     // A page asks before it reads its copy, so this must never come from a cache.
                     get(BoardId.PATH) {
                         call.response.header(HttpHeaders.CacheControl, "no-store")
@@ -109,9 +120,12 @@ class BeeHost private constructor(
             try {
                 val bound = server.engine.resolvedConnectors().first().port
                 val intake = AutoCloseable { server.stop(gracePeriodMillis = 100, timeoutMillis = 2_000) }
-                val core = HostCore.start(scope, source, claimsHost, stores, intake, Dispatchers.Default, RaftConfig(), clock)
+                val core = HostCore.start(scope, endpoints.board, endpoints.claims, stores, intake, Dispatchers.Default, RaftConfig(), clock)
                 boardId.complete(core.board.id)
-                return BeeHost(bound, core)
+                val requests = JoinRequestSurface(core.board.relay, pairing, clock)
+                val pairingJob = requests.start(scope)
+                joinRequests.complete(requests)
+                return BeeHost(bound, core, pairing, pairingJob)
             } catch (failure: Throwable) {
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
                 throw failure
