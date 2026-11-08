@@ -107,14 +107,28 @@ class SiteGateTest {
         )
     }
 
-    /** A join link opened from chat is a top-level navigation from another site, and the page's own calls are same-origin. */
+    /**
+     * No legitimate caller navigates to `/pair`: the page opens it as an event stream, and a join
+     * link opens the page. Chromium marks a speculation-rules prefetch from another site's page
+     * `none` with `Sec-Purpose: prefetch`, and another site setting `location.href` is a
+     * `cross-site` navigation, so `/pair` takes neither (bee#55's review).
+     */
     @Test
-    fun aNavigationTheBoardsOwnCallsAndNoFetchMetadataAreAdmitted() {
+    fun aNavigationOrAPrefetchOfThePairingChannelIsRefused() {
         assertAll(
-            { assertEquals(OK, calls.get(PAIR, own, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "a link from another site") },
-            { assertEquals(OK, calls.get("/", own, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "the board page, from a link") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, NONE, NAVIGATE, DOCUMENT, "Sec-Purpose: prefetch"), "another site's speculation rules") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, CROSS_SITE, NAVIGATE, DOCUMENT), "another site setting location.href") },
+            { assertEquals(FORBIDDEN, calls.get(PAIR, own, NONE, NAVIGATE, DOCUMENT), "a typed URL") },
+        )
+    }
+
+    /** A join link opened from chat navigates to the page, and the page's own calls are same-origin. */
+    @Test
+    fun aNavigationToThePageTheBoardsOwnCallsAndNoFetchMetadataAreAdmitted() {
+        assertAll(
+            { assertEquals(OK, calls.get("/", own, CROSS_SITE, NAVIGATE, DOCUMENT), "the board page, from a link") },
+            { assertEquals(OK, calls.get("/", own, NONE, NAVIGATE, DOCUMENT), "the board page, typed or bookmarked") },
             { assertEquals(OK, calls.get(PAIR, own, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty"), "the board page's own channel") },
-            { assertEquals(OK, calls.get(PAIR, own, "Sec-Fetch-Site: none", "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: document"), "a typed URL or a bookmark") },
             { assertEquals(OK, calls.get(PAIR, own), "no Fetch Metadata: the bridge, or an older browser") },
         )
     }
@@ -123,5 +137,8 @@ class SiteGateTest {
         const val PAIR = "${PairingWire.PATH}?${PairingWire.SCREEN_PARAM}=probe"
         const val CROSS_SITE = "Sec-Fetch-Site: cross-site"
         const val SAME_SITE = "Sec-Fetch-Site: same-site"
+        const val NONE = "Sec-Fetch-Site: none"
+        const val NAVIGATE = "Sec-Fetch-Mode: navigate"
+        const val DOCUMENT = "Sec-Fetch-Dest: document"
     }
 }
