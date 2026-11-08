@@ -138,6 +138,7 @@ class BridgeJoinLinkTest {
 
         val second = startHost(port)
         try {
+            assertEquals(ONLINE, withTimeout(RESTART_TIMEOUT) { bridge.boardOutcome() }, "the bridge redials, on the link it was given")
             second.mutate { it.openSurface(second.author, FROM_HOST, meta("After the restart"), listOf(text("From the host")), JsonObject(emptyMap())) }
             val readsTheHost = withTimeout(RESTART_TIMEOUT) { bridge.board.state.first { it.surfaceDoc(FROM_HOST) != null } }
             bridge.board.mutate { it.openSurface(bridge.author, FROM_BRIDGE, meta("From the bridge"), listOf(text("From the bridge")), JsonObject(emptyMap())) }
