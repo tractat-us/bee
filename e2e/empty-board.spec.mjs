@@ -8,7 +8,8 @@ import { join } from 'node:path';
 import { startAgent } from './agent.mjs';
 import { Host, freePort } from './host.mjs';
 
-// A closed surface stays on the board as history and can't be opened again, so each test has its own.
+// A closed surface stays on the board as history, and opening its id again is refused, so each test
+// opens its own.
 const FIRST = 'empty-board-first';
 const SECOND = 'empty-board-second';
 

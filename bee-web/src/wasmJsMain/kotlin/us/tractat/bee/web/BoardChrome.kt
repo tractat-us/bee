@@ -5,8 +5,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.w3c.dom.Element
@@ -34,8 +37,10 @@ import kotlin.time.Duration.Companion.seconds
  *   [root]; the chrome moves it into that surface's card as soon as it appears.
  * - **Live presence ages without a board change**, so the view is redrawn every [TICK] as well.
  * - **An empty board says how to start.** With no surface open, [root] shows a quiet hint
- *   (`.bee-empty-hint`): what the board is, and how a Claude session draws on it. It waits until
- *   the page is online, so a page still catching up with its host doesn't flash it over a full board.
+ *   (`.bee-empty-hint`): what the board is, and how a Claude session draws on it. It appears only
+ *   once the page is online and the board has stayed empty for [HINT_DELAY], because a page goes
+ *   online a moment before the host's board reaches it, and the hint mustn't flash over a full
+ *   board. It hides as soon as a surface opens.
  *
  * DOM hooks: `article.bee-card[data-surface-id]`, its `.bee-card-title` and `.bee-card-opener`
  * (`data-peer`, the opener's identity), `.bee-card-working`, and `.bee-badge`
@@ -45,6 +50,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
     private val cards = mutableMapOf<String, Card>()
     private var peers: List<PeerView>? = null
     private val hint: HTMLElement = (root.appendChild(emptyHint()) as HTMLElement).also { it.hidden = true }
+    private val empty = MutableStateFlow(false)
 
     init {
         observeChildren(root) { adoptPlaceholders() }
@@ -58,16 +64,23 @@ class BoardChrome(private val root: Element, private val strip: Element) {
     private fun slot(surfaceId: String): Element = card(surfaceId).body
 
     /**
-     * Shows [board] and its live presence from [roster] as they change, until [scope] ends; the
-     * empty-board hint only while [online].
+     * Shows [board] and its live presence from [roster] as they change, until [scope] ends, and
+     * the empty-board hint while the board is empty and [online].
      */
     fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence, online: StateFlow<Boolean>): Job = scope.launch {
-        combine(board, online, ticks(TICK)) { state, isOnline, _ -> state to isOnline }
-            .collect { (state, isOnline) -> show(BoardView.of(state, roster.peers()), isOnline) }
+        launch {
+            combine(empty, online) { isEmpty, isOnline -> isEmpty && isOnline }.distinctUntilChanged().collectLatest { quiet ->
+                if (quiet) delay(HINT_DELAY)
+                hint.hidden = !quiet
+            }
+        }
+        combine(board, ticks(TICK)) { state, _ -> state }.collect { state -> show(BoardView.of(state, roster.peers())) }
     }
 
-    fun show(view: BoardView, online: Boolean) {
-        hint.hidden = !online || view.cards.isNotEmpty()
+    fun show(view: BoardView) {
+        // Hidden here, not only by the hint's own collector, so it's never shown beside a card.
+        if (view.cards.isNotEmpty()) hint.hidden = true
+        empty.value = view.cards.isEmpty()
         val open = view.cards.map { it.surfaceId }.toSet()
         (cards.keys - open).forEach { id -> cards.remove(id)?.element?.remove() }
         view.cards.forEachIndexed { index, it -> card(it.surfaceId).show(it, index) }
@@ -134,6 +147,9 @@ class BoardChrome(private val root: Element, private val strip: Element) {
     private companion object {
         /** How often live presence is re-read, for entries that age out with no board change. */
         val TICK: Duration = 2.seconds
+
+        /** How long the board must stay empty, online, before the hint shows. */
+        val HINT_DELAY: Duration = 1.seconds
 
         const val CARD_CLASS = "bee-card"
         const val PLACEHOLDER_CLASS = "bee-invalid-surface"
