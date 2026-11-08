@@ -132,6 +132,34 @@ class ClaimTableTest {
         )
     }
 
+    /**
+     * A claim a `Reassign` granted says so, and a claim its holder won doesn't (Task 11, bee#31): a
+     * bridge's sweep gives back the one and keeps the other. The mark goes with the grant's token,
+     * so it ends when the target leaves that hold, and an `Install` keeps it.
+     */
+    @Test
+    fun aReassignedClaimSaysSo() {
+        val reassigned = table(
+            ClaimCommand.Claim(target, alice, P),
+            ClaimCommand.Depart(alice, DepartReason.Crashed),
+            ClaimCommand.Reassign(target, to = bob, by = iain),
+        )
+        val won = table(ClaimCommand.Claim(target, bob, P))
+        val released = reassigned.fold(entry(4, ClaimCommand.Release(target, bob, ClaimToken(1, 3))))
+        val reclaimed = released.fold(entry(5, ClaimCommand.Claim(target, bob, P)))
+        val reorphaned = reassigned.fold(entry(4, ClaimCommand.Depart(bob, DepartReason.Quiet)))
+        val installed = ClaimTable.EMPTY.fold(Committed.Install(Snapshot(throughIndex = 3, state = reassigned.encode())))
+        assertAll(
+            { assertTrue(reassigned.reassigned(target), "a Reassign granted it") },
+            { assertEquals(false, won.reassigned(target), "control: a claim its holder won") },
+            { assertEquals(false, released.reassigned(target), "released, it's free") },
+            { assertEquals(false, reclaimed.reassigned(target), "won again after the release") },
+            { assertEquals(false, reorphaned.reassigned(target), "orphaned again, it's no grant") },
+            { assertTrue(installed.reassigned(target), "an Install keeps the mark") },
+            { assertEquals(reassigned, installed, "and the table") },
+        )
+    }
+
     @Test
     fun onlyOrphansAreReleasedWithoutAToken() {
         val held = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Release(target, alice, null))
