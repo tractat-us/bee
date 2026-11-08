@@ -2,15 +2,20 @@ package us.tractat.bee.host
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
@@ -25,6 +30,7 @@ import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
+import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
@@ -33,6 +39,7 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -57,9 +64,23 @@ class OrphanDecisionsTest {
 
         fun orphanSurfaces(): List<String> = board.openSurfaces().filter { it.startsWith(OrphanDecision.PREFIX) }
 
-        /** Answers [option] as the person: the record, as the driver appends it, then their client's proposal. */
+        /** The data path the decision's `Poll` binds its answers to now. */
+        fun answersPath(): String = requireNotNull(board.surfaceDoc(OrphanDecision.surfaceId(TARGET)))
+            .toSurfaceView(OrphanDecision.surfaceId(TARGET)).components.getValue("root")
+            .getValue("answers").jsonObject.getValue("path").jsonPrimitive.content
+
+        /** The value at [pointer] in the decision's data. */
+        fun at(pointer: String): JsonElement? =
+            SurfaceFormat.segments(pointer).fold(data() as JsonElement?) { node, key -> (node as? JsonObject)?.get(key) }
+
+        /**
+         * Answers [option] as the person: their answer at the `Poll`'s bound answers path and the
+         * record, as the page's driver writes them (Task 11a's `NotionActions`), then their client's proposal.
+         */
         suspend fun answer(actor: PeerIdentity, option: String): OrphanAnswers.Outcome {
             val context = buildJsonObject { put(OrphanDecision.OPTION_KEY, option) }
+            val answered = "${answersPath()}/${SurfaceFormat.escapeSegment(actor.toString())}"
+            star.relay.mutate { it.updateData(star.relay.replica, OrphanDecision.surfaceId(TARGET), answered, JsonPrimitive(option)) }
             star.relay.mutate { state ->
                 val record = ActionRecord(
                     surfaceId = OrphanDecision.surfaceId(TARGET),
@@ -191,6 +212,64 @@ class OrphanDecisionsTest {
             { assertTrue(bo.toString() in questions.last().jsonPrimitive.content, "naming the new holder") },
             { assertEquals("${orphaned.token.term}:${orphaned.token.index}", data().getValue("token").jsonPrimitive.content) },
         )
+    }
+
+    /**
+     * Answers belong to the orphaning they answered. Iain answers the first, which reassigns the
+     * record to bo; bo departs, and the decision asks again with its `Poll` bound to the new
+     * orphaning's answers, which hold none. The first orphaning's answers are kept at their own path.
+     */
+    @Test
+    fun answersBelongToTheirOrphaning() = rig {
+        val first = answersPath()
+        val firstToken = data().getValue("token").jsonPrimitive.content
+        answer(iain, OrphanDecision.reassignOption(bo))
+        star.relay.state.first { surfaceId in it.closedSurfaces() }
+        voter.depart(bo, DepartReason.Crashed)
+        star.relay.state.first { surfaceId in it.openSurfaces() && data().getValue("token").jsonPrimitive.content != firstToken }
+        val token = data().getValue("token").jsonPrimitive.content
+        assertAll(
+            { assertEquals("/rounds/$token/answers", answersPath(), "bound to the new orphaning's answers") },
+            { assertEquals(JsonObject(emptyMap()), at(answersPath()), "which hold none yet") },
+            { assertEquals(JsonPrimitive(OrphanDecision.reassignOption(bo)), at("$first/${SurfaceFormat.escapeSegment(iain.toString())}"), "the first orphaning keeps its answer") },
+        )
+    }
+
+    /**
+     * One decision surface the host can't extend stops no other decision. A bridge opened
+     * `orphan-<second>` first, with a `question` that isn't an append-only array; bo, holding that
+     * target and a third, departs. The host can't ask on the squatted surface, and still opens the
+     * third's decision, and keeps ada's.
+     */
+    @Test
+    fun aMalformedDecisionStopsNoOther() = rig {
+        val second = ClaimTarget("record:web-iain:2")
+        val third = ClaimTarget("record:web-iain:3")
+        star.relay.mutate {
+            it.openSurface(
+                ReplicaId("mcp-zed"),
+                OrphanDecision.surfaceId(second),
+                SurfaceMeta("squatted", NOTIONS_CATALOG_ID, PeerIdentity.agent("zed", Random(3)), star.clock()),
+                listOf(buildJsonObject { put("id", "root"); put("component", "Text"); put("text", "squatted") }),
+                buildJsonObject { put("question", "not an array") },
+            )
+        }
+        val bridge = claims.client(NodeId("bridge-bo"))
+        assertIs<ClaimOutcome.Won>(bridge.claim(second, bo), "rig: bo held the second record")
+        assertIs<ClaimOutcome.Won>(bridge.claim(third, bo), "rig: bo held the third record")
+        voter.depart(bo, DepartReason.Crashed)
+        val opened = withTimeoutOrNull(30.seconds) { star.relay.state.first { OrphanDecision.surfaceId(third) in it.openSurfaces() } }
+        assertAll(
+            { assertNotNull(opened, "the third orphan's decision opened") },
+            { assertEquals(listOf(OrphanDecision.RELEASE, OrphanDecision.WAIT), opened?.let { optionsOf(it, third) }, "offering release and wait") },
+            { assertTrue(surfaceId in board.openSurfaces(), "ada's decision stays open") },
+        )
+    }
+
+    private fun optionsOf(state: BoardState, target: ClaimTarget): List<String> {
+        val id = OrphanDecision.surfaceId(target)
+        return requireNotNull(state.surfaceDoc(id)).toSurfaceView(id).data.getValue("options").jsonArray
+            .map { it.jsonObject.getValue("id").jsonPrimitive.content }
     }
 
     /**
