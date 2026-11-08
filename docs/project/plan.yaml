@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T06:02Z"
+as_of: "2026-11-08T19:02Z"
 
 sources:
   - title: "v1 plan"
@@ -56,6 +56,19 @@ order:
   - bee-54
   - bee-58
   - bee-60
+  - bee-64
+  - bee-65
+  - bee-71
+  - bee-72
+  - bee-73
+  - bee-74
+  - bee-77
+  - bee-78
+  - bee-80
+  - bee-81
+  - bee-83
+  - bee-84
+  - bee-85
   - bee-14
   - bee-19
   - bee-23
@@ -82,6 +95,11 @@ order:
   - kuilt-3145
   - kuilt-3146
   - kuilt-own-write-ack
+  - kuilt-3148
+  - kuilt-3149
+  - kuilt-3150
+  - bee-42-hand-check
+  - bee-auto-close
   - out-cla
   - out-kuilt-references
 
@@ -192,10 +210,11 @@ items:
   task-8:
     kind: task
     title: "Sketch and the companion adapter (spike 5, the acceptance test)"
-    status: waiting-on-iain
-    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 holds before merge for Iain's ruling on #60, and until the kuilt gap its KDoc names is filed."
+    status: done
+    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. Landed after Iain's rulings on #60 (page-side commit) and the Sketch size cap (none for v1)."
     depends_on: [bee-27, bee-60]
     started: "2026-11-08T02:13Z"
+    landed: "2026-11-08T18:49Z"
     estimate:
       low: 2
       high: 24
@@ -233,26 +252,29 @@ items:
   bee-42-calls:
     kind: decision
     title: "Task 10's follow-up calls"
-    status: waiting-on-iain
-    summary: "Four calls from #42 — the host's PeerKind, claim-free join records, no local copy for LAN pages, and the one-worker e2e — plus the hand check on a second device. Follow-up decisions, not merge gates."
+    status: done
+    summary: "Four calls from #42, each now an issue: the host's PeerKind (#71), claim-free join records with a bridge refusal (#72), HTTPS on the LAN (#73, after the demo) and a host per writing e2e file (#74)."
     started: "2026-11-08T02:35Z"
+    landed: "2026-11-08T17:26Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Add PeerKind.Host as a label; accept claim-free admits and have the bridge refuse pairing surfaces; HTTPS on the LAN after the demo; a host per e2e file that writes records."
+      url: "https://github.com/tractat-us/bee/issues/6#issuecomment-6724665300"
     links:
       - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
 
   task-11:
     kind: task
     title: "Working-day surfaces: Board, Poll, orphan decisions, history strip"
-    status: blocked
-    summary: "Needs the surface-data semantics of bee#19, which waits on kuilt#3126 (d)."
-    depends_on: [task-7, bee-19]
-    estimate:
-      low: 3
-      high: 24
-      unit: hours
-      basis: "Once unblocked. Same basis as Task 8, with a secondary test that needs two sessions and Iain on one board."
-      confidence: low
+    status: done
+    summary: "Landed in two halves without bee#19: Poll, Board and the history strip (#70), then orphan decisions and reassigned claims reaching a session's wait (#75). The Board needs no change when #19 makes card order an Rga."
+    depends_on: [task-7]
+    started: "2026-11-08T17:44Z"
+    landed: "2026-11-08T18:59Z"
     links:
       - { title: "Plan, Task 11", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-11-working-day-surfaces-board-poll-orphan-decisions-history-strip" }
+      - { title: "bee#70, Notions Poll and Board", url: "https://github.com/tractat-us/bee/pull/70" }
+      - { title: "bee#75, orphan decisions", url: "https://github.com/tractat-us/bee/pull/75" }
 
   # ── bee pull requests and issues ─────────────────────────────────────
   bee-27:
@@ -337,20 +359,32 @@ items:
   bee-43:
     kind: issue
     title: "A board change elsewhere may re-create the field someone is typing in"
-    status: later
-    summary: "A bug that needs a design before work starts."
+    status: done
+    summary: "Not a bee bug: the field is never re-created. The caret failures came from Playwright on macOS, and #63 pins the claim."
     started: "2026-11-08T02:36Z"
+    landed: "2026-11-08T19:00Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Not a bug."
+      url: "https://github.com/tractat-us/bee/issues/43#issuecomment-6725706047"
     links:
       - { title: "bee#43", url: "https://github.com/tractat-us/bee/issues/43" }
+      - { title: "bee#63", url: "https://github.com/tractat-us/bee/pull/63" }
 
   bee-44:
     kind: decision
     title: "Decision: an agent that dies while the host is down keeps its claims forever"
-    status: waiting-on-iain
-    summary: "How presence and departures behave across a host restart."
+    status: done
+    summary: "Built in #62: once a 60 s boot grace has passed, the host departs, as Crashed, any agent that holds a claim and has no presence entry."
     started: "2026-11-08T02:36Z"
+    landed: "2026-11-08T17:26Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Option (a), a boot grace."
+      url: "https://github.com/tractat-us/bee/issues/44#issuecomment-6724665507"
     links:
       - { title: "bee#44", url: "https://github.com/tractat-us/bee/issues/44" }
+      - { title: "bee#62", url: "https://github.com/tractat-us/bee/pull/62" }
 
   bee-45:
     kind: issue
@@ -399,20 +433,32 @@ items:
   bee-58:
     kind: decision
     title: "The host can hang up on an over-bound frame without its 1009 close frame"
-    status: waiting-on-iain
-    summary: "Iain decides whether the host must deliver the 1009 or a hang-up is an acceptable refusal. If it must, the fix lives in Ktor or kuilt."
+    status: done
+    summary: "Fixed by #69: bee moves to Ktor 3.6.1, which carries the upstream fixes for the lost last frame."
     started: "2026-11-08T05:15Z"
+    landed: "2026-11-08T17:35Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "The host must deliver the 1009; done by moving Ktor to 3.6.1."
+      url: "https://github.com/tractat-us/bee/issues/58#issuecomment-6724762759"
     links:
       - { title: "bee#58", url: "https://github.com/tractat-us/bee/issues/58" }
+      - { title: "bee#69", url: "https://github.com/tractat-us/bee/pull/69" }
 
   bee-60:
     kind: decision
     title: "Decision: a Sketch can forge the viewer's choice in Chromium, by focusing itself"
-    status: waiting-on-iain
-    summary: "Iain decides whether a Sketch only proposes a choice and the page commits it outside the frame, or v1 accepts and documents the Chromium-only forgery. Found by #38's fifth review; WebKit blocks the focus steal, and Firefox is untested."
+    status: done
+    summary: "Fixed in #38: a Sketch only proposes a choice, and the page records it on a trusted click on its own Send bar."
     started: "2026-11-08T06:01Z"
+    landed: "2026-11-08T17:35Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Option (a): the page commits the choice, outside the frame."
+      url: "https://github.com/tractat-us/bee/issues/60#issuecomment-6724762579"
     links:
       - { title: "bee#60", url: "https://github.com/tractat-us/bee/issues/60" }
+      - { title: "bee#38", url: "https://github.com/tractat-us/bee/pull/38" }
 
   bee-49:
     kind: decision
@@ -426,6 +472,131 @@ items:
       url: "https://github.com/tractat-us/bee/issues/49#issuecomment-6724762977"
     links:
       - { title: "bee#49", url: "https://github.com/tractat-us/bee/issues/49" }
+      - { title: "bee#66, spec limit", url: "https://github.com/tractat-us/bee/pull/66" }
+
+  bee-64:
+    kind: decision
+    title: "Decision: any local process can admit a second screen by writing a human-attributed admit"
+    status: done
+    summary: "Resolved for v1 by #68, which states the limit in spec section 5.7. Connection-attested authors are kuilt#3149."
+    started: "2026-11-08T17:33Z"
+    landed: "2026-11-08T17:42Z"
+    ruling:
+      date: "2026-11-08"
+      summary: "Option A for v1: state the limit. No new gate may rest on peer kind."
+      url: "https://github.com/tractat-us/bee/issues/64#issuecomment-6724838405"
+    links:
+      - { title: "bee#64", url: "https://github.com/tractat-us/bee/issues/64" }
+      - { title: "bee#68", url: "https://github.com/tractat-us/bee/pull/68" }
+
+  bee-65:
+    kind: issue
+    title: "A client whose FullState is over the frame bound redials and resends it forever"
+    status: in-flight
+    summary: "A board over the bound should stop and say so; the fix is in review as #76."
+    started: "2026-11-08T17:33Z"
+    links:
+      - { title: "bee#65", url: "https://github.com/tractat-us/bee/issues/65" }
+      - { title: "bee#76", url: "https://github.com/tractat-us/bee/pull/76" }
+
+  bee-71:
+    kind: issue
+    title: "Give the host its own peer kind, and keep bee_clear off its surfaces"
+    status: next
+    summary: "PeerKind.Host as a label only, so bee_clear stops stranding pairing devices (from #42's calls)."
+    started: "2026-11-08T17:44Z"
+    links:
+      - { title: "bee#71", url: "https://github.com/tractat-us/bee/issues/71" }
+
+  bee-72:
+    kind: issue
+    title: "The bridge refuses wait and list on the host's pairing surfaces"
+    status: next
+    summary: "Claim-free admits stay, written into the spec, and the bridge refuses an agent that waits on a pairing surface (from #42's calls)."
+    started: "2026-11-08T17:44Z"
+    links:
+      - { title: "bee#72", url: "https://github.com/tractat-us/bee/issues/72" }
+
+  bee-73:
+    kind: issue
+    title: "Serve the board over HTTPS on the LAN, so LAN pages are secure contexts"
+    status: later
+    summary: "After the demo: plain-HTTP LAN pages keep no local copy and lack microphone, wake lock and clipboard (from #42's calls)."
+    started: "2026-11-08T17:44Z"
+    links:
+      - { title: "bee#73", url: "https://github.com/tractat-us/bee/issues/73" }
+
+  bee-74:
+    kind: issue
+    title: "Give each e2e spec that writes records its own host, and run two workers"
+    status: next
+    summary: "Saves about 45 s per smoke job; the PRs it waited on, #38 and #63, have merged (from #42's calls)."
+    started: "2026-11-08T17:44Z"
+    links:
+      - { title: "bee#74", url: "https://github.com/tractat-us/bee/issues/74" }
+
+  bee-77:
+    kind: issue
+    title: "The bridge's board socket sends no pings, so a half-open link can outlast the boot grace"
+    status: next
+    summary: "Set a client ping on the bridge's board and claims sockets, well under the 60 s grace."
+    started: "2026-11-08T17:52Z"
+    links:
+      - { title: "bee#77", url: "https://github.com/tractat-us/bee/issues/77" }
+
+  bee-78:
+    kind: issue
+    title: "Boot grace: two survivors holding different stale entries make a dead agent look seen"
+    status: next
+    summary: "A narrow window found in #62; count an identity as seen only when its newest entry names a voter member."
+    started: "2026-11-08T17:52Z"
+    links:
+      - { title: "bee#78", url: "https://github.com/tractat-us/bee/issues/78" }
+
+  bee-80:
+    kind: issue
+    title: "A bee-notions edit can ship a stale bundle while webpack reports up to date"
+    status: next
+    summary: "Declare bee-notions/src as an input to the webpack task, so a stale bundle can't read as a false green."
+    started: "2026-11-08T17:59Z"
+    links:
+      - { title: "bee#80", url: "https://github.com/tractat-us/bee/issues/80" }
+
+  bee-81:
+    kind: issue
+    title: "The bridge can't append to an array, so agent Polls lose their options basis"
+    status: next
+    summary: "bee_surface_open writes options as one whole-array leaf, so the bridge needs an append write."
+    started: "2026-11-08T18:10Z"
+    links:
+      - { title: "bee#81", url: "https://github.com/tractat-us/bee/issues/81" }
+
+  bee-83:
+    kind: issue
+    title: "Fence an orphan decision's proposal by the orphan token"
+    status: next
+    summary: "A stale click on an orphan decision applies to whatever orphaning is current; found in #75's re-review."
+    started: "2026-11-08T18:40Z"
+    links:
+      - { title: "bee#83", url: "https://github.com/tractat-us/bee/issues/83" }
+
+  bee-84:
+    kind: issue
+    title: "Sketch Send bar: close the remaining arming gaps with aria-disabled and a click guard"
+    status: next
+    summary: "Narrow holes left after #38's final review found it safe for a demo-stage v1."
+    started: "2026-11-08T18:49Z"
+    links:
+      - { title: "bee#84", url: "https://github.com/tractat-us/bee/issues/84" }
+
+  bee-85:
+    kind: issue
+    title: "PairingChannelTest's hang-up case fails every time it runs alone"
+    status: next
+    summary: "It passes inside a full check and failed once in CI; the pairing ends before the device hangs up."
+    started: "2026-11-08T18:59Z"
+    links:
+      - { title: "bee#85", url: "https://github.com/tractat-us/bee/issues/85" }
 
   bee-14:
     kind: decision
@@ -630,11 +801,60 @@ items:
     kind: kuilt
     title: "Quilter: a caller can't wait until its own write is acknowledged"
     status: next
-    summary: "Not yet filed. Quilter.mutate doesn't return its sequence number, so #38 counts writes against universalAckFlow instead. #38's KDoc holds the PR until the issue is filed and named there."
+    summary: "Quilter.mutate doesn't return its sequence number, so bee counts writes against universalAckFlow instead. Filed as kuilt#3147 and named in #38's KDoc."
+    started: "2026-11-08T15:02Z"
     links:
+      - { title: "kuilt#3147", url: "https://github.com/tractat-us/kuilt/issues/3147" }
       - { title: "bee#38", url: "https://github.com/tractat-us/bee/pull/38" }
 
+  kuilt-3148:
+    kind: kuilt
+    title: "Star overlays: a spoke's Quilter can't sendTo another spoke, so a mid-stream joiner never heals its cursor"
+    status: next
+    summary: "A spoke that joins mid-stream sees another spoke's edits only at the next anti-entropy round."
+    started: "2026-11-08T17:33Z"
+    links:
+      - { title: "kuilt#3148", url: "https://github.com/tractat-us/kuilt/issues/3148" }
+
+  kuilt-3149:
+    kind: kuilt
+    title: "Relay: attest each record's author by the connection that first delivered it"
+    status: next
+    summary: "Behind bee#60 and bee#64; needed before a second person or a keyed agent attaches, and bee states the limit for v1."
+    started: "2026-11-08T17:42Z"
+    links:
+      - { title: "kuilt#3149", url: "https://github.com/tractat-us/kuilt/issues/3149" }
+      - { title: "bee#68", url: "https://github.com/tractat-us/bee/pull/68" }
+
+  kuilt-3150:
+    kind: kuilt
+    title: "Move Ktor to 3.6.1: Netty and WebSocket drop a session's last frame on 3.5.2"
+    status: next
+    summary: "bee moved itself to 3.6.1 in #69, so it doesn't wait on this."
+    started: "2026-11-08T18:00Z"
+    links:
+      - { title: "kuilt#3150", url: "https://github.com/tractat-us/kuilt/issues/3150" }
+
   # ── Outside the code ─────────────────────────────────────────────────
+  bee-42-hand-check:
+    kind: outside
+    title: "Pair a real phone over the LAN"
+    status: waiting-on-iain
+    summary: "The e2e never binds off loopback, so mDNS, the macOS firewall, Wi-Fi isolation and mobile Safari or Chrome are unproven."
+    started: "2026-11-08T17:26Z"
+    links:
+      - { title: "bee#42", url: "https://github.com/tractat-us/bee/pull/42" }
+      - { title: "Steps: Showing the board on another screen", url: "../setup.md#showing-the-board-on-another-screen" }
+
+  bee-auto-close:
+    kind: outside
+    title: "Turn off auto-close in bee's settings"
+    status: waiting-on-iain
+    summary: "Settings, General, Issues; a UI toggle only, to match the rest of tractat-us."
+    started: "2026-11-08T17:26Z"
+    links:
+      - { title: "Ruling on bee#6", url: "https://github.com/tractat-us/bee/issues/6#issuecomment-6724665300" }
+
   out-cla:
     kind: outside
     title: "Contributor agreement text and a signing check"
