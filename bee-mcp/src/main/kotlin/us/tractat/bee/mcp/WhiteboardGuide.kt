@@ -123,8 +123,7 @@ object WhiteboardGuide {
     private const val SURFACES =
         "A surface is a flat list of components, one with id \"root\"; containers name their children by id. " +
             "A property binds to the surface's data with {\"path\": \"/…\"}; bee_surface_update writes data by " +
-            "JSON Pointer, as {\"/idea\": \"new text\"}, upserts components by id, and with append adds entries " +
-            "that are never rewritten, as a Poll's options are. Each entry opens as it " +
+            "JSON Pointer, as {\"/idea\": \"new text\"}, and upserts components by id. Each entry opens as it " +
             "stands with bee_surface_open."
 
     /** The server's `instructions`: the rules and the [ESSENTIAL] examples, within [CLAUDE_CODE_TEXT_LIMIT]. */
