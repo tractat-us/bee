@@ -56,8 +56,14 @@ class BoardPinTest {
         val pinned = loom.pinnedTo(BoardPin.to(first))
         pinned.attempt(socket("ws://127.0.0.1:8233/ws/board"))
         pinned.attempt(socket("ws://127.0.0.1:8233/ws/board?k=key"))
+        // kuilt's cluster client dials by join, a default method a delegating loom would pass on.
+        assertIs<Recorded>(runCatching { pinned.join(socket("ws://127.0.0.1:8233/ws/claims").tag) }.exceptionOrNull())
         assertEquals(
-            listOf("ws://127.0.0.1:8233/ws/board?board=$first", "ws://127.0.0.1:8233/ws/board?k=key&board=$first"),
+            listOf(
+                "ws://127.0.0.1:8233/ws/board?board=$first",
+                "ws://127.0.0.1:8233/ws/board?k=key&board=$first",
+                "ws://127.0.0.1:8233/ws/claims?board=$first",
+            ),
             loom.dialled,
         )
     }

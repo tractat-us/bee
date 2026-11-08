@@ -10,8 +10,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import us.tractat.kuilt.core.Loom
+import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.core.Seam
+import us.tractat.kuilt.core.Tag
 import us.tractat.kuilt.websocket.WebSocketAdvertisement
 
 /**
@@ -63,8 +65,17 @@ private val WEBSOCKET_SCHEME = Regex("^ws")
  */
 fun Loom.pinnedTo(pin: BoardPin): Loom = PinnedLoom(this, pin)
 
+/**
+ * Delegation forwards [Loom]'s default methods to [inner] too, where they would call [inner]'s
+ * [weave], not this one, and dial without the board. So every way to dial is overridden here:
+ * kuilt's cluster client joins by [join].
+ */
 private class PinnedLoom(private val inner: Loom, private val pin: BoardPin) : Loom by inner {
     override suspend fun weave(rendezvous: Rendezvous): Seam = inner.weave(rendezvous.naming(pin.resolve()))
+
+    override suspend fun join(tag: Tag): Seam = weave(Rendezvous.Existing(tag))
+
+    override suspend fun host(pattern: Pattern): Seam = weave(Rendezvous.New(pattern))
 }
 
 /** [this] rendezvous with [board] in its socket's query. Only a WebSocket's can carry one. */
