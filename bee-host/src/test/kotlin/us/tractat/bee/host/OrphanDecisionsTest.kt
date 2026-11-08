@@ -98,6 +98,8 @@ class OrphanDecisionsTest {
         val roster = LivePresence(star.relay.state, star.clock, backgroundScope) { throw it }
         OrphanDecisions(star.relay, { roster.live().map { it.identity } }, star.clock).start(backgroundScope)
         star.relay.mutate { it.postPresence(ReplicaId("mcp-bo"), PresenceEntry(bo, null, null, star.clock(), waiting = false), 1) }
+        // Ada's entry outlives her for its TTL: her decision must still not offer her.
+        star.relay.mutate { it.postPresence(ReplicaId("mcp-ada"), PresenceEntry(ada, null, null, star.clock(), waiting = false), 1) }
         val page = claims.client(NodeId("web-iain-page"))
         val rig = Rig(this, star, claims, voter, OrphanAnswers({ page }, iain))
 
