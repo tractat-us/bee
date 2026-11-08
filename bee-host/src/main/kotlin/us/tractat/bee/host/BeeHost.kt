@@ -1,5 +1,6 @@
 package us.tractat.bee.host
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
@@ -122,7 +123,7 @@ internal fun hostOrphanDecisions(scope: CoroutineScope, relay: BoardRelay, clock
     return OrphanDecisions(relay, { roster.live().map { it.identity } }, clock)
 }
 
-private val orphanLog = io.github.oshai.kotlinlogging.KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
+private val orphanLog = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
 
 /** The voter's [ClaimMirror] onto [relay]'s board: the claims mirror and the departed list (A2). */
 fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.mutate { it.mirrorClaims(relay.replica, table) } }
