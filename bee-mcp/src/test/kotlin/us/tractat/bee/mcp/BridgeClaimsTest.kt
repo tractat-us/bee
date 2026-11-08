@@ -550,6 +550,55 @@ class BridgeClaimsTest {
     }
 
     /**
+     * A claim this session won is never given back from under the wait it won for. Two waits of
+     * one session claim one click, and the voter judges both claims back to back: the first wins,
+     * the second loses to this very session. The winner is parked between its verdict and taking
+     * the token into its hands, until the loser has given that claim back, as the MCP SDK's
+     * concurrent tool handlers allow. The give-back marks the token, so the winner can no longer
+     * take it and passes the record; the loser claims it again. Without the mark, the winner hands
+     * over the token being released and the loser wins a fresh one: one click, two callers.
+     */
+    @Test
+    fun aGiveBackNeverRacesTheWaitThatWon() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val judged = CompletableDeferred<ClaimStatus>()
+        val seenByWinner = CompletableDeferred<ClaimStatus>()
+        val source = BoardActionSource(
+            ada.bridge,
+            beforeReserve = {
+                val won = judged.await()
+                seenByWinner.complete(rig.voter.table.value.status(target))
+                rig.voter.table.first { it.status(target) != won } // the loser gave the claim back
+            },
+            afterWin = {},
+        )
+        val hold = rig.claims.host.holdFor(ada.node())
+        hold.hold()
+
+        val waits = List(2) { async { source.next("s", null, 30.seconds) } }
+        val before = rig.voter.table.value.appliedIndex
+        val won = rig.voter.table.first { it.appliedIndex >= before + 2 }.status(target) // the win, then the loss to self
+        judged.complete(won)
+        val parked = hold.parkedSends
+        hold.releaseAll()
+        val results = waits.map { it.await() }
+        val ids = results.mapNotNull { it.record?.string("recordId") }
+        val token = results.firstNotNullOfOrNull { it.record }?.let { BoardActionSource.parseToken(it.string("token")) }
+        val seen = seenByWinner.await()
+        assertAll(
+            { assertIs<ClaimStatus.Held>(won, "rig: the voter judged the first claim a win") },
+            { assertTrue(parked > 0, "rig: both verdicts were held back") },
+            { assertEquals(won, seen, "rig: the winner was parked before the give-back landed") },
+            { assertEquals(1, ids.size, "exactly one wait got the click: $results") },
+            { assertNotEquals((won as? ClaimStatus.Held)?.token, token, "under a fresh token, not the one given back") },
+            { assertEquals<ClaimStatus?>(token?.let { ClaimStatus.Held(ada.bridge.self, it) }, rig.voter.table.value.status(target), "held under the returned token") },
+        )
+        rig.close()
+    }
+
+    /**
      * Against a host that refuses every dial, the claims connection backs off as it should: it
      * never publishes a link, and over 60 s of the production backoff it opens a handful of
      * links, not one every 250 ms. A link counts as up only once it has folded a committed entry,

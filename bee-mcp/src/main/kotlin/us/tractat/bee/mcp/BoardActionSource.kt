@@ -25,8 +25,10 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The board-backed [ActionSource] (spec §5.2, §6.3). Invariant: **a wait returns a record only
- * under a token its own claim won, and a claim this bridge holds but didn't hand over is
- * released, never stranded.**
+ * under a token its own claim won, and a claim this bridge holds but didn't hand over is given
+ * back by the next wait of this bridge that reaches it.** Until one does, a late win or a claim
+ * appended just before its link died stays held for no caller; a sweep when a link proves is
+ * tractat-us/bee#31.
  *
  * Records are addressed to a surface, and any session may wait on any surface, so every candidate
  * (`record:<author>:<seq>`) is claimed through Raft before it's returned. A record another session
@@ -51,6 +53,9 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 class BoardActionSource internal constructor(
     private val bridge: BeeBridge,
+    /** Test seam: runs once a claim is told it won, before its token is taken into this wait's hands. */
+    private val beforeReserve: suspend () -> Unit = {},
+    /** Test seam: runs once [claimNext] returns a win, within the wait's bound. */
     private val afterWin: suspend () -> Unit,
 ) : ActionSource {
     constructor(bridge: BeeBridge) : this(bridge, afterWin = {})
@@ -100,8 +105,10 @@ class BoardActionSource internal constructor(
                 continue
             }
             when (outcome) {
-                is ClaimOutcome.Won ->
+                is ClaimOutcome.Won -> {
+                    beforeReserve()
                     if (bridge.reserve(target, outcome.token)) return Won(id, record, by, outcome.token) else passed += id.dot
+                }
                 is ClaimOutcome.Lost -> when (ownClaim(target, outcome, by)) {
                     Own.Pass -> passed += id.dot
                     Own.Retry -> Unit
