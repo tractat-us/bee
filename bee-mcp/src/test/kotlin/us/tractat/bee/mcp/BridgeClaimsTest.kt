@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -477,9 +478,10 @@ class BridgeClaimsTest {
 
     /**
      * A claims link that dies after the voter appended this session's claim, before the client
-     * heard the commit, leaves the target held under the session's identity with nobody to
-     * release it. The wait still gets the record, on the rebuilt link: it gives that claim back
-     * and claims the record again, so it returns a fresh token, not the appended one.
+     * heard the commit, leaves the target held under the session's identity, under a token no
+     * caller received. The wait still gets the record, on the rebuilt link: the claim is given
+     * back, by the new link's sweep or by the wait, whichever reaches it first, and the wait claims
+     * the record again, so it returns a fresh token, not the appended one.
      */
     @Test
     fun aLinkThatDiesMidClaimLeavesTheRecordForTheWait() = runTest(timeout = 120.seconds) {
@@ -508,9 +510,10 @@ class BridgeClaimsTest {
     }
 
     /**
-     * A claim held under this session's identity that no release will ever free (here, one a
-     * second client of the same identity made, as an exhausted late-win release leaves it) is
-     * given back and claimed again: the wait returns the record under a fresh token.
+     * A claim held under this session's identity that its own client will never release (here,
+     * one a second client of the same identity made, as an exhausted late-win release leaves it)
+     * is given back, by the sweep or by the wait, and the wait returns the record under a fresh
+     * token.
      */
     @Test
     fun anUnreleasedClaimOfTheSessionIsReclaimedUnderAFreshToken() = runTest(timeout = 120.seconds) {
@@ -533,17 +536,18 @@ class BridgeClaimsTest {
     /**
      * A claim told it lost to this session, whose target reads free by the time the wait looks,
      * retries; it never passes the record. The verdict and the release that freed the target are
-     * held back and delivered together, so the table is already free when the wait reads it.
+     * held back and delivered together, so the table is already free when the wait reads it. The
+     * hold comes before the stray claim, so the bridge's sweep never sees that claim on its own.
      */
     @Test
     fun aLossToSelfOnAFreedTargetRetries() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
         val target = rig.clickOn(ada)
-        val stray = rig.claims.client(NodeId("stray"))
-        val strayWin = stray.claim(target, ada.bridge.self)
         val hold = rig.claims.host.holdFor(ada.node())
         hold.hold()
+        val stray = rig.claims.client(NodeId("stray"))
+        val strayWin = stray.claim(target, ada.bridge.self)
 
         val wait = async { ada.wait("s", timeoutSeconds = 30) }
         val strayIndex = rig.voter.table.value.appliedIndex
@@ -586,11 +590,11 @@ class BridgeClaimsTest {
     /**
      * A claim this session won is never given back from under the wait it won for. Two waits of
      * one session claim one click, and the voter judges both claims back to back: the first wins,
-     * the second loses to this very session. The winner is parked between its verdict and taking
-     * the token into its hands, until the loser has given that claim back, as the MCP SDK's
-     * concurrent tool handlers allow. The give-back marks the token, so the winner can no longer
-     * take it and passes the record; the loser claims it again. Without the mark, the winner hands
-     * over the token being released and the loser wins a fresh one: one click, two callers.
+     * the second loses to this very session. The winner is parked for 5 s between its verdict and
+     * taking the token into its hands, as the MCP SDK's concurrent tool handlers allow, and the
+     * loser reaches the claim in that window. A claim of the target is still in flight, so the
+     * loser waits it out rather than giving the claim back, then passes the record. Without that,
+     * the loser gives back the token the winner is about to take, and claims the record again.
      */
     @Test
     fun aGiveBackNeverRacesTheWaitThatWon() = runTest(timeout = 120.seconds) {
@@ -599,12 +603,13 @@ class BridgeClaimsTest {
         val target = rig.clickOn(ada)
         val judged = CompletableDeferred<ClaimStatus>()
         val seenByWinner = CompletableDeferred<ClaimStatus>()
+        val gaveBack = CompletableDeferred<Boolean>()
         val source = BoardActionSource(
             ada.bridge,
             beforeReserve = {
                 val won = judged.await()
                 seenByWinner.complete(rig.voter.table.value.status(target))
-                rig.voter.table.first { it.status(target) != won } // the loser gave the claim back
+                gaveBack.complete(withTimeoutOrNull(5.seconds) { rig.voter.table.first { it.status(target) != won } } != null)
             },
             afterWin = {},
         )
@@ -621,13 +626,62 @@ class BridgeClaimsTest {
         val ids = results.mapNotNull { it.record?.string("recordId") }
         val token = results.firstNotNullOfOrNull { it.record }?.let { BoardActionSource.parseToken(it.string("token")) }
         val seen = seenByWinner.await()
+        val gaveBackWhileParked = gaveBack.await()
         assertAll(
             { assertIs<ClaimStatus.Held>(won, "rig: the voter judged the first claim a win") },
             { assertTrue(parked > 0, "rig: both verdicts were held back") },
-            { assertEquals(won, seen, "rig: the winner was parked before the give-back landed") },
+            { assertEquals(won, seen, "rig: the winner was parked as the verdicts landed") },
+            { assertEquals(false, gaveBackWhileParked, "nothing gave the claim back while the winner was parked") },
             { assertEquals(1, ids.size, "exactly one wait got the click: $results") },
-            { assertNotEquals((won as? ClaimStatus.Held)?.token, token, "under a fresh token, not the one given back") },
-            { assertEquals<ClaimStatus?>(token?.let { ClaimStatus.Held(ada.bridge.self, it) }, rig.voter.table.value.status(target), "held under the returned token") },
+            { assertEquals((won as? ClaimStatus.Held)?.token, token, "under the token the winner won") },
+            { assertEquals<ClaimStatus?>(won, rig.voter.table.value.status(target), "still held under it") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A `bee_claim` win is never given back from under its caller: the twin of
+     * [aGiveBackNeverRacesTheWaitThatWon] for the tool's keep. The tool and a wait of one session
+     * claim one click, and the voter judges both back to back: the tool's claim wins, the wait's
+     * loses to this very session. The tool is parked for 5 s between its verdict and recording the
+     * win as handed over, and the wait reaches the claim in that window. A claim of the target is
+     * still in flight, so the wait waits it out, then passes the record as handed over. Without
+     * that, the wait gives back the token the tool then reports as won, and claims the record
+     * again: one click, two callers, one of them holding a token the voter no longer holds.
+     */
+    @Test
+    fun aGiveBackNeverRacesABeeClaimWin() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val hold = rig.claims.host.holdFor(ada.node())
+        hold.hold()
+        val gaveBack = CompletableDeferred<Boolean>()
+
+        val tool = async {
+            ada.bridge.claim(target) { outcome ->
+                val won = rig.voter.table.value.status(target)
+                gaveBack.complete(withTimeoutOrNull(5.seconds) { rig.voter.table.first { it.status(target) != won } } != null)
+                ada.bridge.keptForCaller(target, outcome)
+            }
+        }
+        val won = rig.voter.table.first { it.status(target) is ClaimStatus.Held }.status(target) // the tool's claim
+        val wonAt = rig.voter.table.value.appliedIndex
+        val wait = async { BoardActionSource(ada.bridge).next("s", null, 20.seconds) }
+        val judged = rig.voter.table.first { it.appliedIndex > wonAt } // the wait's claim, rejected: held as ada
+        val parked = hold.parkedSends
+        hold.releaseAll()
+        val outcome = tool.await()
+        val waited = wait.await()
+        val gaveBackWhileParked = gaveBack.await()
+        assertAll(
+            { assertEquals(ada.bridge.self, (won as? ClaimStatus.Held)?.holder, "rig: the tool's claim won, as ada") },
+            { assertEquals(won, judged.status(target), "rig: the wait's claim was judged a loss to ada") },
+            { assertTrue(parked > 0, "rig: both verdicts were held back") },
+            { assertEquals(false, gaveBackWhileParked, "nothing gave the claim back while the tool was parked") },
+            { assertEquals<ClaimOutcome?>((won as? ClaimStatus.Held)?.token?.let { ClaimOutcome.Won(it) }, outcome, "the tool reports its win") },
+            { assertEquals(won, rig.voter.table.value.status(target), "and the voter still holds it under that token") },
+            { assertEquals(null, waited.record, "the wait passed the record the tool won: $waited") },
         )
         rig.close()
     }
@@ -835,27 +889,34 @@ class BridgeClaimsTest {
      * A give-back whose caller is cancelled while it's being proposed stays queued: a wait gives a
      * claim back on its own cancellable path, so a cancel there must never drop the release. The
      * release is held on its way up, and its caller cancelled; the connection still has it, and it
-     * settles once the hold lets go.
+     * settles once the hold lets go. Ada's commits are held too, from before the stray claim, so
+     * the bridge's sweep, which queues what it finds, never sees that claim until the holds let go:
+     * only the cancelled give-back can have queued it.
      */
     @Test
     fun aGiveBackCancelledMidTryStaysQueued() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada", retryDelay = { 1.seconds })
         val target = rig.clickOn(ada)
+        val hold = rig.claims.host.holdUpFor(ada.node())
+        val down = rig.claims.host.holdFor(ada.node())
+        hold.hold()
+        down.hold()
         val stray = rig.claims.client(NodeId("stray")).claim(target, ada.bridge.self)
         val unreceived = ClaimsConnection.Unreceived(target, ada.bridge.self, checkNotNull((stray as? ClaimOutcome.Won)?.token))
-        val hold = rig.claims.host.holdUpFor(ada.node())
-        hold.hold()
 
         val giving = launch { ada.connection.releaseUnreceived(unreceived) }
         delay(1.seconds)
         val parked = hold.parkedSends
+        val unseen = ada.link().client.table.value.status(target)
         giving.cancelAndJoin()
         val queued = ada.connection.pendingReleases.value
         hold.releaseAll()
+        down.releaseAll()
         val drained = withTimeoutOrNull(30.seconds) { ada.connection.pendingReleases.first { it.isEmpty() } }
         assertAll(
             { assertTrue(parked > 0, "rig: the release was held on its way up") },
+            { assertEquals(ClaimStatus.Free, unseen, "rig: ada's table never showed the stray claim to the sweep") },
             { assertEquals(listOf(unreceived), queued, "the cancelled give-back stayed queued") },
             { assertNotNull(drained, "and settled once the hold let go") },
             { assertEquals(ClaimStatus.Free, rig.voter.table.value.status(target)) },
@@ -906,8 +967,9 @@ class BridgeClaimsTest {
      * A release still on its way to the voter never frees a record a wait has returned, so a
      * second session never gets it too. A second claims client under ada's identity stands in for
      * an earlier link of ada's: it holds the record as ada, and its release of that claim is held
-     * on its way up. Ada's wait gives that claim back and claims the record again, under a fresh
-     * token; when the stale release lands it's rejected, and bo's wait passes the record.
+     * on its way up. Ada's bridge gives that claim back, by its sweep or its wait, and the wait
+     * claims the record again, under a fresh token; when the stale release lands it's rejected, and
+     * bo's wait passes the record.
      */
     @Test
     fun aReleaseInFlightNeverFreesARecordTheWaitReturned() = runTest(timeout = 120.seconds) {
@@ -938,6 +1000,243 @@ class BridgeClaimsTest {
             { assertEquals(false, staleFreed, "the stale release was rejected") },
             { assertEquals(null, boGot.record, "bo never got the record ada's wait returned: $boGot") },
             { assertEquals<ClaimStatus?>(adaToken?.let { ClaimStatus.Held(ada.bridge.self, it) }, rig.voter.table.value.status(target), "the voter still holds it for ada's caller") },
+        )
+        rig.close()
+    }
+
+    /**
+     * tractat-us/bee#31: a late win whose link dies before its release commits is given back on
+     * the next link, with no later wait of this session on the surface. Ada's wait times out with
+     * its claim held on its way up; the claim then wins late, and the client's release of it is
+     * lost on the way up until the link dies. On the rebuilt link the record must come free, so bo,
+     * waiting on the same surface, gets it rather than passing it as held by ada. The first link
+     * folds the win here, so its own sweep may queue the release before it dies;
+     * [aLateWinTheDeadLinkNeverHeardIsGivenBackByTheNextLinksSweep] pins the next link's sweep.
+     */
+    @Test
+    fun aLateWinWhoseLinkDiedIsGivenBackOnTheNextLink() = runTest(timeout = 180.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val breaker = CompletableDeferred<Unit>()
+        val ada = rig.session("ada", retryDelay = { 1.seconds }) { n, linkScope ->
+            if (n == 1) linkScope.launch { breaker.await(); throw IllegalStateException("link died (test)") }
+        }
+        val bo = rig.session("bo")
+        val target = rig.clickOn(ada)
+        bo.client.state.first { it.records("s").isNotEmpty() }
+        val first = ada.link()
+        val up = rig.claims.host.holdUpFor(first.node)
+        val down = rig.claims.host.holdFor(first.node)
+        val lossy = rig.claims.host.dropUpFor(first.node)
+        up.hold()
+
+        val timedOut = ada.wait("s", timeoutSeconds = 12) // its claim times out at 10 s, the retry at the bound
+        down.hold()
+        up.releaseAll()
+        val lateWin = rig.voter.table.first { it.status(target) is ClaimStatus.Held }.status(target)
+        lossy.dropping = true
+        down.releaseAll()
+        val heard = withTimeoutOrNull(10.seconds) { first.client.table.first { it.status(target) == lateWin } }
+        delay(1.seconds) // the client's release of the late win goes up, and is lost
+        val lost = lossy.dropped
+        breaker.complete(Unit)
+        ada.connection.link.filterNotNull().first { it !== first }
+        val freed = withTimeoutOrNull(20.seconds) { rig.voter.table.first { it.status(target) == ClaimStatus.Free } }
+        val boGot = bo.wait("s", timeoutSeconds = 30)
+        assertAll(
+            { assertEquals(true, timedOut.timedOut, "rig: ada's wait timed out before its claim won") },
+            { assertEquals(ada.bridge.self, (lateWin as? ClaimStatus.Held)?.holder, "rig: the claim won late, as ada") },
+            { assertNotNull(heard, "rig: ada's client heard the late win") },
+            { assertTrue(lost > 0, "rig: the late win's release was lost on its way up") },
+            { assertNotNull(freed, "the late win was given back on the next link") },
+            { assertEquals(false, boGot.timedOut, "bo got the record, not stuck behind ada: $boGot") },
+        )
+        rig.close()
+    }
+
+    /**
+     * The next link's own sweep gives back a late win the dead link never heard. Ada's wait times
+     * out with its claim held on its way up. When that hold lets go the claim wins late, but its
+     * commit is held on its way back, so the first link never folds it: neither its client's
+     * late-win release nor its sweep can see the win, and nothing is queued. The link then dies.
+     * Only the next link's sweep, folding the win as it catches up, can give it back, so bo,
+     * waiting on the same surface, gets the record; and the sweep releases it exactly once.
+     */
+    @Test
+    fun aLateWinTheDeadLinkNeverHeardIsGivenBackByTheNextLinksSweep() = runTest(timeout = 180.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val breaker = CompletableDeferred<Unit>()
+        val ada = rig.session("ada", retryDelay = { 1.seconds }) { n, linkScope ->
+            if (n == 1) linkScope.launch { breaker.await(); throw IllegalStateException("link died (test)") }
+        }
+        val bo = rig.session("bo")
+        val target = rig.clickOn(ada)
+        bo.client.state.first { it.records("s").isNotEmpty() }
+        val first = ada.link()
+        val up = rig.claims.host.holdUpFor(first.node)
+        val down = rig.claims.host.holdFor(first.node)
+        up.hold()
+
+        val timedOut = ada.wait("s", timeoutSeconds = 12) // its claim times out at 10 s, the retry at the bound
+        down.hold()
+        up.releaseAll()
+        val lateWin = rig.voter.table.first { it.status(target) is ClaimStatus.Held }.status(target)
+        delay(1.seconds) // whatever the first link could do about the win, it has done
+        val heardByFirst = first.client.table.value.status(target)
+        val queuedOnFirst = ada.connection.pendingReleases.value
+        val parked = down.parkedSends
+        breaker.complete(Unit)
+        ada.connection.link.filterNotNull().first { it !== first }
+        val freed = withTimeoutOrNull(20.seconds) { rig.voter.table.first { it.status(target) == ClaimStatus.Free } }
+        val boGot = bo.wait("s", timeoutSeconds = 30)
+        val releases = (lateWin as? ClaimStatus.Held)?.let { rig.releasesOf(target, it.token) }
+        assertAll(
+            { assertEquals(true, timedOut.timedOut, "rig: ada's wait timed out before its claim won") },
+            { assertEquals(ada.bridge.self, (lateWin as? ClaimStatus.Held)?.holder, "rig: the claim won late, as ada") },
+            { assertTrue(parked > 0, "rig: the win's commit was held on its way back") },
+            { assertEquals(ClaimStatus.Free, heardByFirst, "rig: the first link never folded the win") },
+            { assertEquals(emptyList(), queuedOnFirst, "rig: nothing was queued before the link died") },
+            { assertNotNull(freed, "the next link's sweep gave the late win back") },
+            { assertEquals(false, boGot.timedOut, "bo got the record, not stuck behind ada: $boGot") },
+            { assertEquals(1, releases, "the sweep released it once") },
+        )
+        rig.close()
+    }
+
+    /**
+     * The sweep gives a claim back once, however often the table or the ledger changes before its
+     * release commits. A stray claim holds the target as ada, and ada's sends are held on their
+     * way up, so the sweep's release of it waits there. Meanwhile a `bee_claim` of another target
+     * goes into flight, which changes the ledger and has the sweep look again. When the hold lets
+     * go, the voter's log holds one release of the stray claim.
+     */
+    @Test
+    fun aSweptClaimIsReleasedOnce() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val up = rig.claims.host.holdUpFor(ada.node())
+        up.hold()
+        val stray = rig.claims.client(NodeId("stray")).claim(target, ada.bridge.self)
+        val token = checkNotNull((stray as? ClaimOutcome.Won)?.token)
+        ada.link().client.table.first { it.status(target) == ClaimStatus.Held(ada.bridge.self, token) }
+
+        val card = async { ada.bridge.claim(ClaimTarget("card:s/c1")) }
+        delay(2.seconds)
+        val parked = up.parkedSends
+        up.releaseAll()
+        val cardOutcome = card.await()
+        val freed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(target) == ClaimStatus.Free } }
+        delay(5.seconds) // any second release lands
+        val releases = rig.releasesOf(target, token)
+        assertAll(
+            { assertTrue(parked > 0, "rig: ada's sends were held on their way up") },
+            { assertIs<ClaimOutcome.Won>(cardOutcome, "rig: the other claim went in and out of flight") },
+            { assertNotNull(freed, "the sweep gave the stray claim back") },
+            { assertEquals(1, releases, "and released it once") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Rebuilding the claims link gives back only claims nobody received. A record a wait handed
+     * over, and a card `bee_claim` won, both stay held under their tokens through a new link that
+     * has caught up.
+     */
+    @Test
+    fun aNewLinkKeepsWhatTheBridgeHandedOver() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val breaker = CompletableDeferred<Unit>()
+        val ada = rig.session("ada", retryDelay = { 1.seconds }) { n, linkScope ->
+            if (n == 1) linkScope.launch { breaker.await(); throw IllegalStateException("link died (test)") }
+        }
+        val target = rig.clickOn(ada)
+        val token = BoardActionSource.parseToken(ada.wait("s").record().string("token"))
+        val card = ClaimTarget("card:s/c1")
+        val claimed = ada.call(BeeTools.CLAIM, mapOf("target" to card.value)).json()
+        val cardToken = BoardActionSource.parseToken(claimed.string("token"))
+        val first = ada.link()
+
+        breaker.complete(Unit)
+        val second = ada.connection.link.filterNotNull().first { it !== first }
+        val caughtUp = rig.voter.table.value.appliedIndex
+        second.client.table.first { it.appliedIndex >= caughtUp }
+        delay(10.seconds) // any release a sweep proposed lands
+        assertAll(
+            { assertEquals("won", claimed.string("outcome"), "rig: bee_claim won the card") },
+            { assertEquals(ClaimStatus.Held(ada.bridge.self, token), rig.voter.table.value.status(target), "the record the wait handed over is still held") },
+            { assertEquals(ClaimStatus.Held(ada.bridge.self, cardToken), rig.voter.table.value.status(card), "the card bee_claim won is still held") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A win is never given back from under the wait that won it, while it sits between its
+     * verdict and taking the token into its hands. The wait is parked there for 5 s, through every
+     * table the link folds; it still returns the record, under the token it won. The rig checks
+     * that the bridge's own table showed the win throughout the park, so the sweep had it in view
+     * the whole time, and nothing released it.
+     */
+    @Test
+    fun aWinParkedBeforeItsWaitTakesItIsKept() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = rig.clickOn(ada)
+        val parked = CompletableDeferred<ClaimStatus>()
+        val inView = CompletableDeferred<Pair<ClaimStatus, ClaimStatus>>()
+        val source = BoardActionSource(
+            ada.bridge,
+            beforeReserve = {
+                parked.complete(rig.voter.table.value.status(target))
+                val atStart = ada.link().client.table.value.status(target)
+                delay(5.seconds)
+                inView.complete(atStart to ada.link().client.table.value.status(target))
+            },
+            afterWin = {},
+        )
+
+        val result = source.next("s", null, 30.seconds)
+        val token = result.record?.let { BoardActionSource.parseToken(it.string("token")) }
+        val atPark = withTimeoutOrNull(1.seconds) { parked.await() }
+        val (seenAtStart, seenAtEnd) = withTimeoutOrNull(1.seconds) { inView.await() } ?: (null to null)
+        assertAll(
+            { assertIs<ClaimStatus.Held>(atPark, "rig: the wait was parked after its win") },
+            { assertEquals(atPark, seenAtStart, "rig: the bridge's own table showed the win as the park began") },
+            { assertEquals(atPark, seenAtEnd, "nothing released it while the wait was parked") },
+            { assertEquals(false, result.timedOut, "the parked wait kept its win: $result") },
+            { assertEquals<ClaimStatus?>(token?.let { ClaimStatus.Held(ada.bridge.self, it) }, rig.voter.table.value.status(target), "held under the returned token") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A release is settled only by a table that has folded the claim's own entry. Ada's link has
+     * proved, but its commits are held from before the claim was appended, so its table reads the
+     * target free. A release of that claim, which can't hear its commit within its timeout, must
+     * stay queued; once the link catches up it settles.
+     */
+    @Test
+    fun aReleaseStaysQueuedWhileTheLinkIsBehindTheClaim() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada", retryDelay = { 1.hours })
+        val target = rig.clickOn(ada)
+        val link = ada.link()
+        val down = rig.claims.host.holdFor(link.node)
+        down.hold()
+        val stray = rig.claims.client(NodeId("stray")).claim(target, ada.bridge.self)
+        val unreceived = ClaimsConnection.Unreceived(target, ada.bridge.self, checkNotNull((stray as? ClaimOutcome.Won)?.token))
+
+        val settled = ada.connection.releaseUnreceived(unreceived)
+        val behind = link.client.table.value
+        val queued = ada.connection.pendingReleases.value
+        val parked = down.parkedSends
+        down.releaseAll()
+        val drained = withTimeoutOrNull(30.seconds) { ada.connection.pendingReleases.first { it.isEmpty() } }
+        assertAll(
+            { assertTrue(parked > 0, "rig: the link's commits were held") },
+            { assertTrue(behind.appliedIndex in 1..<unreceived.token.index, "rig: a proved link behind the claim: ${behind.appliedIndex}") },
+            { assertEquals(false, settled, "a link that hasn't folded the claim never reads its release as settled") },
+            { assertEquals(listOf(unreceived), queued, "the release stayed queued") },
+            { assertNotNull(drained, "control: it settles once the link catches up") },
         )
         rig.close()
     }

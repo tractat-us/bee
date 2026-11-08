@@ -243,7 +243,12 @@ class ClaimsConnection(
         return settled
     }
 
-    private fun queue(unreceived: Unreceived) = releases.update { if (unreceived in it) it else it + unreceived }
+    /**
+     * Queues a release of a claim nobody received, for the live link to propose until it commits;
+     * one already queued keeps one copy. It never suspends, so nothing between a caller's decision
+     * and the queue can fail.
+     */
+    fun queue(unreceived: Unreceived) = releases.update { if (unreceived in it) it else it + unreceived }
 
     /** Stops rebuilding, and stops the live link. */
     fun close() {

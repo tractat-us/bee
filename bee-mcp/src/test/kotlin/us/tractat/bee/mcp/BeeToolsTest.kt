@@ -26,12 +26,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.put
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimTarget
+import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.PeerIdentity
@@ -45,6 +48,7 @@ import us.tractat.bee.host.boardMirror
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.InMemoryTag
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import kotlin.random.Random
@@ -236,6 +240,19 @@ internal class JoinRig(private val test: TestScope) {
     /** Stops the voter before the test's scope ends: cancelled with it, its relay throws (spike 4 notes). */
     suspend fun close() = voter.close()
 
+    /** How many releases of [target] under [token] the voter's log holds, committed or rejected. */
+    suspend fun releasesOf(target: ClaimTarget, token: ClaimToken): Int =
+        DurableStoreRaftStorage.open(claims.store).entries(1).count { entry ->
+            val command = try {
+                ClaimCommand.decode(entry.command)
+            } catch (_: SerializationException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            command is ClaimCommand.Release && command.target == target && command.token == token
+        }
+
     /** The browser [clickOn] clicked from. */
     lateinit var browserClient: BoardClient
 
@@ -298,7 +315,7 @@ internal class JoinRig(private val test: TestScope) {
         )
         val identity = BridgeIdentity(name, Random(n)) { old, reason -> connection.depart(old, reason) }
         val presence = Presence(client, author, connection.link.filterNotNull().map { it.node }, claims.clock, scope) { throw it }
-        val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock).also { it.announce() }
+        val bridge = BeeBridge(client, author, connection, identity, presence, claims.clock, scope).also { it.announce() }
         connection.link.filterNotNull().first()
         return Session(bridge, client, connection, identity, failures, connect(bridge))
     }

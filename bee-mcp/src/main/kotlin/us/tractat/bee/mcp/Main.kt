@@ -87,7 +87,7 @@ fun main() {
         logger.info { "Retired $old ($reason); its Depart ${if (committed) "committed" else "is pending until claims are back"}." }
     }
     val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, bridgeScope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
-    val bridge = BeeBridge(board, author, claims, identity, presence, clock)
+    val bridge = BeeBridge(board, author, claims, identity, presence, clock, bridgeScope)
     board.connect()
     runBlocking { bridge.announce() }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }
