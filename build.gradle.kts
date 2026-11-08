@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstallTask
+import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnPlugin
+import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnRootExtension
 
 plugins {
     alias(libs.plugins.kotlinJvm) apply false
@@ -17,6 +19,12 @@ tasks.withType<KotlinNpmInstallTask>().configureEach {
         .withPathSensitivity(PathSensitivity.RELATIVE)
     val yarnIntegrity = nodeModules.file(".yarn-integrity")
     doFirst { yarnIntegrity.get().asFile.delete() }
+}
+
+// @a2ui/markdown-it pins DOMPurify to exactly 3.4.11, which has published advisories. None is
+// reachable with DOMPurify's default config and markdown-it's `html: false`, but 3.4.17 fixes them.
+plugins.withType<WasmYarnPlugin> {
+    the<WasmYarnRootExtension>().resolution("dompurify", "3.4.17")
 }
 
 // -Pbee.realsocket.tests=true turns on each task's one real-socket smoke. Forward it to
