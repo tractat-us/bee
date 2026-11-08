@@ -33,6 +33,7 @@ import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
@@ -210,10 +211,14 @@ class BeeBridge(
         client.mutate { it.closeSurface(author, surfaceId, clock()) }
     }
 
-    /** Closes every open surface and deletes none. Returns the ids it closed. */
+    /**
+     * Closes every open surface but the host's, and deletes none. Returns the ids it closed. The
+     * host's stay open: a join request closed under its device strands it until it expires (bee#71).
+     */
     suspend fun clear(): List<String> {
         beforeWrite()
-        val open = board.value.openSurfaces()
+        val state = board.value
+        val open = state.openSurfaces().filter { state.meta(it)?.openedBy?.kind != PeerKind.Host }
         open.forEach { id -> client.mutate { it.closeSurface(author, id, clock()) } }
         return open
     }
