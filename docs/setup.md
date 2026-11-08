@@ -4,9 +4,9 @@ Two pieces join a Claude Code session to bee: the **bridge** (`bee-mcp`, an MCP 
 **`SessionStart` hook** that tells the bridge when you `/clear`. You install both yourself, in your
 own Claude Code settings. The bridge doesn't write to `~/.claude`.
 
-The bridge gives a session 11 tools: `bee_board`, `bee_presence`, `bee_surface_open`,
+The bridge gives a session 12 tools: `bee_board`, `bee_presence`, `bee_surface_open`,
 `bee_surface_update`, `bee_surface_close`, `bee_board_clear`, `bee_wait_action`,
-`bee_list_actions`, `bee_action_done`, `bee_claim` and `bee_release`. It also briefs the session
+`bee_list_actions`, `bee_action_done`, `bee_claim`, `bee_release` and `bee_examples`. It also briefs the session
 on how to share the board, and offers a `whiteboard` prompt; see
 [Whiteboard with a session](#whiteboard-with-a-session).
 
@@ -185,17 +185,22 @@ board by itself.
 To use the board as a whiteboard with the people in the room, type this in the session:
 
 ```text
-/mcp__bee__whiteboard the login flow
+/mcp__bee__whiteboard login-flow
 ```
 
+Keep the topic to one word: Claude Code may pass only the first word of what follows the
+command. For a longer topic, say it in your next message. Leave the topic off and the session
+asks, on the board, what to work on.
+
 The session draws the topic, keeps the board current as you talk, and reacts to clicks and typing
-on the board until someone says done. Leave the topic off and it asks, on the board, what to work
-on.
+on the board. It stops when someone says done, when nobody has the board open, or after about
+10 minutes with no clicks.
 
 Nothing else needs installing. The bridge sends every session a short briefing as it connects:
 look before drawing, one surface per topic, leave other people's surfaces alone, and wait for
-clicks on anything interactive. The briefing carries an example of each component that renders.
-Both texts live in `bee-mcp/src/main/kotlin/us/tractat/bee/mcp/WhiteboardGuide.kt`.
+clicks on anything interactive. Claude Code cuts that briefing at 4096 characters, so it carries
+only the rules and two examples; `bee_examples` returns an example of every component that
+renders. All three texts live in `bee-mcp/src/main/kotlin/us/tractat/bee/mcp/WhiteboardGuide.kt`.
 
 ## Showing the board on another screen
 
