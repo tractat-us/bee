@@ -13,10 +13,12 @@ So far the bridge serves `bee_wait_action` and `bee_list_actions` over an empty 
 From the root of your bee checkout:
 
 ```sh
-source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.5.0+8-tem
+source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.5.0+8-tem # (1)!
 ./gradlew :bee-mcp:installDist
 BEE=$(pwd)
 ```
+
+1. Every module builds on a JDK 25 toolchain. This is the exact build CI uses.
 
 This writes the launcher to `$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp`. It lives under
 `build/`, so `./gradlew clean` deletes it, and every session using it loses bee until you run

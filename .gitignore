@@ -28,3 +28,10 @@ morning-report-*.md
 e2e/playwright-report/
 e2e/test-results/
 .playwright-mcp/
+
+# Docs site: its venv and its build output
+docs-site/.venv/
+docs-site/site/
+
+# Python bytecode, written by every docs build
+__pycache__/
