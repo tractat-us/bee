@@ -364,6 +364,68 @@ test('postMessage from another frame is ignored', async ({ browser }) => {
   await iain.context.close();
 });
 
+// A click inside one sketch activates the page, and no listener on the page sees it: the frame is
+// cross-origin. So a second sketch, posting in the background, would get its forgeries through on
+// that click, under its own rate limit. The click focuses the frame it lands in, and only that
+// frame's choice counts.
+test('a click in one sketch gives another sketch no choice', async ({ browser }) => {
+  test.setTimeout(120_000);
+  // The forger, on the shared companion's surface: as above, Playwright's own reads activate the
+  // page for 5 s, so it forges every 300 ms only from 10 s to 25 s after it loads. It tallies the
+  // page's answers, which the test reads only at the end.
+  pushScreen('forger.html', '<h2>Forger</h2><pre id="tally">{}</pre><script>' +
+    'const tally = { accepted: 0, refused: 0 };' +
+    'addEventListener("message", (e) => { if (e.data?.id !== 903) return;' +
+    '  tally[e.data.error ? "refused" : "accepted"]++; document.getElementById("tally").textContent = JSON.stringify(tally); });' +
+    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 903, method: "ui/message", params: ' +
+    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
+    'setTimeout(() => { let n = 0; const t = setInterval(() => { forge("forged"); if (++n >= 50) clearInterval(t); }, 300); }, 10000);' +
+    '</' + 'script>');
+  // The chooser: a second companion's sketch, on its own directories, with a real choice.
+  const own = mkdtempSync(join(tmpdir(), 'bee-e2e-chooser-'));
+  const ownScreens = join(own, 'content');
+  const ownState = join(own, 'state');
+  const ownEvents = join(ownState, 'events');
+  mkdirSync(ownScreens, { recursive: true });
+  writeFileSync(join(ownScreens, 'chooser.html'), options.replace('Which layout?', 'Chooser layout?'));
+  const chooser = spawn(companionBin, ['--screen-dir', ownScreens, '--state-dir', ownState, '--frame-template', template], {
+    env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${port}` },
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  const exited = new Promise((resolve) => chooser.on('exit', (code, signal) => resolve(code ?? signal)));
+  const kept = join(ownState, 'bee-companion.json');
+  await expect.poll(() => existsSync(kept), { timeout: 60_000 }).toBe(true);
+  const ownSurface = JSON.parse(readFileSync(kept, 'utf8')).surface;
+  const ownLines = () => (existsSync(ownEvents) ? readFileSync(ownEvents, 'utf8').split('\n').filter(Boolean) : []);
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('/?name=bo');
+  await expect(sketchFrame(page).locator('h2')).toHaveText('Forger', { timeout: 15_000 });
+  const forgerShownAt = Date.now();
+  const chooserFrame = page.frameLocator(`a2ui-surface[data-surface-id="${ownSurface}"] bee-sketch iframe`);
+  await expect(chooserFrame.locator('h2')).toHaveText('Chooser layout?', { timeout: 15_000 });
+  // Precondition: the last read's activation ends before the forger starts.
+  expect(Date.now() - forgerShownAt).toBeLessThan(4_000);
+  await page.waitForTimeout(forgerShownAt + 11_500 - Date.now());
+  // Control: the forger alone gets nothing through.
+  expect(eventLines()).toEqual([]);
+
+  await chooserFrame.locator('[data-choice="b"]').click();
+  await expect.poll(ownLines, { timeout: 10_000 }).toHaveLength(1);
+  await page.waitForTimeout(5_500);
+  expect(eventLines()).toEqual([]);
+  expect(JSON.parse(ownLines()[0])).toMatchObject({ choice: 'b', text: 'Option B' });
+  // Control: the forger kept posting through the click's activation, and every one was refused.
+  const tally = JSON.parse(await sketchFrame(page).locator('#tally').textContent());
+  expect(tally.accepted).toBe(0);
+  expect(tally.refused).toBeGreaterThanOrEqual(15);
+
+  chooser.kill('SIGTERM');
+  await exited;
+  await context.close();
+});
+
 // The brainstorming loop's stop script kills its companion with SIGTERM. A companion stopped so
 // closes its own surface before it ends, so the board keeps no open, dead Sketch.
 test('a companion stopped with SIGTERM closes its surface', async ({ browser }) => {
