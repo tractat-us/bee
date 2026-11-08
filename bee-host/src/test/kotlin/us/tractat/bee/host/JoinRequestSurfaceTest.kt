@@ -78,7 +78,7 @@ class JoinRequestSurfaceTest {
     }
 
     private fun Rig.post(): Pair<Opened.Ticket, Deferred<Resolution>> {
-        val ticket = assertIs<Opened.Ticket>(pairing.open())
+        val ticket = assertIs<Opened.Ticket>(pairing.open(device.address))
         val resolution = requests.post(ticket, device)
         test.runCurrent()
         return ticket to resolution
@@ -96,6 +96,18 @@ class JoinRequestSurfaceTest {
             { assertTrue("room" in shown, "and its screen name: $shown") },
             { assertFalse(CODE in wire, "the code is nowhere on the board") },
         )
+    }
+
+    /**
+     * The code field is A2UI's `obscured` input, which bee-web's live typing never syncs, so what
+     * a person types stays on their page until Admit puts it in a record (e2e/second-screen).
+     */
+    @Test
+    fun codeFieldIsObscured() = rig {
+        val (ticket, _) = post()
+        val id = JoinRequestSurface.surfaceId(ticket.id)
+        val field = requireNotNull(board.surfaceDoc(id)).toSurfaceView(id).components.getValue(JoinRequestSurface.CODE_FIELD)
+        assertEquals("obscured", field.getValue("variant").jsonPrimitive.content)
     }
 
     @Test
