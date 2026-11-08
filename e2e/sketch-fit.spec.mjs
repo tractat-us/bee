@@ -1,7 +1,8 @@
 // A Sketch frame fits its document's height, within a floor and a cap, and a fit can't slide a
 // Send under a click (bee#60). It runs its own, unseeded host (host.mjs), so the page is shorter
 // than the window and a frame's fit moves the cards below it without resizing anything; a real
-// bee-mcp bridge (agent.mjs) opens the Sketch surfaces.
+// bee-mcp bridge (agent.mjs) opens the Sketch surfaces. The board shows the newest surface on
+// top, so a test opens the sketch it wants lowest first.
 import { test, expect } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -114,8 +115,8 @@ test('a short sketch gets a short frame, one that grows gets a taller one, and a
 // same click sends.
 test('a sketch that fits its frame to slide another sketch\'s Send back under the pointer records nothing', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1600 });
-  await openSketch('mover', `${NO_MARGIN}<div id="box" style="height:150px">The mover</div>`);
   await openSketch('target', `${NO_MARGIN}<div style="height:150px">The target</div>`);
+  await openSketch('mover', `${NO_MARGIN}<div id="box" style="height:150px">The mover</div>`);
   await open(page, 'max');
   await expect(frame(page, 'target').locator('body')).toContainText('The target', { timeout: 15_000 });
   await expect.poll(() => inner(page, 'mover'), { timeout: 5_000 }).toBe(150);
@@ -158,8 +159,8 @@ test('a sketch that fits its frame to slide another sketch\'s Send back under th
 // two, on Send, and that isn't the pointer arriving there either.
 test('a sketch that fits its own Send under a resting pointer records nothing until the pointer leaves and returns', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1600 });
-  await openSketch('lure', `${NO_MARGIN}<div id="box" style="height:150px">The lure</div>`);
   await openSketch('below', `${NO_MARGIN}<div style="height:300px">What the person meant to click</div>`);
+  await openSketch('lure', `${NO_MARGIN}<div id="box" style="height:150px">The lure</div>`);
   await open(page, 'sam');
   await expect(frame(page, 'below').locator('body')).toContainText('meant to click', { timeout: 15_000 });
   await expect.poll(() => inner(page, 'lure'), { timeout: 5_000 }).toBe(150);
@@ -226,10 +227,11 @@ test('a screen pinned to its frame, scrolling inside, fits what it holds', async
 // A fit re-arms only the Sends it moved: a sketch above the one that fits keeps its Send armed.
 test('a fit leaves armed the Send of a sketch above it', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1600 });
-  await openSketch('above', `${NO_MARGIN}<div style="height:150px">Above</div>`);
   await openSketch('fitter', `${NO_MARGIN}<div id="box" style="height:150px">The fitter</div>`);
+  await openSketch('above', `${NO_MARGIN}<div style="height:150px">Above</div>`);
   await open(page, 'lee');
   await expect(frame(page, 'fitter').locator('body')).toContainText('The fitter', { timeout: 15_000 });
+  await expect(frame(page, 'above').locator('body')).toContainText('Above', { timeout: 15_000 });
   await propose(page, 'above', 'kept');
   await expect(send(page, 'above')).toBeEnabled();
 
@@ -243,14 +245,18 @@ test('a fit leaves armed the Send of a sketch above it', async ({ page }) => {
 // re-arms only the Sends it moved.
 test('a fit leaves armed the Send of a sketch above it on a page taller than the window', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
-  await openSketch('above-tall', `${NO_MARGIN}<div style="height:150px">Above</div>`);
-  await openSketch('fitter-tall', `${NO_MARGIN}<div id="box" style="height:150px">The fitter</div>`);
   await openSketch('filler-tall', `${NO_MARGIN}<div style="height:1000px">Filler</div>`);
+  await openSketch('fitter-tall', `${NO_MARGIN}<div id="box" style="height:150px">The fitter</div>`);
+  await openSketch('above-tall', `${NO_MARGIN}<div style="height:150px">Above</div>`);
   await open(page, 'ash');
   await expect(frame(page, 'filler-tall').locator('body')).toContainText('Filler', { timeout: 15_000 });
+  await expect(frame(page, 'above-tall').locator('body')).toContainText('Above', { timeout: 15_000 });
   await expect.poll(() => inner(page, 'fitter-tall'), { timeout: 5_000 }).toBe(150);
   // Precondition: the page is taller than the window.
   expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
+  // Precondition: the Send that should stay armed is above the fitter.
+  const y = (id) => iframe(page, id).evaluate((f) => f.getBoundingClientRect().y);
+  expect(await y('above-tall')).toBeLessThan(await y('fitter-tall'));
   await propose(page, 'above-tall', 'kept');
   await expect(send(page, 'above-tall')).toBeEnabled();
   const bodyBefore = await page.evaluate(() => document.body.getBoundingClientRect().height);
