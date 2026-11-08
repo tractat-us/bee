@@ -7,6 +7,7 @@
   "main": "src/renderer-host.js",
   "dependencies": {
     "@a2ui/lit": "0.15.0",
+    "@a2ui/markdown-it": "0.2.2",
     "@a2ui/web_core": "0.15.0"
   }
 }
