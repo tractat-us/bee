@@ -183,6 +183,31 @@ class CompanionAdapterTest {
     }
 
     /**
+     * A companion that stops gracefully closes its surface, so a finished session leaves no open,
+     * dead Sketch on the board. It's killed the moment [CompanionAdapter.closeSurface] returns, so
+     * the host has the close only if the companion waited for it to be acknowledged.
+     */
+    @Test
+    fun gracefulStopLeavesTheSurfaceClosed() = runTest(timeout = 120.seconds) {
+        val rig = rig(this).apply { start() }
+        rig.screen("mockup.html", "<p>mockup</p>")
+        val companion = rig.companion()
+        val browser = rig.browser()
+        rig.shows(browser) { "mockup" in it }
+        val surface = rig.surface
+
+        val acknowledged = companion.adapter.closeSurface()
+        companion.stop()
+        val host = rig.star.relay.state.value
+        assertAll(
+            { assertTrue(acknowledged, "the host acknowledged the close") },
+            { assertEquals(listOf(surface), host.closedSurfaces(), "the host has the surface closed") },
+            { assertTrue("mockup" in sketchHtml(host, surface)!!, "the closed surface keeps its last sketch") },
+        )
+        rig.close()
+    }
+
+    /**
      * A companion killed and started again over the same directories loses nothing: the board
      * still shows the screen without a second push, events already written stay and aren't
      * written twice, and a click made while it was down lands once it's back.

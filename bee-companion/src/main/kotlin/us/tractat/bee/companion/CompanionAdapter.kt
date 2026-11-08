@@ -162,6 +162,9 @@ class CompanionAdapter(
         }
     }
 
+    /** Not yet: closes [surface] on a graceful stop. */
+    suspend fun closeSurface(): Boolean = false
+
     /** Shows the newest screen if it isn't the one last handled. */
     private suspend fun sync() = turn.withLock {
         val screen = newestScreen(screenDir.listDirectoryEntries("*.html")) ?: return@withLock
