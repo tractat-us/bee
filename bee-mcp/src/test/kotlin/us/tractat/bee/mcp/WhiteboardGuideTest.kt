@@ -136,7 +136,14 @@ class WhiteboardGuideTest {
         val ada = rig.session("ada")
 
         val served = ada.mcp.listTools(options = options).tools.map { it.name }.toSet()
-        val texts = listOf(WhiteboardGuide.INSTRUCTIONS, WhiteboardGuide.CHEAT_SHEET, WhiteboardGuide.prompt(null), WhiteboardGuide.prompt("a topic"))
+        val texts = listOf(
+            WhiteboardGuide.INSTRUCTIONS,
+            WhiteboardGuide.CHEAT_SHEET,
+            WhiteboardGuide.prompt(null),
+            WhiteboardGuide.prompt("a topic"),
+            CheckinGuide.prompt(null),
+            CheckinGuide.prompt("a task"),
+        )
         val named = texts.flatMap { Regex("""\bbee_[a-z_]+""").findAll(it).map { m -> m.value }.toList() }.toSet()
         assertAll(
             { assertTrue(named.containsAll(setOf(WaitTool.WAIT, BeeTools.DONE, BeeTools.CLAIM, WhiteboardGuide.EXAMPLES_TOOL)), "the scan finds tool names: $named") },
@@ -150,7 +157,7 @@ class WhiteboardGuideTest {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
 
-        val prompt = ada.mcp.listPrompts(options = options).prompts.single()
+        val prompt = ada.mcp.listPrompts(options = options).prompts.single { it.name == WhiteboardGuide.PROMPT }
         val argument = prompt.arguments.orEmpty().single()
         assertAll(
             { assertEquals(WhiteboardGuide.PROMPT, prompt.name) },
