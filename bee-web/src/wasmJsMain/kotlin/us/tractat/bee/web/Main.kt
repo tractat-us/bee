@@ -87,9 +87,15 @@ private fun actorOf(params: URLSearchParams): PeerIdentity {
     return PeerIdentity.human(name)
 }
 
-/** A join link's key is kept for this tab, so a reload keeps it once the link is gone from the address bar. */
+/**
+ * A join link's key moves into this tab's storage and out of the address bar at once, so a
+ * screenshot, a shared screen or a copied URL doesn't carry it on, and a reload still has it.
+ */
 private fun accessOf(params: URLSearchParams): Access {
-    params.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() }?.let { sessionStorage.setItem(KEY_STORAGE, it) }
+    params.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() }?.let {
+        sessionStorage.setItem(KEY_STORAGE, it)
+        window.history.replaceState(null, "", window.location.pathname + searchWithoutKey() + window.location.hash)
+    }
     val key = sessionStorage.getItem(KEY_STORAGE)
     return when {
         key != null -> Access.Keyed(key)
@@ -236,12 +242,17 @@ private fun offerRepair(scope: CoroutineScope, client: BoardClient) {
     repair.textContent = "Pair this screen again"
     repair.addEventListener("click", {
         sessionStorage.removeItem(KEY_STORAGE)
-        val params = URLSearchParams(window.location.search.toJsString()).apply { delete(PairingWire.KEY_PARAM) }
-        window.location.search = params.toString()
+        window.location.search = searchWithoutKey()
     })
     scope.launch {
         client.online.collect { online -> if (online) repair.setAttribute("hidden", "") else repair.removeAttribute("hidden") }
     }
+}
+
+/** The page's query with any key taken out: `?…`, or empty when nothing is left. */
+private fun searchWithoutKey(): String {
+    val params = URLSearchParams(window.location.search.toJsString()).apply { delete(PairingWire.KEY_PARAM) }
+    return params.toString().let { if (it.isEmpty()) "" else "?$it" }
 }
 
 private fun Element.appendElement(tag: String, id: String): Element =
