@@ -57,7 +57,38 @@ export function pollOptions(options) {
   return shown;
 }
 
-/** `<bee-poll>`: the question, then each option with its count and who chose it. */
+/**
+ * The name part of a peer identity, as a voter list shows it: `human:sam` is `sam`,
+ * `agent:scout#1a2b3c4d` is `scout`. Anything else shows as it is.
+ */
+export function peerName(peer) {
+  const match = /^[a-z]+:([^:#]+)(#[0-9a-f]{8})?$/.exec(String(peer));
+  return match ? match[1] : String(peer);
+}
+
+// The page's colours (index.html's tokens), with fallbacks for a page that doesn't define them.
+// Styled inline, as Board is: the element renders into light DOM, inside the page's card.
+const INK = 'var(--ink,#1f2328)';
+const MUTED = 'var(--muted,#656d76)';
+const LINE = 'var(--line,#d8d6d0)';
+const CARD = 'var(--card,#fff)';
+const ACCENT = 'var(--accent,#b7791f)';
+
+const ROW = 'position:relative;display:flex;align-items:center;gap:0.75rem;width:100%;min-height:3rem;'
+  + `padding:0.6rem 0.9rem;border:1px solid ${LINE};border-radius:10px;background:${CARD};color:${INK};`
+  + 'font:inherit;font-size:1.05rem;text-align:left;cursor:pointer;overflow:hidden';
+const ROW_CHOSEN = `border:2px solid ${ACCENT};padding:calc(0.6rem - 1px) calc(0.9rem - 1px)`;
+const BAR = 'position:absolute;inset:0 auto 0 0;pointer-events:none;transition:width 0.3s;'
+  + `background:color-mix(in srgb, ${ACCENT} 18%, transparent)`;
+const VOTERS = 'position:relative;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+  + `font-size:0.85rem;color:${MUTED}`;
+const COUNT = 'position:relative;font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums';
+
+/**
+ * `<bee-poll>`: the question, then one row per option: its label, who chose it, its count, and a
+ * bar for its share of the answers. The viewer's own answer is marked (`aria-pressed`). The viewer
+ * is the nearest `data-viewer` above the element, which bee-web's page sets on `#board`.
+ */
 export class PollElement extends A2uiLitElement {
   constructor() {
     super();
@@ -79,17 +110,29 @@ export class PollElement extends A2uiLitElement {
       voters.get(String(answer))?.push(peer);
     }
     const total = [...voters.values()].reduce((sum, peers) => sum + peers.length, 0);
-    return html`<div class="bee-poll">
-      <p class="question">${latestRevision(props.question)}</p>
-      <ul>
-        ${options.map((option) => html`<li data-option=${option.id}>
-          <button type="button" @click=${() => this.answer(option.id)}>${option.label}</button>
-          <span class="count">${voters.get(option.id).length}</span>
-          <span class="voters">${voters.get(option.id).join(', ')}</span>
-        </li>`)}
+    const viewer = this.closest('[data-viewer]')?.getAttribute('data-viewer');
+    const mine = viewer && Object.hasOwn(answers, viewer) ? String(answers[viewer]) : null;
+    return html`<div class="bee-poll" style="color:${INK}">
+      <p class="question" style="margin:0 0 0.75rem;font-size:1.15rem;font-weight:600">${latestRevision(props.question)}</p>
+      <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0.5rem">
+        ${options.map((option) => this.row(option, voters.get(option.id), total, option.id === mine))}
       </ul>
-      <p class="total">${total} ${total === 1 ? 'answer' : 'answers'}</p>
+      <p class="total" style="margin:0.75rem 0 0;font-size:0.85rem;color:${MUTED}">${total} ${total === 1 ? 'answer' : 'answers'}</p>
     </div>`;
+  }
+
+  /** One option's row: the whole row answers it, and its bar is its share of `total`. */
+  row(option, peers, total, chosen) {
+    const share = total ? Math.round((peers.length / total) * 100) : 0;
+    return html`<li data-option=${option.id}>
+      <button type="button" aria-pressed=${chosen ? 'true' : 'false'} style="${ROW};${chosen ? ROW_CHOSEN : ''}"
+          @click=${() => this.answer(option.id)}>
+        <span class="bar" style="${BAR};width:${share}%"></span>
+        <span class="label" style="position:relative;font-weight:${chosen ? 700 : 500}">${option.label}</span>
+        <span class="voters" title=${peers.join(', ')} style=${VOTERS}>${peers.map(peerName).join(', ')}</span>
+        <span class="count" style=${COUNT}>${peers.length}</span>
+      </button>
+    </li>`;
   }
 
   answer(option) {
