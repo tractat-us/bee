@@ -231,10 +231,22 @@ class BeeBridge(
         claims.releaseUnreceived(ClaimsConnection.Unreceived(target, holder, token))
     }
 
-    /** Takes [token] on [target] into a wait's hands; false if another wait has it, or it was handed over. */
-    internal fun reserve(target: ClaimTarget, token: ClaimToken): Boolean {
+    /**
+     * Takes [token] on [target], just won by the wait's own claim, into that wait's hands. Call it
+     * from the claim's keep, while the claim is still in flight. It can't find the token taken:
+     * a token is won by exactly one claim, and while a claim of its target is in flight nothing
+     * marks it, since the sweep skips it and [giveBack] answers [OwnClaim.InReach]. If it ever
+     * does, it throws rather than let the wait pass a record it won.
+     */
+    internal fun reserve(target: ClaimTarget, token: ClaimToken) {
         val key = target to token
-        return ledger.getAndUpdate { if (key in it.reservations) it else it.with(key, Reservation.InHand) }.reservations[key] == null
+        ledger.update {
+            check(key !in it.reservations) {
+                "$token on $target was just won by a wait's claim, yet is already ${it.reservations[key]}: " +
+                    "nothing may mark a token while a claim of its target is in flight."
+            }
+            it.with(key, Reservation.InHand)
+        }
     }
 
     /** Records that [token] on [target] reached a caller. */
@@ -370,7 +382,7 @@ internal enum class OwnClaim {
     /** A caller received it: the record is passed over. */
     HandedOver,
 
-    /** Another claim of this bridge has it in hand, or may still win it: wait that out. */
+    /** Another claim of this bridge has won it or may still win it: wait that out. */
     InReach,
 
     /** Released, or no longer held under its token: claim the record again. */
