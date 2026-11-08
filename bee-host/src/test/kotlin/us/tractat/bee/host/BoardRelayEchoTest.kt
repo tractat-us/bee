@@ -61,7 +61,7 @@ private suspend fun BoardClient.openBoard() = SURFACES.forEach { id ->
 
 /**
  * The relay forwards a spoke's change as a delta, not as the board (#24). Each test runs the
- * in-memory [Star] under virtual time, so a spoke's only link is the hub, as over real sockets.
+ * in-memory [BoardStar] under virtual time, so a spoke's only link is the hub, as over real sockets.
  */
 class BoardRelayEchoTest {
     /**
@@ -73,7 +73,7 @@ class BoardRelayEchoTest {
      */
     @Test
     fun aKeystrokeComesDownAtTheSizeOfItsDeltaNotTheBoard() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val alex = star.client(ALEX)
         val sam = star.client(SAM)
         alex.connect()
@@ -111,7 +111,7 @@ class BoardRelayEchoTest {
      */
     @Test
     fun aSpokeThatJoinedMidStreamSeesEachEditWithinARoundTrip() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val alex = star.client(ALEX)
         alex.connect()
         runCurrent()
@@ -142,7 +142,7 @@ class BoardRelayEchoTest {
     /** A spoke that loses both copies of a delta, the flood's and the hub's, still converges. */
     @Test
     fun aSpokeThatMissesADeltaStillConverges() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val alex = star.client(ALEX)
         val sam = star.client(SAM)
         alex.connect()

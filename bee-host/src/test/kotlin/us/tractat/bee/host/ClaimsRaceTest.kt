@@ -5,45 +5,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
-import us.tractat.bee.core.ClaimTable
 import us.tractat.bee.core.ClaimTarget
-import us.tractat.bee.core.ClaimsClient
 import us.tractat.bee.core.PeerIdentity
-import us.tractat.kuilt.cluster.ClusterEndpoints
-import us.tractat.kuilt.cluster.clusterClient
-import us.tractat.kuilt.core.InMemoryTag
-import us.tractat.kuilt.core.Loom
-import us.tractat.kuilt.core.Pattern
-import us.tractat.kuilt.core.PeerId
-import us.tractat.kuilt.core.Rendezvous
-import us.tractat.kuilt.core.Seam
-import us.tractat.kuilt.core.fabric.Connection
-import us.tractat.kuilt.core.fabric.identified
-import us.tractat.kuilt.raft.ClusterConfig
 import us.tractat.kuilt.raft.NodeId
-import us.tractat.kuilt.raft.RaftConfig
-import us.tractat.kuilt.session.Room
-import us.tractat.kuilt.session.RoomHost
-import us.tractat.kuilt.session.SeamRoomFactory
-import us.tractat.kuilt.store.DurableStore
-import us.tractat.kuilt.store.InMemoryDurableStore
 import us.tractat.kuilt.test.assertAll
-import us.tractat.kuilt.test.fabric.HoldableConnection
-import us.tractat.kuilt.test.fabric.connectionPair
-import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,7 +24,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
 
 class ClaimsRaceTest {
     /**
@@ -195,91 +166,3 @@ class ClaimsRaceTest {
 
 private fun List<kotlin.time.Duration>.summary(): String =
     if (isEmpty()) "none" else "min ${min()} max ${max()} n $size"
-
-/**
- * The deterministic claims rig shared by the integration tests: one [ClaimsVoter] over an
- * [InMemoryClaimsHost], learners dialling it over in-memory links, all on [TestScope]'s virtual
- * time.
- */
-internal class ClaimsRig(private val test: TestScope, val store: DurableStore = InMemoryDurableStore()) {
-    val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
-    val raftConfig = RaftConfig(expectVirtualTime = true, random = Random(6))
-    // A test dispatcher on the test's scheduler, not the scheduler itself: `identified` runs the seam
-    // loops on what it is given, and a bare scheduler has no dispatcher, so they ran on Default in real time.
-    val host = InMemoryClaimsHost(StandardTestDispatcher(test.testScheduler), clock)
-    val mirrored = MutableStateFlow(ClaimTable.EMPTY)
-    private var clientSeeds = 0
-
-    suspend fun startVoter(scope: CoroutineScope = test.backgroundScope, host: RoomHost = this.host): ClaimsVoter =
-        ClaimsVoter.start(scope, host, store, raftConfig, { mirrored.value = it }, clock)
-
-    fun client(node: NodeId, scope: CoroutineScope = test.backgroundScope): ClaimsClient {
-        val cluster = scope.clusterClient(
-            loom = host.loomFor(node),
-            clusterEndpoints = ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))),
-            clientNodeId = node,
-            clusterConfig = ClusterConfig(voters = setOf(ClaimsVoter.HOST_NODE), learners = setOf(node)),
-            raftConfig = raftConfig,
-            clock = clock,
-        )
-        // One seed per client in this rig, never from the node: a reused node must draw a new incarnation.
-        return ClaimsClient(cluster, node, clock, scope, Random(++clientSeeds))
-    }
-
-    fun report(line: String) = System.err.println("[claims-spike] $line")
-}
-
-/**
- * An in-memory multi-connection [RoomHost], the double of `KtorRoomHost`: every dial through
- * [loomFor] becomes one admitted [Room], so each learner is its own room, as on `/ws/claims`.
- * kuilt's `LoomRoomHost` hosts a single room, and `InMemoryRoomFabric` offers no `RoomHost`.
- *
- * Each dial's sends go through a [HoldableConnection] in each direction, so a test can hold a
- * commit's way back to a learner ([holdFor]) or a learner's proposal on its way up ([holdUpFor]).
- */
-internal class InMemoryClaimsHost(private val dispatcher: CoroutineContext, private val clock: () -> Instant) : RoomHost {
-    private class Link(val server: Connection, val remote: PeerId)
-
-    private val pending = Channel<Link>(Channel.UNLIMITED)
-    private val holds = mutableMapOf<NodeId, HoldableConnection>()
-    private val upHolds = mutableMapOf<NodeId, HoldableConnection>()
-
-    /** The latest link to [node]'s server-to-client direction. */
-    fun holdFor(node: NodeId): HoldableConnection = holds.getValue(node)
-
-    /** The latest link to [node]'s client-to-server direction: its proposals and acks. */
-    fun holdUpFor(node: NodeId): HoldableConnection = upHolds.getValue(node)
-
-    fun loomFor(node: NodeId): Loom = object : Loom {
-        override suspend fun weave(rendezvous: Rendezvous): Seam {
-            val (serverEnd, clientEnd) = connectionPair()
-            val held = HoldableConnection(serverEnd)
-            holds[node] = held
-            pending.send(Link(held, PeerId(node.value)))
-            val up = HoldableConnection(clientEnd)
-            upHolds[node] = up
-            return identified(up, PeerId(node.value), SERVER, dispatcher)
-        }
-    }
-
-    override suspend fun start(onRoom: suspend (Room) -> Unit) = coroutineScope {
-        val accept = object : Loom {
-            override suspend fun weave(rendezvous: Rendezvous): Seam {
-                val link = pending.receive()
-                return identified(link.server, SERVER, link.remote, dispatcher)
-            }
-        }
-        val factory = SeamRoomFactory(loom = accept, scope = this, clock = clock)
-        while (true) {
-            val room = factory.host(Pattern(SESSION))
-            launch { onRoom(room) }
-        }
-    }
-
-    override fun close() = Unit
-
-    companion object {
-        const val SESSION = "claims"
-        val SERVER = PeerId("bee-host")
-    }
-}

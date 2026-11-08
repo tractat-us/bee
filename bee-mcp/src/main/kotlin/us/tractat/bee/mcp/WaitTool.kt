@@ -140,6 +140,9 @@ object WaitTool {
         block()
     } catch (e: Refusal) {
         CallToolResult(content = listOf(TextContent(e.message.orEmpty())), isError = true)
+    } catch (e: BridgeRefusal) {
+        // The source's own refusal, such as a retirement met mid-wait: the agent needs its words.
+        CallToolResult(content = listOf(TextContent(e.message.orEmpty())), isError = true)
     }
 
     /** A string argument, or `null` when it's absent or JSON `null`. Any other type is refused. */

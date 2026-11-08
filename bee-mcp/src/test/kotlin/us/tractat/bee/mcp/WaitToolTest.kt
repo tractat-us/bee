@@ -238,7 +238,7 @@ private class FakeActionSource : ActionSource {
 }
 
 /** One end of an in-process transport pair: what one end sends, the other receives. */
-private class LinkedTransport : AbstractTransport() {
+internal class LinkedTransport : AbstractTransport() {
     private lateinit var peer: LinkedTransport
 
     override suspend fun start() = Unit

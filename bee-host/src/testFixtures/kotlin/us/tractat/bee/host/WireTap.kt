@@ -10,7 +10,7 @@ import us.tractat.kuilt.core.fabric.Connection
  * ([down]), and a switch that drops what the hub sends it ([dropDown]). Frames are whole fabric
  * messages, gossip and mesh headers included, so a size here is what a socket would carry.
  */
-internal class WireTap {
+class WireTap {
     val up = mutableListOf<Int>()
     val down = mutableListOf<Int>()
 

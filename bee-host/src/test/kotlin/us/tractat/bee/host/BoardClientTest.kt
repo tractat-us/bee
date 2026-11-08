@@ -2,13 +2,11 @@
 
 package us.tractat.bee.host
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.job
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -21,21 +19,11 @@ import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
-import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PeerIdentity
-import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.SurfaceMeta
-import us.tractat.kuilt.core.InMemoryTag
-import us.tractat.kuilt.core.Rendezvous
-import us.tractat.kuilt.core.fabric.Connection
-import us.tractat.kuilt.core.fabric.peerMesh
 import us.tractat.kuilt.crdt.ReplicaId
-import us.tractat.kuilt.quilter.QuilterConfig
 import us.tractat.kuilt.test.assertAll
-import us.tractat.kuilt.test.fabric.InMemoryConnectionSource
-import us.tractat.kuilt.test.fabric.connectionPair
-import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -46,40 +34,11 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-private val TEST_CONFIG = QuilterConfig(antiEntropyInterval = 1.seconds, evictionAfter = 30.seconds, expectVirtualTime = true)
 private const val SURFACE = "lunch"
 private val ALEX = ReplicaId("web-alex")
 private val SAM = ReplicaId("web-sam")
 private val OPENED_AT = Instant.parse("2026-11-06T12:00:00Z")
 
-/**
- * The board relay in memory, under virtual time: a [BoardRelay] whose hub accepts in-memory
- * connections, and [BoardClient]s whose [SpokeLoom]s dial into it. It's a star, as over real
- * sockets: a spoke's only link is the hub. Each loom's spoke end runs through a [WireTap], kept
- * in [taps] under the loom's name across its redials.
- */
-internal class Star(private val test: TestScope) {
-    val source = InMemoryConnectionSource()
-    val hubEnds = mutableListOf<Connection>()
-    val taps = mutableMapOf<String, WireTap>()
-    val clock: () -> Instant = { Instant.fromEpochMilliseconds(test.testScheduler.currentTime) }
-    private val dispatcher = StandardTestDispatcher(test.testScheduler)
-    lateinit var relay: BoardRelay
-
-    suspend fun start() {
-        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, Random(0), config = TEST_CONFIG)
-    }
-
-    fun loom(name: String, scope: CoroutineScope = test.backgroundScope) = SpokeLoom(scope, name, Random(name.hashCode()), clock) { id, _ ->
-        val (hubEnd, spokeEnd) = connectionPair()
-        hubEnds += hubEnd
-        source.offer(hubEnd)
-        peerMesh(id, listOf(taps.getOrPut(name) { WireTap() }.wrap(spokeEnd)), dispatcher)
-    }
-
-    fun client(author: ReplicaId, loom: SpokeLoom = loom(author.value), scope: CoroutineScope = test.backgroundScope) =
-        BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, config = TEST_CONFIG)
-}
 
 private fun meta() = SurfaceMeta("Lunch", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), OPENED_AT)
 
@@ -109,7 +68,7 @@ class BoardClientTest {
     /** Edits travel spoke → hub → spoke on the gossip flood, well inside one anti-entropy round. */
     @Test
     fun twoClientsConvergeThroughTheHub() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val alex = star.client(ALEX)
         val sam = star.client(SAM)
         alex.connect()
@@ -136,7 +95,7 @@ class BoardClientTest {
      */
     @Test
     fun offlineEditMergesOnReconnectUnderTheStableAuthor() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val alex = star.client(ALEX)
         val sam = star.client(SAM)
         alex.connect()
@@ -178,7 +137,7 @@ class BoardClientTest {
      */
     @Test
     fun reconnectLeaksNoGossipCoroutines() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val loomJob = SupervisorJob(backgroundScope.coroutineContext.job)
         val clientJob = SupervisorJob(backgroundScope.coroutineContext.job)
         val alex = star.client(ALEX, star.loom("alex", backgroundScope + loomJob), backgroundScope + clientJob)
@@ -210,7 +169,7 @@ class BoardClientTest {
     /** A link the hub drops tears the spoke; the client goes offline, then redials on its own. */
     @Test
     fun aTornLinkRedialsAndResyncs() = runTest(StandardTestDispatcher()) {
-        val star = Star(this).apply { start() }
+        val star = BoardStar(this).apply { start() }
         val alex = star.client(ALEX)
         val sam = star.client(SAM)
         alex.connect()
