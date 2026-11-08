@@ -109,8 +109,8 @@ flowchart TB
   mcp --> alive
 ```
 
-The mergeable data, the connections and the agreed order reach the browser client, the bridge and
-the host through `bee-core`. Each of the three adds gossip itself, plus whichever of liveness and
+The mergeable data, keeping copies in step, the connections and the agreed order reach the
+browser client, the bridge and the host through `bee-core`. Each of the three adds gossip itself, plus whichever of liveness and
 storage it needs. `bee-a2ui` needs only `kuilt-crdt`, which matters in the next section.
 `bee-notions` uses no kuilt at all: it's the renderer's side of the page.
 
