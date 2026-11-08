@@ -370,6 +370,10 @@ The other details are design calls too. Loopback connections need no key. A key 
 (`?k=`) still admits, for a join link or QR code. A code expires after 2 minutes, and 3 wrong
 entries void it.
 
+Before any key check, every call must come from the host's own site (bee#45, bee#54). Its `Host`
+must name the host, its `Origin`, if any, must be the host's own, and its Fetch Metadata must not
+say another site loaded it, except as a top-level navigation such as a join link.
+
 **This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is
 self-declared by trusted local peers. §9's sharing rule still governs what goes on the board.
 
@@ -534,7 +538,8 @@ At each one, look for pieces to pick up in either direction.
   attaches, there must be a rule for what may never be written to the board.
 - **Who can reach the board.** The host binds loopback only by default. On the local network a
   browser needs a key, which a person grants by pairing (§5.7). That's an access gate, not
-  transport security.
+  transport security. Loopback needs no key, so the host refuses a call that any other site's page
+  sent, by its `Host`, `Origin` and Fetch Metadata headers (§5.7).
 - **`Sketch` runs agent-written HTML.** It's sandboxed and has no same-origin access. Neither the
   host nor the bee client ever executes surface content outside that sandbox.
 - **IP.** bee is built on Iain's own time and equipment as open source. It's brought to an employer
