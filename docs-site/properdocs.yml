@@ -11,13 +11,11 @@ site_dir: site
 
 # Agent instructions and session scratch are never rendered. They live at the
 # repo root, outside docs_dir; these patterns keep them out wherever they appear.
-# docs/project/ is the Project section, which needs the plan data it renders.
 exclude_docs: |
   AGENTS.md
   CLAUDE.md
   next-plan*.md
   morning-report*.md
-  /project/
 
 # Rendered, so pages can link to its anchors, but kept out of the Docs nav.
 not_in_nav: |
@@ -118,6 +116,8 @@ plugins:
           # path the build can't find is a warning, and --strict fails on it.
           - bee-and-kuilt*.md: What bee builds and what it takes from kuilt
           - spikes/*.md
+          # Out of the nav for now, but listed so the copies' links to it resolve.
+          - superpowers/plans/2026-11-06-bee-v1.md: The v1 plan
 
 validation:
   nav:

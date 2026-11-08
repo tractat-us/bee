@@ -1,10 +1,9 @@
 properdocs==1.6.7
 mkdocs-material==9.8.1
 mkdocs-llmstxt==0.5.1
-# Transitive, pinned because the site leans on them directly: snippets and
-# superfences, the YAML the hook reads, and the schema it validates against.
-# hooks.py replaces Markdown's toc.unique, so a Markdown release can break it.
+# Transitive, pinned because the site's own code leans on them: hooks.py replaces
+# Markdown's toc.unique, properdocs.yml configures pymdown-extensions, and
+# llmstxt_preprocess.py edits the page through bs4.
 Markdown==3.11.3
 pymdown-extensions==12.3
-PyYAML==6.0.3
-jsonschema==4.26.0
+beautifulsoup4==4.15.0
