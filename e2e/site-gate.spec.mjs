@@ -41,7 +41,9 @@ test.afterAll(async () => {
 });
 
 test('a page from another origin cannot open the board socket', async ({ page }) => {
-  const board = `ws://127.0.0.1:${port}/ws/board?peer=site-gate`;
+  // The socket names the host's board, so only the origin can refuse it (bee#46).
+  const id = await (await fetch(`http://127.0.0.1:${port}/board-id`)).text();
+  const board = `ws://127.0.0.1:${port}/ws/board?peer=site-gate&board=${id}`;
 
   // The control: the board's own page opens the same socket.
   await page.goto('/');

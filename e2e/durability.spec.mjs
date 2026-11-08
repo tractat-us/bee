@@ -323,3 +323,36 @@ test('a wiped host never takes in an old copy', async ({ browser }) => {
   await sam.close();
   await context.close();
 });
+
+// A tab left open across a wipe (bee#46). Its sockets name the board it holds, the new host refuses
+// them, and the tab reloads onto the new board rather than push the old one in. Before, it pushed
+// its whole board at first contact: the seed below then found its fixtures already there.
+test('a tab left open across a wipe never pushes its old board into the new host', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await open(page, host.url, 'alex');
+  await field(page, 'typing').fill('from before the wipe');
+  const old = await (await fetch(`${host.url}/board-id`)).text();
+
+  await host.stop();
+  await expect(page.locator('#status')).toHaveText(/^offline/, { timeout: 15_000 });
+  host.wipe();
+  await host.start();
+  host.seed();
+  const fresh = await (await fetch(`${host.url}/board-id`)).text();
+
+  // The tab came back on its own, on the new board, with nothing of the old one.
+  await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 30_000 });
+  await expect(surface(page, 'typing')).toBeVisible();
+  await expect(field(page, 'typing')).toHaveValue('');
+  // A browser with no copy of its own sees what the host holds: nothing of the old board.
+  const sam = await browser.newContext();
+  const samPage = await sam.newPage();
+  await open(samPage, host.url, 'sam');
+  await expect(surface(samPage, 'typing')).toBeVisible();
+  await expect(field(samPage, 'typing')).toHaveValue('');
+  expect(fresh).not.toBe(old);
+  await sam.close();
+  await context.close();
+});
