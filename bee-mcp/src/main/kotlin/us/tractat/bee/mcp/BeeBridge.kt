@@ -3,12 +3,15 @@ package us.tractat.bee.mcp
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -157,6 +160,22 @@ class BeeBridge(
 
     /** This bridge's claim table, as the live link has folded it, or null while claims are offline. */
     fun claimTable(): ClaimTable? = claims.link.value?.client?.table?.value
+
+    /**
+     * The targets a `Reassign` granted this session that no wait or caller here has yet, as the
+     * live link's table and this bridge's record change. Empty while claims are offline. A wait
+     * takes such a record even past its cursor, since it passed it over while another held it.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val reassignedToSelf: Flow<Set<ClaimTarget>> =
+        claims.link.flatMapLatest { it?.client?.table ?: flowOf(null) }.combine(ledger) { table, ledger ->
+            table?.let { granted(it, ledger, self) }.orEmpty()
+        }.distinctUntilChanged()
+
+    private fun granted(table: ClaimTable, ledger: Ledger, who: PeerIdentity): Set<ClaimTarget> =
+        table.targets.filter { (target, status) ->
+            status is ClaimStatus.Held && status.holder == who && table.reassigned(target) && (target to status.token) !in ledger.reservations
+        }.keys
 
     /** Opens surface [surfaceId] with [components] and [data]. */
     suspend fun open(surfaceId: String, title: String, components: List<JsonObject>, data: JsonObject) {

@@ -4,6 +4,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -47,7 +49,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * **A record whose claim a person reassigned to this session is returned too** (spec §6.4): the
  * wait's claim loses to this very session, and the table shows a `Reassign` granted the hold. The
  * wait takes it into its hands ([OwnClaim.Reassigned]) and returns it under the grant's token, as
- * for a win. If the wait ends before returning it, the hold stays this session's, for its next wait.
+ * for a win. It does so even past its cursor, which names the record from when another held it,
+ * and an open wait takes it as the `Reassign` commits ([BeeBridge.reassignedToSelf]). If the wait
+ * ends before returning it, the hold stays this session's, for its next wait.
  *
  * A win is never lost at the wait's edge. If the bound lands just as the claim wins, the record
  * is handed over; if the wait ends any other way after the win (a cancel, an exception), the
@@ -186,12 +190,15 @@ class BoardActionSource internal constructor(
         )
     }
 
-    /** The first record on [surfaceId] not in [passed], suspending until one arrives. */
+    /**
+     * The first record on [surfaceId] not in [passed], or in it but reassigned to this session
+     * since, suspending until one arrives.
+     */
     private suspend fun nextCandidate(surfaceId: String, passed: Set<Dot>): Pair<RecordId, ActionRecord> =
-        bridge.board.first { candidate(it, surfaceId, passed) != null }.let { candidate(it, surfaceId, passed)!! }
+        bridge.board.combine(bridge.reassignedToSelf) { state, granted -> candidate(state, surfaceId, passed, granted) }.filterNotNull().first()
 
-    private fun candidate(state: BoardState, surfaceId: String, passed: Set<Dot>) =
-        state.records(surfaceId).firstOrNull { (id, _) -> id.dot !in passed }
+    private fun candidate(state: BoardState, surfaceId: String, passed: Set<Dot>, granted: Set<ClaimTarget>) =
+        state.records(surfaceId).firstOrNull { (id, _) -> id.dot !in passed || target(id) in granted }
 
     /** A record this wait has in hand under [token]: won by its own claim, or [reassigned] to its session. */
     private data class Won(val id: RecordId, val record: ActionRecord, val by: PeerIdentity, val token: ClaimToken, val reassigned: Boolean)
