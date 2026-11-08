@@ -28,4 +28,6 @@ dependencies {
     testImplementation(libs.kuilt.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mcp.kotlin.sdk.client)
+    // bee-host's in-memory voter and relay, for the bridge's claims and board tests (Task 7).
+    testImplementation(testFixtures(project(":bee-host")))
 }

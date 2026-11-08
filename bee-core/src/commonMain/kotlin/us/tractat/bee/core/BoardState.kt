@@ -47,7 +47,24 @@ data class Departure(
 
 /** The host's mirror of one claim target's committed state (A2). */
 @Serializable
-data class ClaimView(val status: String, val holder: String?, val token: String?, val logIndex: Long)
+data class ClaimView(val status: String, val holder: String?, val token: String?, val logIndex: Long) {
+    companion object {
+        const val FREE = "free"
+        const val HELD = "held"
+        const val ORPHANED = "orphaned"
+        const val DONE = "done"
+
+        /** [status] as mirrored at log index [logIndex]; a token reads `<term>:<index>`. */
+        fun of(status: ClaimStatus, logIndex: Long): ClaimView = when (status) {
+            ClaimStatus.Free -> ClaimView(FREE, null, null, logIndex)
+            is ClaimStatus.Held -> ClaimView(HELD, status.holder.toString(), status.token.text(), logIndex)
+            is ClaimStatus.Orphaned -> ClaimView(ORPHANED, status.holder.toString(), status.token.text(), logIndex)
+            is ClaimStatus.Done -> ClaimView(DONE, status.by.toString(), null, logIndex)
+        }
+
+        private fun ClaimToken.text() = "$term:$index"
+    }
+}
 
 /**
  * The board: every peer's replica of it is one of these (§6).
@@ -142,6 +159,42 @@ class BoardState internal constructor(
         return Patch(EMPTY.copy(records = Rga.empty<ActionRecord>().apply(op)))
     }
 
+    /**
+     * Posts [entry] as [replica]'s presence. A replica has one entry, and the post with the
+     * greater [clock] wins, so a poster passes a clock that only grows (§6.4).
+     */
+    fun postPresence(replica: ReplicaId, entry: PresenceEntry, clock: Long): Patch<BoardState> {
+        requireReplica(replica)
+        return Patch(EMPTY.copy(presence = EphemeralMap.empty<PresenceEntry>().put(replica, entry, clock)))
+    }
+
+    /**
+     * Mirrors the committed claim [table] onto the board: every target whose view changed, and every
+     * identity newly retired (A2). Only the host calls it, from the voter's fold.
+     *
+     * Each view is written at the table's applied index, a time that only grows across host boots
+     * because the log is durable, so a later mirror always wins. A target the table no longer holds
+     * (released) shows `free`. A newly retired identity is recorded at the table's index, which is
+     * its `Depart`'s own index when the host mirrors every committed table in order.
+     */
+    fun mirrorClaims(replica: ReplicaId, table: ClaimTable): Patch<BoardState> {
+        requireReplica(replica)
+        val index = table.appliedIndex
+        val views = table.targets.entries.associate { (target, status) -> target.value to ClaimView.of(status, index) }
+        val freed = claims.entries.filter { (key, view) -> key !in views && view.status != ClaimView.FREE }
+            .mapValues { ClaimView(ClaimView.FREE, holder = null, token = null, logIndex = index) }
+        val changed = (views + freed).filter { (key, view) -> claims[key]?.copy(logIndex = view.logIndex) != view }
+        val claimsDelta = changed.entries.fold(LWWMap.empty<String, ClaimView>()) { delta, (key, view) ->
+            delta.piece(claims.set(replica, index, key, view).delta)
+        }
+        val known = departed.elements.map { it.identity }.toSet()
+        val departedDelta = table.retiredIdentities.filterKeys { it !in known }.entries
+            .fold(GSet.empty<Departure>()) { delta, (identity, reason) ->
+                delta.piece(departed.add(Departure(identity, reason, index)).delta)
+            }
+        return Patch(EMPTY.copy(claims = claimsDelta, departed = departedDelta))
+    }
+
     // ---- Reads ----
 
     /** Open surface ids, in the order they were opened (ties by id). */
@@ -164,6 +217,12 @@ class BoardState internal constructor(
     fun records(surfaceId: String): List<Pair<RecordId, ActionRecord>> = records.entries()
         .filter { it.second.surfaceId == surfaceId }
         .map { (id, record) -> RecordId(id.dot) to record }
+
+    /** The mirrored view of claim [target], or null if the host never mirrored it. */
+    fun claimView(target: ClaimTarget): ClaimView? = claims[target.value]
+
+    /** Every committed `Depart` the host has mirrored. */
+    fun departures(): Set<Departure> = departed.elements
 
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }

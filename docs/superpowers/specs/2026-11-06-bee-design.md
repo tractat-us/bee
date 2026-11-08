@@ -215,7 +215,24 @@ Claude session ── bee-mcp                                           ┘     
   refuses a malformed surface with an error that names the bad id or type.
 - **A retired bridge re-identifies before it acts (design call).** If the bridge finds its identity
   retired (§6.4), it takes a fresh one through the `/clear` path, and refuses the board write it was
-  asked for.
+  asked for. It reads retirement from its claim table and from the board's mirror of every
+  committed `Depart`, so the check holds while claims are offline, and while a fresh claims link
+  catches up from an empty table.
+- **When claims are offline (Task 7).** The bridge rebuilds a dead claims link itself, with
+  backoff, because a refused dial ends kuilt's `clusterClient` (kuilt#3110). A link counts as up
+  once it has folded a committed entry. Until then, every claim tool answers "Claims offline:
+  …", a wait holds for the link within its bound, and a `/clear` `Depart` or a release waits and is
+  proposed again until it commits. Board writes still go ahead.
+- **A claim of the bridge's own that no caller received is given back and claimed again, never
+  taken over (Iain's ruling).** A late win, a claim whose link died after the voter appended it, or
+  one whose release couldn't commit leaves the target held under the bridge's identity. The next
+  wait that reaches it marks it as being given back, releases it, and claims the record again under
+  a fresh token. A release of the old token still on its way then finds a different token and is
+  rejected, so it can't free a record a wait has returned. A claim the bridge handed to a caller is
+  passed over; one another wait holds is waited out.
+- **`bee_board` reports the board and the session's claims link.** `open`, `closed`, `attached`
+  (who is present, from presence), `departed`, `claimViews` (the host's claims mirror, by target)
+  and `claims`, which is `online` or `offline` for this session's link.
 
 ### 5.3 The A2UI boundary, inside the page
 

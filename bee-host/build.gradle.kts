@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.kotlinSerialization)
     application
+    // The in-memory voter and relay rigs, shared with bee-mcp's tests (Task 7).
+    `java-test-fixtures`
 }
 
 kotlin { jvmToolchain(25) }
@@ -10,7 +12,7 @@ kotlin { jvmToolchain(25) }
 application { mainClass = "us.tractat.bee.host.MainKt" }
 
 // The browser page, served by the host at `/`: bee-web's production distribution,
-// consumed through bee-web's `webDistribution` configuration and packed under `web/`.
+// consumed through bee-web's `webDistribution` configuration and packed under `web/` by `webJar`.
 val webDistribution: Configuration by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -35,6 +37,12 @@ dependencies {
     implementation(libs.kotlin.logging)
     runtimeOnly(libs.logback)
 
+    testFixturesApi(platform(libs.kuilt.bom))
+    testFixturesApi(project(":bee-core"))
+    testFixturesApi(libs.kuilt.test)
+    testFixturesApi(libs.kuilt.store)
+    testFixturesApi(libs.kotlinx.coroutines.test)
+
     testImplementation(kotlin("test"))
     testImplementation(libs.kuilt.test)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -45,9 +53,18 @@ dependencies {
     webDistribution(project(path = ":bee-web", configuration = "webDistribution"))
 }
 
-tasks.processResources {
+// The page rides in its own jar, on the host's runtime only: the application distribution,
+// `run` and this project's tests. Not in the main jar, so a consumer of the test fixtures
+// (bee-mcp's tests) never builds the browser bundle.
+val webJar by tasks.registering(Jar::class) {
+    description = "Packs bee-web's distribution under web/, for the host to serve at /."
+    archiveClassifier = "web"
     from(webDistribution) { into("web") }
 }
+tasks.startScripts { classpath = classpath!! + files(webJar) }
+distributions { main { contents { into("lib") { from(webJar) } } } }
+tasks.named<JavaExec>("run") { classpath(webJar) }
+tasks.test { classpath += files(webJar) }
 
 // bee-web's build starts FixtureVoterMain from this project's test runtime classpath
 // before its browser test. It may not resolve this project's configurations while its own

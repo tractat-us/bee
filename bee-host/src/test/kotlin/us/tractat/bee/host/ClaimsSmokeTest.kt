@@ -5,8 +5,8 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
@@ -17,14 +17,12 @@ import org.junit.Assume.assumeTrue
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimsClient
+import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.host.fixtures.FixtureVoter
 import us.tractat.bee.host.fixtures.startFixtureVoter
 import us.tractat.kuilt.cluster.ClusterEndpoints
-import us.tractat.kuilt.cluster.clusterClient
-import us.tractat.kuilt.core.PeerId
-import us.tractat.kuilt.raft.ClusterConfig
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.test.assertAll
@@ -95,15 +93,15 @@ class ClaimsSmokeTest {
     }
 
     private fun client(scope: CoroutineScope, voter: FixtureVoter, node: NodeId): ClaimsClient {
-        val loom = KtorClientLoom(HttpClient(CIO) { install(WebSockets) }, selfPeerId = PeerId(node.value))
-        val cluster = scope.clusterClient(
-            loom = loom,
-            clusterEndpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(voter.url, FixtureVoter.SERVER, FixtureVoter.SESSION))),
-            clientNodeId = node,
-            clusterConfig = ClusterConfig(voters = setOf(ClaimsVoter.HOST_NODE), learners = setOf(node)),
+        val http = HttpClient(CIO) { install(WebSockets) }
+        return ClaimsLink.open(
+            node = node,
+            loomFor = { peer -> KtorClientLoom(http, selfPeerId = peer) },
+            endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(voter.url, FixtureVoter.SERVER, FixtureVoter.SESSION))),
+            scope = scope,
             raftConfig = RaftConfig(),
             clock = { Clock.System.now() },
-        )
-        return ClaimsClient(cluster, node, { Clock.System.now() }, scope, Random.Default)
+            random = Random.Default,
+        ).client
     }
 }
