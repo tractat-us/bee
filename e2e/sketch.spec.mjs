@@ -230,8 +230,9 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
   await forgeFrom(frame, 'moved');
   const send = proposal(page).getByRole('button', { name: 'Send', exact: true });
   await expect(send).toBeEnabled();
-  // Where the sketch's scroll puts Send: a dry run, then back to the top.
-  const scroll = () => frame.locator('#mark').evaluate((mark) => mark.scrollIntoView({ block: 'start' }));
+  // Where the sketch's scroll puts Send: a dry run, then back to the top. Centred, so Send lands
+  // clear of the board's sticky header.
+  const scroll = () => frame.locator('#mark').evaluate((mark) => mark.scrollIntoView({ block: 'center' }));
   await scroll();
   // Precondition: the sketch's scrollIntoView scrolls the page.
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0);
