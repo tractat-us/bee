@@ -232,7 +232,8 @@ class BoardClient(
      *
      * kuilt's `Quilter.mutate` doesn't return the sequence number it published, so this counts the
      * writes made through each connection's Quilter, the only local writes it numbers. A kuilt gap,
-     * not yet filed: a Quilter caller can't wait for its own write to be acknowledged.
+     * not yet filed (bee#38 holds until it's named): a Quilter caller can't wait for its own write
+     * to be acknowledged.
      *
      * @return true once they're acknowledged; false at once when offline (an offline write rides
      *   the next connection's FullState), or when the connection ends first

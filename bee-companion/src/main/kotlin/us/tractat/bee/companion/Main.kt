@@ -148,8 +148,9 @@ fun main(args: Array<String>) {
             val adapter = CompanionAdapter(
                 screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print, boardId, random,
             )
-            // A graceful stop (SIGTERM, the stop script's kill) closes the surface. A crash can't,
-            // and leaves it open.
+            // A graceful stop (SIGTERM) closes the surface. A crash can't, and leaves it open. The
+            // brainstorming stop script will send that SIGTERM once the plugin starts bee-companion
+            // in the companion server's place; it doesn't reach this process yet.
             Runtime.getRuntime().addShutdownHook(Thread({ closeOnStop(adapter) }, "bee-companion-close"))
             bridge.announce()
             adapter.start(this).join()
@@ -162,8 +163,11 @@ fun main(args: Array<String>) {
     exitProcess(1)
 }
 
-/** How long a stopping companion waits for the host to acknowledge its surface's close. */
-private val STOP_BOUND = 2.seconds
+/**
+ * How long a stopping companion waits for the host to acknowledge its surface's close: inside the
+ * stop script's SIGKILL, which follows its SIGTERM after about 2 s.
+ */
+private val STOP_BOUND = 1.5.seconds
 
 /** Closes [adapter]'s surface as the process ends, waiting at most [STOP_BOUND] for the host to have it. */
 private fun closeOnStop(adapter: CompanionAdapter) {
