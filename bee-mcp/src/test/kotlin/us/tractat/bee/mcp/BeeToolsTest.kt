@@ -43,7 +43,12 @@ import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.host.BoardStar
 import us.tractat.bee.host.ClaimsRig
 import us.tractat.bee.host.ClaimsVoter
+import us.tractat.bee.host.Device
 import us.tractat.bee.host.InMemoryClaimsHost
+import us.tractat.bee.host.JoinRequestSurface
+import us.tractat.bee.host.Opened
+import us.tractat.bee.host.Pairing
+import us.tractat.bee.host.SecureSecrets
 import us.tractat.bee.host.boardMirror
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.InMemoryTag
@@ -51,6 +56,7 @@ import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
+import java.security.SecureRandom
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -121,6 +127,27 @@ class BeeToolsTest {
             { assertEquals(emptyList(), after.openSurfaces(), "nothing is open") },
             { assertEquals(setOf("one", "two"), after.closedSurfaces().toSet(), "both are closed") },
             { assertTrue(after.surfaceDoc("one") != null && after.surfaceDoc("two") != null, "neither was deleted") },
+        )
+        rig.close()
+    }
+
+    /**
+     * `bee_board_clear` skips the host's surfaces: a pending join request stays open, so its
+     * device isn't stranded until its pairing expires (bee#71).
+     */
+    @Test
+    fun clearLeavesAPendingJoinRequestOpen() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val request = rig.joinRequest()
+        ada.call(BeeTools.OPEN, openArgs("one"))
+        ada.client.state.first { request in it.openSurfaces() && "one" in it.openSurfaces() }
+
+        val cleared = ada.call(BeeTools.CLEAR, emptyMap()).json()
+        val after = rig.star.relay.state.first { "one" !in it.openSurfaces() }
+        assertAll(
+            { assertEquals(listOf("one"), cleared.getValue("closed").jsonArray.map { it.jsonPrimitive.content }) },
+            { assertEquals(listOf(request), after.openSurfaces(), "the join request stays open") },
         )
         rig.close()
     }
@@ -252,6 +279,15 @@ internal class JoinRig(private val test: TestScope) {
             }
             command is ClaimCommand.Release && command.target == target && command.token == token
         }
+
+    /** Posts a join request from the host, as `BeeHost` does for a keyless device; returns its surface id. */
+    fun joinRequest(): String {
+        val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()))
+        val requests = JoinRequestSurface(star.relay, pairing, star.clock).also { it.start(test.backgroundScope) }
+        val ticket = pairing.open("192.168.1.20") as Opened.Ticket
+        requests.post(ticket, Device("192.168.1.20", screen = null))
+        return JoinRequestSurface.surfaceId(ticket.id)
+    }
 
     /** The browser [clickOn] clicked from. */
     lateinit var browserClient: BoardClient
