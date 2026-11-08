@@ -105,8 +105,8 @@ plugins:
   # Sections mirror the nav tabs.
   - llmstxt:
       markdown_description: >-
-        bee is at the design stage. The design, the setup guide for the MCP
-        bridge, and the spike reports are below.
+        The pages below cover what bee is, how to join a Claude Code session to
+        it, its design, and what each spike found.
       full_output: llms-full.txt
       preprocess: llmstxt_preprocess.py
       sections:
@@ -114,6 +114,9 @@ plugins:
           - index.md: What bee is
           - setup.md: Joining a Claude Code session to bee
           - superpowers/specs/2026-11-06-bee-design.md: The design
+          # A glob, so this line is a no-op until bee-and-kuilt.md exists: a plain
+          # path the build can't find is a warning, and --strict fails on it.
+          - bee-and-kuilt*.md: What bee builds and what it takes from kuilt
           - spikes/*.md
 
 validation:
