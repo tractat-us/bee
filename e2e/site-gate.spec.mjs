@@ -127,9 +127,11 @@ test('a page from another origin cannot navigate to or prefetch a pairing channe
       rules.textContent = JSON.stringify({ prefetch: [{ source: 'list', urls: [url] }] });
       document.head.append(rules);
     }, prefetched);
-    await expect
+    // Soft, so a host that admits both shows each one, and the board, in one run.
+    const soft = expect.configure({ soft: true });
+    await soft
       .poll(() => prefetches.findLast((e) => e.prefetchUrl === prefetched && e.status === 'Failure')?.prefetchStatus, {
-        message: () => `prefetch events: ${JSON.stringify(prefetches)}`,
+        message: "the prefetch's failure, as Chromium reports it",
         timeout: 15_000,
       })
       .toBe('PrefetchFailedNon2XX');
@@ -139,11 +141,11 @@ test('a page from another origin cannot navigate to or prefetch a pairing channe
     await page.evaluate((url) => {
       location.href = url;
     }, navigated);
-    expect((await answered).status()).toBe(403);
+    soft((await answered).status(), 'the navigation').toBe(403);
 
     await page.waitForTimeout(PAST_THE_DWELL_MS);
-    await expect(request('elsewhere-prefetch')).toHaveCount(0);
-    await expect(request('elsewhere-navigation')).toHaveCount(0);
+    await soft(request('elsewhere-prefetch')).toHaveCount(0);
+    await soft(request('elsewhere-navigation')).toHaveCount(0);
   } finally {
     await context.close();
   }
