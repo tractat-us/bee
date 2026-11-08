@@ -24,9 +24,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * `bee_wait_action` and `bee_list_actions`: waiting on a surface, or on the whole board, without
- * polling, bounded (A10). `surfaceId` names the one surface; without it, both read the whole board
- * ([ActionScope.Board]).
+ * `bee_wait_action` and `bee_list_actions`: waiting on a surface, or on all of the session's own
+ * surfaces, without polling, bounded (A10). `surfaceId` names the one surface; without it, or
+ * blank, both read the surfaces this session opened ([ActionScope.Board]).
  *
  * A wait returns within its timeout, 45 s unless the caller picks another up to 60 s, so it ends
  * before a client's tool-call timeout does. While it holds, it sends a progress notification every
@@ -43,19 +43,19 @@ object WaitTool {
         server.addTool(
             name = WAIT,
             description = "Waits for the next action record on the shared board, such as a click or a card dragged. " +
-                "Omit surfaceId to wait on every surface at once, including ones opened after the wait began: " +
-                "the way to react to whatever a person does on any of your surfaces. Pass surfaceId to wait on that one surface only. " +
+                "Omit surfaceId to wait on all of your own surfaces at once, the ones this session opened, including ones " +
+                "opened after the wait began: the way to react to whatever a person does on any of them. Another session's " +
+                "surfaces are left out, so two sessions never take each other's clicks. Pass surfaceId to wait on that one surface only. " +
                 "Returns {record?, timedOut, cursor} within timeoutSeconds (default 45, at most 60); the record names its surfaceId. " +
                 "Pass the returned cursor to the next call to keep reading from where this one stopped, with or without surfaceId. " +
                 "A record is returned with the claim token this session holds it under; one whose claim a person " +
                 "reassigned to this session, from another that left, arrives here too, under the reassign's token. " +
-                "A pairing surface the host opened, such as a join request, is refused, and left out when surfaceId is omitted: " +
-                "the host handles its records.",
+                "A pairing surface the host opened, such as a join request, is refused: the host handles its records.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") {
                         put("type", "string")
-                        put("description", "The one surface to wait on; omit to wait on every surface.")
+                        put("description", "The one surface to wait on; omit to wait on all of your own surfaces.")
                     }
                     putJsonObject("cursor") {
                         put("type", "string")
@@ -73,15 +73,14 @@ object WaitTool {
         server.addTool(
             name = LIST,
             description = "Lists the action records on the shared board, without waiting. " +
-                "Omit surfaceId to list every surface's records; pass it to list that one surface's. " +
+                "Omit surfaceId to list the records on all of your own surfaces, the ones this session opened; pass it to list that one surface's. " +
                 "Returns {records, cursor}; each record names its surfaceId. Pass a cursor a previous call returned as since " +
-                "to list only the records after it. A pairing surface the host opened is refused, or left out when surfaceId " +
-                "is omitted, as bee_wait_action does.",
+                "to list only the records after it. A pairing surface the host opened is refused, as bee_wait_action does.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") {
                         put("type", "string")
-                        put("description", "The one surface to list; omit to list every surface.")
+                        put("description", "The one surface to list; omit to list all of your own surfaces.")
                     }
                     putJsonObject("since") { put("type", "string") }
                 },
@@ -127,7 +126,7 @@ object WaitTool {
                         total = timeout.inWholeSeconds.toDouble(),
                         message = when (scope) {
                             is ActionScope.Surface -> "Waiting on ${scope.id}"
-                            ActionScope.Board -> "Waiting on every surface"
+                            ActionScope.Board -> "Waiting on your surfaces"
                         },
                     ),
                 ),
@@ -172,9 +171,9 @@ object WaitTool {
         }
     }
 
-    /** `surfaceId`: that one surface when given, every surface the session may act on when absent. */
+    /** `surfaceId`: that one surface when given, the session's own surfaces when absent or blank. */
     private fun CallToolRequest.scope(): ActionScope =
-        optionalString("surfaceId")?.let(ActionScope::Surface) ?: ActionScope.Board
+        optionalString("surfaceId")?.takeUnless(String::isBlank)?.let(ActionScope::Surface) ?: ActionScope.Board
 
     /**
      * `timeoutSeconds`: a JSON integer from 1 to 60, [DEFAULT_TIMEOUT] when absent. A string such as
