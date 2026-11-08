@@ -5,6 +5,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
+import io.ktor.server.response.header
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,18 @@ class BeeHost private constructor(
         const val CLAIMS_SESSION: String = "claims"
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
+        private const val CSP_HEADER = "Content-Security-Policy"
+
+        /**
+         * The page's policy: no frame may load a URL. A `Sketch` frame shows its `srcdoc` (which
+         * this policy doesn't block, in Chromium or WebKit), but can't navigate itself to a URL,
+         * by `location` or a link, so it has no network beyond the page (spec §5.6). CSP has no
+         * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
+         * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
+         * so the page needs nothing more.
+         */
+        const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
+
         /**
          * Starts a host on [config]'s address. Background work runs on [scope]. [Departures]
          * reads a crash off the claims voter: a node it drops after the learner grace
@@ -89,7 +102,10 @@ class BeeHost private constructor(
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 source = KtorConnectionSource(this, BoardRelay.PATH)
                 claimsHost = KtorRoomHost(this, CLAIMS_PATH, CLAIMS_SERVER, Pattern(CLAIMS_SESSION))
-                routing { staticResources("/", "web") }
+                routing {
+                    // The page's files only: the WebSocket routes above never get the header.
+                    staticResources("/", "web") { modify { _, call -> call.response.header(CSP_HEADER, PAGE_CSP) } }
+                }
             }
             server.start(wait = false)
             try {
