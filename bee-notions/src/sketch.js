@@ -42,8 +42,37 @@ const CHOICE_GAP_MS = 250;
  */
 const PAGE_GESTURE_MS = 5_000;
 
-/** The gestures that activate a page, as the page itself sees them. */
-const PAGE_GESTURES = ['pointerdown', 'keydown'];
+/**
+ * When the page last saw a gesture that activates it, for every sketch on it: a sketch mounted
+ * just after a keypress is as unexplained as one already showing.
+ */
+let lastPageGestureAt = -Infinity;
+
+/** Touch and pen pointers that turned into a scroll or a zoom: their pointerup activates nothing. */
+const cancelledPointers = new Set();
+
+// The events that activate a page (HTML's activation-triggering input events): a key other than
+// Escape, a mouse press, and the release of any other pointer that wasn't cancelled. A touch that
+// scrolls activates nothing, so it mustn't refuse the tap that follows it. Installed once, in the
+// capture phase, so no handler on the page can hide a gesture from them. A gesture inside a
+// sketch's frame (cross-origin) never reaches them.
+const capture = { capture: true };
+const pageGesture = () => {
+  lastPageGestureAt = performance.now();
+};
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') pageGesture();
+}, capture);
+window.addEventListener('pointerdown', (event) => {
+  if (event.pointerType === 'mouse') pageGesture();
+  else cancelledPointers.delete(event.pointerId);
+}, capture);
+window.addEventListener('pointercancel', (event) => {
+  cancelledPointers.add(event.pointerId);
+}, capture);
+window.addEventListener('pointerup', (event) => {
+  if (event.pointerType !== 'mouse' && !cancelledPointers.delete(event.pointerId)) pageGesture();
+}, capture);
 
 /**
  * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
@@ -82,11 +111,7 @@ export class SketchElement extends A2uiLitElement {
     this.frame = null;
     this.shown = null;
     this.lastMessageAt = -Infinity;
-    this.lastPageGestureAt = -Infinity;
     this.onMessage = (event) => this.receive(event);
-    this.onPageGesture = () => {
-      this.lastPageGestureAt = performance.now();
-    };
   }
 
   /** Light DOM, as the basic catalog's elements render. */
@@ -97,14 +122,10 @@ export class SketchElement extends A2uiLitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('message', this.onMessage);
-    // Capture, so no handler on the page can hide a gesture from it. A gesture inside the
-    // sketch's frame (cross-origin) never reaches these listeners.
-    for (const type of PAGE_GESTURES) window.addEventListener(type, this.onPageGesture, { capture: true });
   }
 
   disconnectedCallback() {
     window.removeEventListener('message', this.onMessage);
-    for (const type of PAGE_GESTURES) window.removeEventListener(type, this.onPageGesture, { capture: true });
     super.disconnectedCallback();
   }
 
@@ -163,7 +184,8 @@ export class SketchElement extends A2uiLitElement {
    * would open the same window to a sketch posting in the background. A gesture the page saw in
    * the last PAGE_GESTURE_MS explains the activation, so the choice is refused; one inside the
    * frame never reaches the page's listeners. The cost: a choice made within that time of typing
-   * on the page is refused too.
+   * or tapping on the page is refused too. The frame gets the refusal as an error, and its helper
+   * drops the selection, so the viewer sees the choice didn't land.
    *
    * Every message counts toward the CHOICE_GAP_MS limit, refused or not, so a frame that posts
    * faster than a person clicks gets nothing through.
@@ -177,7 +199,7 @@ export class SketchElement extends A2uiLitElement {
     this.lastMessageAt = now;
     if (sincePrevious < CHOICE_GAP_MS) return false;
     if (!navigator.userActivation?.isActive) return false;
-    return now - this.lastPageGestureAt >= PAGE_GESTURE_MS;
+    return now - lastPageGestureAt >= PAGE_GESTURE_MS;
   }
 
   /** Answers request [id] (a notification, with no id, gets none). The frame's origin is opaque: '*'. */

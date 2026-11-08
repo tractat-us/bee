@@ -24,11 +24,25 @@ export function sketchHelper() {
     window.parent.postMessage({ jsonrpc: '2.0', id: nextId++, method: method, params: params }, '*');
   }
 
+  var choices = {};
+
   function choose(choice, text) {
     var meta = {};
     meta[CHOICE_META] = String(choice);
+    choices[nextId] = true;
     request('ui/message', { role: 'user', content: { type: 'text', text: String(text) }, _meta: meta });
   }
+
+  // A choice the page refused (no click by the viewer, or one too soon) didn't land: drop the
+  // selection, so the viewer sees that and can choose again.
+  window.addEventListener('message', function (event) {
+    var reply = event.data;
+    if (event.source !== window.parent || !reply || reply.jsonrpc !== '2.0' || !choices[reply.id]) return;
+    delete choices[reply.id];
+    if (!reply.error) return;
+    document.querySelectorAll('.selected').forEach(function (el) { el.classList.remove('selected'); });
+    window.selectedChoice = null;
+  });
 
   document.addEventListener('click', function (event) {
     var target = event.target && event.target.closest ? event.target.closest('[data-choice]') : null;
