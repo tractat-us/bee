@@ -10,6 +10,7 @@ application { mainClass = "us.tractat.bee.companion.MainKt" }
 
 dependencies {
     implementation(platform(libs.kuilt.bom))
+    implementation(platform(libs.ktor.bom))
     implementation(project(":bee-core"))
     implementation(project(":bee-a2ui"))
     // The companion joins the board as a session does: BeeBridge, BridgeIdentity and the claiming

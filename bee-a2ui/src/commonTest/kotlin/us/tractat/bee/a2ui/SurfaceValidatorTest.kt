@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -56,6 +57,41 @@ class SurfaceValidatorTest {
         assertEquals(
             listOf(emptyList(), listOf("Component \"root\" is a Sketch with no html.")),
             listOf(SurfaceValidator.errors(view(sketch)), SurfaceValidator.errors(view(bare))),
+        )
+    }
+
+    @Test
+    fun pollAndBoardWithTheirBindingsAreValid() {
+        val root = component("root", "Column") { put("children", JsonArray(listOf(JsonPrimitive("poll"), JsonPrimitive("board")))) }
+        val poll = component("poll", SurfaceValidator.POLL) {
+            putJsonObject("question") { put("path", "/question") }
+            putJsonObject("options") { put("path", "/options") }
+            putJsonObject("answers") { put("path", "/answers") }
+        }
+        val board = component("board", SurfaceValidator.BOARD) {
+            putJsonObject("columns") { put("path", "/columns") }
+            putJsonObject("cards") { put("path", "/cards") }
+        }
+        assertEquals(emptyList(), SurfaceValidator.errors(view(root, poll, board)))
+    }
+
+    @Test
+    fun aPollOrBoardPropertyThatIsNoDataBindingIsNamed() {
+        val poll = component("root", SurfaceValidator.POLL) {
+            putJsonObject("question") { put("path", "/question") }
+            put("options", JsonArray(listOf(JsonPrimitive("lunch"))))
+        }
+        val board = component("board", SurfaceValidator.BOARD) {
+            putJsonObject("columns") { put("path", "columns") }
+        }
+        assertEquals(
+            listOf(
+                "Component \"board\" is a Board whose cards isn't a data binding ({\"path\": \"/…\"}).",
+                "Component \"board\" is a Board whose columns isn't a data binding ({\"path\": \"/…\"}).",
+                "Component \"root\" is a Poll whose answers isn't a data binding ({\"path\": \"/…\"}).",
+                "Component \"root\" is a Poll whose options isn't a data binding ({\"path\": \"/…\"}).",
+            ),
+            SurfaceValidator.errors(view(poll, board)),
         )
     }
 

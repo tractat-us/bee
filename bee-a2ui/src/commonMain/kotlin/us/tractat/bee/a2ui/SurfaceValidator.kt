@@ -14,13 +14,25 @@ import kotlinx.serialization.json.JsonPrimitive
 object SurfaceValidator {
     /**
      * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog plus
-     * `Sketch` (`bee-notions/src/catalog.js`). `Board` and `Poll` join this set in the task that
-     * adds them there, so it always matches what the renderer can draw.
+     * `Sketch`, `Poll` and `Board` (`bee-notions/src/catalog.js`), so it always matches what the
+     * renderer can draw.
      */
     val NOTIONS_COMPONENT_TYPES: Set<String> = setOf(
         "Text", "Image", "Icon", "Video", "AudioPlayer", "Row", "Column", "List", "Card", "Tabs",
         "Modal", "Divider", "Button", "TextField", "CheckBox", "ChoicePicker", "Slider", "DateTimeInput",
-        SKETCH,
+        SKETCH, POLL, BOARD,
+    )
+
+    /** A question, options and per-peer answers ([NotionActions]): binds `question`, `options` and `answers`. */
+    const val POLL = "Poll"
+
+    /** Columns and draggable cards ([NotionActions]): binds `columns` and `cards`. */
+    const val BOARD = "Board"
+
+    /** The data bindings each Notions type needs, in the order its errors are named. */
+    private val BINDINGS: Map<String, List<String>> = mapOf(
+        POLL to listOf("answers", "options", "question"),
+        BOARD to listOf("cards", "columns"),
     )
 
     /** Agent-written HTML in a sandboxed frame (spec §5.6): properties `html` and `title?`. */
@@ -45,13 +57,19 @@ object SurfaceValidator {
 
     private fun typeErrors(id: String, component: JsonObject): List<String> {
         val type = component["component"]?.stringOrNull() ?: return listOf("Component \"$id\" has no type.")
-        return when {
-            type !in NOTIONS_COMPONENT_TYPES -> listOf("Component \"$id\" has unknown type \"$type\".")
+        if (type !in NOTIONS_COMPONENT_TYPES) return listOf("Component \"$id\" has unknown type \"$type\".")
+        return when (type) {
             // The frame's whole content: without it the renderer has nothing to sandbox.
-            type == SKETCH && component["html"] == null -> listOf("Component \"$id\" is a Sketch with no html.")
-            else -> emptyList()
+            SKETCH -> if (component["html"] == null) listOf("Component \"$id\" is a Sketch with no html.") else emptyList()
+            else -> BINDINGS[type].orEmpty()
+                .filterNot { isBinding(component[it]) }
+                .map { "Component \"$id\" is a $type whose $it isn't a data binding ({\"path\": \"/…\"})." }
         }
     }
+
+    /** A2UI's `DataBinding`: `{"path": "/…"}`, an absolute pointer into the data model. */
+    private fun isBinding(property: JsonElement?): Boolean =
+        (property as? JsonObject)?.get("path")?.stringOrNull()?.startsWith("/") == true
 
     /**
      * The component ids [component] names, from every field the basic catalog types as a

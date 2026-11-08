@@ -244,6 +244,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         val onProblem: (String) -> Unit = { problem.textContent = it }
         val inputs = LiveInputs(root, client, author, scope, onProblem)
         BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, clock, onProblem).start(scope)
+        HistoryStrip(client, author, document.body!!, onProblem).start(scope)
         if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
         reloadOnAnotherBoard(scope, client, pin)
 
