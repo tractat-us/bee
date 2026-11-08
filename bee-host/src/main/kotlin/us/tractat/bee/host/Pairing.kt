@@ -128,13 +128,13 @@ private val logger = KotlinLogging.logger {}
  *
  * A keyless device [open]s a pairing and shows its code. A participant types the code on the
  * board, and each entry is an [attempt]. A person's matching entry, within [ttl] of the open and
- * before [maxWrong] wrong ones, mints a [DeviceKey], and [admits] holds it from then on.
+ * before [maxWrong] wrong ones, mints a [DeviceKey], and [admits] holds it from then on: [keys]
+ * keeps it, and the join link's, across restarts.
  *
  * - **Only a person admits** (Iain: humans only, for now). An agent's entry is refused before its
  *   code is compared, so it neither spends a try nor learns whether it matched. The kind is the
  *   one the record declares, never attested, so this stops a well-behaved agent only (§5.7, bee#64).
  * - **Codes and keys are compared in constant time**, so a timing side channel can't walk them.
- * - **Keys live in memory only.** A new host process re-pairs every device.
  * - **One address can't crowd out the others.** An address has at most one pairing waiting, and
  *   opens at most one per [cooldown]; past that, only [MAX_PENDING] wait at once. An address is
  *   not an identity, though: a device that answers on many addresses gets a turn on each.
@@ -146,11 +146,12 @@ private val logger = KotlinLogging.logger {}
  * - A loopback address is never limited: it reaches the board without a key, so it has nothing to
  *   pair for.
  *
- * Every method is synchronous and thread-safe; [clock] and [secrets] are its only inputs.
+ * Every method is synchronous and thread-safe; [clock], [secrets] and [keys] are its only inputs.
  */
 class Pairing(
     private val clock: () -> Instant,
     private val secrets: PairingSecrets,
+    private val keys: HostKeys,
     private val ttl: Duration = TTL,
     private val maxWrong: Int = MAX_WRONG,
     private val cooldown: Duration = COOLDOWN,
@@ -175,7 +176,6 @@ class Pairing(
 
     /** Whether this window's running out of budget has been logged. */
     private var exhaustionLogged = false
-    private val keys = mutableListOf<DeviceKey>()
 
     /** Opens a pairing for a keyless device at address [from], or says why not ([Opened.Refused]). */
     fun open(from: String): Opened = synchronized(lock) {
@@ -211,15 +211,22 @@ class Pairing(
         }
     }
 
-    /** [actor] typed [code] for pairing [id]. */
-    fun attempt(id: PairingId, actor: PeerIdentity, code: String): Attempt = synchronized(lock) {
+    /** [actor] typed [code] for pairing [id]. An admitted key admits by the time this returns. */
+    fun attempt(id: PairingId, actor: PeerIdentity, code: String): Attempt {
+        val attempt = decide(id, actor, code)
+        // Outside the lock: saving the key is file I/O, and no other pairing waits on it.
+        if (attempt is Attempt.Admitted) keys.add(attempt.key)
+        return attempt
+    }
+
+    private fun decide(id: PairingId, actor: PeerIdentity, code: String): Attempt = synchronized(lock) {
         val live = pending[id] ?: return Attempt.Unknown
         when {
             clock() >= live.expiresAt -> Attempt.Expired.also { pending.remove(id) }
             actor.kind != PeerKind.Human -> Attempt.NotHuman(actor)
             constantTimeEquals(code, live.code) -> {
                 pending.remove(id)
-                Attempt.Admitted(secrets.key().also { keys += it }, actor)
+                Attempt.Admitted(secrets.key(), actor)
             }
             live.wrong + 1 >= maxWrong -> Attempt.Voided.also { pending.remove(id) }
             else -> {
@@ -234,18 +241,11 @@ class Pairing(
 
     fun isPending(id: PairingId): Boolean = synchronized(lock) { id in pending }
 
-    /** Mints a key with no pairing, for the join link `--lan` prints. Anyone holding the link is admitted. */
-    fun mintJoinKey(): DeviceKey = synchronized(lock) { secrets.key().also { keys += it } }
+    /** The key with no pairing, for the join link `--lan` prints. Anyone holding the link is admitted. */
+    val joinKey: DeviceKey get() = keys.join
 
-    /**
-     * Whether [presented] is a key this host minted. Every key is compared, in constant time, so
-     * the answer takes as long whichever key matches, or none.
-     */
-    fun admits(presented: String?): Boolean {
-        if (presented.isNullOrEmpty()) return false
-        val held = synchronized(lock) { keys.toList() }
-        return held.fold(false) { matched, key -> constantTimeEquals(presented, key.value) or matched }
-    }
+    /** Whether [presented] is a key this host minted and still holds, in constant time ([HostKeys.admits]). */
+    fun admits(presented: String?): Boolean = keys.admits(presented)
 
     companion object {
         /** How long a code works (§5.7). */

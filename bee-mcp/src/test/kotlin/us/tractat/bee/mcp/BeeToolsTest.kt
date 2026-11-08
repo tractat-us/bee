@@ -343,7 +343,7 @@ internal class JoinRig(private val test: TestScope) {
 
     /** Posts a join request from the host, as `BeeHost` does for a keyless device; returns its surface id. */
     fun joinRequest(): String {
-        val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()))
+        val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()), memoryKeys())
         val requests = JoinRequestSurface(star.relay, pairing, star.clock).also { it.start(test.backgroundScope) }
         val ticket = pairing.open("192.168.1.20") as Opened.Ticket
         requests.post(ticket, Device("192.168.1.20", screen = null))

@@ -98,7 +98,7 @@ class BeeHost private constructor(
         const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
 
         /**
-         * Starts a host on [config]'s address, with its board and claims log under
+         * Starts a host on [config]'s address, with its board, claims log and keys under
          * [HostConfig.dataDir]. Background work runs on [scope]. [Departures] reads a crash off
          * the claims voter: a node it drops after the learner grace ([claimsLinkLoss], bee#28).
          */
@@ -111,8 +111,10 @@ class BeeHost private constructor(
         internal suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress): BeeHost {
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
-            // Task 10: keys live in this host's memory, so a restart re-pairs every LAN device.
-            val pairing = Pairing(clock, SecureSecrets(SecureRandom()), budget = config.pairingBudget)
+            val secrets = SecureSecrets(SecureRandom())
+            // bee#106: every key outlives a restart; config.keyReset is how one stops admitting.
+            val keys = HostKeys.boot(KeyFile(config.dataDir.resolve(KeyFile.NAME)), secrets, config.keyReset)
+            val pairing = Pairing(clock, secrets, keys, budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints

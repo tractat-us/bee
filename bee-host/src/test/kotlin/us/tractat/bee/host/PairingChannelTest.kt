@@ -37,7 +37,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 class PairingChannelTest {
     private val clock = { Clock.System.now() }
-    private val pairing = Pairing(clock, SecureSecrets(SecureRandom()))
+    private val pairing = Pairing(clock, SecureSecrets(SecureRandom()), memoryKeys())
     private val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
         mountEndpoints(BoardId.mint(), pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), 10.minutes, clock))
     }.start(wait = false)

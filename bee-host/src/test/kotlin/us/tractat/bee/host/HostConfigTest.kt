@@ -56,6 +56,19 @@ class HostConfigTest {
     }
 
     @Test
+    fun newLinkAndForgetDevicesSetTheKeyReset() {
+        fun reset(vararg args: String) = HostConfig.fromArgs(args.toList(), home).keyReset
+        assertAll(
+            { assertEquals(KeyReset.Keep, reset("--lan"), "keep every key by default") },
+            { assertEquals(KeyReset.NewLink, reset("--new-link", "--lan")) },
+            { assertEquals(KeyReset.ForgetDevices, reset("--forget-devices")) },
+            { assertEquals(KeyReset.ForgetDevices, reset("--new-link", "--forget-devices"), "forgetting mints a new link anyway") },
+            { assertEquals(9000, HostConfig.fromArgs(listOf("--new-link", "--port", "9000"), home).port, "a switch takes no value") },
+            { assertFailsWith<IllegalArgumentException> { reset("--new-link", "--new-link") } },
+        )
+    }
+
+    @Test
     fun joinRequestsPerHourSetsThePairingBudget() {
         assertAll(
             { assertEquals(PairingBudget(5), HostConfig.fromArgs(listOf("--join-requests-per-hour", "5"), home).pairingBudget) },
