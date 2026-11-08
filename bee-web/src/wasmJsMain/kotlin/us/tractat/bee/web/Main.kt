@@ -152,7 +152,7 @@ private fun encodeURIComponent(value: String): String = js("encodeURIComponent(v
  */
 private fun pair(screen: String?, admitted: (String) -> Unit) {
     val panel = document.body!!.appendElement("section", "pairing")
-    panel.setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;background:#fff")
+    panel.setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)")
     val prompt = panel.appendElement("p", "pairing-prompt")
     val code = panel.appendElement("p", "pairing-code")
     code.setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums")
