@@ -43,7 +43,12 @@ class BoardViewTest {
     /** A card an agent draws mid-meeting shows on top, where the room sees it appear. */
     @Test
     fun cardsShowNewestOpenedFirstAndAnUpdateLeavesACardWhereItIs() {
-        val updated = board().piece { it.updateComponents(A, LUNCH, listOf(buildJsonObject { put("id", "root"); put("component", "Text"); put("text", "Bye") })) }
+        val bye = buildJsonObject {
+            put("id", "root")
+            put("component", "Text")
+            put("text", "Bye")
+        }
+        val updated = board().piece { it.updateComponents(A, LUNCH, listOf(bye)) }
         assertAll(
             { assertEquals(listOf(REVIEW, LUNCH), BoardView.of(board(), attached = emptyMap()).cards.map { it.surfaceId }) },
             { assertEquals(listOf(REVIEW, LUNCH), BoardView.of(updated, attached = emptyMap()).cards.map { it.surfaceId }) },
