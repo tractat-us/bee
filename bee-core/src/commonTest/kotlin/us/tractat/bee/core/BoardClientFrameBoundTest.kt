@@ -10,11 +10,15 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.BoardFixtures.A
+import us.tractat.bee.core.BoardFixtures.OPENED_AT
 import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
+import us.tractat.bee.core.BoardFixtures.root
 import us.tractat.bee.core.BoardFixtures.str
 import us.tractat.bee.core.BoardFixtures.values
 import us.tractat.kuilt.core.CloseReason
@@ -139,6 +143,9 @@ class BoardClientFrameBoundTest {
     /**
      * An edit that leaves the board too large to sync doesn't redial: the client measures the
      * board's `FullState` itself, and the same board less one small edit would be refused again.
+     *
+     * The edit opens a second surface. A new data key on the big surface would carry its big
+     * sibling in its delta, so the write-time check would refuse it before it landed.
      */
     @Test
     fun anEditThatLeavesTheBoardTooLargeDoesNotRedial() = runTest(StandardTestDispatcher()) {
@@ -148,7 +155,8 @@ class BoardClientFrameBoundTest {
         alex.connect()
         advanceTimeBy(30.seconds)
         runCurrent()
-        alex.mutate { it.updateData(A, SURFACE, "/other", str("offline")) }
+        val meta = SurfaceMeta("Other", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), OPENED_AT)
+        alex.mutate { it.openSurface(A, "other", meta, listOf(root), JsonObject(emptyMap())) }
         advanceTimeBy(30.seconds)
         runCurrent()
         assertAll(
