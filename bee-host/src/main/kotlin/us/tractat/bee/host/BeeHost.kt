@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
@@ -24,8 +25,9 @@ import kotlin.time.Instant
  * The always-on host (spec §5.4): it serves the page at `/`, names its board at [BoardId.PATH],
  * relays the board at [BoardRelay.PATH], and runs the claims voter at [CLAIMS_PATH]. Invariant:
  * **the host writes to the board only through its own replica**; it has no write route. Its
- * writes are the claims mirror and the departed list, from the voter's fold, and the join
- * requests of LAN pairing ([JoinRequestSurface]), and nothing else.
+ * writes are the claims mirror and the departed list, from the voter's fold, the join
+ * requests of LAN pairing ([JoinRequestSurface]), and the decisions orphaned claims ask for
+ * ([OrphanDecisions]), and nothing else.
  *
  * Off loopback, the board and claims endpoints take only a device with a key, and from anywhere,
  * only a socket naming this host's board ([mountEndpoints]).
@@ -41,6 +43,7 @@ class BeeHost private constructor(
     /** LAN pairing (§5.7): it mints the keys the board and claims endpoints accept off loopback. */
     val pairing: Pairing,
     private val joinRequests: Job,
+    private val orphanDecisions: Job,
 ) : AutoCloseable {
     /** The claims voter at [CLAIMS_PATH]. */
     val voter: ClaimsVoter get() = core.voter
@@ -59,12 +62,13 @@ class BeeHost private constructor(
     suspend fun mutate(f: (BoardState) -> Patch<BoardState>) = core.board.relay.mutate(f)
 
     /**
-     * Stops the host: join requests first, since they write through the relay, then the core, whose
+     * Stops the host: join requests and orphan decisions first, since they write through the relay, then the core, whose
      * voter's last mirror and server's last write are on the board before its last save.
      */
     override fun close() {
         runBlocking {
             joinRequests.cancelAndJoin()
+            orphanDecisions.cancelAndJoin()
             core.close()
         }
     }
@@ -99,7 +103,8 @@ class BeeHost private constructor(
                 val requests = JoinRequestSurface(core.board.relay, pairing, clock)
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
-                return BeeHost(bound, core, pairing, pairingJob)
+                val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
+                return BeeHost(bound, core, pairing, pairingJob, decisions)
             } catch (failure: Throwable) {
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
                 throw failure
@@ -107,6 +112,17 @@ class BeeHost private constructor(
         }
     }
 }
+
+/**
+ * The host's [OrphanDecisions]: each orphan's decision offers the peers attached now, as the
+ * host's replica sees them ([LivePresence]).
+ */
+internal fun hostOrphanDecisions(scope: CoroutineScope, relay: BoardRelay, clock: () -> Instant): OrphanDecisions {
+    val roster = LivePresence(relay.state, clock, scope) { failure -> orphanLog.warn(failure) { "orphan decisions: the roster missed a board change" } }
+    return OrphanDecisions(relay, { roster.live().map { it.identity } }, clock)
+}
+
+private val orphanLog = io.github.oshai.kotlinlogging.KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
 
 /** The voter's [ClaimMirror] onto [relay]'s board: the claims mirror and the departed list (A2). */
 fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.mutate { it.mirrorClaims(relay.replica, table) } }
