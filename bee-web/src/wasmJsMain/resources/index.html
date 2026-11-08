@@ -104,8 +104,10 @@
     .bee-peer[data-state="here"]::before { background: var(--accent); }
     .bee-peer[data-state="acting"]::before { background: var(--acting); }
     .bee-peer[data-state="waiting"]::before { background: var(--waiting); }
-    .bee-peer[data-state="departed"] { opacity: 0.45; border-style: dashed; }
-    .bee-peer[data-state="departed"] .bee-peer-name { text-decoration: line-through; }
+    /* A session that left or cleared just ended; only a departure the host judged (crashed, quiet) alarms. */
+    .bee-peer[data-state="departed"] { opacity: 0.6; }
+    .bee-peer[data-reason="crashed"], .bee-peer[data-reason="quiet"] { opacity: 0.45; border-style: dashed; }
+    .bee-peer[data-reason="crashed"] .bee-peer-name, .bee-peer[data-reason="quiet"] .bee-peer-name { text-decoration: line-through; }
     .bee-peer-name { font-weight: 600; }
     .bee-peer-state, .bee-instance { color: var(--muted); font-size: 0.85em; }
     .bee-instance { margin-left: 1px; font-weight: 400; }
@@ -162,7 +164,7 @@
     .bee-card-opener { color: var(--ink); font-weight: 600; }
     .bee-card-working::before, .bee-card-gone::before { content: " · "; }
     .bee-card-working { font-style: italic; }
-    .bee-card-gone { color: var(--alert); }
+    .bee-card-gone[data-reason="crashed"], .bee-card-gone[data-reason="quiet"] { color: var(--alert); }
     .bee-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
     .bee-badge {
       padding: 1px 8px;

@@ -37,6 +37,8 @@ import kotlin.time.Duration.Companion.seconds
  * DOM hooks: `article.bee-card[data-surface-id]`, its `.bee-card-title` and `.bee-card-opener`
  * (`data-peer`, the opener's identity), `.bee-card-working`, and `.bee-badge`
  * (`data-claim-status`); in the strip, `li.bee-peer[data-peer][data-state]` with `.bee-peer-status`.
+ * A departed peer's item and its card's `.bee-card-gone` carry `data-reason` ([reasonName]), so the
+ * page alarms only on a departure the host judged (crashed or quiet), never on a session that left.
  */
 class BoardChrome(private val root: Element, private val strip: Element) {
     private val cards = mutableMapOf<String, Card>()
@@ -81,6 +83,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             val item = strip.appendChild(element("li", "bee-peer")) as Element
             item.setAttribute(PEER, peer.identity.toString())
             item.setAttribute("data-state", peer.state.name)
+            (peer.state as? PeerState.Departed)?.let { item.setAttribute(REASON, reasonName(it.reason)) }
             item.setAttribute("title", "${peer.identity}: ${label(peer)}")
             item.appendChild(name(peer.identity, "bee-peer-name"))
             item.appendChild(element("span", "bee-peer-state").also { it.textContent = label(peer) })
@@ -107,7 +110,12 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             meta.appendChild(name(view.openedBy, "bee-card-opener"))
             when (val opener = view.opener) {
                 is OpenerState.Attached -> opener.status?.let { status -> meta.appendChild(element("span", "bee-card-working").also { it.textContent = status }) }
-                is OpenerState.Departed -> meta.appendChild(element("span", "bee-card-gone").also { it.textContent = departedText(opener.reason) })
+                is OpenerState.Departed -> meta.appendChild(
+                    element("span", "bee-card-gone").also {
+                        it.setAttribute(REASON, reasonName(opener.reason))
+                        it.textContent = departedText(opener.reason)
+                    },
+                )
                 OpenerState.Away -> Unit
             }
             if (view.claims.isEmpty()) return
@@ -130,6 +138,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         const val PLACEHOLDER_CLASS = "bee-invalid-surface"
         const val SURFACE_ID = "data-surface-id"
         const val PEER = "data-peer"
+        const val REASON = "data-reason"
 
         fun ticks(every: Duration): Flow<Unit> = flow {
             while (true) {
@@ -149,7 +158,11 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             DepartReason.Crashed -> "crashed"
             DepartReason.Quiet -> "gone quiet"
             DepartReason.Cleared -> "cleared"
+            DepartReason.Left -> "left"
         }
+
+        /** [reason] as its `data-reason` value: `crashed`, `quiet`, `cleared` or `left`. */
+        fun reasonName(reason: DepartReason): String = reason.name.lowercase()
 
         /** [identity] as a name, an agent's with its instance after it, the whole identity in `data-peer`. */
         fun name(identity: PeerIdentity, className: String): Element = element("span", className).also {
