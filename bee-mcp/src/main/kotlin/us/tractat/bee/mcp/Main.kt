@@ -4,11 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
-import io.modelcontextprotocol.kotlin.sdk.server.Server
-import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
-import io.modelcontextprotocol.kotlin.sdk.types.Implementation
-import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -107,12 +103,7 @@ fun main() {
         // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
         Runtime.getRuntime().addShutdownHook(Thread(clear::close, "bee-clear-control-close"))
         clear.start()
-        val server = Server(
-            Implementation(name = "bee", version = "0.1.0"),
-            ServerOptions(capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
-        )
-        WaitTool.register(server, BoardActionSource(bridge))
-        BeeTools.register(server, bridge)
+        val server = BeeServer.create(bridge)
         runBlocking {
             val transport = StdioServerTransport(System.`in`.asSource().buffered(), protocolOut.asSink().buffered())
             val closed = CompletableDeferred<Unit>()
