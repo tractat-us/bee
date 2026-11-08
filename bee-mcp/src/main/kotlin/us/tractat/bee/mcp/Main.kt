@@ -15,11 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
@@ -43,6 +40,7 @@ import java.io.PrintStream
 import java.nio.file.Path
 import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
+import kotlin.system.exitProcess
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -101,7 +99,8 @@ fun main() {
     val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, bridgeScope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
     val bridge = BeeBridge(board, author, claims, identity, presence, clock, bridgeScope)
     board.connect()
-    warnOnAnotherBoard(board, pin, http, host, bridgeScope)
+    val anotherBoard = CompletableDeferred<AnotherBoard>()
+    endOnAnotherBoard(board, pin, http, host, bridgeScope, anotherBoard)
     runBlocking { bridge.announce() }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }
 
@@ -121,6 +120,7 @@ fun main() {
             val closed = CompletableDeferred<Unit>()
             val session = server.createSession(transport)
             session.onClose { closed.complete(Unit) }
+            anotherBoard.invokeOnCompletion { closed.complete(Unit) }
             closed.await()
             board.close()
         }
@@ -128,22 +128,27 @@ fun main() {
     bridgeScope.cancel()
     http.close()
     logger.info { "bee-mcp ends." }
+    // Closed up first: the run file went with ClearControl's use-block, the clients just above.
+    if (anotherBoard.isCompleted) exitProcess(EXIT_ANOTHER_BOARD)
 }
 
 /**
  * A host that keeps another board than [pin]'s was wiped, or had its claims log moved aside, and
  * refuses this bridge for good: its replica holds the old board. After a failed dial, the bridge
- * asks, and says so once per board the host names. It doesn't follow the host: a restart does.
+ * asks, and when the host names another board it says so on stderr and completes [ended], which
+ * ends the process with [EXIT_ANOTHER_BOARD] once it has closed up. It doesn't follow the host: a
+ * restart does.
  */
-private fun warnOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: String, scope: CoroutineScope) {
+private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: String, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
     scope.launch {
-        board.lastFailure.filterNotNull()
-            .mapNotNull { pin.board.value?.let { pinned -> pinned to namedBy(http, host) } }
-            .filter { (pinned, named) -> named != null && named != pinned }
-            .distinctUntilChanged()
-            .collect { (pinned, named) -> logger.warn { "The host keeps board $named now, not $pinned, and refuses this bridge. Restart it (/mcp) to join $named." } }
+        val another = awaitAnotherBoard(board.lastFailure, pin) { namedBy(http, host) }
+        System.err.println(another.message)
+        ended.complete(another)
     }
 }
+
+/** The exit status of a bridge that ended because its host keeps another board. */
+private const val EXIT_ANOTHER_BOARD = 2
 
 /** The board the host names, or null if it can't be asked. */
 private suspend fun namedBy(http: HttpClient, host: String): BoardId? = try {
