@@ -45,7 +45,8 @@ import kotlin.uuid.Uuid
  * entry for a basis to name. `malformed` is the exception: a surface no valid writer would write
  * (A11), with a type outside the catalog and a child nobody has, for the page's placeholder.
  */
-val E2E_FIXTURES: List<String> = listOf("typing", "conflict", "records", "hold", MALFORMED) + NOTIONS_FIXTURES
+val E2E_FIXTURES: List<String> =
+    listOf("typing", "conflict", "records", "hold", "board-change", MALFORMED) + NOTIONS_FIXTURES
 
 private const val MALFORMED = "malformed"
 
