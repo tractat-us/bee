@@ -230,6 +230,12 @@ class BoardState internal constructor(
     /** Every committed `Depart` the host has mirrored. */
     fun departures(): Set<Departure> = departed.elements
 
+    /**
+     * Each poster's newest presence entry, however old: a dead peer's last entry stays here. Who
+     * is attached now is [LivePresence]'s view, which ages entries out.
+     */
+    fun latestPresence(): List<PresenceEntry> = presence.entries.values.mapNotNull { it.value }
+
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }
 
