@@ -1,5 +1,9 @@
 package us.tractat.bee.core
 
+import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +41,20 @@ class BoardPin private constructor(pinned: BoardId?, private val ask: suspend ()
         fun learnedFrom(ask: suspend () -> BoardId): BoardPin = BoardPin(null, ask)
     }
 }
+
+/**
+ * The board the host at [hostUrl] keeps, as it names it at [BoardId.PATH]. [hostUrl] is the
+ * host's root, `ws://host:port` or `http://host:port`; a WebSocket scheme is asked over HTTP.
+ *
+ * @throws IllegalStateException if the host answers, but names no board
+ */
+suspend fun HttpClient.askBoardId(hostUrl: String): BoardId {
+    val response = get(hostUrl.replaceFirst(WEBSOCKET_SCHEME, "http") + BoardId.PATH)
+    check(response.status == HttpStatusCode.OK) { "The host at $hostUrl didn't name its board: ${response.status}" }
+    return BoardId(response.bodyAsText().trim())
+}
+
+private val WEBSOCKET_SCHEME = Regex("^ws")
 
 /**
  * This loom, with every socket it dials naming [pin]'s board: `?board=<id>` on the
