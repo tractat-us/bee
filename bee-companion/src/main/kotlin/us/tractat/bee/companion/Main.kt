@@ -4,15 +4,13 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.isSuccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
@@ -20,13 +18,19 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardId
+import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
+import us.tractat.bee.core.askBoardId
+import us.tractat.bee.core.pinnedTo
+import us.tractat.bee.mcp.AnotherBoard
 import us.tractat.bee.mcp.BeeBridge
 import us.tractat.bee.mcp.BoardActionSource
 import us.tractat.bee.mcp.BridgeIdentity
+import us.tractat.bee.mcp.awaitAnotherBoard
+import us.tractat.bee.mcp.boardNamedOrNull
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
@@ -82,9 +86,13 @@ fun main(args: Array<String>) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val http = HttpClient(CIO) { install(WebSockets) }
     val author = ReplicaId("companion-${Uuid.random()}")
+    // The companion's replica starts empty, so it belongs to the first board the host names: both
+    // its sockets name that board from then on, its state is kept under it, and a wiped host
+    // refuses it (bee#46).
+    val pin = BoardPin.learnedFrom { http.askBoardId(host) }
     val board = BoardClient(
         author,
-        SpokeLoom(http, Dispatchers.Default, scope, author.value, random, clock),
+        SpokeLoom(http, Dispatchers.Default, scope, author.value, random, clock).pinnedTo(pin),
         Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
         scope,
         clock,
@@ -94,7 +102,7 @@ fun main(args: Array<String>) {
     val claims = ClaimsConnection(
         scope = scope,
         nextNode = { NodeId("companion-${Uuid.random()}") },
-        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, linkScope, clock, random) },
+        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
         onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )
@@ -130,11 +138,13 @@ fun main(args: Array<String>) {
 
     board.connect()
     // The adapter never ends by itself. When it fails, the process ends with it, so it never goes
-    // on advertising a companion that handles no screens or clicks.
+    // on advertising a companion that handles no screens or clicks. So does a host that keeps
+    // another board now: it refuses this companion for good, and a restart joins the new board.
     try {
         runBlocking {
-            val boardId = askBoardId(http, "$httpHost${BoardId.PATH}")
+            val boardId = resolveBoard(pin, host)
             logger.info { "The host serves $boardId." }
+            launch { throw HostKeepsAnotherBoard(awaitAnotherBoard(board.lastFailure, pin) { http.boardNamedOrNull(host) }) }
             val adapter = CompanionAdapter(
                 screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print, boardId, random,
             )
@@ -155,9 +165,6 @@ fun main(args: Array<String>) {
 /** How long a stopping companion waits for the host to acknowledge its surface's close. */
 private val STOP_BOUND = 2.seconds
 
-/** The HTTP statuses that refuse a request outright: asking again gets the same answer. */
-private val CLIENT_ERRORS = 400..499
-
 /** Closes [adapter]'s surface as the process ends, waiting at most [STOP_BOUND] for the host to have it. */
 private fun closeOnStop(adapter: CompanionAdapter) {
     val acknowledged = try {
@@ -171,27 +178,27 @@ private fun closeOnStop(adapter: CompanionAdapter) {
 }
 
 /**
- * The board the host names at [url] ([BoardId.PATH]), as a page asks for it. A host that isn't up
- * yet, or answers with a server error, is asked again each second; one that refuses the request
- * (a 4xx: not a bee host, or not one that takes this companion) fails.
+ * The board [pin] holds, learning it from the host at [host] if it must. A host that isn't up yet
+ * is asked again each second; one that answers without naming a board fails.
  *
- * @throws IllegalStateException if the host answers 4xx
+ * @throws IllegalStateException if the host answers, but names no board
  */
-private suspend fun askBoardId(http: HttpClient, url: String): BoardId {
+private suspend fun resolveBoard(pin: BoardPin, host: String): BoardId {
     while (true) {
         try {
-            val response = http.get(url)
-            if (response.status.isSuccess()) return BoardId(response.bodyAsText().trim())
-            check(response.status.value !in CLIENT_ERRORS) { "$url refused the companion: ${response.status}" }
-            logger.warn { "$url answered ${response.status}; asking again." }
+            return pin.resolve()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (unreachable: IOException) {
-            logger.warn { "$url is unreachable (${unreachable.message}); asking again." }
+            logger.warn { "The host at $host is unreachable (${unreachable.message}); asking again." }
         }
         delay(1.seconds)
     }
 }
+
+/** The host keeps another board than this companion's: `server-stopped` gives this as the reason. */
+private class HostKeepsAnotherBoard(another: AnotherBoard) :
+    Exception("The host keeps board ${another.named} now, not ${another.pinned}, and refuses this companion: start it again to join ${another.named}.")
 
 private fun usage(problem: String): Nothing {
     System.err.println("$problem\nUsage: $USAGE")

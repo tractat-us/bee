@@ -20,6 +20,8 @@ import org.junit.Assume.assumeTrue
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardPin
+import us.tractat.bee.core.pinnedTo
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SpokeLoom
@@ -53,8 +55,13 @@ class RelaySmokeTest {
                 val rendezvous = Rendezvous.Existing(
                     WebSocketAdvertisement("ws://127.0.0.1:${host.port}${BoardRelay.PATH}", PeerId("bee-host"), "board"),
                 )
-                fun client(author: ReplicaId) =
-                    BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock), rendezvous, scope, clock)
+                fun client(author: ReplicaId) = BoardClient(
+                    author,
+                    SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock).pinnedTo(BoardPin.to(host.boardId)),
+                    rendezvous,
+                    scope,
+                    clock,
+                )
                 val alex = client(ReplicaId("web-alex"))
                 val sam = client(ReplicaId("web-sam"))
                 alex.connect()

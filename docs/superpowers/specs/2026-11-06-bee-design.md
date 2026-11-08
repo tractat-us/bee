@@ -289,7 +289,8 @@ Claude session ── bee-mcp                                           ┘     
 - **Relay.** Every peer dials the host. Nobody needs to accept inbound connections, which matches
   the handoff's network constraint. The board relay sits at `/ws/board` (`hostedOverlay` and the
   host's `Quilter`), and the claims voter at `/ws/claims` (`serverCluster` on a `KtorRoomHost`),
-  as §5.1 describes.
+  as §5.1 describes. A browser dials with its key **and** `?board=<id>`; the host refuses a
+  socket that names another board, or none, before the upgrade (bee#46).
 - **The always-on replica**, persisted with `FileChannelDurableStore`, so the board outlives every
   peer, including every browser closing at once.
 - **kuilt ships the stores; only the `Quilter` adapter is missing (design call).** `kuilt-store`

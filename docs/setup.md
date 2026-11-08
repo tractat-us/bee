@@ -109,6 +109,13 @@ session, and it reports problems on stderr.
 `BEE_RUN_DIR` moves the run directory, for the bridge and the hook alike. It's for tests. Leave it
 unset in normal use.
 
+A bridge belongs to the board its host kept when the bridge first reached it. If you wipe the
+host's data, or move its `claims/` aside, the host starts a new board and refuses the old
+bridge, so the old board can't leak into the new one. A refused bridge ends: it prints which board
+it was on and which the host keeps now, and exits with status 2, so `/mcp` shows the server as
+failed. Restart it from `/mcp` to join the new board. An open browser tab reloads onto the new
+board by itself.
+
 ## Showing the board on another screen
 
 A phone, a tablet or a meeting-room screen can show the board with nothing installed. By default
@@ -151,6 +158,10 @@ What to expect:
 - **A host restart forgets every key.** A device that can't reconnect after one shows **Pair this
   screen again**.
 - **A key belongs to one browser tab.** A new tab on the same device pairs again.
+- **The host answers only to its own names**: `localhost`, the address a device used, and the
+  network name it logs. Reached by any other name, it refuses, which stops a website from reaching
+  it through a name of its own. If your network knows this machine by another name, add it with
+  `--host-name <name>`.
 - **A device on the network keeps no copy of the board.** A plain-HTTP page can't take the browser
   lock that guards the board's local copy, so it relies on the host for everything
   ([#39](https://github.com/tractat-us/bee/pull/39)).
