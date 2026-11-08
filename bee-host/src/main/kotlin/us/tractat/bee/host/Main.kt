@@ -8,12 +8,11 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.PairingWire
-import java.net.InetAddress
 import java.nio.file.Path
 
 private val logger = KotlinLogging.logger {}
 
-/** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--join-requests-per-hour <n>] [--lan]`. */
+/** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--join-requests-per-hour <n>] [--host-name <name>] [--lan]`. */
 fun main(args: Array<String>) {
     val config = HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -33,6 +32,3 @@ fun main(args: Array<String>) {
     }
     runBlocking { awaitCancellation() }
 }
-
-/** This machine's name on the local network: its host name, as mDNS serves it (`<name>.local`). */
-private fun lanName(): String = InetAddress.getLocalHost().hostName.let { if ('.' in it) it else "$it.local" }

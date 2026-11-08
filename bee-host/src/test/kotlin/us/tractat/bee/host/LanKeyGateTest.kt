@@ -5,8 +5,10 @@ import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.plugins.sse.sse
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -37,7 +39,11 @@ import kotlin.time.Clock
  *
  * The test engine has no sockets, so every request names the address it comes from in
  * [TEST_PEER], and the gate reads it through an injected [PeerAddress]. Production reads the
- * TCP peer ([PeerAddress.DIRECT]), whose loopback test is [onlyLoopbackLiteralsAreLoopback].
+ * TCP peer ([PeerAddress.DIRECT]), whose loopback test is [onlyLoopbackLiteralsAreLoopback]. A
+ * loopback peer arrives at `127.0.0.1` and any other at the laptop's LAN address [LAPTOP], both on
+ * [PORT] ([TEST_ARRIVALS]); each call's `Host` names where it arrived unless a test says otherwise.
+ * This host goes by [LAN_NAME] too, as `--lan` would name it. The site gate on a real socket, from
+ * loopback, is [SiteGateTest]'s.
  *
  * The test engine's WebSocket client doesn't say why a handshake failed, and won't send an
  * `Upgrade` header by hand. So each gated route also gets a plain [PROBE] route below it, on the
@@ -49,7 +55,7 @@ class LanKeyGateTest {
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
         application {
-            mountEndpoints(pairing, TEST_PEERS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }))
+            mountEndpoints(pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }))
             routing {
                 for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
                     route(gated) { get(PROBE) { call.respondText("through the gate") } }
@@ -124,10 +130,10 @@ class LanKeyGateTest {
     /** The page and the pairing channel are what a keyless device needs, so both stay open to it. */
     @Test
     fun pageAndPairingNeedNoKey() = gated { client ->
-        val page = client.get("/") { header(TEST_PEER, LAN) }.status
+        val page = client.get("/") { fromLan() }.status
         var shown: PairingMessage? = null
         var pending = false
-        client.sse(PairingWire.PATH, request = { header(TEST_PEER, LAN) }) {
+        client.sse(PairingWire.PATH, request = { fromLan() }) {
             shown = Json.decodeFromString(PairingMessage.serializer(), requireNotNull(incoming.first().data))
             pending = pairing.isPending(PairingId((shown as PairingMessage.Code).pairing))
         }
@@ -136,6 +142,46 @@ class LanKeyGateTest {
             { assertNotEquals(HttpStatusCode.Forbidden, page) },
             { assertTrue(code.code.matches(Regex("[0-9]{6}")), "a six-digit code: ${code.code}") },
             { assertTrue(pending, "the code names a live pairing") },
+        )
+    }
+
+    /** A keyed LAN page, from its own origin, by the host's LAN name or its LAN address (bee#45). */
+    @Test
+    fun theBoardPageFromItsOwnOriginIsAdmittedOnTheLan() = gated { client ->
+        val key = pairing.mintJoinKey().value
+        val byName = "$LAN_NAME:$PORT"
+        val byAddress = "$LAPTOP:$PORT"
+        val boardByName = client.dial("$BOARD&k=$key", LAN, host = byName, origin = "http://$byName")
+        val claimsByName = client.dial("$CLAIMS&k=$key", LAN, host = byName, origin = "http://$byName")
+        val boardByAddress = client.dial("$BOARD&k=$key", LAN, host = byAddress, origin = "http://$byAddress")
+        val upperCase = client.dial("$BOARD&k=$key", LAN, host = byName.uppercase(), origin = "http://$byName")
+        assertAll(
+            { assertEquals(Dial.Upgraded, boardByName) },
+            { assertEquals(Dial.Upgraded, claimsByName) },
+            { assertEquals(Dial.Upgraded, boardByAddress) },
+            { assertEquals(Dial.Upgraded, upperCase, "a host name has no case") },
+        )
+    }
+
+    /** Every dial here holds a good key, so a refusal is the site gate's (bee#45). */
+    @Test
+    fun aLanCallFromAnotherSiteOrByAnotherNameIsRefused() = gated { client ->
+        val key = pairing.mintJoinKey().value
+        val byName = "$LAN_NAME:$PORT"
+        val crossSite = client.dial("$BOARD&k=$key", LAN, host = byName, origin = "http://evil.example")
+        val rebound = client.dial("$BOARD&k=$key", LAN, host = "evil.example:$PORT", origin = "http://evil.example:$PORT")
+        val otherAddress = client.dial("$BOARD&k=$key", LAN, host = "192.168.1.9:$PORT")
+        val loopbackFromLan = client.dial("$BOARD&k=$key", LAN, host = "127.0.0.1:$PORT")
+        val pairingRebound = client.get(PairingWire.PATH) {
+            header(TEST_PEER, LAN)
+            header(HttpHeaders.Host, "evil.example:$PORT")
+        }.status
+        assertAll(
+            { assertEquals(Dial.Refused, crossSite, "another site's page") },
+            { assertEquals(Dial.Refused, rebound, "a rebound name") },
+            { assertEquals(Dial.Refused, otherAddress, "an address the call didn't arrive at") },
+            { assertEquals(Dial.Refused, loopbackFromLan, "a loopback address the call didn't arrive at") },
+            { assertEquals(HttpStatusCode.Forbidden, pairingRebound, "pairing, by a rebound name") },
         )
     }
 
@@ -157,15 +203,36 @@ class LanKeyGateTest {
 
     private enum class Dial { Upgraded, Refused }
 
-    /** Dials [path] from [peer]: [Dial.Upgraded] if the WebSocket opened, [Dial.Refused] on a 403. */
-    private suspend fun HttpClient.dial(path: String, peer: String): Dial = try {
-        webSocket(path, request = { header(TEST_PEER, peer) }) { close() }
-        Dial.Upgraded
-    } catch (@Suppress("TooGenericExceptionCaught") failed: Exception) {
-        val (route, query) = path.split('?', limit = 2)
-        val status = get("$route/$PROBE?$query") { header(TEST_PEER, peer) }.status
-        check(status == HttpStatusCode.Forbidden) { "the dial failed, but its probe got $status, not the gate's 403: $failed" }
-        Dial.Refused
+    /** From [LAN], to the laptop's LAN address. */
+    private fun HttpRequestBuilder.fromLan() {
+        header(TEST_PEER, LAN)
+        header(HttpHeaders.Host, "$LAPTOP:$PORT")
+    }
+
+    /**
+     * Dials [path] from [peer], naming the host [host] and sending [origin] if any: [Dial.Upgraded]
+     * if the WebSocket opened, [Dial.Refused] on a 403. [host] is where the call arrived, by default.
+     */
+    private suspend fun HttpClient.dial(
+        path: String,
+        peer: String,
+        host: String = arrivalOf(peer).let { "${it.address}:${it.port}" },
+        origin: String? = null,
+    ): Dial {
+        val headers: HttpRequestBuilder.() -> Unit = {
+            header(TEST_PEER, peer)
+            header(HttpHeaders.Host, host)
+            origin?.let { header(HttpHeaders.Origin, it) }
+        }
+        return try {
+            webSocket(path, request = headers) { close() }
+            Dial.Upgraded
+        } catch (@Suppress("TooGenericExceptionCaught") failed: Exception) {
+            val (route, query) = path.split('?', limit = 2)
+            val status = get("$route/$PROBE?$query", headers).status
+            check(status == HttpStatusCode.Forbidden) { "the dial failed, but its probe got $status, not the gate's 403: $failed" }
+            Dial.Refused
+        }
     }
 
     private companion object {
@@ -173,10 +240,20 @@ class LanKeyGateTest {
         const val PROBE = "gate-probe"
         const val LAN = "192.168.1.20"
 
+        /** The laptop's own LAN address, its LAN name, and the port it serves on. */
+        const val LAPTOP = "192.168.1.5"
+        const val LAN_NAME = "tractatus.local"
+        const val PORT = 8233
+
         // kuilt's server looms read the dialler's fabric id from `peer`.
         const val BOARD = "${BoardRelay.PATH}?peer=probe"
         const val CLAIMS = "${BeeHost.CLAIMS_PATH}?peer=probe"
 
         val TEST_PEERS = PeerAddress { call -> requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" } }
+
+        /** A loopback peer reaches the laptop at loopback; any other, at its LAN address. */
+        fun arrivalOf(peer: String) = Arrival(if (isLoopback(peer)) "127.0.0.1" else LAPTOP, PORT)
+
+        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call)) }
     }
 }

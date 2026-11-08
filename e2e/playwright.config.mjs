@@ -2,7 +2,7 @@
 // `./gradlew :bee-host:installDist` on a free loopback port, with a throwaway data dir,
 // and global-setup.mjs seeds fixture surfaces onto it through `:bee-host:e2eSeed`.
 //
-// The host's command line (`--port <n> --data-dir <dir>`) is fixed here, for Task 3's
+// The host's command line (`--port <n> --data-dir <dir> --host-name <name>`) is fixed here, for
 // HostConfig to read.
 import { defineConfig, devices } from '@playwright/test';
 import { mkdtempSync, readdirSync } from 'node:fs';
@@ -53,7 +53,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: hasSpecs ? {
-    command: `../bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR}`,
+    // `--host-name bee-lan.test`: second-screen.spec.mjs reaches the host by that name, which the
+    // host refuses as a rebinding name otherwise (bee#45).
+    command: `../bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR} --host-name bee-lan.test`,
     url: `${baseURL}/`,
     reuseExistingServer: false,
     timeout: 120_000,
