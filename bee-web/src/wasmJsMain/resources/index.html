@@ -69,7 +69,13 @@
       background: var(--bg);
       border-bottom: 1px solid var(--line);
     }
-    #bar .brand { font-weight: 700; letter-spacing: 0.02em; color: var(--accent); }
+    #brand { font-weight: 700; letter-spacing: 0.02em; color: var(--accent); }
+    /* At phone width the strip takes a line of its own, under bee and the online line. */
+    @media (max-width: 600px) {
+      #bar { flex-wrap: wrap; row-gap: 6px; }
+      #status { margin-left: auto; }
+      #peers { order: 1; flex-basis: 100%; }
+    }
     #peers {
       flex: 1;
       display: flex;
