@@ -8,7 +8,9 @@ import { join } from 'node:path';
 import { startAgent } from './agent.mjs';
 import { Host, freePort } from './host.mjs';
 
-const SURFACE = 'empty-board-first';
+// A closed surface stays on the board as history and can't be opened again, so each test has its own.
+const FIRST = 'empty-board-first';
+const SECOND = 'empty-board-second';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -28,11 +30,11 @@ test.afterAll(async () => {
 });
 
 const hint = (page) => page.locator('#board .bee-empty-hint');
-const card = (page) => page.locator(`#board article.bee-card[data-surface-id="${SURFACE}"]`);
+const card = (page, id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`);
 
-async function openSurface(text) {
+async function openSurface(surfaceId, text) {
   await agent.call('bee_surface_open', {
-    surfaceId: SURFACE,
+    surfaceId,
     title: 'First',
     components: [{ id: 'root', component: 'Text', text }],
   });
@@ -45,17 +47,17 @@ test('an empty board shows how to start, and the first surface replaces the hint
   await expect(hint(page)).toContainText('Nothing on the board yet.');
   await expect(hint(page).locator('code')).toHaveText('/mcp__bee__whiteboard');
 
-  await openSurface('Hello, board.');
-  await expect(card(page)).toBeVisible({ timeout: 10_000 });
+  await openSurface(FIRST, 'Hello, board.');
+  await expect(card(page, FIRST)).toBeVisible({ timeout: 10_000 });
   await expect(hint(page)).toBeHidden();
 
-  await agent.call('bee_surface_close', { surfaceId: SURFACE });
-  await expect(card(page)).toHaveCount(0, { timeout: 10_000 });
+  await agent.call('bee_surface_close', { surfaceId: FIRST });
+  await expect(card(page, FIRST)).toHaveCount(0, { timeout: 10_000 });
   await expect(hint(page)).toBeVisible();
 });
 
 test('a page that opens on a board with a surface never shows the hint', async ({ page }) => {
-  await openSurface('Still here.');
+  await openSurface(SECOND, 'Still here.');
   // Count every frame the hint is shown in, from before the page's first script runs, so a flash
   // while the page catches up with its host fails the test too.
   await page.addInitScript(() => {
@@ -66,8 +68,8 @@ test('a page that opens on a board with a surface never shows the hint', async (
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
   });
   await page.goto(`${host.url}/?name=sam`);
-  await expect(card(page)).toBeVisible({ timeout: 15_000 });
+  await expect(card(page, SECOND)).toBeVisible({ timeout: 15_000 });
   await expect(hint(page)).toBeHidden();
   expect(await page.evaluate(() => window.__beeHintShown)).toBe(0);
-  await agent.call('bee_surface_close', { surfaceId: SURFACE });
+  await agent.call('bee_surface_close', { surfaceId: SECOND });
 });
