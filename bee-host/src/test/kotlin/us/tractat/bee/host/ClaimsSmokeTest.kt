@@ -34,26 +34,28 @@ import kotlin.test.Test
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-/** The claims path over real loopback WebSockets: Netty, `KtorRoomHost`, CIO clients. */
+/**
+ * The claims path over real loopback WebSockets: Netty, `KtorRoomHost`, CIO clients.
+ *
+ * Each client claims only once its link has proved itself, by folding a committed entry, as
+ * `ClaimsConnection` publishes a link in production. A claim's own timeout then covers only the
+ * claim, never the dial, the join and the catch-up of a cold JVM on a loaded runner (bee#53).
+ * Every wait is on a condition, bounded only generously, and a miss says which one it was.
+ */
 class ClaimsSmokeTest {
     private val target = ClaimTarget("record:smoke:1")
     private val alice = PeerIdentity.agent("alice", Random(1))
 
     @Test
     fun claimOverRealSockets() = smoke { voter, scope ->
-        val a = client(scope, voter, NodeId("smoke-a"))
-        val started = TimeSource.Monotonic.markNow()
-        val outcome = a.claim(target, alice)
-        val took = started.elapsedNow()
+        val a = linkedClient(scope, voter, NodeId("smoke-a"))
+        val outcome = a.claim(target, alice, CLAIM_BOUND)
         System.err.println("[claims-spike] real sockets: claim latency ${a.latencies.value}")
-        assertIs<ClaimOutcome.Won>(
-            outcome,
-            "a claim over real sockets came to $outcome after $took; voter table through ${voter.voter.table.value.appliedIndex}, " +
-                "client table through ${a.table.value.appliedIndex}, membership ${voter.voter.membership.value}",
-        )
+        assertIs<ClaimOutcome.Won>(outcome, "a claim on a proved link came to $outcome; ${voter.state(a)}")
     }
 
     /**
@@ -63,13 +65,13 @@ class ClaimsSmokeTest {
     @Test
     fun aSecondLearnerLeavesTheFirstOnTheLogOverRealSockets() = smoke { voter, scope ->
         val bob = PeerIdentity.agent("bob", Random(2))
-        val a = client(scope, voter, NodeId("smoke-a"))
-        val first = a.claim(target, alice)
-        val b = client(scope, voter, NodeId("smoke-b"))
-        val second = b.claim(ClaimTarget("record:smoke:2"), bob)
+        val a = linkedClient(scope, voter, NodeId("smoke-a"))
+        val first = a.claim(target, alice, CLAIM_BOUND)
+        val b = linkedClient(scope, voter, NodeId("smoke-b"))
+        val second = b.claim(ClaimTarget("record:smoke:2"), bob, CLAIM_BOUND)
         voter.voter.depart(bob, DepartReason.Crashed)
         val through = voter.voter.table.first { it.retired(bob) }.appliedIndex
-        val aSaw = withTimeoutOrNull(10.seconds) { a.table.first { it.appliedIndex >= through } }
+        val aSaw = withTimeoutOrNull(CLAIM_BOUND) { a.table.first { it.appliedIndex >= through } }
         System.err.println(
             "[claims-spike] real sockets, two learners: voter through $through, a through ${a.table.value.appliedIndex}, " +
                 "b through ${b.table.value.appliedIndex}, membership ${voter.voter.membership.value}",
@@ -77,7 +79,12 @@ class ClaimsSmokeTest {
         assertAll(
             { assertIs<ClaimOutcome.Won>(first, "the first learner's claim came to $first") },
             { assertIs<ClaimOutcome.Won>(second, "the second learner's claim came to $second") },
-            { assertNotNull(aSaw, "the first learner still folds the log after the second joined") },
+            {
+                assertNotNull(
+                    aSaw,
+                    "the first learner still folds the log after the second joined, through $through within $CLAIM_BOUND; ${voter.state(a)}",
+                )
+            },
         )
     }
 
@@ -88,7 +95,7 @@ class ClaimsSmokeTest {
             val clientScope = CoroutineScope(coroutineContext + SupervisorJob())
             val voter = startFixtureVoter(voterScope, Files.createTempDirectory("bee-claims-smoke").toFile())
             try {
-                withTimeout(60.seconds) { body(voter, clientScope) }
+                withTimeout(SMOKE_BOUND) { body(voter, clientScope) }
             } finally {
                 // Clients first: a client's reconnect loop that dials a stopped voter ends with an
                 // uncaught ConnectException, which the next runTest in this JVM reports as its own.
@@ -99,9 +106,10 @@ class ClaimsSmokeTest {
         }
     }
 
-    private fun client(scope: CoroutineScope, voter: FixtureVoter, node: NodeId): ClaimsClient {
+    /** A client whose link has folded a committed entry: joined, admitted as a learner, caught up. */
+    private suspend fun linkedClient(scope: CoroutineScope, voter: FixtureVoter, node: NodeId): ClaimsClient {
         val http = HttpClient(CIO) { install(WebSockets) }
-        return ClaimsLink.open(
+        val client = ClaimsLink.open(
             node = node,
             loomFor = { peer -> KtorClientLoom(http, selfPeerId = peer) },
             endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(voter.url, FixtureVoter.SERVER, FixtureVoter.SESSION))),
@@ -110,5 +118,21 @@ class ClaimsSmokeTest {
             clock = { Clock.System.now() },
             random = Random.Default,
         ).client
+        val started = TimeSource.Monotonic.markNow()
+        val proved = withTimeoutOrNull(LINK_BOUND) { client.table.first { it.appliedIndex > 0 } }
+        assertNotNull(proved, "${node.value}'s link folded no committed entry within $LINK_BOUND; ${voter.state(client)}")
+        System.err.println("[claims-spike] real sockets: ${node.value}'s link proved after ${started.elapsedNow()}")
+        return client
+    }
+
+    private fun FixtureVoter.state(client: ClaimsClient) =
+        "voter table through ${voter.table.value.appliedIndex}, client table through ${client.table.value.appliedIndex}, " +
+            "membership ${voter.membership.value}"
+
+    private companion object {
+        /** Generous upper bounds, not expectations: on a quiet laptop a link proves itself and a claim commits in well under a second. */
+        val LINK_BOUND = 30.seconds
+        val CLAIM_BOUND = 30.seconds
+        val SMOKE_BOUND = 3.minutes
     }
 }
