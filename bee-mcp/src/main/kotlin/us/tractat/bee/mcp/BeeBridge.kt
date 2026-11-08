@@ -63,6 +63,13 @@ import kotlin.time.Instant
  * `bee_claim`) its win is in nobody's hands yet; once it leaves flight the sweep looks again. A
  * wait's [giveBack] follows the same rule, so no win is given back from under the claim that won it.
  *
+ * **A claim reassigned to this identity is handed to the session, never given back** (Task 11,
+ * bee#31). It's held as this bridge, and no wait or caller here received it, just like a stranded
+ * late win, so the bridge's own record can't tell the two apart. The claim table can: a hold a
+ * `Reassign` granted says so ([ClaimTable.reassigned]). The sweep and [giveBack] record such a
+ * hold as handed over, so a wait passes it over and the session finds it, with its token, in
+ * `bee_board`'s claim views.
+ *
  * @param author the [client]'s CRDT author (`mcp-<uuid>`), which every write names.
  * @param scope runs the sweep, for the bridge's lifetime.
  */
@@ -269,6 +276,9 @@ class BeeBridge(
      */
     internal suspend fun giveBack(target: ClaimTarget, holder: PeerIdentity, token: ClaimToken): OwnClaim {
         val key = target to token
+        claims.link.value?.client?.table?.value?.let { table ->
+            if (handOverIfReassigned(table, target, token)) return OwnClaim.HandedOver
+        }
         val found = ledger.getAndUpdate { if (it.standing(key) == Standing.Givable) it.with(key, Reservation.GivingBack) else it }.standing(key)
         return when (found) {
             Standing.HandedOver -> OwnClaim.HandedOver
@@ -294,11 +304,22 @@ class BeeBridge(
         claims.link.filterNotNull().flatMapLatest { it.client.table }.combine(ledger) { table, _ -> table }.collect { table ->
             val who = self
             table.targets.forEach { (target, status) ->
-                if (status is ClaimStatus.Held && status.holder == who && markUnclaimed(target to status.token)) {
-                    claims.queue(ClaimsConnection.Unreceived(target, who, status.token))
-                }
+                if (status !is ClaimStatus.Held || status.holder != who) return@forEach
+                if (handOverIfReassigned(table, target, status.token)) return@forEach
+                if (markUnclaimed(target to status.token)) claims.queue(ClaimsConnection.Unreceived(target, who, status.token))
             }
         }
+    }
+
+    /**
+     * Records [token] on [target] as handed to this session if [table] shows a `Reassign` granted
+     * it: true if it did. A hold already marked otherwise (handed over, in a wait's hands, or being
+     * given back) keeps that mark: no `Reassign` mints a token a claim of this bridge's won.
+     */
+    private fun handOverIfReassigned(table: ClaimTable, target: ClaimTarget, token: ClaimToken): Boolean {
+        val granted = table.reassigned(target) && (table.status(target) as? ClaimStatus.Held)?.token == token
+        if (granted) ledger.update { if ((target to token) in it.reservations) it else it.with(target to token, Reservation.HandedOver) }
+        return granted
     }
 
     /** Marks [key] as being given back if nobody could still take it; true if it did. */
