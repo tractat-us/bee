@@ -88,7 +88,7 @@ class JoinRequestSurface(
 
     private fun handle(state: BoardState) {
         state.openSurfaces()
-            .filter { it.startsWith(PREFIX) && PairingId(it.removePrefix(PREFIX)) !in waiting }
+            .filter { it.startsWith(PREFIX) && !waiting.containsKey(PairingId(it.removePrefix(PREFIX))) }
             .forEach { stale -> relay.mutate { it.closeSurface(relay.replica, stale, clock()) } }
         waiting.keys.forEach { id ->
             state.records(surfaceId(id))

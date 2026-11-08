@@ -32,12 +32,13 @@ class PairingDeskTest {
 
     private class Rig(val test: TestScope, val star: BoardStar, val pairing: Pairing, val desk: PairingDesk) {
         val board: BoardState get() = star.relay.state.value
+        private val dialled = mutableListOf<Session>()
 
         /** Every join request ever posted, open or closed. */
         val requests: List<String> get() = (board.openSurfaces() + board.closedSurfaces()).filter { it.startsWith("bee-pair-") }
 
         fun dial(address: String): Session {
-            val session = Session(mutableListOf(), CompletableDeferred())
+            val session = Session(mutableListOf(), CompletableDeferred()).also { dialled += it }
             test.backgroundScope.launch { desk.serve(Device(address, screen = null), session.left) { session.sent += it } }
             test.runCurrent()
             return session
@@ -51,6 +52,9 @@ class PairingDeskTest {
         /** Holds the socket just past the dwell, so the device's request goes on the board. */
         fun holdPastTheDwell() = test.advanceTimeBy(Pairing.DWELL + 1.milliseconds)
 
+        /** Hangs up every device still on, so each withdraws its request before the relay closes. */
+        fun hangUpAll() = dialled.forEach { it.hangUp() }
+
         fun status(surfaceId: String): String =
             requireNotNull(board.surfaceDoc(surfaceId)).toSurfaceView(surfaceId).data.getValue("status").jsonPrimitive.content
     }
@@ -61,7 +65,13 @@ class PairingDeskTest {
         val requests = JoinRequestSurface(star.relay, pairing, star.clock)
         requests.start(backgroundScope)
         runCurrent()
-        Rig(this, star, pairing, PairingDesk(pairing, CompletableDeferred(requests), Pairing.DWELL, star.clock)).body()
+        Rig(this, star, pairing, PairingDesk(pairing, CompletableDeferred(requests), Pairing.DWELL, star.clock)).apply {
+            try {
+                body()
+            } finally {
+                hangUpAll()
+            }
+        }
     }
 
     /**
@@ -115,7 +125,7 @@ class PairingDeskTest {
         val elsewhere = dial(OTHER_LAN)
         assertAll(
             { assertIs<PairingMessage.Code>(first.sent.single()) },
-            { assertEquals(listOf(PairingMessage.Ended(PairingEnd.Busy)), second.sent) },
+            { assertEquals(listOf<PairingMessage>(PairingMessage.Ended(PairingEnd.Busy)), second.sent) },
             { assertIs<PairingMessage.Code>(elsewhere.sent.single()) },
         )
     }
