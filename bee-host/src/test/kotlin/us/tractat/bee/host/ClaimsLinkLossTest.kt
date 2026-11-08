@@ -176,9 +176,10 @@ class ClaimsLinkLossTest {
 
         kill()
         val after = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2) { voter.table.first { it.retired(ada) } }
+        val aged = liveAtDrop.await()
         assertAll(
             { assertIs<ClaimOutcome.Won>(won, "rig: ada held a claim") },
-            { assertEquals(emptyList(), liveAtDrop.await(), "rig: by the drop, the entry had aged out of the live roster") },
+            { assertEquals(emptyList(), aged, "rig: by the drop, the entry had aged out of the live roster") },
             { assertEquals(DepartReason.Crashed, after?.departReason(ada), "departed Crashed all the same") },
         )
         voter.close()
