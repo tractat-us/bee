@@ -18,6 +18,7 @@ import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PumpVerdict
 import us.tractat.kuilt.core.pumpIn
 import us.tractat.kuilt.liveness.PartitionEvent
+import us.tractat.kuilt.raft.NodeId
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -27,11 +28,12 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.Departures")
 
 /**
  * Decides when an agent is dead (spec §6.4). Invariant: **only an agent is ever departed, and only
- * for a lost link it still holds or for a silence it isn't waiting through.**
+ * for a lost claims link it still holds or for a silence it isn't waiting through.**
  *
- * - **Crashed.** On [PartitionEvent.PeerLost], a board link that stayed lost for the reconnect
- *   window, it departs the agent whose **current** presence entry still names that link. An agent
- *   that redialled has posted its new link, so its old link's loss matches nobody.
+ * - **Crashed.** On [PartitionEvent.PeerLost] for a claims node the voter dropped after the
+ *   learner grace ([claimsLinkLoss], bee#28), it departs the agent whose **current** presence
+ *   entry still names that node. An agent that rebuilt its claims link has posted the new node, so
+ *   the old node's loss matches nobody.
  * - **Quiet.** Every [CHECK_EVERY] it departs any agent whose `lastActedAt` is [quietAfter] old or
  *   more, unless its entry says it is waiting on a surface.
  * - **Never humans.** A person's tabs come and go without retiring them.
@@ -67,7 +69,7 @@ class Departures(
                 PumpVerdict.CONTINUE
             },
             name = "departures-lost-links",
-        ) { lost -> lostLink(lost.peerId.value) }
+        ) { lost -> lostLink(NodeId(lost.peerId.value)) }
         departures.launch(CoroutineName("departures-quiet")) {
             while (true) {
                 delay(CHECK_EVERY)
@@ -77,8 +79,8 @@ class Departures(
         return job
     }
 
-    private suspend fun lostLink(link: String) {
-        presence().filter { it.identity.kind == PeerKind.Agent && it.link == link }
+    private suspend fun lostLink(node: NodeId) {
+        presence().filter { it.identity.kind == PeerKind.Agent && it.claimsNode == node }
             .forEach { propose(it.identity, DepartReason.Crashed) }
     }
 
