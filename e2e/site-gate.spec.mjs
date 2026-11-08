@@ -58,15 +58,9 @@ test('a page from another origin cannot open the board socket', async ({ page })
 // `?screen=` text to the board as a join request. Chromium cuts an image that isn't one short, and
 // may block another origin's event stream itself (ORB), where Safari does neither, so the host's
 // 403 is what this test reads first, and the empty board second.
-test('a page from another origin cannot open a pairing channel without a navigation', async ({ browser, page }) => {
-  const context = await browser.newContext();
+test('a page from another origin cannot load a pairing channel', async ({ browser, page }) => {
+  const { context, request } = await watchBoard(browser);
   try {
-    const laptop = await context.newPage();
-    await laptop.goto('/?name=iain');
-    await expect(laptop.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
-    const request = (screen) =>
-      laptop.locator('a2ui-surface[data-surface-id^="bee-pair-"]').filter({ hasText: `"${screen}"` });
-    const pair = (screen) => `http://127.0.0.1:${port}/pair?screen=${screen}`;
     /**
      * Runs `load` on `page` with `/pair` for `screen`, and returns the host's status for it, or the
      * browser's error if the request failed: Chromium's ORB fails an admitted cross-origin stream.
@@ -104,10 +98,73 @@ test('a page from another origin cannot open a pairing channel without a navigat
     expect(await status('elsewhere-image', asImage)).toBe(403);
     expect(await status('elsewhere-fetch', asNoCorsFetch)).toBe(403);
     // Well past the dwell, after which an admitted channel posts its request.
-    await laptop.waitForTimeout(6_000);
+    await page.waitForTimeout(PAST_THE_DWELL_MS);
     await expect(request('elsewhere-image')).toHaveCount(0);
     await expect(request('elsewhere-fetch')).toHaveCount(0);
   } finally {
     await context.close();
   }
 });
+
+// bee#55's review: no legitimate caller navigates to `/pair`, so the host takes no navigation
+// there, only the page's own event stream. Another origin's page that sets `location.href` to it
+// is a navigation from another site. One that lists it in speculation rules gets a prefetch
+// Chromium marks `Sec-Fetch-Site: none`, as if typed, so only the path tells it from a real one.
+test('a page from another origin cannot navigate to or prefetch a pairing channel', async ({ browser, page }) => {
+  const { context, request } = await watchBoard(browser);
+  try {
+    await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
+
+    // The browser reports each prefetch's outcome over CDP, which is what says the host answered
+    // it: no request on the board alone can't tell a refused prefetch from one never sent.
+    const preloading = await page.context().newCDPSession(page);
+    const prefetches = [];
+    preloading.on('Preload.prefetchStatusUpdated', (event) => prefetches.push(event));
+    await preloading.send('Preload.enable');
+    const prefetched = pair('elsewhere-prefetch');
+    await page.evaluate((url) => {
+      const rules = Object.assign(document.createElement('script'), { type: 'speculationrules' });
+      rules.textContent = JSON.stringify({ prefetch: [{ source: 'list', urls: [url] }] });
+      document.head.append(rules);
+    }, prefetched);
+    await expect
+      .poll(() => prefetches.findLast((e) => e.prefetchUrl === prefetched && e.status === 'Failure')?.prefetchStatus, {
+        message: () => `prefetch events: ${JSON.stringify(prefetches)}`,
+        timeout: 15_000,
+      })
+      .toBe('PrefetchFailedNon2XX');
+
+    const navigated = pair('elsewhere-navigation');
+    const answered = page.waitForResponse((r) => r.url() === navigated);
+    await page.evaluate((url) => {
+      location.href = url;
+    }, navigated);
+    expect((await answered).status()).toBe(403);
+
+    await page.waitForTimeout(PAST_THE_DWELL_MS);
+    await expect(request('elsewhere-prefetch')).toHaveCount(0);
+    await expect(request('elsewhere-navigation')).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+/** The 3 s dwell, after which an admitted pairing channel posts its join request, and then some. */
+const PAST_THE_DWELL_MS = 7_000;
+
+/** `/pair` on the host, for a room screen named `screen`. */
+const pair = (screen) => `http://127.0.0.1:${port}/pair?screen=${screen}`;
+
+/**
+ * Opens the board on the laptop in a context of its own, and returns it with `request(screen)`:
+ * the join request a pairing channel for `screen` posted to the board, if any.
+ */
+async function watchBoard(browser) {
+  const context = await browser.newContext();
+  const laptop = await context.newPage();
+  await laptop.goto('/?name=iain');
+  await expect(laptop.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
+  const request = (screen) =>
+    laptop.locator('a2ui-surface[data-surface-id^="bee-pair-"]').filter({ hasText: `"${screen}"` });
+  return { context, request };
+}
