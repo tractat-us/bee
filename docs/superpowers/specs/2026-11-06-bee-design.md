@@ -372,8 +372,10 @@ The other details are design calls too. Loopback connections need no key. A key 
 entries void it.
 
 Before any key check, every call must come from the host's own site (bee#45, bee#54). Its `Host`
-must name the host, its `Origin`, if any, must be the host's own, and its Fetch Metadata must not
-say another site loaded it, except as a top-level navigation such as a join link.
+must name the host, and its `Origin`, if any, must be the host's own. Its Fetch Metadata, if any,
+depends on the path. The page alone takes a top-level navigation from anywhere, such as a join
+link or a typed URL. Every other path, `/pair` included, takes only the page's own `same-origin`
+calls and no prefetch, since no legitimate caller navigates there.
 
 **This is an access gate, not transport security.** It runs over plain HTTP, and peer kind is
 self-declared by trusted local peers. §9's sharing rule still governs what goes on the board.
