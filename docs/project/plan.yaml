@@ -193,7 +193,7 @@ items:
     title: "Sketch and the companion adapter (spike 5, the acceptance test)"
     status: in-flight
     summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 is in review fixes, and holds before merge until the kuilt gap its KDoc names is filed."
-    depends_on: [bee-27, kuilt-own-write-ack]
+    depends_on: [bee-27]
     started: "2026-11-08T02:13Z"
     estimate:
       low: 2
@@ -377,7 +377,7 @@ items:
     kind: issue
     title: "ClaimsSmokeTest and FrameBoundTest fail intermittently in the smoke job"
     status: done
-    summary: "Fixed by #57: the real-socket smokes wait on conditions, not time."
+    summary: "Fixed by #57 for ClaimsSmokeTest, which now waits on conditions, not time. FrameBoundTest's missing 1009 close frame is #58."
     started: "2026-11-08T04:31Z"
     landed: "2026-11-08T05:27Z"
     links:
@@ -615,8 +615,8 @@ items:
   kuilt-own-write-ack:
     kind: kuilt
     title: "Quilter: a caller can't wait until its own write is acknowledged"
-    status: waiting-on-iain
-    summary: "Not yet filed. Quilter.mutate doesn't return its sequence number, so #38 counts writes against universalAckFlow instead. Iain files the issue, and #38's KDoc names it before #38 merges."
+    status: next
+    summary: "Not yet filed. Quilter.mutate doesn't return its sequence number, so #38 counts writes against universalAckFlow instead. #38's KDoc holds the PR until the issue is filed and named there."
     links:
       - { title: "bee#38", url: "https://github.com/tractat-us/bee/pull/38" }
 
