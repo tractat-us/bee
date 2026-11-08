@@ -116,7 +116,9 @@ test('a page from another origin cannot navigate to or prefetch a pairing channe
     await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
 
     // The browser reports each prefetch's outcome over CDP, which is what says the host answered
-    // it: no request on the board alone can't tell a refused prefetch from one never sent.
+    // it: no request on the board alone can't tell a refused prefetch from one never sent. Under
+    // the old rule, headless Chromium reports `PrefetchFailedNetError` and drops the stream before
+    // the dwell, so here the board stays empty either way and only the outcome reads the host.
     const preloading = await page.context().newCDPSession(page);
     const prefetches = [];
     preloading.on('Preload.prefetchStatusUpdated', (event) => prefetches.push(event));
