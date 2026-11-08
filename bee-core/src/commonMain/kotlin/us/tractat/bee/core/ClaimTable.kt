@@ -50,8 +50,8 @@ sealed interface ClaimStatus {
  * under a token nobody holds. No duplicate arrives on kuilt `0.7.0-dev.1692` within one incarnation,
  * but kuilt's forwarding contract allows one (`ClientIdentity.Auto`: the consumer's
  * `ClientSessionTable` skips it). Production needs kuilt's `ClientSessionTable` folded on
- * `entry.dedupKey`, with a session-close hook so it stays bounded (tractat-us/kuilt#3127). Tracked
- * as bee#23.
+ * `entry.dedupKey`, with a session-close hook so it stays bounded. That hook needs a signal that a
+ * session has ended (tractat-us/kuilt#3129). Tracked as bee#23.
  */
 class ClaimTable private constructor(
     private val claims: Map<ClaimTarget, ClaimStatus>,
