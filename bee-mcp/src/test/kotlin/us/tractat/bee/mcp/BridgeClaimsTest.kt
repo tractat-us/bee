@@ -1282,6 +1282,7 @@ class BridgeClaimsTest {
         val strayFreed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(stray) == ClaimStatus.Free } }
         val waited = ada.wait("s", timeoutSeconds = 3)
         delay(10.seconds) // any release a sweep proposed lands
+        val releases = token?.let { rig.releasesOf(target, it) }
         assertAll(
             { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the record before it departed") },
             { assertIs<ClaimOutcome.Won>(strayWon, "rig: the stray claim won as ada") },
@@ -1289,7 +1290,7 @@ class BridgeClaimsTest {
             { assertNotNull(token, "rig: the reassign committed") },
             { assertTrue(waited.timedOut, "a wait passes the reassigned record over") },
             { assertEquals(ClaimStatus.Held(ada.bridge.self, token!!), rig.voter.table.value.status(target), "the reassigned claim is still ada's") },
-            { assertEquals(0, rig.releasesOf(target, token!!), "and nothing released it") },
+            { assertEquals(0, releases, "and nothing released it") },
         )
         rig.close()
     }
