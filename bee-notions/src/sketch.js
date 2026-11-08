@@ -12,6 +12,10 @@
 // sketch-helper.js), which this element answers once the viewer sends it, dismisses it, or the
 // sketch replaces it.
 //
+// The frame fits its document's height, within [SKETCH_MIN_HEIGHT_PX, SKETCH_MAX_HEIGHT], from the
+// helper's `ui/notifications/size-changed` notifications. A sketch so moves Send, its own and every
+// Send below it, so each fit re-arms every shown proposal at once (see `fit`).
+//
 // Not covered: WebRTC sits outside CSP, so a sketch can still reach the network, through an
 // `RTCPeerConnection` (ICE to a STUN or TURN server it names). The helper deletes the WebRTC
 // constructors, but that's a speed bump, not a boundary: a nested srcdoc frame gets a fresh
@@ -32,6 +36,15 @@ export const SKETCH_CSP =
 
 /** The `sandbox` the frame gets: scripts, and nothing else (no allow-same-origin, ever). */
 export const SKETCH_SANDBOX = 'allow-scripts';
+
+/** The shortest a frame gets, however little its document holds. */
+export const SKETCH_MIN_HEIGHT_PX = 120;
+
+/** The tallest a frame gets, and its height until its document reports one; past it, the frame scrolls. */
+export const SKETCH_MAX_HEIGHT = 'min(80vh, 720px)';
+
+/** Every connected `<bee-sketch>`, so one frame's fit can re-arm the Send of every other. */
+const connected = new Set();
 
 /** The A2UI action a choice becomes, and the record name bee-companion handles. */
 export const CHOICE_ACTION = 'choice';
@@ -95,6 +108,8 @@ export class SketchElement extends A2uiLitElement {
     this.armRect = null;
     /** When Send last took focus, for the key press that follows Tab out of a sketch. */
     this.focusedAt = -Infinity;
+    /** The height the frame was last fitted to, as CSS. */
+    this.fitted = null;
     this.onMessage = (event) => this.receive(event);
     // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
     // a change in the size of the bar, this sketch or the page.
@@ -109,6 +124,7 @@ export class SketchElement extends A2uiLitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    connected.add(this);
     window.addEventListener('message', this.onMessage);
     window.addEventListener('scroll', this.onMove, true);
     window.addEventListener('resize', this.onMove);
@@ -118,6 +134,7 @@ export class SketchElement extends A2uiLitElement {
   }
 
   disconnectedCallback() {
+    connected.delete(this);
     window.removeEventListener('message', this.onMessage);
     window.removeEventListener('scroll', this.onMove, true);
     window.removeEventListener('resize', this.onMove);
@@ -138,7 +155,7 @@ export class SketchElement extends A2uiLitElement {
     if (!this.frame) {
       const frame = document.createElement('iframe');
       frame.setAttribute('sandbox', SKETCH_SANDBOX);
-      frame.style.cssText = 'display:block;width:100%;height:min(80vh,720px);border:0';
+      frame.style.cssText = `display:block;width:100%;height:${SKETCH_MAX_HEIGHT};border:0`;
       this.insertBefore(frame, this.firstChild);
       this.frame = frame;
       this.bar = this.createBar();
@@ -211,6 +228,8 @@ export class SketchElement extends A2uiLitElement {
       }
       const text = params.content?.type === 'text' ? String(params.content.text ?? '') : '';
       this.propose(message.id, String(choice), text);
+    } else if (message.method === 'ui/notifications/size-changed') {
+      this.fit(message.params?.height);
     } else {
       this.reply(message.id, { error: { code: -32601, message: `Method not found: ${message.method}` } });
     }
@@ -231,6 +250,24 @@ export class SketchElement extends A2uiLitElement {
     label.replaceChildren('Send ', shown, '?');
     this.bar.style.display = 'flex';
     this.arm();
+  }
+
+  /**
+   * Fits the frame to a document [height] tall, in CSS pixels, within SKETCH_MIN_HEIGHT_PX and
+   * SKETCH_MAX_HEIGHT. A new height moves this sketch's Send and every Send below it, and when the
+   * page is shorter than the window a move changes no element's size, so no ResizeObserver hears
+   * it. So every shown proposal re-arms here, in the same task that moved it, before any click
+   * can land on a Send in its new place.
+   */
+  fit(height) {
+    if (typeof height !== 'number' || !Number.isFinite(height) || height < 0) return;
+    // The frame's own border is inside its height (border-box): add it, or the document scrolls.
+    const border = this.frame.offsetHeight - this.frame.clientHeight;
+    const css = `clamp(${SKETCH_MIN_HEIGHT_PX}px, ${Math.ceil(height) + border}px, ${SKETCH_MAX_HEIGHT})`;
+    if (css === this.fitted) return;
+    this.fitted = css;
+    this.frame.style.height = css;
+    for (const sketch of connected) sketch.onMove();
   }
 
   /**
