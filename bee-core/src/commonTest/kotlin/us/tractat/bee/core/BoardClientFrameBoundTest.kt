@@ -16,6 +16,7 @@ import us.tractat.bee.core.BoardFixtures.A
 import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
+import us.tractat.bee.core.BoardFixtures.values
 import us.tractat.kuilt.core.CloseReason
 import us.tractat.kuilt.core.InMemoryLoom
 import us.tractat.kuilt.core.InMemoryTag
@@ -29,6 +30,7 @@ import us.tractat.kuilt.test.assertAll
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -207,6 +209,47 @@ class BoardClientFrameBoundTest {
             { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
             { assertTrue(alex.online.value, "the shrunk board's link stays up") },
             { assertNull(alex.tooLarge.value, "a settled link clears tooLarge") },
+        )
+    }
+
+    /**
+     * An online write whose delta is over the bound, as an agent's oversize screen is, is refused
+     * at write time with [BoardWriteTooLarge], and the link stays up: the board is unchanged, the
+     * next write that fits goes through, and nothing reads as a board too large to sync. Without
+     * the write-time check the delta reaches [BoundedSeam], which refuses it and ends the link.
+     */
+    @Test
+    fun anOnlineWriteOverTheBoundIsRefusedAndTheLinkStaysUp() = runTest(StandardTestDispatcher()) {
+        val relay = relay(hangUpOver = BOUND)
+        relay.openHost()
+        val alex = client(relay, opened(), settleAfter = 5.seconds)
+        alex.connect()
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        val link = alex.link.value
+        val before = alex.state.value
+        val refused = assertFailsWith<BoardWriteTooLarge> {
+            alex.mutate { it.updateData(A, SURFACE, "/note", str("x".repeat(4 * BOUND))) }
+        }
+        val afterRefusal = alex.state.value
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        alex.mutate { it.updateData(A, SURFACE, "/note", str("fits")) }
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        assertAll(
+            { assertNotNull(link, "precondition: the link was up before the write") },
+            { assertTrue(refused.bytes > BOUND, "the refusal names the delta's size: ${refused.bytes}") },
+            { assertEquals(BOUND, refused.limit) },
+            { assertEquals(before, afterRefusal, "the refused write left the board unchanged") },
+            { assertTrue(alex.online.value, "the link stayed up") },
+            { assertEquals(link, alex.link.value, "the same link: it never tore") },
+            { assertEquals(1, relay.dials.size, "no redial: dials at ${relay.dials}") },
+            { assertEquals(0, relay.closesBegun, "the spoke was never closed") },
+            { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
+            { assertNull(alex.tooLarge.value, "one refused write isn't a board too large to sync") },
+            { assertNull(alex.lastFailure.value, "nothing went wrong with the link") },
+            { assertEquals(setOf(str("fits")), values(alex.state.value, "/note"), "the next write that fits went through") },
         )
     }
 
