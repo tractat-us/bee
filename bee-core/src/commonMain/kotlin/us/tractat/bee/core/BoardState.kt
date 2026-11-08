@@ -147,7 +147,10 @@ class BoardState internal constructor(
     /**
      * Writes [value] at JSON Pointer [path] in surface [id]'s data model. Objects are written as
      * keyed objects, scalars as leaves from the register just read (A13), and a JSON array whole,
-     * as one leaf.
+     * as one leaf. An object write replaces (tractat-us/bee#14) by keep-and-clear: what this
+     * replica saw there that [value] doesn't name is cleared and kept, never removed, so no dot is
+     * minted twice (tractat-us/kuilt#3126). A peer's concurrent write survives, and beneath a
+     * cleared object it shows alone, as a fragment. `SurfaceDoc.updateData` has the whole rule.
      *
      * @throws IllegalArgumentException if the write would change the path's type
      */

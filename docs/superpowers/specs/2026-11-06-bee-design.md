@@ -264,9 +264,26 @@ Claude session ── bee-mcp                                           ┘     
   rendering it, and shows a placeholder naming the errors instead of an invalid one. bee builds
   this on kuilt's public API, and it can graduate later.
 - **How a surface is stored (design call).** Each A2UI component is stored whole, as one leaf
-  holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. A
-  data path never changes type, because an object-versus-scalar conflict silently deletes the
-  losing subtree. §6.1 says which state is appended and which is edited.
+  holding its canonical JSON. A JSON array written as data is also stored whole, as one leaf. Such
+  a leaf holds a string of canonical JSON behind a `"\u0000json:"` prefix, which is v1's persisted
+  format (tractat-us/kuilt#3119 asks for a structured case). A data path never changes kind,
+  object, append-only array or leaf, because an object-versus-scalar conflict silently deletes
+  the losing subtree.
+- **An object write replaces (#14),** as `updateDataModel` does, by keep-and-clear. What the
+  writer saw that the new value doesn't name is cleared and kept. A leaf gets a `"\u0000cleared"`
+  value from the register just read. An append-only array has the entries seen tombstoned. An
+  object is cleared member by member. The projection hides each **husk** a clear leaves: a cleared
+  leaf, an append-only array with no entry left, and an object with keys but nothing shown. So a
+  replace is also how a card is deleted. An empty array written as data is a leaf and still
+  shows. The data model's root, and an ordered collection with its `items`, always show. bee never
+  removes a key, because `ORMap.remove` drops the subtree's causal history, and a rewritten key
+  would then reissue dots (tractat-us/kuilt#3126). Keeping every node keeps every counter, so no
+  dot is minted twice, and a cleared path keeps its kind. A peer's concurrent write survives the
+  clear, as a conflict where it meets a later write. Beneath a cleared object it shows alone, so
+  a card can show as a fragment with no `label`, which the projection shows as it is. Cleared
+  nodes and tombstones accumulate, since nothing collects them. Writers refuse data strings that
+  start with U+0000, the prefix both markers share. §6.1 says which state is appended and which is
+  edited.
 - **Concurrent values need a projection.** `JsonCrdt` leaves are `MVRegister`s, which keep *every*
   concurrently written value, but A2UI's `updateDataModel` takes exactly one. The driver projects a
   deterministic winner for display, and marks the conflict so a surface can show it ("two answers")
@@ -404,8 +421,10 @@ element would duplicate it. So a surface keeps two kinds of state apart:
   edited, and action records are appended to the board's own `Rga`, outside any surface. Correcting an
   entry means removing it and appending a new one with a new identity.
 - **Editable state**: cards, columns, components and data fields. It lives in an object keyed by a
-  stable id, with its order kept in a separate array of ids that the projection dedupes, keeping
-  the first occurrence. No basis names it.
+  stable id. An ordered collection is an object with exactly `items`, keyed by id, and `order`, an
+  append-only array of ids, so two concurrent adds both land (#14). `order` may be absent. The
+  projection shows each item once: the order's ids at their first occurrence, then any item the
+  order lacks, sorted by id. No basis names it.
 
 Two concurrent edits to one surface must still render. That's the handoff's spike 4, and the
 mapping between `JsonCrdt` merges and A2UI path replacement is where the risk sits. kuilt#2469

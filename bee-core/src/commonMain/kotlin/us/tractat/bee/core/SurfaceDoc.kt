@@ -30,7 +30,8 @@ data class SurfaceMeta(
  *
  * Every leaf write starts from the register just read, never from an empty one, so a rewrite
  * supersedes what the writer saw and leaves no phantom conflict (A13). Appended entries go into a
- * `JsonNode.Array` and are never edited (A12). A path never changes type.
+ * `JsonNode.Array` and are never edited (A12). A path never changes kind, and no node is ever
+ * removed: an object write replaces by clearing what its writer saw (#14; see [updateData]).
  *
  * Each write returns the document delta, for [BoardState] to put under the surface id.
  */
@@ -69,12 +70,31 @@ internal object SurfaceDoc {
      * Writes [value] at [pointer] in the data model (`""` or `"/"` is the root): an object as a
      * keyed object, each key written the same way, and a scalar or a whole array as one leaf.
      *
-     * An object write merges: keys it doesn't name are left alone, never removed. That's the
-     * current behaviour, and whether an object write should replace instead is a decision pending
-     * with Iain (tractat-us/bee PR 9).
+     * An object write replaces the value at its path, as A2UI's `updateDataModel` does
+     * (tractat-us/bee#14), by **keep-and-clear**: every key this replica holds there that [value]
+     * doesn't name is kept and cleared, at every depth.
+     * - A leaf gets [SurfaceFormat.CLEARED], written from the register just read (A13), so it
+     *   supersedes exactly the values this replica saw. The projection hides a cleared value.
+     * - An append-only array has every entry this replica saw tombstoned with `Rga` removes.
+     * - An object is cleared the same way, member by member.
+     *
+     * bee never removes a key: `ORMap.remove` drops the removed subtree's causal history in every
+     * dot space, so a key written again would reissue its register dots, map tags and `Rga` dots
+     * (tractat-us/kuilt#3126). Keeping every node keeps every counter, so no replica mints a dot
+     * twice: a later write supersedes only what it saw, a concurrent write survives as a conflict,
+     * and a basis that saw an old entry can't claim a new one. A concurrent write, or append,
+     * survives the clear. Under a cleared object it shows alone, so a card can show as a
+     * fragment, such as one holding `column` and no `label`. The cost is that cleared nodes and
+     * tombstones accumulate: nothing is ever collected. `ReplaceSemanticsTest` pins all of this.
+     *
+     * A path keeps its kind for good, cleared or not: an object takes only objects, an
+     * append-only array only appends, and a leaf only scalars and whole arrays. A cleared leaf
+     * takes either of those, since both are leaves. So a clear never opens a path to the
+     * `Object > Array > Leaf` race, which would drop a peer's concurrent write with no conflict.
      *
      * @throws IllegalArgumentException if a node on the way isn't an object, a key is empty, or the
-     *   write would change a path's type (object, append-only array, whole array, scalar)
+     *   write would change a path's kind (object, append-only array or leaf), or would put a whole
+     *   array on a leaf holding a scalar, or a scalar on one holding a whole array
      */
     fun updateData(doc: JsonCrdt, replica: ReplicaId, pointer: String, value: JsonElement): Patch<JsonCrdt> {
         val segments = SurfaceFormat.segments(pointer)
@@ -167,18 +187,15 @@ internal object SurfaceDoc {
             is JsonObject -> {
                 val entries = value.entries.map { it.key to it.value }
                 require(entries.none { it.first.isEmpty() }) { "$at holds an object with an empty key." }
-                JsonNode.Object(
-                    threadedPuts(objectMap(existing, at), replica, entries) { key, current, v ->
-                        writeValue(current, replica, v, "$at/${SurfaceFormat.escapeSegment(key)}")
-                    },
-                )
+                JsonNode.Object(replaceMembers(objectMap(existing, at), replica, entries, at))
             }
             else -> {
                 val structured = value is JsonArray
                 when (existing) {
                     null -> Unit
                     is JsonNode.Leaf -> {
-                        val held = existing.register.values.map(SurfaceFormat::isStructured).toSet()
+                        // A cleared leaf takes a scalar or a whole array: both are leaves.
+                        val held = existing.register.values.filterNot(SurfaceFormat::isCleared).map(SurfaceFormat::isStructured).toSet()
                         if (held.isNotEmpty() && structured !in held) refuse(at, existing, kindOf(value))
                     }
                     else -> refuse(at, existing, kindOf(value))
@@ -219,6 +236,43 @@ internal object SurfaceDoc {
         }
         return delta
     }
+
+    /**
+     * The delta that leaves the object [map], at [at], holding [entries] and nothing else this
+     * replica has seen: each entry written, and each other key cleared as [updateData] describes.
+     */
+    private fun replaceMembers(
+        map: ORMap<String, JsonNode>,
+        replica: ReplicaId,
+        entries: List<Pair<String, JsonElement>>,
+        at: String,
+    ): ORMap<String, JsonNode> {
+        val named = entries.map { it.first }.toSet()
+        // A key already clear is skipped: clearing it again would only mint a tag.
+        val dropped = map.keys.filterNot { it in named || isClear(map[it]!!) }.sorted()
+        val writes = entries.map { (key, v) -> key to { current: JsonNode? -> writeValue(current, replica, v, child(at, key)) } } +
+            dropped.map { key -> key to { current: JsonNode? -> clear(current!!, replica, child(at, key)) } }
+        return threadedPuts(map, replica, writes) { _, current, write -> write(current) }
+    }
+
+    /** The delta clearing [node], keeping it and its causal history: see [updateData]. */
+    private fun clear(node: JsonNode, replica: ReplicaId, at: String): JsonNode = when (node) {
+        is JsonNode.Leaf -> leafFrom(node, replica, SurfaceFormat.CLEARED)
+        is JsonNode.Array -> {
+            val (_, removes) = node.rga.removeFirst(node.rga.size)
+            JsonNode.Array(removes.fold(Rga.empty()) { delta, op -> delta.apply(op) })
+        }
+        is JsonNode.Object -> JsonNode.Object(replaceMembers(node.map, replica, emptyList(), at))
+    }
+
+    /** Whether [node] holds nothing this replica could clear. */
+    private fun isClear(node: JsonNode): Boolean = when (node) {
+        is JsonNode.Leaf -> node.register.values.all(SurfaceFormat::isCleared)
+        is JsonNode.Array -> node.rga.size == 0
+        is JsonNode.Object -> node.map.keys.all { isClear(node.map[it]!!) }
+    }
+
+    private fun child(at: String, key: String) = "$at/${SurfaceFormat.escapeSegment(key)}"
 
     private fun threaded(start: JsonCrdt, writes: List<(JsonCrdt) -> Patch<JsonCrdt>>): JsonCrdt {
         var current = start
