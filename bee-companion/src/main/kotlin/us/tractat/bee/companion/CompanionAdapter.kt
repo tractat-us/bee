@@ -138,12 +138,15 @@ class CompanionAdapter(
         val waiting = isWaiting(screen)
         val html = if (waiting) null else framed(screen.readText())
         // Board first: if the write is refused, the events of the screen still shown are kept.
-        client.mutate { state -> screenPatch(state, screen.name, html) }
+        client.mutateOrSkip { state -> screenPatch(state, screen.name, html) }
         events.deleteIfExists()
     }
 
-    /** The surface write for [file]: [html] as the Sketch, or a close when null, plus its `/screens` entry. */
-    private fun screenPatch(state: BoardState, file: String, html: String?): Patch<BoardState> {
+    /**
+     * The surface write for [file]: [html] as the Sketch, or a close when null, plus its `/screens`
+     * entry. Null when there's nothing to write: a waiting screen before any surface exists.
+     */
+    private fun screenPatch(state: BoardState, file: String, html: String?): Patch<BoardState>? {
         val exists = state.surfaceDoc(SURFACE) != null
         val closed = state.meta(SURFACE)?.closedAt != null
         val writes = buildList<(BoardState) -> Patch<BoardState>> {
@@ -158,6 +161,7 @@ class CompanionAdapter(
             }
             if (exists || html != null) add { it.appendEntry(author, SURFACE, SCREENS, JsonPrimitive(file)) }
         }
+        if (writes.isEmpty()) return null
         val (after, delta) = writes.fold(state to BoardState.EMPTY) { (s, d), write ->
             val step = write(s).delta
             s.piece(step) to d.piece(step)
