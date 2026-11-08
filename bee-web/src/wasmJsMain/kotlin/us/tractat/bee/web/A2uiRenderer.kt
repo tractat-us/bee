@@ -23,6 +23,9 @@ external interface RendererHost : JsAny {
 
 @JsModule("@bee/notions")
 external object Notions : JsAny {
+    /** Mounts a renderer under [rootElement], with the Notions catalog. */
+    fun createRendererHost(rootElement: Element): RendererHost
+
     /** Mounts a renderer under [rootElement], with the Notions catalog; [place] puts each new surface's element. */
     fun createPlacedRendererHost(rootElement: Element, place: (surfaceId: String, element: Element) -> Unit): RendererHost
 }
