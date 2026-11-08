@@ -133,7 +133,7 @@ class BoardClient(
     private var attempt = 0
 
     /** The last live seam's payload budget, which an offline write is weighed against. Held under [mutex]. */
-    private var budget: Int? = null
+    @Volatile private var budget: Int? = null
 
     /** The board as this peer holds it, online or not. */
     val state: StateFlow<BoardState> = held.asStateFlow()
@@ -143,6 +143,12 @@ class BoardClient(
 
     /** The live connection's fabric peer id, or null offline. Presence names the link by it. */
     val link: StateFlow<String?> = _link.asStateFlow()
+
+    /**
+     * The board link's payload budget in bytes: the live seam's, or the last one's while offline.
+     * Null when no link has published one, and then no write is refused for its size.
+     */
+    val maxPayloadBytes: Int? get() = live?.seam?.maxPayloadBytes ?: budget
 
     /** What last went wrong with the link: a dial, a pump or a close. Null once a connection goes live. */
     val lastFailure: StateFlow<Throwable?> = _lastFailure.asStateFlow()
