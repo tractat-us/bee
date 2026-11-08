@@ -9,6 +9,7 @@
 import { A2uiLitElement } from '@a2ui/lit/v0_9';
 import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v0_9';
 import { html, nothing } from 'lit';
+import { BoundData } from './bound-data.js';
 
 /** The A2UI action a drop becomes (NotionActions.DROP). */
 export const DROP_ACTION = 'drop';
@@ -52,6 +53,7 @@ export class BoardElement extends A2uiLitElement {
   constructor() {
     super();
     this.dragging = null;
+    this.bound = new BoundData(this, ['columns', 'cards']);
   }
 
   /** Light DOM, as the basic catalog's elements render. */
@@ -60,8 +62,8 @@ export class BoardElement extends A2uiLitElement {
   }
 
   render() {
-    const props = this.controller?.props;
-    if (!props) return nothing;
+    if (!this.controller?.props) return nothing;
+    const props = this.bound.values();
     const columns = ordered(props.columns);
     const cards = ordered(props.cards);
     const known = new Set(columns.map((column) => column.id));

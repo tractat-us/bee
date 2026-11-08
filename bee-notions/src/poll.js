@@ -7,6 +7,7 @@
 import { A2uiLitElement } from '@a2ui/lit/v0_9';
 import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v0_9';
 import { html, nothing } from 'lit';
+import { BoundData } from './bound-data.js';
 
 /** The A2UI action an answer becomes (NotionActions.ANSWER). */
 export const ANSWER_ACTION = 'answer';
@@ -58,14 +59,19 @@ export function pollOptions(options) {
 
 /** `<bee-poll>`: the question, then each option with its count and who chose it. */
 export class PollElement extends A2uiLitElement {
+  constructor() {
+    super();
+    this.bound = new BoundData(this, ['question', 'options', 'answers']);
+  }
+
   /** Light DOM, as the basic catalog's elements render. */
   createRenderRoot() {
     return this;
   }
 
   render() {
-    const props = this.controller?.props;
-    if (!props) return nothing;
+    if (!this.controller?.props) return nothing;
+    const props = this.bound.values();
     const options = pollOptions(props.options);
     const voters = new Map(options.map((option) => [option.id, []]));
     const answers = props.answers && typeof props.answers === 'object' ? props.answers : {};
