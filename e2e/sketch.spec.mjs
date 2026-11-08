@@ -46,8 +46,13 @@ test.beforeAll(async () => {
   await expect.poll(() => companion.lines.some((l) => l.includes('server-started')), { timeout: 60_000 }).toBe(true);
 });
 
+// The board is shared with the other specs: the companion leaves it as the brainstorming loop
+// does, with a waiting screen, which closes its surface.
 test.afterAll(async () => {
-  companion?.kill();
+  if (!companion) return;
+  pushScreen('waiting.html', '<p>Continuing in terminal...</p>');
+  await expect.poll(() => companion.lines.some((l) => l.includes('screen-closed')), { timeout: 10_000 }).toBe(true);
+  companion.kill();
 });
 
 /** Writes screen `name`, newer than every screen before it, and returns its file name. */
