@@ -8,6 +8,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -564,19 +565,29 @@ async function chooseBesideAThief(browser, ownSurface, ownLines) {
 }
 
 // The brainstorming loop's stop script kills its companion with SIGTERM. A companion stopped so
-// closes its own surface before it ends, so the board keeps no open, dead Sketch.
-test('a companion stopped with SIGTERM closes its surface', async ({ browser }) => {
-  test.setTimeout(90_000);
+// closes its own surface before it ends, so the board keeps no open, dead Sketch, and then leaves,
+// so the strip reads it left. Without the leave, the host departs it crashed a learner grace (30 s)
+// later; the departure wait outlasts that, so a missing leave reads crashed, not a timeout.
+test('a companion stopped with SIGTERM closes its surface and reads as left', async ({ browser }) => {
+  test.setTimeout(150_000);
   const own = mkdtempSync(join(tmpdir(), 'bee-e2e-stopped-'));
   const ownScreens = join(own, 'content');
   const ownState = join(own, 'state');
   mkdirSync(ownScreens, { recursive: true });
   writeFileSync(join(ownScreens, 'stopping.html'), '<h2>About to stop</h2>');
   const stopping = spawn(companionBin, ['--screen-dir', ownScreens, '--state-dir', ownState, '--frame-template', template], {
-    env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${port}` },
-    stdio: ['ignore', 'ignore', 'inherit'],
+    env: { ...process.env, BEE_HOST: `ws://127.0.0.1:${port}`, BEE_SESSION_NAME: 'stopping' },
+    stdio: ['ignore', 'ignore', 'pipe'],
   });
   const exited = new Promise((resolve) => stopping.on('exit', (code, signal) => resolve(code ?? signal)));
+  // Its stderr, passed on as `inherit` would, and the identity it says it starts as.
+  const identity = new Promise((resolve) => {
+    createInterface({ input: stopping.stderr }).on('line', (line) => {
+      process.stderr.write(`${line}\n`);
+      const starts = line.match(/starts as (agent:\S+),/);
+      if (starts) resolve(starts[1]);
+    });
+  });
   const kept = join(ownState, 'bee-companion.json');
   await expect.poll(() => existsSync(kept), { timeout: 60_000 }).toBe(true);
   const ownSurface = JSON.parse(readFileSync(kept, 'utf8')).surface;
@@ -585,11 +596,16 @@ test('a companion stopped with SIGTERM closes its surface', async ({ browser }) 
   await page.goto('/?name=sol');
   const shown = page.frameLocator(`a2ui-surface[data-surface-id="${ownSurface}"] bee-sketch iframe`);
   await expect(shown.locator('h2')).toHaveText('About to stop', { timeout: 15_000 });
+  // Its presence names its claims node only once the link is up, so it's on the strip once it can leave.
+  const peer = page.locator(`#peers li.bee-peer[data-peer="${await identity}"]`);
+  await expect(peer).toHaveAttribute('data-state', /^(here|acting|waiting)$/, { timeout: 30_000 });
 
   stopping.kill('SIGTERM');
   await exited;
   // A closed surface leaves the page; an open one would stay, its companion gone.
   await expect(page.locator(`a2ui-surface[data-surface-id="${ownSurface}"]`)).toHaveCount(0, { timeout: 5_000 });
+  await expect(peer).toHaveAttribute('data-state', 'departed', { timeout: 60_000 });
+  await expect(peer).toHaveAttribute('data-reason', 'left');
   await context.close();
 });
 

@@ -33,11 +33,25 @@ class BoardViewTest {
         val lunch = view.cards.single { it.surfaceId == LUNCH }
         val review = view.cards.single { it.surfaceId == REVIEW }
         assertAll(
-            { assertEquals(listOf(LUNCH, REVIEW), view.cards.map { it.surfaceId }) },
             { assertEquals("Lunch", lunch.title) },
             { assertEquals(alice, lunch.openedBy) },
             { assertEquals(OpenerState.Attached("naming the CLI"), lunch.opener) },
             { assertEquals(OpenerState.Away, review.opener) },
+        )
+    }
+
+    /** A card an agent draws mid-meeting shows on top, where the room sees it appear. */
+    @Test
+    fun cardsShowNewestOpenedFirstAndAnUpdateLeavesACardWhereItIs() {
+        val bye = buildJsonObject {
+            put("id", "root")
+            put("component", "Text")
+            put("text", "Bye")
+        }
+        val updated = board().piece { it.updateComponents(A, LUNCH, listOf(bye)) }
+        assertAll(
+            { assertEquals(listOf(REVIEW, LUNCH), BoardView.of(board(), attached = emptyMap()).cards.map { it.surfaceId }) },
+            { assertEquals(listOf(REVIEW, LUNCH), BoardView.of(updated, attached = emptyMap()).cards.map { it.surfaceId }) },
         )
     }
 
@@ -64,7 +78,7 @@ class BoardViewTest {
             { assertEquals(PeerView(bob, PeerState.Departed(DepartReason.Crashed), "reviewing"), view.peers.last()) },
             { assertEquals(OpenerState.Departed(DepartReason.Crashed), review.opener) },
             { assertEquals(listOf(ClaimBadge(recordTarget(lastSeen), bob, orphaned = true)), review.claims) },
-            { assertEquals(listOf(ClaimBadge("card:$LUNCH/tacos", alice, orphaned = false)), view.cards.first().claims) },
+            { assertEquals(listOf(ClaimBadge("card:$LUNCH/tacos", alice, orphaned = false)), view.cards.single { it.surfaceId == LUNCH }.claims) },
         )
     }
 
@@ -99,8 +113,8 @@ class BoardViewTest {
         val state = board().let { it.piece { s -> s.mirrorClaims(HOST, claims(it, departBob = false)) } }
         val view = BoardView.of(state, attached = emptyMap())
         assertAll(
-            { assertEquals(listOf(ClaimBadge("card:$LUNCH/tacos", alice, orphaned = false)), view.cards[0].claims) },
-            { assertEquals(listOf(ClaimBadge(recordTarget(state), bob, orphaned = false)), view.cards[1].claims) },
+            { assertEquals(listOf(ClaimBadge("card:$LUNCH/tacos", alice, orphaned = false)), view.cards.single { it.surfaceId == LUNCH }.claims) },
+            { assertEquals(listOf(ClaimBadge(recordTarget(state), bob, orphaned = false)), view.cards.single { it.surfaceId == REVIEW }.claims) },
             { assertEquals(emptyList(), view.peers) },
         )
     }

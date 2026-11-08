@@ -4,11 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
-import io.modelcontextprotocol.kotlin.sdk.server.Server
-import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
-import io.modelcontextprotocol.kotlin.sdk.types.Implementation
-import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +21,7 @@ import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.askBoardId
@@ -40,6 +37,7 @@ import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
 import kotlin.system.exitProcess
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -47,15 +45,13 @@ import kotlin.uuid.Uuid
 // pointed System.out at stderr. A plain top-level val starts with MainKt, before main runs.
 private val logger by lazy { KotlinLogging.logger {} }
 
-/** The host the bridge joins when `$BEE_HOST` is unset: the default port on loopback (plan, "Decisions"). */
-private const val DEFAULT_HOST = "ws://127.0.0.1:8233"
-
 /**
  * The bridge: a stdio MCP server, one per Claude session (spec §5.2), joined to the board.
  *
  * It holds a replica of the board (`/ws/board`) and a claims learner (`/ws/claims`) on the host at
- * `$BEE_HOST` (`ws://host:port`, default [DEFAULT_HOST]). Retiring an identity, on `/clear` or on
- * finding itself retired, proposes its `Depart` through Raft.
+ * `$BEE_HOST` ([beeHostFrom]: `ws://host:port`, or a `--lan` host's join link; default
+ * [DEFAULT_HOST]). A join link's key goes on both sockets: it admits a bridge on another machine.
+ * Retiring an identity, on `/clear` or on finding itself retired, proposes its `Depart` through Raft.
  */
 @OptIn(ExperimentalUuidApi::class)
 fun main() {
@@ -64,7 +60,8 @@ fun main() {
     val protocolOut: PrintStream = System.out
     System.setOut(System.err)
 
-    val host = System.getenv("BEE_HOST")?.takeIf { it.isNotBlank() }?.trimEnd('/') ?: DEFAULT_HOST
+    // Before anything starts: a BEE_HOST that names no host ends the bridge here, saying why.
+    val host = beeHostFrom(System.getenv("BEE_HOST"))
     val random = SecureRandom().asKotlinRandom()
     val clock = { Clock.System.now() }
     // The bridge's own work (the board, claims, a retire on /clear) runs here; one failure must not end the rest.
@@ -77,7 +74,7 @@ fun main() {
     val board = BoardClient(
         author,
         SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock).pinnedTo(pin),
-        Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
+        Rendezvous.Existing(WebSocketAdvertisement(host.socket("/ws/board"), PeerId("bee-host"), "board")),
         bridgeScope,
         clock,
     )
@@ -87,7 +84,8 @@ fun main() {
         scope = bridgeScope,
         nextNode = { NodeId("mcp-${Uuid.random()}") },
         open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
-        onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
+        // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
+        onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )
     val identity = BridgeIdentity(sessionName(), random) { old, reason ->
@@ -102,17 +100,16 @@ fun main() {
     runBlocking { bridge.announce() }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }
 
+    // Once, by whichever way out comes first; a second caller waits for the first to finish.
+    val leaving = lazy { leave(bridge) }
     ClearControl(identity, bridgeScope).use { clear ->
         // Claude Code ends its MCP servers with a signal, not only by closing stdin (spike 3), so
         // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
         Runtime.getRuntime().addShutdownHook(Thread(clear::close, "bee-clear-control-close"))
+        // Either way out, stdin closing or that signal, the session left on purpose: say so first.
+        Runtime.getRuntime().addShutdownHook(Thread({ leaving.value }, "bee-mcp-leave"))
         clear.start()
-        val server = Server(
-            Implementation(name = "bee", version = "0.1.0"),
-            ServerOptions(capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
-        )
-        WaitTool.register(server, BoardActionSource(bridge))
-        BeeTools.register(server, bridge)
+        val server = BeeServer.create(bridge)
         runBlocking {
             val transport = StdioServerTransport(System.`in`.asSource().buffered(), protocolOut.asSink().buffered())
             val closed = CompletableDeferred<Unit>()
@@ -123,6 +120,7 @@ fun main() {
             board.close()
         }
     }
+    leaving.value
     bridgeScope.cancel()
     http.close()
     logger.info { "bee-mcp ends." }
@@ -137,11 +135,43 @@ fun main() {
  * ends the process with [EXIT_ANOTHER_BOARD] once it has closed up. It doesn't follow the host: a
  * restart does.
  */
-private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: String, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
+private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: HostAddress, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
     scope.launch {
         val another = awaitAnotherBoard(board.lastFailure, pin) { http.boardNamedOrNull(host) }
         System.err.println(another.message)
         ended.complete(another)
+    }
+}
+
+/**
+ * How long an ending bridge waits for its `Depart(Left)` to commit. A single voter commits it
+ * inline, so this only bounds a host that's gone, for an exit no SIGKILL follows (stdin closing).
+ *
+ * Measured (e2e `departures.spec.mjs`, host on loopback): from SIGINT to the bridge's exit, `Left`
+ * committed, took about 330 ms. Not measured: Claude Code's own grace. Public reports say `/exit`
+ * sends SIGINT, SIGTERM about 100 ms later, then SIGKILL about 400 ms after that; some say SIGKILL
+ * at once. So this bound is longer than that grace, and a SIGKILL before the commit leaves the
+ * host to depart the identity `Crashed`.
+ */
+private val LEAVE_BOUND = 1.seconds
+
+/**
+ * Departs [bridge]'s identity as [us.tractat.bee.core.DepartReason.Left] as the session ends,
+ * waiting at most [LEAVE_BOUND]. One that doesn't commit is departed `Crashed` by the host instead.
+ */
+private fun leave(bridge: BeeBridge) {
+    val who = bridge.self
+    val committed = try {
+        runBlocking { bridge.leave(LEAVE_BOUND) }
+    } catch (failure: Exception) {
+        // The top of a way out: a cancellation reaching here is a failure like any other.
+        logger.warn(failure) { "Leaving the board as $who failed; the host will depart it as crashed." }
+        return
+    }
+    if (committed) {
+        logger.info { "Left the board as $who." }
+    } else {
+        logger.warn { "$who's Depart(Left) didn't commit within $LEAVE_BOUND; the host will depart it as crashed." }
     }
 }
 

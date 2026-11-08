@@ -18,6 +18,8 @@ import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
+import us.tractat.bee.core.CompanionSurfaces
+import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PairingSurfaces
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PeerKind
@@ -62,8 +64,13 @@ import kotlin.time.Duration.Companion.milliseconds
  * ends the wait with the bridge's refusal, which names the retired identity, why, and its
  * orphaned claims. While the claims link is down, the wait holds for it rather than failing.
  *
- * The cursor names every record on the surface this caller has passed: returned, or held by
- * another. It's opaque to callers, and grows with the surface's records, which v1 accepts.
+ * The cursor names every record in its scope this caller has passed: returned, or held by
+ * another. It's opaque to callers, and grows with the scope's records, which v1 accepts. It's a
+ * set of record ids, `<author>:<seq>`, not a position in any order. A record id is its CRDT dot:
+ * unique across authors, never reused, and the same after a host restart. So a board-wide cursor
+ * never skips a record on a surface opened later, or one a slow author's replica delivers out of
+ * order, and never repeats one. Any cursor is good in any scope: a one-surface wait passes over the
+ * other surfaces' ids it carries, and keeps them in the cursor it hands back.
  */
 class BoardActionSource internal constructor(
     private val bridge: BeeBridge,
@@ -76,23 +83,23 @@ class BoardActionSource internal constructor(
 ) : ActionSource {
     constructor(bridge: BeeBridge) : this(bridge, afterWin = {})
 
-    override suspend fun next(surfaceId: String, cursor: String?, timeout: Duration): WaitResult {
+    override suspend fun next(scope: ActionScope, cursor: String?, timeout: Duration): WaitResult {
         bridge.touch()
-        refuseJoinRequests(bridge.board.value, surfaceId)
+        refuseJoinRequests(bridge.board.value, scope)
         val passed = decode(cursor).toMutableSet()
         bridge.waiting(on = true)
         var won: Won? = null
         var handed = false
         try {
             withTimeoutOrNull(timeout) {
-                won = claimNext(surfaceId, passed)
+                won = claimNext(scope, passed)
                 afterWin()
             }
             // The bound can land as the claim wins: a win is handed over, never dropped.
             val got = won ?: return WaitResult(record = null, timedOut = true, cursor = encode(passed))
             currentCoroutineContext().ensureActive()
             val state = bridge.board.value
-            val record = json(got.id, got.record, got.token, got.record.basis.completeIn(state, surfaceId))
+            val record = json(got.id, got.record, got.token, got.record.basis.completeIn(state, got.record.surfaceId))
             bridge.handedOver(target(got.id), got.token)
             handed = true
             return WaitResult(record = record, timedOut = false, cursor = encode(passed + got.id.dot))
@@ -110,13 +117,13 @@ class BoardActionSource internal constructor(
     }
 
     /**
-     * Claims candidates on [surfaceId] in order until one is this wait's, adding each held by
+     * Claims candidates in [scope] in order until one is this wait's, adding each held by
      * another, or handed over already, to [passed]. A retirement propagates as the bridge's
      * [BridgeRefusal].
      */
-    private suspend fun claimNext(surfaceId: String, passed: MutableSet<Dot>): Won {
+    private suspend fun claimNext(scope: ActionScope, passed: MutableSet<Dot>): Won {
         while (true) {
-            val (id, record) = nextCandidate(surfaceId, passed)
+            val (id, record) = nextCandidate(scope, passed)
             val target = target(id)
             val by = bridge.self
             // A win is taken into this wait's hands while its claim is still in flight, so nothing gives it back first.
@@ -183,40 +190,63 @@ class BoardActionSource internal constructor(
         }
     }
 
-    override fun list(surfaceId: String, since: String?): ActionPage {
+    override fun list(scope: ActionScope, since: String?): ActionPage {
         bridge.touch()
         val passed = decode(since)
         val state = bridge.board.value
-        refuseJoinRequests(state, surfaceId)
-        val fresh = state.records(surfaceId).filter { (id, _) -> id.dot !in passed }
+        refuseJoinRequests(state, scope)
+        val fresh = recordsIn(state, scope, granted = emptySet()).filter { (id, _) -> id.dot !in passed }
         return ActionPage(
-            records = fresh.map { (id, record) -> json(id, record, token = null, basisComplete = record.basis.completeIn(state, surfaceId)) },
+            records = fresh.map { (id, record) -> json(id, record, token = null, basisComplete = record.basis.completeIn(state, record.surfaceId)) },
             cursor = encode(passed + fresh.map { it.first.dot }),
         )
     }
 
     /**
-     * The first record on [surfaceId] not in [passed], or in it but reassigned to this session
-     * since, suspending until one arrives.
+     * The first record in [scope] not in [passed], or in it but reassigned to this session since,
+     * suspending until one arrives. A board-wide wait reads the board on each change, so a surface
+     * this bridge opened after the wait began is in it as soon as its first record arrives.
      */
-    private suspend fun nextCandidate(surfaceId: String, passed: Set<Dot>): Pair<RecordId, ActionRecord> =
-        bridge.board.combine(bridge.reassignedToSelf) { state, granted -> candidate(state, surfaceId, passed, granted) }.filterNotNull().first()
+    private suspend fun nextCandidate(scope: ActionScope, passed: Set<Dot>): Pair<RecordId, ActionRecord> =
+        bridge.board.combine(bridge.reassignedToSelf) { state, granted -> candidate(state, scope, passed, granted) }.filterNotNull().first()
 
-    private fun candidate(state: BoardState, surfaceId: String, passed: Set<Dot>, granted: Set<ClaimTarget>) =
-        state.records(surfaceId).firstOrNull { (id, _) -> id.dot !in passed || target(id) in granted }
-            ?.also { refuseJoinRequests(state, surfaceId) }
+    private fun candidate(state: BoardState, scope: ActionScope, passed: Set<Dot>, granted: Set<ClaimTarget>) =
+        recordsIn(state, scope, granted).firstOrNull { (id, _) -> id.dot !in passed || target(id) in granted }
+            ?.also { refuseJoinRequests(state, scope) }
 
     /**
-     * Refuses a pairing surface the host opened, such as a join request (spec §6.2, bee#72). The
-     * host handles its records itself, without a claim, as their only handler, so an agent has no
-     * business with them, and a record it took would hand it the code a person typed. Other
-     * surfaces the host opens, such as an orphan decision, stay open to every participant.
+     * The records in [scope], in sequence order. The board-wide scope is this session's own: the
+     * records on surfaces this bridge process opened ([BeeBridge.opened]), and any a person
+     * reassigned to this session ([granted]). It never takes in a surface another handler owns by
+     * name ([HANDLED_ELSEWHERE]). So two sessions waiting board-wide never take each other's
+     * clicks, and a null cursor replays only records pending on the session's own surfaces.
+     *
+     * A record left out isn't passed, so it isn't lost: a one-surface wait still takes it. A
+     * surface whose meta hasn't reached this replica is left out until it does, so a pairing
+     * surface is never taken in before its opener is known.
+     */
+    private fun recordsIn(state: BoardState, scope: ActionScope, granted: Set<ClaimTarget>): List<Pair<RecordId, ActionRecord>> =
+        when (scope) {
+            is ActionScope.Surface -> state.records(scope.id)
+            ActionScope.Board -> state.records().filter { (id, record) ->
+                HANDLED_ELSEWHERE.none(record.surfaceId::startsWith) && (bridge.opened(state, record.surfaceId) || target(id) in granted)
+            }
+        }
+
+    /**
+     * Refuses a one-surface wait or list on a pairing surface the host opened, such as a join
+     * request (spec §6.2, bee#72). The host handles its records itself, without a claim, as their
+     * only handler, so an agent has no business with them, and a record it took would hand it the
+     * code a person typed. Other surfaces the host opens, such as an orphan decision, stay open to
+     * every participant. The board-wide scope is never refused: it takes in only this session's own
+     * surfaces ([recordsIn]).
      *
      * This is a visibility rule for agents, not an access gate in bee#68's sense: it keys on the
      * kind the surface's opener declares, and only a well-behaved bridge keeps it. A board writer
      * can still read the records off its own replica. The host doesn't rely on it.
      */
-    private fun refuseJoinRequests(state: BoardState, surfaceId: String) {
+    private fun refuseJoinRequests(state: BoardState, scope: ActionScope) {
+        val surfaceId = (scope as? ActionScope.Surface)?.id ?: return
         if (!PairingSurfaces.isPairing(surfaceId)) return
         val openedBy = state.meta(surfaceId)?.openedBy ?: return
         if (openedBy.kind == PeerKind.Host) {
@@ -228,6 +258,13 @@ class BoardActionSource internal constructor(
     private data class Won(val id: RecordId, val record: ActionRecord, val by: PeerIdentity, val token: ClaimToken, val reassigned: Boolean)
 
     companion object {
+        /**
+         * Surface-id prefixes whose records another handler owns, which a board-wide scope never
+         * takes in: the host's pairing surfaces (§5.7), the orphan decisions each participant's
+         * page answers without a claim (§6.4), and the brainstorming companion's (§3).
+         */
+        private val HANDLED_ELSEWHERE = listOf(PairingSurfaces.PREFIX, OrphanDecision.PREFIX, CompanionSurfaces.PREFIX)
+
         /** How long a wait backs off after a claim found no quorum. */
         val RETRY: Duration = 500.milliseconds
 

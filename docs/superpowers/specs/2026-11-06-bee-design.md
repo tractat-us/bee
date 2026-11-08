@@ -178,6 +178,11 @@ Claude session ── bee-mcp                                           ┘     
   same client core as the browser, compiled for the JVM, holding its own replica and connecting to
   the host the same way. Its lifetime *is* the session's **(design call)**: when it disconnects,
   the session crashed or ended.
+- **A session that ends says so (design call).** When the MCP session closes normally, by
+  stdin closing or by the signal Claude Code ends its servers with, the bridge departs its own
+  identity as `Left` (§6.4) before it exits. It waits at most 1 s, so an exit never hangs on a
+  host that's gone, and it queues nothing: a `Depart` that doesn't commit leaves the host to
+  depart it `Crashed` once its link is lost. A SIGKILL says nothing, so it still reads as a crash.
 - Gives each session a **peer identity** (session name plus a fresh instance id), distinct from
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
@@ -213,12 +218,23 @@ Claude session ── bee-mcp                                           ┘     
   `bee_list_actions(since)` reads without blocking. This is the replacement for reading
   `state_dir/events`. Bounded waits make a long hold unnecessary, so Spike 3 doesn't measure a
   30-minute one **(Iain: dropped)**.
+- **Without a `surfaceId`, a wait or a list covers your own surfaces (design call).** A
+  whiteboard agent keeps several surfaces up and reacts to whatever a person does on any of them,
+  so it can't know which one to wait on. Both tools then read the surfaces this bridge process
+  opened, under its identity now or one it held before a `/clear`, including surfaces opened after
+  the wait began, and any record a person reassigned to the session (§6.4). They never read
+  another session's surfaces, the companion's (§3), an orphan decision (§6.4) or a pairing surface
+  (§5.7): other handlers take those records, so two whiteboard sessions never take each other's
+  clicks. The cursor is the set of record ids the caller has passed, not a position, and a record
+  id is a CRDT dot, unique across authors and stable across a host restart. So a board-wide cursor
+  never skips or repeats a record, and any cursor resumes a wait in either scope. It grows with
+  the session's own records, which v1 accepts.
 - **Records are addressed to a surface, never to a session instance (design call).** Session
   identities are fresh each time, so a record addressed to one would wait forever once that session
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
   always goes through a claim** (§6.3), so two sessions never both act on one click.
 - **A session handles a surface by subscribing to it (design call).** Waiting on a surface is how
-  a session handles it, and any session may wait on any surface.
+  a session handles it, and any session may wait on any surface, or on all of its own at once.
 - **The bridge validates what it writes (design call)** against the Notions schema (§5.6), and
   refuses a malformed surface with an error that names the bad id or type.
 - **A retired bridge re-identifies before it acts (design call).** If the bridge finds its identity
@@ -383,8 +399,9 @@ design call:
 **The host handles admit records without a claim (Iain, 2026-11-08, bee#72).** It is their only
 handler, and the voter never claims, so exactly-once holds by construction: the host handles each
 record once per boot, and a pairing never outlives the boot that opened it. The bridge refuses
-`bee_wait_action` and `bee_list_actions` on a pairing surface the host opened (`bee-pair-`, `host:`, §5.2), so no
-session takes an admit record and the code a person typed into it. That refusal is a visibility
+`bee_wait_action` and `bee_list_actions` on a pairing surface the host opened (`bee-pair-`, `host:`, §5.2), and
+leaves such surfaces out of a board-wide wait or list (§5.2), so no session takes an admit record and the code a
+person typed into it. That refusal is a visibility
 rule for well-behaved agents, not an access gate: it keys on a declared kind, and the host doesn't
 rely on it.
 
@@ -500,10 +517,12 @@ replica as it turns the A2UI `action` into an edit. A click can't claim to have 
 browser hadn't yet received. A handler whose replica lacks a dot the basis names treats the basis
 as incomplete: unknown, never applicable.
 
-A handler finds its records by surface: a session handles a surface by waiting on it (§5.2).
-The exception is a pairing surface the host opened. The host handles its records itself, without a
-claim, as their only handler, and the bridge refuses a wait or a list on it (§5.7, bee#72). Orphan
-decisions are host-opened too and stay open to every participant (§6.4).
+A handler finds its records by surface: a session handles a surface by waiting on it, or on all
+of its own surfaces at once (§5.2). The exception is a pairing surface the host opened. The host
+handles its records itself, without a claim, as their only handler, and the bridge refuses a wait
+or a list on it (§5.7, bee#72). Orphan decisions are host-opened too and stay open to a
+one-surface wait by every participant (§6.4). A board-wide wait takes in neither, since it reads
+only the session's own surfaces.
 
 ### 6.3 Claims: exactly one
 
@@ -553,6 +572,13 @@ table over the committed log:
   the host commits `Depart(identity, reason)` through Raft, and the claim table rejects every later
   command from a retired identity. A bridge that finds itself retired re-identifies (§5.2). Only
   agents depart. A person's tabs come and go without retiring them.
+- **A departure has one of four reasons, and only the host's two alarm.** The host proposes
+  `Crashed` and `Quiet`. The bridge proposes `Cleared` on `/clear` and `Left` when its session
+  ends normally (§5.2). The claim table keeps the first committed `Depart` of an identity, so a
+  bridge's `Left` stands against the host's later lost-link `Crashed`. Every reason orphans the
+  identity's claims the same way. The page shows `crashed` and `quiet` struck through and in red,
+  and `cleared` and `left` muted, since a session that ended isn't a failure: the board outliving
+  its sessions is the point.
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.

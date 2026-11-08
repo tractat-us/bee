@@ -21,6 +21,7 @@ import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.askBoardId
@@ -30,6 +31,7 @@ import us.tractat.bee.mcp.BeeBridge
 import us.tractat.bee.mcp.BoardActionSource
 import us.tractat.bee.mcp.BridgeIdentity
 import us.tractat.bee.mcp.awaitAnotherBoard
+import us.tractat.bee.mcp.beeHostFrom
 import us.tractat.bee.mcp.boardNamedOrNull
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
@@ -38,7 +40,6 @@ import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.websocket.WebSocketAdvertisement
 import java.io.IOException
 import java.io.PrintStream
-import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -54,9 +55,6 @@ import kotlin.uuid.Uuid
 
 // Lazy, so the logger starts only after main() has pointed System.out at stderr.
 private val logger by lazy { KotlinLogging.logger {} }
-
-/** The host the companion joins when `$BEE_HOST` is unset, as the bridge does. */
-private const val DEFAULT_HOST = "ws://127.0.0.1:8233"
 
 private const val USAGE = "bee-companion --screen-dir <dir> --state-dir <dir> --frame-template <frame-template.html>"
 
@@ -80,7 +78,7 @@ fun main(args: Array<String>) {
     if (!Files.isDirectory(screenDir)) usage("--screen-dir $screenDir is not a directory")
     if (!Files.isRegularFile(frameTemplate)) usage("--frame-template $frameTemplate is not a file")
 
-    val host = System.getenv("BEE_HOST")?.takeIf { it.isNotBlank() }?.trimEnd('/') ?: DEFAULT_HOST
+    val host = beeHostFrom(System.getenv("BEE_HOST"))
     val random = SecureRandom().asKotlinRandom()
     val clock = { Clock.System.now() }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -93,7 +91,7 @@ fun main(args: Array<String>) {
     val board = BoardClient(
         author,
         SpokeLoom(http, Dispatchers.Default, scope, author.value, random, clock).pinnedTo(pin),
-        Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
+        Rendezvous.Existing(WebSocketAdvertisement(host.socket("/ws/board"), PeerId("bee-host"), "board")),
         scope,
         clock,
     )
@@ -103,7 +101,8 @@ fun main(args: Array<String>) {
         scope = scope,
         nextNode = { NodeId("companion-${Uuid.random()}") },
         open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
-        onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
+        // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
+        onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),
     )
     val name = System.getenv("BEE_SESSION_NAME")?.takeIf { it.isNotBlank() } ?: "companion"
@@ -115,8 +114,7 @@ fun main(args: Array<String>) {
     val bridge = BeeBridge(board, author, claims, identity, presence, clock, scope)
     val print: (JsonObject) -> Unit = { line -> synchronized(out) { out.println(line); out.flush() } }
 
-    val httpHost = host.replaceFirst("ws", "http")
-    val pageUrl = URI("$httpHost/").toString()
+    val pageUrl = "${host.http}/"
     val started = buildJsonObject {
         put("type", "server-started")
         put("url", pageUrl)
@@ -151,14 +149,18 @@ fun main(args: Array<String>) {
             // A graceful stop (SIGTERM) closes the surface. A crash can't, and leaves it open. The
             // brainstorming stop script will send that SIGTERM once the plugin starts bee-companion
             // in the companion server's place; it doesn't reach this process yet.
-            Runtime.getRuntime().addShutdownHook(Thread({ closeOnStop(adapter) }, "bee-companion-close"))
+            // Then it leaves, so the board shows it left, not crashed.
+            Runtime.getRuntime().addShutdownHook(Thread({ closeOnStop(adapter); leaveOnStop(bridge) }, "bee-companion-close"))
             bridge.announce()
             adapter.start(this).join()
         }
     } catch (failure: Exception) {
         // main is the top of the stack: a cancellation reaching here is a failure like any other.
-        logger.error(failure) { "The companion failed; bee-companion ends." }
-        stopReason = "failed: ${failure.message ?: failure::class.simpleName}"
+        // Any failure lands here, a dial's too, whose message can hold the key: both the log and
+        // server-stopped show it as the host describes it, never the raw throwable.
+        val described = host.describe(failure)
+        logger.error { "The companion failed; bee-companion ends. $described" }
+        stopReason = "failed: $described"
     }
     exitProcess(1)
 }
@@ -182,12 +184,35 @@ private fun closeOnStop(adapter: CompanionAdapter) {
 }
 
 /**
+ * How long a stopping companion waits for its `Depart(Left)` to commit, after closing its surface:
+ * bee-mcp's bound. Both waits run long only on a host that's gone, when the stop script's SIGKILL
+ * may end this one first, and the host departs the companion `Crashed`.
+ */
+private val LEAVE_BOUND = 1.seconds
+
+/** Departs [bridge]'s identity as left as the process ends, waiting at most [LEAVE_BOUND]. */
+private fun leaveOnStop(bridge: BeeBridge) {
+    val committed = try {
+        runBlocking { bridge.leave(LEAVE_BOUND) }
+    } catch (failure: Exception) {
+        // The top of the hook's thread: a cancellation reaching here is a failure like any other.
+        logger.warn(failure) { "Leaving the board as ${bridge.self} failed; the host will depart it as crashed." }
+        return
+    }
+    if (committed) {
+        logger.info { "Left the board as ${bridge.self}." }
+    } else {
+        logger.warn { "${bridge.self}'s Depart(Left) didn't commit within $LEAVE_BOUND; the host will depart it as crashed." }
+    }
+}
+
+/**
  * The board [pin] holds, learning it from the host at [host] if it must. A host that isn't up yet
  * is asked again each second; one that answers without naming a board fails.
  *
  * @throws IllegalStateException if the host answers, but names no board
  */
-private suspend fun resolveBoard(pin: BoardPin, host: String): BoardId {
+private suspend fun resolveBoard(pin: BoardPin, host: HostAddress): BoardId {
     while (true) {
         try {
             return pin.resolve()

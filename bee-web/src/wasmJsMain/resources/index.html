@@ -104,8 +104,10 @@
     .bee-peer[data-state="here"]::before { background: var(--accent); }
     .bee-peer[data-state="acting"]::before { background: var(--acting); }
     .bee-peer[data-state="waiting"]::before { background: var(--waiting); }
-    .bee-peer[data-state="departed"] { opacity: 0.45; border-style: dashed; }
-    .bee-peer[data-state="departed"] .bee-peer-name { text-decoration: line-through; }
+    /* A session that left or cleared just ended; only a departure the host judged (crashed, quiet) alarms. */
+    .bee-peer[data-state="departed"] { opacity: 0.6; }
+    .bee-peer[data-reason="crashed"], .bee-peer[data-reason="quiet"] { opacity: 0.45; border-style: dashed; }
+    .bee-peer[data-reason="crashed"] .bee-peer-name, .bee-peer[data-reason="quiet"] .bee-peer-name { text-decoration: line-through; }
     .bee-peer-name { font-weight: 600; }
     .bee-peer-state, .bee-instance { color: var(--muted); font-size: 0.85em; }
     .bee-instance { margin-left: 1px; font-weight: 400; }
@@ -162,7 +164,7 @@
     .bee-card-opener { color: var(--ink); font-weight: 600; }
     .bee-card-working::before, .bee-card-gone::before { content: " · "; }
     .bee-card-working { font-style: italic; }
-    .bee-card-gone { color: var(--alert); }
+    .bee-card-gone[data-reason="crashed"], .bee-card-gone[data-reason="quiet"] { color: var(--alert); }
     .bee-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
     .bee-badge {
       padding: 1px 8px;
@@ -174,6 +176,24 @@
     .bee-card-body { padding: 12px 16px 16px; overflow-wrap: anywhere; }
     .bee-card-body a2ui-surface { display: block; }
     .bee-invalid-surface { color: var(--alert); font-size: 0.9em; }
+    /* An empty board: a quiet line in the middle of it, saying how to start. */
+    .bee-empty-hint {
+      margin: auto;
+      max-width: 34em;
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .bee-empty-hint[hidden] { display: none; }
+    .bee-empty-title { display: block; margin-bottom: 4px; color: var(--ink); font-weight: 600; }
+    .bee-empty-prompt {
+      padding: 1px 6px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--card);
+      color: var(--ink);
+      font-size: 0.92em;
+    }
     /* A Sketch (bee-notions) is agent HTML in a frame: give it an edge, and a page behind it. */
     bee-sketch iframe {
       border: 1px solid var(--line) !important;
