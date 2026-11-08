@@ -59,8 +59,10 @@ Everything that makes it a board for people and their agents:
 - **The shared core** (`bee-core` and `bee-a2ui`). The board's shape, the records of who clicked
   what, the claims, and how a surface maps onto A2UI. The browser client, the bridge and the host
   are all built on it.
-- **The catalog** (`bee-notions`). bee's own set of on-screen components, including `Sketch`,
-  which runs agent-written HTML in a sandbox.
+- **The catalog** (`bee-notions`). bee's own set of on-screen components. Today it holds A2UI's
+  basic ones. Task 8 adds `Sketch`, which runs agent-written HTML in a sandbox.
+- **The visual companion** (`bee-companion`). The brainstorming companion, running on the board.
+  It's a placeholder until Task 8, which is also bee v1's acceptance test.
 - **The rules.** Who may put what on the board, who may let a new screen in, and where bee runs.
 
 The phone app, a thin frame around the web client, comes after v1 and is bee's too.
