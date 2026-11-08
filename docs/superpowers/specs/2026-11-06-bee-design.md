@@ -235,10 +235,15 @@ Claude session ── bee-mcp                                           ┘     
   token still on its way then finds a different token and is rejected, so it can't free a record a
   wait has returned. A claim the bridge handed to a caller is passed over; one another wait has in
   hand, or whose target has a claim in flight, is waited out.
-  **Not yet excluded: a claim reassigned to this identity.** The sweep tells a claim nobody here
-  received only by the bridge's own record, so it would give back a `Reassign` of an orphan to
-  this session (§6.4) as if it were a stranded late win. Nothing proposes `Reassign` before plan
-  Task 11, which must add the provenance that tells the two apart.
+- **A claim reassigned to this identity reaches the session through its wait (Task 11).** A
+  `Reassign` of an orphan to this session (§6.4) looks like a stranded late win to the bridge's own
+  record: held as the bridge, and received by nobody. The claim table keeps the provenance. A
+  hold a `Reassign` granted is marked as such until the target leaves that hold. The sweep leaves
+  such a hold alone. A wait on its record's surface takes it, then returns the record under the
+  `Reassign`'s token, just as it returns a win. The session acts on it and marks it done or
+  releases it with that token, like any record it waited for. If the wait ends before returning
+  it, the hold stays the session's, for its next wait. `bee_board` shows it held by the session
+  in the meantime.
 - **`bee_board` reports the board and the session's claims link.** `open`, `closed`, `attached`
   (who is present, from presence), `departed`, `claimViews` (the host's claims mirror, by target)
   and `claims`, which is `online` or `offline` for this session's link.
@@ -501,6 +506,22 @@ table over the committed log:
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.
+- **The decision surface (Task 11).** The host opens `orphan-<target>` for each orphaned claim it
+  sees in the board's claims mirror. The surface is a `Poll` with this data:
+  - `question`: an append-only array of revisions, naming the departed holder.
+  - `options`: an append-only array of `{id, label}`. It holds "Reassign to <peer>"
+    (`reassign:<identity>`) for each peer present but the holder, then `release`, then `wait`. A
+    peer who arrives later is appended. One who leaves keeps its option, and the table rejects a
+    `Reassign` to a retired agent.
+  - `target`, `holder` and `token`: the orphaning the surface is open for now.
+  - `rounds/<token>/answers`: each answerer's option id, keyed by peer identity. The `Poll` binds
+    the current orphaning's answers, so an answer to an earlier orphaning neither shows nor counts.
+
+  An answer is the action `answer` with context `{option}`. The answerer's own client proposes the
+  `Reassign` or `Release`, and "Wait" proposes nothing. The host proposes nothing but `Depart`. A
+  room screen's page opens no claims link, so it refuses an answer and records nothing (A7). The
+  host closes the surface once the target isn't orphaned, and a target orphaned again asks again
+  on the same surface.
 
 ## 7. bee and kuilt
 

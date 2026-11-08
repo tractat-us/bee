@@ -133,8 +133,9 @@ test('page reached by a non-localhost name connects back to that name', async ({
   for (const url of board) expect(url.searchParams.get('k')).toMatch(/^[A-Za-z0-9_-]{43}$/);
 });
 
-// The page has no claims client yet, so this pins the absence for a screen: the day the page gains
-// one, a screen must still never dial /ws/claims or propose a claim.
+// A person's page opens a claims link, to propose its person's answers to orphan decisions; a
+// screen's page opens none (spec §6.4, A7). This pins that: a screen never dials /ws/claims or
+// proposes a claim.
 test('a screen peer never proposes a claim', async ({ browser }) => {
   const laptop = await openLaptop(browser);
   const remote = await openRemote(browser, 'room-d');
