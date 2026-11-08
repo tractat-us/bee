@@ -130,9 +130,14 @@ link.
 
 Only a person can admit a device. An agent that types the code is refused, and the request says
 so. A code lasts two minutes, and three wrong codes void it. The device then offers a new code.
+The code field shows dots, and what you type stays on your screen until you press **Admit**.
 
-The join link carries a key (`?k=…`), so a device that opens it skips the code. Anyone holding
-the link gets in until the host stops, so share it only with people you'd admit anyway.
+A device's request reaches the board a few seconds after it shows its code. One device can have
+one code at a time, and can ask for a new one every ten seconds.
+
+The join link carries a key (`?k=…`), so a device that opens it skips the code. The page moves
+the key out of the address bar as it loads. Anyone holding the link gets in until the host stops,
+so share it only with people you'd admit anyway.
 
 What to expect:
 
