@@ -190,7 +190,7 @@ items:
     kind: task
     title: "Sketch and the companion adapter (spike 5, the acceptance test)"
     status: in-flight
-    summary: "The brainstorming visual companion's screens run through bee: v1's done-when."
+    summary: "The brainstorming visual companion's screens run through bee: v1's done-when. #38 needs a rebase onto #51 and #52."
     depends_on: [bee-27]
     started: "2026-11-08T02:13Z"
     estimate:
@@ -364,7 +364,7 @@ items:
     kind: issue
     title: "A tab left open across a host wipe pushes its old board, claim views included, into the new host"
     status: done
-    summary: "Fixed by #52: a board socket names its board, the host adopts an existing board on upgrade, and a bridge refused by another board exits loudly."
+    summary: "Fixed by #52: every board and claims socket names its board, and the host refuses any other id before the upgrade. The id now lives in claims/ too, so moving claims/ aside starts a new board. Data from before #52 keeps its board, and a refused bridge exits loudly."
     started: "2026-11-08T03:07Z"
     landed: "2026-11-08T04:49Z"
     links:
@@ -584,7 +584,7 @@ items:
     kind: kuilt
     title: "WebSocket installs take no frame bound, so one header can allocate 2 GiB"
     status: next
-    summary: "Found in the review of bee#42. bee works around it in KeyGate.kt, so it doesn't wait on the fix."
+    summary: "Found in the review of bee#42. bee works around it in the host's socket gate, so it doesn't wait on the fix."
     started: "2026-11-08T03:25Z"
     links:
       - { title: "kuilt#3145", url: "https://github.com/tractat-us/kuilt/issues/3145" }
@@ -593,7 +593,7 @@ items:
     kind: kuilt
     title: "Server looms accept a WebSocket handshake from any web page: no Origin or Host check"
     status: next
-    summary: "bee checks Origin and Host itself since #51, so it doesn't wait on the fix."
+    summary: "bee checks Origin and Host itself since bee#51, so it doesn't wait on the fix."
     started: "2026-11-08T04:01Z"
     links:
       - { title: "kuilt#3146", url: "https://github.com/tractat-us/kuilt/issues/3146" }
