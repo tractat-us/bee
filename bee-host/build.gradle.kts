@@ -20,6 +20,7 @@ val webDistribution: Configuration by configurations.creating {
 
 dependencies {
     implementation(platform(libs.kuilt.bom))
+    implementation(platform(libs.ktor.bom))
     implementation(project(":bee-core"))
     implementation(project(":bee-a2ui"))
     implementation(libs.kuilt.websocket)
@@ -39,6 +40,7 @@ dependencies {
     runtimeOnly(libs.logback)
 
     testFixturesApi(platform(libs.kuilt.bom))
+    testFixturesApi(platform(libs.ktor.bom))
     testFixturesApi(project(":bee-core"))
     testFixturesApi(libs.kuilt.test)
     testFixturesApi(libs.kuilt.store)
