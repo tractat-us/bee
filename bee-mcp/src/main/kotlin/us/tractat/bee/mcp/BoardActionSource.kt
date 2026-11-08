@@ -57,7 +57,7 @@ class BoardActionSource internal constructor(
     private val bridge: BeeBridge,
     /** Test seam: runs once a claim is told it won, before its token is taken into this wait's hands. */
     private val beforeReserve: suspend () -> Unit = {},
-    /** Test seam: runs with what each [BeeBridge.giveBack] this wait makes found. */
+    /** Test seam: runs with what each of this wait's [BeeBridge.giveBack] calls found, once it returns. */
     private val afterGiveBack: (OwnClaim) -> Unit = {},
     /** Test seam: runs once [claimNext] returns a win, within the wait's bound. */
     private val afterWin: suspend () -> Unit,
