@@ -158,7 +158,7 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
  * Opens the board as `name` and clicks `#away` in the sketch. Every sketch-probe the host
  * answered goes into `reached`, and every one the page's CSP refused into `refused`.
  */
-async function clickAway(browser, name) {
+async function clickAway(browser, name, heading) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const reached = [];
@@ -166,7 +166,8 @@ async function clickAway(browser, name) {
   page.on('response', (response) => { if (response.url().includes('sketch-probe')) reached.push(response.url()); });
   page.on('console', (message) => { if (message.text().includes('sketch-probe')) refused.push(message.text()); });
   const response = await page.goto(`/?name=${name}`);
-  await expect(sketchFrame(page).locator('#away')).toBeVisible({ timeout: 15_000 });
+  // The screen just pushed, not the one before it: both have an #away.
+  await expect(sketchFrame(page).locator('h2')).toHaveText(heading, { timeout: 15_000 });
   await sketchFrame(page).locator('#away').click();
   await page.waitForTimeout(1_500);
   return { context, page, reached, refused, csp: response.headers()['content-security-policy'] };
@@ -177,7 +178,7 @@ async function clickAway(browser, name) {
 test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
   const probe = `http://127.0.0.1:${port}/sketch-probe`;
   pushScreen('nav-link.html', `<h2>Link probe</h2><a id="away" href="${probe}/link">away</a>`);
-  const link = await clickAway(browser, 'lee');
+  const link = await clickAway(browser, 'lee', 'Link probe');
   expect(link.csp).toBe("frame-src 'none'; child-src 'none'");
   expect(link.reached).toEqual([]);
   // Control: the navigation was attempted, and the page's policy is what refused it.
@@ -186,7 +187,7 @@ test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
 
   pushScreen('nav-location.html', '<h2>Location probe</h2>' +
     `<button id="away" onclick="location = '${probe}/location'">away</button>`);
-  const located = await clickAway(browser, 'lou');
+  const located = await clickAway(browser, 'lou', 'Location probe');
   expect(located.reached).toEqual([]);
   expect(located.refused.join('\n')).toContain(`${probe}/location`);
   // The page itself is untouched: still online, over the WebSocket the header never touched.
