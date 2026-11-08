@@ -18,6 +18,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assume.assumeTrue
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardPin
+import us.tractat.bee.core.pinnedTo
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimsConnection
@@ -69,7 +71,7 @@ class JoinSmokeTest {
                 val author = ReplicaId("mcp-ada")
                 val board = BoardClient(
                     author,
-                    SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, Random.Default, clock),
+                    SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, Random.Default, clock).pinnedTo(BoardPin.to(host.boardId)),
                     Rendezvous.Existing(WebSocketAdvertisement("ws://127.0.0.1:${host.port}${BoardRelay.PATH}", PeerId("bee-host"), "board")),
                     bridgeScope,
                     clock,
@@ -78,7 +80,7 @@ class JoinSmokeTest {
                 val claims = ClaimsConnection(
                     scope = bridgeScope,
                     nextNode = { NodeId("mcp-ada-${Random.Default.nextLong().toULong()}") },
-                    open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, "ws://127.0.0.1:${host.port}", linkScope, clock, Random.Default) },
+                    open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, "ws://127.0.0.1:${host.port}", BoardPin.to(host.boardId), linkScope, clock, Random.Default) },
                     onFailure = { },
                     retryDelay = ClaimsConnection.jitteredBackoff(Random.Default),
                 )

@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.w3c.dom.Element
@@ -23,12 +24,14 @@ import org.w3c.dom.url.URLSearchParams
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardId
+import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SpokeLoom
+import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.Dot
@@ -82,6 +85,10 @@ private sealed interface Access {
  * serves this page and bee has no service worker, so with the host down a reload shows the
  * browser's error page, not the board. `#store` says whether this tab is the one keeping the copy
  * (`data-writer`).
+ *
+ * Every board socket names the board the page's replica holds ([BoardPin], bee#46). A host that
+ * keeps another board refuses it, and the page reloads onto the host's board
+ * ([reloadOnAnotherBoard]): a tab left open across a wipe never pushes its old board in.
  */
 fun main() {
     val params = URLSearchParams(window.location.search.toJsString())
@@ -220,10 +227,15 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
     }
     val rendezvous = Rendezvous.Existing(WebSocketAdvertisement(socketUrl(BOARD_PATH, query), PeerId("bee-host"), "board"))
     scope.launch {
-        val (copy, initial) = restore(askBoardId(), author, store)
+        val answer = askBoardId()
+        val (copy, initial) = restore(answer, author, store)
+        // The board the replica starts from: its copy's, else the one the host named. A page with
+        // neither starts empty, and belongs to the first board the host names.
+        val pin = (copy?.board ?: (answer as? HostAnswer.Named)?.board)?.let(BoardPin::to)
+            ?: BoardPin.learnedFrom { (askBoardId() as? HostAnswer.Named)?.board ?: error("The host didn't name its board.") }
         val client = BoardClient(
             author = author,
-            loom = SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock),
+            loom = SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock).pinnedTo(pin),
             rendezvous = rendezvous,
             scope = scope,
             clock = clock,
@@ -233,6 +245,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, access: Access) {
         val inputs = LiveInputs(root, client, author, scope, onProblem)
         BoardDriver(client, A2uiRenderer(root), root, author, actor, inputs, clock, onProblem).start(scope)
         if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
+        reloadOnAnotherBoard(scope, client, pin)
 
         scope.launch {
             combine(client.online, client.lastFailure) { online, failure ->
@@ -336,6 +349,26 @@ private suspend fun keep(copy: Copy, board: StateFlow<BoardState>, scope: Corout
         line.textContent = when (failure) {
             null -> "this tab keeps the board in this browser"
             else -> "not saved in this browser: ${failure.message ?: failure::class.simpleName}"
+        }
+    }
+}
+
+/**
+ * A browser can't see why a socket was refused, so after each failed dial the page asks the host
+ * which board it keeps. Another board than [pin]'s means the host was wiped, or its claims log
+ * moved aside, and refuses this page's sockets for good. The page reloads: that drops its replica
+ * of the old board, and the new page starts from the host's board, whose copy the writer tab keeps
+ * in place of the old one's. A host that doesn't answer is down, and the page waits for it.
+ */
+private fun reloadOnAnotherBoard(scope: CoroutineScope, client: BoardClient, pin: BoardPin) {
+    scope.launch {
+        client.lastFailure.filterNotNull().collect {
+            val pinned = pin.board.value ?: return@collect
+            val answer = askBoardId()
+            if (answer is HostAnswer.Named && answer.board != pinned) {
+                log.info { "The host keeps ${answer.board} now, not $pinned: reloading onto it." }
+                window.location.reload()
+            }
         }
     }
 }

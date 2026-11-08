@@ -1,12 +1,7 @@
 package us.tractat.bee.host
 
-import io.ktor.http.HttpHeaders
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
-import io.ktor.server.response.header
-import io.ktor.server.response.respondText
-import io.ktor.server.routing.get
-import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +27,8 @@ import kotlin.time.Instant
  * writes are the claims mirror and the departed list, from the voter's fold, and the join
  * requests of LAN pairing ([JoinRequestSurface]), and nothing else.
  *
- * Off loopback, the board and claims endpoints take only a device with a key ([mountEndpoints]).
+ * Off loopback, the board and claims endpoints take only a device with a key, and from anywhere,
+ * only a socket naming this host's board ([mountEndpoints]).
  *
  * Everything but the Netty server and pairing is a [HostCore]. The server is never parented to a caller's
  * coroutine (kuilt has hung on an `embeddedServer` parented to `runBlocking`), so [close] stops
@@ -49,7 +45,7 @@ class BeeHost private constructor(
     /** The claims voter at [CLAIMS_PATH]. */
     val voter: ClaimsVoter get() = core.voter
 
-    /** The board this host keeps, minted at its first boot. */
+    /** The board this host keeps: minted when its stores keep none, or disagree ([HostStores.settle]). */
     val boardId: BoardId get() = core.board.id
 
     /** The host's CRDT author, fresh per boot. A [mutate] transform names it. */
@@ -87,28 +83,19 @@ class BeeHost private constructor(
         suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost {
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
-            val boardId = CompletableDeferred<BoardId>()
             // Task 10: keys live in this host's memory, so a restart re-pairs every LAN device.
             val pairing = Pairing(clock, SecureSecrets(SecureRandom()), budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(pairing, config.siteRule(), PeerAddress.DIRECT, ArrivalAddress.DIRECT, desk)
-                routing {
-                    // A page asks before it reads its copy, so this must never come from a cache.
-                    get(BoardId.PATH) {
-                        call.response.header(HttpHeaders.CacheControl, "no-store")
-                        call.respondText(boardId.await().value)
-                    }
-                }
+                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), PeerAddress.DIRECT, ArrivalAddress.DIRECT, desk)
             }
             server.start(wait = false)
             try {
                 val bound = server.engine.resolvedConnectors().first().port
                 val intake = AutoCloseable { server.stop(gracePeriodMillis = 100, timeoutMillis = 2_000) }
                 val core = HostCore.start(scope, endpoints.board, endpoints.claims, stores, intake, Dispatchers.Default, RaftConfig(), clock)
-                boardId.complete(core.board.id)
                 val requests = JoinRequestSurface(core.board.relay, pairing, clock)
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
