@@ -1,6 +1,130 @@
 package us.tractat.bee.companion
 
-/** The brainstorming visual companion on the board. Placeholder until Task 8. */
-fun main() {
-    System.out.println("TODO(Task 8): the visual companion")
+import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.websocket.WebSockets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.ClaimsConnection
+import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.Presence
+import us.tractat.bee.core.SpokeLoom
+import us.tractat.bee.mcp.BeeBridge
+import us.tractat.bee.mcp.BoardActionSource
+import us.tractat.bee.mcp.BridgeIdentity
+import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.core.Rendezvous
+import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.raft.NodeId
+import us.tractat.kuilt.websocket.WebSocketAdvertisement
+import java.io.PrintStream
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.SecureRandom
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.writeText
+import kotlin.random.asKotlinRandom
+import kotlin.system.exitProcess
+import kotlin.time.Clock
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
+
+// Lazy, so the logger starts only after main() has pointed System.out at stderr.
+private val logger by lazy { KotlinLogging.logger {} }
+
+/** The host the companion joins when `$BEE_HOST` is unset, as the bridge does. */
+private const val DEFAULT_HOST = "ws://127.0.0.1:8233"
+
+private const val USAGE = "bee-companion --screen-dir <dir> --state-dir <dir> --frame-template <frame-template.html>"
+
+/**
+ * `bee-companion --screen-dir … --state-dir … --frame-template <plugin>/bin/brainstorm/frame-template.html`:
+ * the brainstorming visual companion's directories, kept on the board at `$BEE_HOST` (spec §3).
+ *
+ * Like the companion server, it writes `state_dir/server-info` on start (with the board's URL),
+ * and `server-stopped` when it ends, and prints what it does as JSON lines on stdout. Logs go to
+ * stderr.
+ */
+@OptIn(ExperimentalUuidApi::class)
+fun main(args: Array<String>) {
+    val out: PrintStream = System.out
+    System.setOut(System.err)
+    val flags = args.toList().chunked(2).associate { it.first() to it.getOrNull(1) }
+    fun dir(flag: String): Path = flags[flag]?.let(Path::of) ?: usage("$flag is required")
+    val screenDir = dir("--screen-dir")
+    val stateDir = Files.createDirectories(dir("--state-dir"))
+    val frameTemplate = dir("--frame-template")
+    if (!Files.isDirectory(screenDir)) usage("--screen-dir $screenDir is not a directory")
+    if (!Files.isRegularFile(frameTemplate)) usage("--frame-template $frameTemplate is not a file")
+
+    val host = System.getenv("BEE_HOST")?.takeIf { it.isNotBlank() }?.trimEnd('/') ?: DEFAULT_HOST
+    val random = SecureRandom().asKotlinRandom()
+    val clock = { Clock.System.now() }
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val http = HttpClient(CIO) { install(WebSockets) }
+    val author = ReplicaId("companion-${Uuid.random()}")
+    val board = BoardClient(
+        author,
+        SpokeLoom(http, Dispatchers.Default, scope, author.value, random, clock),
+        Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
+        scope,
+        clock,
+    )
+    // TODO(kuilt#3110): one refused dial ends clusterClient's reconnect loop, so the connection
+    // rebuilds a failed link under a fresh node, as the bridge's does.
+    val claims = ClaimsConnection(
+        scope = scope,
+        nextNode = { NodeId("companion-${Uuid.random()}") },
+        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, linkScope, clock, random) },
+        onFailure = { failure -> logger.warn(failure) { "The claims link failed; rebuilding it." } },
+        retryDelay = ClaimsConnection.jitteredBackoff(random),
+    )
+    val name = System.getenv("BEE_SESSION_NAME")?.takeIf { it.isNotBlank() } ?: "companion"
+    val identity = BridgeIdentity(name, random) { old, reason -> claims.depart(old, reason) }
+    val presence = Presence(board, author, clock, scope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
+    val bridge = BeeBridge(board, author, claims, identity, presence, clock)
+    val print: (JsonObject) -> Unit = { line -> synchronized(out) { out.println(line); out.flush() } }
+    val adapter = CompanionAdapter(screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print)
+
+    val pageUrl = URI(host.replaceFirst("ws", "http") + "/").toString()
+    val started = buildJsonObject {
+        put("type", "server-started")
+        put("url", pageUrl)
+        put("screen_dir", screenDir.toAbsolutePath().toString())
+        put("state_dir", stateDir.toAbsolutePath().toString())
+    }
+    stateDir.resolve("server-stopped").deleteIfExists()
+    stateDir.resolve("server-info").writeText("$started\n")
+    Runtime.getRuntime().addShutdownHook(
+        Thread({
+            stateDir.resolve("server-info").deleteIfExists()
+            stateDir.resolve("server-stopped").writeText("${buildJsonObject { put("reason", "stopped") }}\n")
+        }, "bee-companion-stopped"),
+    )
+    print(started)
+    logger.info { "bee-companion starts as ${identity.current.value}, on $host" }
+
+    board.connect()
+    runBlocking {
+        bridge.announce()
+        adapter.start(scope)
+        awaitCancellation()
+    }
+    scope.cancel()
+    http.close()
+}
+
+private fun usage(problem: String): Nothing {
+    System.err.println("$problem\nUsage: $USAGE")
+    exitProcess(2)
 }
