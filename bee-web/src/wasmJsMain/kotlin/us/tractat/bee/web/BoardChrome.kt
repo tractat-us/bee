@@ -33,6 +33,9 @@ import kotlin.time.Duration.Companion.seconds
  * - **A placeholder joins its card.** [BoardDriver] puts an invalid surface's placeholder in
  *   [root]; the chrome moves it into that surface's card as soon as it appears.
  * - **Live presence ages without a board change**, so the view is redrawn every [TICK] as well.
+ * - **An empty board says how to start.** With no surface open, [root] shows a quiet hint
+ *   (`.bee-empty-hint`): what the board is, and how a Claude session draws on it. It waits until
+ *   the page is online, so a page still catching up with its host doesn't flash it over a full board.
  *
  * DOM hooks: `article.bee-card[data-surface-id]`, its `.bee-card-title` and `.bee-card-opener`
  * (`data-peer`, the opener's identity), `.bee-card-working`, and `.bee-badge`
@@ -41,6 +44,7 @@ import kotlin.time.Duration.Companion.seconds
 class BoardChrome(private val root: Element, private val strip: Element) {
     private val cards = mutableMapOf<String, Card>()
     private var peers: List<PeerView>? = null
+    private val hint: HTMLElement = (root.appendChild(emptyHint()) as HTMLElement).also { it.hidden = true }
 
     init {
         observeChildren(root) { adoptPlaceholders() }
@@ -53,12 +57,17 @@ class BoardChrome(private val root: Element, private val strip: Element) {
 
     private fun slot(surfaceId: String): Element = card(surfaceId).body
 
-    /** Shows [board] and its live presence from [roster] as they change, until [scope] ends. */
-    fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence): Job = scope.launch {
-        combine(board, ticks(TICK)) { state, _ -> state }.collect { state -> show(BoardView.of(state, roster.peers())) }
+    /**
+     * Shows [board] and its live presence from [roster] as they change, until [scope] ends; the
+     * empty-board hint only while [online].
+     */
+    fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence, online: StateFlow<Boolean>): Job = scope.launch {
+        combine(board, online, ticks(TICK)) { state, isOnline, _ -> state to isOnline }
+            .collect { (state, isOnline) -> show(BoardView.of(state, roster.peers()), isOnline) }
     }
 
-    fun show(view: BoardView) {
+    fun show(view: BoardView, online: Boolean) {
+        hint.hidden = !online || view.cards.isNotEmpty()
         val open = view.cards.map { it.surfaceId }.toSet()
         (cards.keys - open).forEach { id -> cards.remove(id)?.element?.remove() }
         view.cards.forEachIndexed { index, it -> card(it.surfaceId).show(it, index) }
@@ -130,6 +139,17 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         const val PLACEHOLDER_CLASS = "bee-invalid-surface"
         const val SURFACE_ID = "data-surface-id"
         const val PEER = "data-peer"
+        const val HINT_CLASS = "bee-empty-hint"
+
+        /** The empty board's hint: what it is, and the whiteboard prompt that starts a session on it. */
+        fun emptyHint(): Element = element("p", HINT_CLASS).also { hint ->
+            hint.appendChild(element("strong", "bee-empty-title").also { it.textContent = "Nothing on the board yet." })
+            hint.appendChild(element("span", "bee-empty-how").also { how ->
+                how.appendChild(document.createTextNode("Everyone here, and their Claude sessions, sees and draws on this one board. Ask yours to draw on it: try "))
+                how.appendChild(element("code", "bee-empty-prompt").also { it.textContent = "/mcp__bee__whiteboard" })
+                how.appendChild(document.createTextNode("."))
+            })
+        }
 
         fun ticks(every: Duration): Flow<Unit> = flow {
             while (true) {
