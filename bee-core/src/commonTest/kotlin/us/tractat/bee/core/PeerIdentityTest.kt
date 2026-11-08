@@ -21,12 +21,33 @@ class PeerIdentityTest {
         )
     }
 
+    /** The host is `host:<name>`, its own kind with no instance (bee#71). */
+    @Test
+    fun formatsAndParsesTheHost() {
+        assertAll(
+            { assertEquals("host:bee-host", PeerIdentity.host("bee-host").toString()) },
+            { assertEquals(PeerIdentity(PeerKind.Host, "bee-host", ""), PeerIdentity.parse("host:bee-host")) },
+            { assertFailsWith<IllegalArgumentException> { PeerIdentity(PeerKind.Host, "bee-host", "00000000") } },
+        )
+    }
+
+    /** A snapshot from before the host had its kind names it `agent:bee-host#00000000`; it still reads as the host. */
+    @Test
+    fun oldEncodedHostDecodesAsTheHost() {
+        assertAll(
+            { assertEquals(PeerIdentity.host("bee-host"), PeerIdentity.parse("agent:bee-host#00000000")) },
+            { assertEquals(PeerKind.Agent, PeerIdentity.parse("agent:bee-host#00000001").kind, "only that one identity is the old host") },
+            { assertEquals(PeerKind.Agent, PeerIdentity.parse("agent:bee#00000000").kind, "and only under its name") },
+        )
+    }
+
     @Test
     fun parseRefusesWhatItCannotRead() {
         assertAll(
             { assertFailsWith<IllegalArgumentException> { PeerIdentity.parse("robot:x") } },
             { assertFailsWith<IllegalArgumentException> { PeerIdentity.parse("agent:bee") } },
             { assertFailsWith<IllegalArgumentException> { PeerIdentity.parse("human:") } },
+            { assertFailsWith<IllegalArgumentException> { PeerIdentity.parse("host:") } },
         )
     }
 }
