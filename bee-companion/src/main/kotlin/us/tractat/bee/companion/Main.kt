@@ -7,8 +7,8 @@ import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -91,8 +91,11 @@ fun main(args: Array<String>) {
     )
     val name = System.getenv("BEE_SESSION_NAME")?.takeIf { it.isNotBlank() } ?: "companion"
     val identity = BridgeIdentity(name, random) { old, reason -> claims.depart(old, reason) }
-    val presence = Presence(board, author, clock, scope) { failure -> logger.warn(failure) { "Presence tracking failed." } }
-    val bridge = BeeBridge(board, author, claims, identity, presence, clock)
+    // Presence names the claims link's node, so the host can depart a companion that crashed (bee#28).
+    val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, scope) { failure ->
+        logger.warn(failure) { "Presence tracking failed." }
+    }
+    val bridge = BeeBridge(board, author, claims, identity, presence, clock, scope)
     val print: (JsonObject) -> Unit = { line -> synchronized(out) { out.println(line); out.flush() } }
     val adapter = CompanionAdapter(screenDir, stateDir, frameTemplate, board, author, bridge, BoardActionSource(bridge), clock, print)
 
@@ -105,23 +108,31 @@ fun main(args: Array<String>) {
     }
     stateDir.resolve("server-stopped").deleteIfExists()
     stateDir.resolve("server-info").writeText("$started\n")
+    // Runs on every exit, a signal's or a failed adapter's: the agent checks server-stopped.
+    var stopReason = "stopped"
     Runtime.getRuntime().addShutdownHook(
         Thread({
             stateDir.resolve("server-info").deleteIfExists()
-            stateDir.resolve("server-stopped").writeText("${buildJsonObject { put("reason", "stopped") }}\n")
+            stateDir.resolve("server-stopped").writeText("${buildJsonObject { put("reason", stopReason) }}\n")
         }, "bee-companion-stopped"),
     )
     print(started)
     logger.info { "bee-companion starts as ${identity.current.value}, on $host" }
 
     board.connect()
-    runBlocking {
-        bridge.announce()
-        adapter.start(scope)
-        awaitCancellation()
+    // The adapter never ends by itself. When it fails, the process ends with it, so it never goes
+    // on advertising a companion that handles no screens or clicks.
+    try {
+        runBlocking {
+            bridge.announce()
+            adapter.start(this).join()
+        }
+    } catch (failure: Exception) {
+        // main is the top of the stack: a cancellation reaching here is a failure like any other.
+        logger.error(failure) { "The companion failed; bee-companion ends." }
+        stopReason = "failed: ${failure.message ?: failure::class.simpleName}"
     }
-    scope.cancel()
-    http.close()
+    exitProcess(1)
 }
 
 private fun usage(problem: String): Nothing {
