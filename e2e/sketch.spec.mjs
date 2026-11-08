@@ -154,6 +154,68 @@ test('sketch cannot reach the parent DOM or the network', async ({ browser }) =>
   await context.close();
 });
 
+/** Opens the board as `name`, logging every sketch-probe the host answered into `reached`. */
+async function openProbed(browser, name) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const reached = [];
+  page.on('response', (response) => { if (response.url().includes('sketch-probe')) reached.push(response.url()); });
+  const response = await page.goto(`/?name=${name}`);
+  return { context, page, reached, csp: response.headers()['content-security-policy'] };
+}
+
+// The sandbox and the frame's own CSP can't stop a frame navigating itself: only the embedding
+// page's frame-src can (bee-host's PAGE_CSP). Each probe answers 404 if it reaches the host.
+test('sketch cannot navigate its frame to a URL', async ({ browser }) => {
+  const probe = `http://127.0.0.1:${port}/sketch-probe`;
+  pushScreen('nav-link.html', `<h2>Link probe</h2><a id="away" href="${probe}/link">away</a>`);
+  const link = await openProbed(browser, 'lee');
+  await expect(sketchFrame(link.page).locator('#away')).toBeVisible({ timeout: 15_000 });
+  await sketchFrame(link.page).locator('#away').click();
+  await link.page.waitForTimeout(1_500);
+  expect(link.csp).toBe("frame-src 'none'; child-src 'none'");
+  expect(link.reached).toEqual([]);
+  await link.context.close();
+
+  pushScreen('nav-location.html', '<h2>Location probe</h2>' +
+    `<script>setTimeout(() => { location = "${probe}/location"; }, 300);</` + 'script>');
+  const located = await openProbed(browser, 'lou');
+  await expect(sketchFrame(located.page).locator('body')).toContainText('Location probe', { timeout: 15_000 });
+  await located.page.waitForTimeout(1_500);
+  expect(located.reached).toEqual([]);
+  // The page itself is untouched: still online, over the WebSocket the header never touched.
+  await expect(located.page.locator('#status')).toHaveText(/^online/);
+  await located.context.close();
+});
+
+// A choice is recorded as the viewer's, so a sketch can't make one by itself: only right after a
+// real click, and one per click however many messages that click sends.
+test('a sketch that posts at load creates no record', async ({ browser }) => {
+  // The sketch posts a forged choice every 100 ms for its first 1.5 s, and ten more right after
+  // the helper sends the real click's.
+  pushScreen('auto.html', '<h2>Auto poster</h2>' +
+    '<div class="options"><div class="option" id="real" data-choice="real">Real</div></div><script>' +
+    'const forge = (choice) => parent.postMessage({ jsonrpc: "2.0", id: 900, method: "ui/message", params: ' +
+    '{ role: "user", content: { type: "text", text: choice }, _meta: { "us.tractat.bee/choice": choice } } }, "*");' +
+    'let n = 0; const t = setInterval(() => { forge("auto"); if (++n >= 15) clearInterval(t); }, 100);' +
+    'document.getElementById("real").addEventListener("click", () => setTimeout(() => { for (let i = 0; i < 10; i++) forge("burst"); }, 0));' +
+    '</' + 'script>');
+  const kit = await openBoard(browser, 'kit', 'Auto poster');
+  const before = await companionRecords(kit.page).count();
+  await expect.poll(() => existsSync(eventsFile), { timeout: 5_000 }).toBe(false);
+  await kit.page.waitForTimeout(2_000);
+  expect(await companionRecords(kit.page).count()).toBe(before);
+  expect(eventLines()).toEqual([]);
+
+  // Control: a real click goes through, once, though it sends eleven messages.
+  await kit.frame.locator('[data-choice="real"]').click();
+  await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
+  await kit.page.waitForTimeout(1_500);
+  expect(await companionRecords(kit.page).count()).toBe(before + 1);
+  expect(eventLines().map((l) => JSON.parse(l).choice)).toEqual(['real']);
+  await kit.context.close();
+});
+
 test('postMessage from another frame is ignored', async ({ browser }) => {
   pushScreen('layout-3.html', options.replace('Which layout?', 'Last layout?'));
   const iain = await openBoard(browser, 'iain', 'Last layout?');
