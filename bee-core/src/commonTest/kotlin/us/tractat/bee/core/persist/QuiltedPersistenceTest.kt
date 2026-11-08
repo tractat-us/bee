@@ -13,6 +13,8 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.serializer
+import us.tractat.bee.core.BoardFixtures
+import us.tractat.bee.core.BoardState
 import us.tractat.kuilt.crdt.GSet
 import us.tractat.kuilt.crdt.JsonCrdt
 import us.tractat.kuilt.crdt.JsonNode
@@ -27,6 +29,7 @@ import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
@@ -213,6 +216,40 @@ class QuiltedPersistenceTest {
             { assertNotNull(loadFailure) },
             { assertNull(writeFailure, "the writer is not stuck on the bad copy") },
             { assertEquals(GSet.of("a"), replaced) },
+        )
+    }
+
+    /**
+     * Well-formed JSON whose inner decoders refuse (here a peer identity) throws a plain
+     * [IllegalArgumentException], not a [SerializationException]. It is still an unreadable copy.
+     */
+    @Test
+    fun aWellFormedSnapshotWithABadIdentityIsReplacedNotFatal() = runTest {
+        val store = InMemoryDurableStore()
+        val boards = QuiltedPersistence(store, key, BoardState.serializer())
+        val written = boards.saveOnChange(MutableStateFlow(BoardFixtures.opened()), backgroundScope)
+        runCurrent()
+        written.stop()
+        val good = store.read(key)!!.decodeToString()
+        val bad = Regex("\"(human|agent):[^\"]*\"").replace(good, "\"nobody\"")
+        store.write(key, bad.encodeToByteArray())
+
+        val loadFailure = try {
+            boards.load { it }
+            null
+        } catch (failure: IllegalArgumentException) {
+            failure
+        }
+        val saver = boards.saveOnChange(MutableStateFlow(BoardState.EMPTY), backgroundScope)
+        runCurrent()
+        val writeFailure = saver.lastFailure.value
+        saver.stop()
+
+        assertAll(
+            { assertNotEquals(good, bad, "the fixture carries an identity to corrupt") },
+            { assertNotNull(loadFailure) },
+            { assertNull(writeFailure, "the writer is not stuck on the bad copy") },
+            { assertEquals(BoardState.EMPTY, boards.load { it }) },
         )
     }
 
