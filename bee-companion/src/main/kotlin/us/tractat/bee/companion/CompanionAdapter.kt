@@ -24,6 +24,7 @@ import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.SurfaceValidator
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.BoardWriteTooLarge
 import us.tractat.bee.core.ClaimTarget
@@ -50,6 +51,7 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -104,9 +106,15 @@ class CompanionAdapter(
     private val actions: ActionSource,
     private val clock: () -> Instant,
     private val report: (JsonObject) -> Unit,
+    private val board: BoardId,
+    private val random: Random,
     private val pollEvery: Duration = 250.milliseconds,
     private val settle: Duration = 2.seconds,
+    private val surfaceWait: Duration = 60.seconds,
 ) {
+    /** The surface this companion keeps on the board. */
+    val surface: String = SURFACE
+
     private val template = frameTemplate.readText()
     private val events = stateDir.resolve(EVENTS)
     private val shownFile = stateDir.resolve(SHOWN)
@@ -347,7 +355,7 @@ class CompanionAdapter(
         private val WAIT = 45.seconds
 
         /** How many screens have been pushed to the companion surface on [state]. */
-        fun screensShown(state: BoardState): Int = screens(state).size
+        fun screensShown(state: BoardState, surface: String): Int = screens(state).size
 
         /** The dot of the latest screen pushed, as [state] holds the surface. */
         internal fun latestScreen(state: BoardState): Dot? = screens(state).lastOrNull()

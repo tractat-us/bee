@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.toSurfaceView
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.kuilt.crdt.JsonNode
 import us.tractat.bee.companion.CompanionRig.Companion.WAIT
@@ -19,14 +20,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class CompanionAdapterTest {
     private fun rig(test: kotlinx.coroutines.test.TestScope) = CompanionRig(test, Files.createTempDirectory("w8-companion-"))
 
     /** How many concurrent values the surface's `root` component holds: one, unless two writers raced. */
-    private fun rootWrites(state: BoardState): Int {
-        val components = state.surfaceDoc(CompanionAdapter.SURFACE)!![SurfaceFormat.COMPONENTS] as JsonNode.Object
+    private fun rootWrites(state: BoardState, surface: String): Int {
+        val components = state.surfaceDoc(surface)!![SurfaceFormat.COMPONENTS] as JsonNode.Object
         return (components.map["root"] as JsonNode.Leaf).register.values.size
     }
 
@@ -40,12 +42,12 @@ class CompanionAdapterTest {
         val browser = rig.browser()
 
         val state = rig.shows(browser) { "newer" in it }
-        val view = state.surfaceDoc(CompanionAdapter.SURFACE)!!.toSurfaceView(CompanionAdapter.SURFACE)
+        val view = state.surfaceDoc(rig.surface)!!.toSurfaceView(rig.surface)
         assertAll(
-            { assertEquals(listOf(CompanionAdapter.SURFACE), state.openSurfaces()) },
+            { assertEquals(listOf(rig.surface), state.openSurfaces()) },
             { assertEquals(setOf("root"), view.components.keys, "one component") },
             { assertEquals(JsonPrimitive("Sketch"), view.components.getValue("root")["component"]) },
-            { assertFalse("older" in sketchHtml(state)!!, "the older screen isn't shown") },
+            { assertFalse("older" in sketchHtml(state, rig.surface)!!, "the older screen isn't shown") },
         )
         rig.close()
     }
@@ -57,11 +59,11 @@ class CompanionAdapterTest {
         rig.screen("fragment.html", "<h2>Pick one</h2>")
         rig.companion()
         val browser = rig.browser()
-        val framed = sketchHtml(rig.shows(browser) { "Pick one" in it })!!
+        val framed = sketchHtml(rig.shows(browser) { "Pick one" in it }, rig.surface)!!
 
         val full = "<!DOCTYPE html>\n<html><body><h1>Whole page</h1></body></html>"
         rig.screen("full.html", full)
-        val shown = sketchHtml(rig.shows(browser) { "Whole page" in it })!!
+        val shown = sketchHtml(rig.shows(browser) { "Whole page" in it }, rig.surface)!!
         assertAll(
             { assertTrue(".frame-css" in framed, "the fragment carries the template's CSS: $framed") },
             { assertTrue("<div id=\"frame-content\"><h2>Pick one</h2></div>" in framed, "inside the template's content slot: $framed") },
@@ -149,9 +151,9 @@ class CompanionAdapterTest {
 
         val state = rig.shows(browser) { "second" in it }
         assertAll(
-            { assertEquals(1, rootWrites(state), "one write of the Sketch, not two concurrent ones") },
-            { assertEquals(2, CompanionAdapter.screensShown(state), "both screens in /screens") },
-            { assertEquals(listOf(CompanionAdapter.SURFACE), state.openSurfaces()) },
+            { assertEquals(1, rootWrites(state, rig.surface), "one write of the Sketch, not two concurrent ones") },
+            { assertEquals(2, CompanionAdapter.screensShown(state, rig.surface), "both screens in /screens") },
+            { assertEquals(listOf(rig.surface), state.openSurfaces()) },
         )
         rig.close()
     }
@@ -166,7 +168,7 @@ class CompanionAdapterTest {
         rig.shows(browser) { "mockup" in it }
 
         rig.screen("waiting-2.html", "<p>Continuing in terminal...</p>")
-        val state = withTimeout(WAIT) { browser.client.state.first { CompanionAdapter.SURFACE in it.closedSurfaces() } }
+        val state = withTimeout(WAIT) { browser.client.state.first { rig.surface in it.closedSurfaces() } }
         // A click on the closed surface, by a browser that saw it close: no screen takes clicks now.
         rig.click(browser, "after", "After", 1_706_000_101)
         withTimeout(WAIT) {
@@ -174,7 +176,7 @@ class CompanionAdapterTest {
         }
         assertAll(
             { assertEquals(emptyList(), state.openSurfaces()) },
-            { assertTrue("mockup" in sketchHtml(state)!!, "the closed surface keeps its last sketch") },
+            { assertTrue("mockup" in sketchHtml(state, rig.surface)!!, "the closed surface keeps its last sketch") },
             { assertEquals(emptyList(), rig.lines(), "the click on the closed surface was dropped") },
         )
         rig.close()
@@ -210,9 +212,94 @@ class CompanionAdapterTest {
                     lines,
                 )
             },
-            { assertEquals(sketchHtml(shown), sketchHtml(after), "the board shows the same screen") },
-            { assertEquals(1, CompanionAdapter.screensShown(after), "the restart didn't push the screen again") },
+            { assertEquals(sketchHtml(shown, rig.surface), sketchHtml(after, rig.surface), "the board shows the same screen") },
+            { assertEquals(1, CompanionAdapter.screensShown(after, rig.surface), "the restart didn't push the screen again") },
             { assertEquals(emptyList(), second.reports.filter { it["type"] == JsonPrimitive("screen-shown") }, "nor report one") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A companion whose state says the board had its surface, restarted against the same board
+     * without it (the host crashed before its save), waits a bounded time and then fails, saying
+     * how to reopen. It never waits forever while still advertised, and never opens a second
+     * surface.
+     */
+    @Test
+    fun surfaceThatNeverArrivesFailsLoudAfterTheBound() = runTest(timeout = 240.seconds) {
+        val dir = Files.createTempDirectory("w8-companion-")
+        val board = BoardId("board-crashed")
+        val before = CompanionRig(this, dir, board = board).apply { start() }
+        before.screen("layout.html", "<p>layout</p>")
+        val first = before.companion()
+        before.shows(before.browser()) { "layout" in it }
+        first.stop()
+        before.close()
+
+        val after = CompanionRig(this, dir, board = board).apply { start() }
+        val browser = after.browser()
+        val second = after.companion()
+        val startedAt = testScheduler.currentTime
+        val failure = withTimeout(2 * WAIT) { second.awaitFailure() }
+        val waited = (testScheduler.currentTime - startedAt).milliseconds
+        assertAll(
+            { assertTrue("delete the file to reopen" in failure.message.orEmpty(), "it says how to reopen: ${failure.message}") },
+            { assertTrue(waited >= 60.seconds, "it waited the bound first, not $waited") },
+            { assertEquals(emptyList(), browser.client.state.value.openSurfaces(), "it opened no surface") },
+        )
+        after.close()
+    }
+
+    /**
+     * A companion whose state names another board (a new host, a moved `board/`, another
+     * `BEE_HOST`) doesn't wait for a surface that board never had: it shows the newest screen.
+     */
+    @Test
+    fun anotherBoardTakesTheFreshOpenPath() = runTest(timeout = 240.seconds) {
+        val dir = Files.createTempDirectory("w8-companion-")
+        val before = CompanionRig(this, dir, board = BoardId("board-old")).apply { start() }
+        before.screen("layout.html", "<p>layout</p>")
+        val first = before.companion()
+        before.shows(before.browser()) { "layout" in it }
+        first.stop()
+        before.close()
+
+        val after = CompanionRig(this, dir, board = BoardId("board-new")).apply { start() }
+        val second = after.companion()
+        val state = after.shows(after.browser()) { "layout" in it }
+        assertAll(
+            { assertEquals(listOf(second.surface), state.openSurfaces()) },
+            { assertFalse(second.failed.isCompleted, "it didn't fail") },
+        )
+        after.close()
+    }
+
+    /**
+     * Two companions on one board, each on its own directories, keep their clicks apart: a click
+     * on A's screen reaches A's events and never B's.
+     */
+    @Test
+    fun twoCompanionsOnOneBoardKeepTheirClicksApart() = runTest(timeout = 120.seconds) {
+        val rig = rig(this).apply { start() }
+        val dirsB = rig.dirs("b")
+        rig.screen("alpha.html", "<p>alpha</p>")
+        rig.screen("beta.html", "<p>beta</p>", dirsB)
+        val a = rig.companion()
+        val b = rig.companion(dirsB)
+        val browser = rig.browser()
+        rig.shows(browser, a.surface) { "alpha" in it }
+        rig.shows(browser, b.surface) { "beta" in it }
+
+        rig.click(browser, "a", "A", 1_706_000_101, a.surface)
+        rig.eventLines(1)
+        // Control: B handles its own clicks, so its events could have held A's.
+        rig.click(browser, "b", "B", 1_706_000_102, b.surface)
+        rig.eventLines(1, dirsB)
+        delay(5.seconds)
+        assertAll(
+            { assertTrue(a.surface != b.surface, "each companion has its own surface: ${a.surface}") },
+            { assertEquals(listOf("""{"type":"click","choice":"a","text":"A","timestamp":1706000101}"""), rig.lines()) },
+            { assertEquals(listOf("""{"type":"click","choice":"b","text":"B","timestamp":1706000102}"""), rig.lines(dirsB)) },
         )
         rig.close()
     }

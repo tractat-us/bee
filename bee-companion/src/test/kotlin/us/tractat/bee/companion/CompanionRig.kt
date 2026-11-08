@@ -1,7 +1,10 @@
 package us.tractat.bee.companion
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -20,6 +23,7 @@ import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
+import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
@@ -60,28 +64,60 @@ import kotlin.time.Instant
  * JoinRig shape). Each companion runs on its own child scope, so a test can stop one and start
  * another over the same directories, as a restart does.
  *
+ * Two rigs over one [dir] are one companion's directories on two hosts' boards, as a restart
+ * against a new or a crashed host is: [board] is the id that rig's host serves.
+ *
  * @param maxFrameBytes when set, every spoke's link to the hub publishes this frame ceiling, as a
  *   real fabric would, so the seams above it publish a payload budget.
  */
-internal class CompanionRig(private val test: TestScope, val dir: Path, private val maxFrameBytes: Int? = null) {
+internal class CompanionRig(
+    private val test: TestScope,
+    val dir: Path,
+    private val maxFrameBytes: Int? = null,
+    val board: BoardId = BoardId("board-rig"),
+) {
     val star = BoardStar(test)
     val claims = ClaimsRig(test)
     lateinit var voter: ClaimsVoter
-    val screenDir: Path = Files.createDirectories(dir.resolve("content"))
-    val stateDir: Path = Files.createDirectories(dir.resolve("state"))
     val frameTemplate: Path = dir.resolve("frame-template.html").also { it.writeText(FRAME_TEMPLATE) }
-    val events: Path = stateDir.resolve("events")
+
+    /** The directories every helper uses unless it's told others. */
+    val dirs: Dirs = dirs("")
+    val stateDir: Path get() = dirs.state
+    val events: Path get() = dirs.events
     private val dispatcher = StandardTestDispatcher(test.testScheduler)
     private var companions = 0
     private var screens = 0
+    private val running = mutableListOf<Running>()
+    private var lastSurface: String? = null
+
+    /** The surface of the companion started last: the one the helpers act on unless told another. */
+    val surface: String get() = checkNotNull(lastSurface) { "rig: no companion has started" }
+
+    /** A companion's screen and state directories, under [dir]/[name]. */
+    fun dirs(name: String): Dirs {
+        val root = dir.resolve(name)
+        return Dirs(Files.createDirectories(root.resolve("content")), Files.createDirectories(root.resolve("state")))
+    }
+
+    /** One companion's `screen_dir` and `state_dir`. */
+    class Dirs(val screens: Path, val state: Path) {
+        val events: Path get() = state.resolve("events")
+    }
 
     suspend fun start() {
         star.start()
         voter = ClaimsVoter.start(test.backgroundScope, claims.host, claims.store, claims.raftConfig, boardMirror(star.relay), claims.clock)
     }
 
-    /** Stops the voter before the test's scope ends: cancelled with it, its relay throws (spike 4 notes). */
-    suspend fun close() = voter.close()
+    /**
+     * Stops the voter before the test's scope ends: cancelled with it, its relay throws (spike 4
+     * notes). A companion that failed when the test didn't ask for its failure fails the test.
+     */
+    suspend fun close() {
+        voter.close()
+        running.firstOrNull { it.failedUnseen }?.let { throw AssertionError("A companion failed", it.failed.getCompleted()) }
+    }
 
     /** A browser's replica, online, through the same kind of link as the companion's. */
     fun browser(name: String = "web-iain"): Browser {
@@ -127,8 +163,11 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
         override val incoming: Flow<ByteArray> = base.incoming.filter { !held() || it.size <= LATE_FRAME_BYTES }
     }
 
-    /** A companion over the rig's directories, joined like a session, running on a fresh child scope. */
-    suspend fun companion(): Running {
+    /**
+     * A companion over [dirs], joined like a session, running on a fresh child scope. Its adapter
+     * runs under a supervisor, so a failure is kept for [Running.awaitFailure], not thrown at the test.
+     */
+    suspend fun companion(dirs: Dirs = this.dirs): Running {
         val n = ++companions
         val scope = CoroutineScope(test.backgroundScope.coroutineContext + Job(test.backgroundScope.coroutineContext[Job]))
         val author = ReplicaId("companion-$n")
@@ -157,8 +196,8 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
         connection.link.filterNotNull().first()
         val reports = mutableListOf<JsonObject>()
         val adapter = CompanionAdapter(
-            screenDir = screenDir,
-            stateDir = stateDir,
+            screenDir = dirs.screens,
+            stateDir = dirs.state,
             frameTemplate = frameTemplate,
             client = client,
             author = author,
@@ -166,8 +205,15 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
             actions = BoardActionSource(bridge),
             clock = claims.clock,
             report = { reports += it },
+            board = board,
+            random = Random(n),
         )
-        return Running(adapter, client, bridge, reports, scope, adapter.start(scope))
+        val failed = CompletableDeferred<Throwable>()
+        val supervised = CoroutineScope(
+            scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]) + CoroutineExceptionHandler { _, e -> failed.complete(e) },
+        )
+        lastSurface = adapter.surface
+        return Running(adapter, client, bridge, reports, failed, scope, adapter.start(supervised)).also { running += it }
     }
 
     class Running(
@@ -175,9 +221,22 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
         val client: BoardClient,
         val bridge: BeeBridge,
         val reports: List<JsonObject>,
+        val failed: CompletableDeferred<Throwable>,
         private val scope: CoroutineScope,
         private val job: Job,
     ) {
+        val surface: String get() = adapter.surface
+        private var failureSeen = false
+
+        /** True when the adapter failed and the test never asked for that failure. */
+        val failedUnseen: Boolean get() = failed.isCompleted && !failureSeen
+
+        /** The adapter's failure, once it fails. */
+        suspend fun awaitFailure(): Throwable {
+            failureSeen = true
+            return failed.await()
+        }
+
         /** Stops the companion and everything it ran, as a killed process would. */
         suspend fun stop() {
             job.cancelAndJoin()
@@ -185,27 +244,29 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
         }
     }
 
-    /** Writes screen [name] with [html], newer than every screen before it. */
-    fun screen(name: String, html: String): Path {
-        val file = screenDir.resolve(name)
+    /** Writes screen [name] with [html] into [dirs], newer than every screen before it. */
+    fun screen(name: String, html: String, dirs: Dirs = this.dirs): Path {
+        val file = dirs.screens.resolve(name)
         file.writeText(html)
         Files.setLastModifiedTime(file, FileTime.fromMillis(1_706_000_000_000 + 1_000L * ++screens))
         return file
     }
 
     /** [shows], on [browser]'s board. */
-    suspend fun shows(browser: Browser, html: (String) -> Boolean): BoardState = shows(browser.client, html)
+    suspend fun shows(browser: Browser, surface: String = this.surface, html: (String) -> Boolean): BoardState =
+        shows(browser.client, surface, html)
 
-    /** Waits on [client]'s board until the companion surface shows [html], and returns that board. */
-    suspend fun shows(client: BoardClient, html: (String) -> Boolean): BoardState = withTimeout(WAIT) {
-        client.state.first { state -> sketchHtml(state)?.let(html) == true }
-    }
+    /** Waits on [client]'s board until companion [surface] shows [html], and returns that board. */
+    suspend fun shows(client: BoardClient, surface: String = this.surface, html: (String) -> Boolean): BoardState =
+        withTimeout(WAIT) {
+            client.state.first { state -> sketchHtml(state, surface)?.let(html) == true }
+        }
 
-    /** Clicks [choice] on the companion's sketch from [browser], as the page records it: under its own author. */
-    suspend fun click(browser: Browser, choice: String, text: String, atEpochSeconds: Long) {
+    /** Clicks [choice] on companion [surface]'s sketch from [browser], as the page records it: under its own author. */
+    suspend fun click(browser: Browser, choice: String, text: String, atEpochSeconds: Long, surface: String = this.surface) {
         browser.client.mutate { state ->
             val record = ActionRecord(
-                surfaceId = CompanionAdapter.SURFACE,
+                surfaceId = surface,
                 componentId = "root",
                 actor = PeerIdentity.human("iain"),
                 name = CompanionAdapter.CHOICE,
@@ -213,20 +274,21 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
                     put("choice", choice)
                     put("text", text)
                 },
-                basis = Basis.capture(state, CompanionAdapter.SURFACE),
+                basis = Basis.capture(state, surface),
                 at = Instant.fromEpochSeconds(atEpochSeconds),
             )
             state.appendRecord(browser.author, record)
         }
     }
 
-    /** The events file's lines, once it has [count] of them. */
-    suspend fun eventLines(count: Int): List<String> = withTimeout(WAIT) {
-        while (lines().size < count) delay(100.milliseconds)
-        lines()
+    /** [dirs]' events file's lines, once it has [count] of them. */
+    suspend fun eventLines(count: Int, dirs: Dirs = this.dirs): List<String> = withTimeout(WAIT) {
+        while (lines(dirs).size < count) delay(100.milliseconds)
+        lines(dirs)
     }
 
-    fun lines(): List<String> = if (events.exists()) events.readText().lines().filter { it.isNotBlank() } else emptyList()
+    fun lines(dirs: Dirs = this.dirs): List<String> =
+        if (dirs.events.exists()) dirs.events.readText().lines().filter { it.isNotBlank() } else emptyList()
 
     companion object {
         val WAIT: Duration = 60.seconds
@@ -237,9 +299,9 @@ internal class CompanionRig(private val test: TestScope, val dir: Path, private 
         const val FRAME_TEMPLATE = "<!DOCTYPE html>\n<html><head><style>.frame-css { color: teal; }</style></head>" +
             "<body><!-- BRANDING --><div id=\"frame-content\"><!-- CONTENT --></div></body></html>"
 
-        /** The html of the companion surface's `Sketch`, or null while it has none. */
-        fun sketchHtml(state: BoardState): String? {
-            val view = state.surfaceDoc(CompanionAdapter.SURFACE)?.toSurfaceView(CompanionAdapter.SURFACE) ?: return null
+        /** The html of companion [surface]'s `Sketch`, or null while it has none. */
+        fun sketchHtml(state: BoardState, surface: String): String? {
+            val view = state.surfaceDoc(surface)?.toSurfaceView(surface) ?: return null
             val root = view.components["root"] ?: return null
             return (root["html"] as? JsonPrimitive)?.content
         }

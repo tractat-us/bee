@@ -52,7 +52,7 @@ class SketchSurfaceTest {
         val reason = (refusal["reason"] as? JsonPrimitive)?.content.orEmpty()
         assertAll(
             { assertTrue("limit of $budget bytes" in reason, "the refusal states the limit: $reason") },
-            { assertTrue("small" in sketchHtml(onBoard)!!, "none of the refused screen's html was written") },
+            { assertTrue("small" in sketchHtml(onBoard, companion.surface)!!, "none of the refused screen's html was written") },
         )
         rig.close()
     }
