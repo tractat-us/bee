@@ -184,7 +184,6 @@ sealed interface OrphanAnswering {
 
 private fun A2uiAction.answersAnOrphan(): Boolean =
     OrphanDecision.targetOf(surfaceId) != null && name == OrphanDecision.ANSWER_ACTION
-}
 
 /**
  * This view with each [held] path showing what the person left there, or, for a field focused and

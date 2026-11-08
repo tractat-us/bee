@@ -146,10 +146,11 @@ class OrphanDecisionsTest {
         val before = log().size
         val outcome = answer(iain, OrphanDecision.WAIT)
         delay(30.seconds)
+        val after = log().size
         assertAll(
             { assertEquals(OrphanAnswers.Outcome.Waited, outcome) },
             { assertIs<ClaimStatus.Orphaned>(voter.table.value.status(target)) },
-            { assertEquals(before, log().size, "nothing was proposed") },
+            { assertEquals(before, after, "nothing was proposed") },
             { assertEquals(listOf(surfaceId), orphanSurfaces(), "the decision stays open") },
         )
     }
