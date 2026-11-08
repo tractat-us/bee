@@ -109,6 +109,11 @@ session, and it reports problems on stderr.
 `BEE_RUN_DIR` moves the run directory, for the bridge and the hook alike. It's for tests. Leave it
 unset in normal use.
 
+A bridge belongs to the board its host kept when the bridge first reached it. If you wipe the
+host's data, or move its `claims/` aside, the host starts a new board and refuses the old
+bridge, so the old board can't leak into the new one. Restart the bridge with `/mcp` to join the
+new board. An open browser tab reloads onto the new board by itself.
+
 ## Showing the board on another screen
 
 A phone, a tablet or a meeting-room screen can show the board with nothing installed. By default
