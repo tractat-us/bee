@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -56,6 +57,17 @@ class ClaimsLinkLossTest {
     @Test
     fun aLearnerLeavingTheConfigIsALostLink() = runTest {
         val events = claimsLinkLoss(flowOf(config(setOf(a, b)), config(setOf(a))), clock = { at }).toList()
+        assertEquals(listOf(lost(b)), events)
+    }
+
+    /**
+     * One observed config can add one learner and remove another, so the size is unchanged. Only
+     * the removed learner is lost, not the added one, and not for want of a bigger set.
+     */
+    @Test
+    fun aConfigThatAddsAndRemovesLosesOnlyTheRemoved() = runTest {
+        val c = NodeId("mcp-c-1")
+        val events = claimsLinkLoss(flowOf(config(setOf(a, b)), config(setOf(a, c))), clock = { at }).toList()
         assertEquals(listOf(lost(b)), events)
     }
 
@@ -192,6 +204,37 @@ class ClaimsLinkLossTest {
         )
         voter.close()
     }
+
+    /**
+     * Presence entries are never pruned and a booted host starts with nothing proposed, so the
+     * quiet check would propose `Depart(Quiet)` for every agent that ever posted. An agent the
+     * board already lists as departed gets none: each would cost a durable append and replication.
+     * A proposal shows as a step of the table's applied index, even when the command is rejected.
+     */
+    @Test
+    fun theHostProposesNoDepartForAnAgentTheBoardListsAsDeparted() = runTest(timeout = 120.seconds) {
+        val rig = ClaimsRig(this)
+        val voter = rig.startVoter()
+        val ada = PeerIdentity.agent("ada", Random(1))
+        voter.depart(ada, DepartReason.Quiet)
+        val retired = voter.table.first { it.retired(ada) }
+        val posted = BoardState.EMPTY.postPresence(ReplicaId("mcp-ada"), staleEntry(ada), clock = 1)
+        val board = MutableStateFlow(
+            BoardState.EMPTY.piece(posted).let { it.piece(it.mirrorClaims(ReplicaId("host-1"), retired)) },
+        )
+        hostDepartures(voter, board, rig.clock).start(backgroundScope)
+
+        delay(Departures.CHECK_EVERY * 50)
+        assertAll(
+            { assertEquals(setOf(ada), board.value.departures().map { it.identity }.toSet(), "rig: the board lists ada departed") },
+            { assertEquals(listOf(ada), board.value.latestPresence().map { it.identity }, "rig: ada's presence is still there") },
+            { assertEquals(retired.appliedIndex, voter.table.value.appliedIndex, "nothing was proposed") },
+        )
+        voter.close()
+    }
+
+    private fun staleEntry(identity: PeerIdentity) =
+        PresenceEntry(identity, NodeId("mcp-ada-1"), status = null, lastActedAt = Instant.fromEpochMilliseconds(0), waiting = false)
 
     private fun entry(identity: PeerIdentity, node: NodeId) =
         PresenceEntry(identity, node, status = null, lastActedAt = Instant.DISTANT_FUTURE, waiting = false)
