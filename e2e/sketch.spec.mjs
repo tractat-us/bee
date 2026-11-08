@@ -143,6 +143,8 @@ test('a later proposal replaces the earlier one and Send records it once', async
   await pat.frame.locator('[data-choice="b"]').click();
   await expect(proposal(pat.page)).toContainText('Option B');
   await expect(proposal(pat.page)).not.toContainText('Option A');
+  // The page answers the replaced proposal, and the sketch keeps the later one's selection.
+  await expect(pat.frame.locator('.option.selected')).toHaveText('Option B');
   // A proposal never records itself, nor does a click a script dispatches on Send.
   await pat.page.waitForTimeout(1_500);
   await proposal(pat.page).locator('.bee-proposal-send').evaluate((send) => send.click());
