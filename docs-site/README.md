@@ -69,6 +69,13 @@ button by its title.
   the site.
 - It tells [`overrides/main.html`](overrides/main.html) where each page's Markdown copy is.
 
+[`plan_pages.py`](plan_pages.py) renders the Project tab. Each page under `docs/project/` is a
+stub with a marker such as `<!-- plan:timeline -->`, which the hook replaces with Markdown written
+from [`docs/project/plan.yaml`](../docs/project/plan.yaml). It checks the file against
+[`plan.schema.json`](../docs/project/plan.schema.json) first, then runs the checks the schema
+can't express, and fails the build on any of them. To change what the Project pages say, edit
+`plan.yaml`; the [data format page](../docs/project/schema.md) describes it and lists the checks.
+
 [`llmstxt_preprocess.py`](llmstxt_preprocess.py) fixes the HTML before the llmstxt plugin turns it
 back into Markdown: Mermaid blocks keep their language, and annotation markers lose their `!`.
 

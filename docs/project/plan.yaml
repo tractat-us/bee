@@ -1,0 +1,486 @@
+# The bee project plan, as data. Schema: plan.schema.json, beside this file.
+#
+# The docs site's Project section renders from this file, and a bee board can later
+# be seeded from it (bee#21). Keep it plain JSON in YAML form: no anchors, no tags,
+# every timestamp a quoted UTC string. `items` is keyed by stable id and each item is
+# replaced whole on write; `order` lists every id once. The markdown plan
+# (docs/superpowers/plans/2026-11-06-bee-v1.md) stays the source of truth for what
+# each task is; this file tracks where each one stands.
+#
+# Estimates are ranges, labelled as estimates, with their basis. They measure
+# wall-clock time from start to merge and leave out time waiting on Iain.
+
+schema_version: 1
+as_of: "2026-11-08T02:18Z"
+
+sources:
+  - title: "v1 plan"
+    url: "../superpowers/plans/2026-11-06-bee-v1.md"
+  - title: "Epic: bee v1 (bee#6)"
+    url: "https://github.com/tractat-us/bee/issues/6"
+  - title: "Merged pull requests"
+    url: "https://github.com/tractat-us/bee/pulls?q=is%3Apr+is%3Amerged"
+
+columns:
+  done: { title: "Done" }
+  in-flight: { title: "In flight" }
+  waiting-on-iain: { title: "Waiting on Iain", owner: "iain" }
+  blocked: { title: "Blocked" }
+  next: { title: "Next" }
+  later: { title: "Later" }
+
+column_order: [done, in-flight, waiting-on-iain, blocked, next, later]
+
+order:
+  - task-1
+  - task-2
+  - task-3
+  - task-4
+  - task-5
+  - task-6
+  - bee-11
+  - task-7
+  - bee-27
+  - bee-28
+  - bee-32
+  - bee-31
+  - bee-33
+  - bee-37
+  - bee-40
+  - bee-14
+  - bee-19
+  - bee-23
+  - task-8
+  - task-9
+  - task-10
+  - task-11
+  - bee-21
+  - kuilt-3126
+  - kuilt-3132
+  - kuilt-3136
+  - kuilt-3137
+  - kuilt-3126-d
+  - kuilt-3126-e
+  - kuilt-3126-f
+  - kuilt-3126-g
+  - kuilt-3133
+  - kuilt-3134
+  - kuilt-3129
+  - out-cla
+  - out-kuilt-references
+
+items:
+  # ── The v1 plan's tasks ──────────────────────────────────────────────
+  task-1:
+    kind: task
+    title: "Kotlin/wasm and the renderer in one page (spike 1)"
+    status: done
+    summary: "Kotlin/wasm drives the stock A2UI Lit renderer, with the build and CI."
+    started: "2026-11-07T00:59Z"
+    landed: "2026-11-07T01:31Z"
+    links:
+      - { title: "Plan, Task 1", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-1-kotlinwasm-and-the-renderer-in-one-page-spike-1-plus-all-build-wiring" }
+      - { title: "bee#8", url: "https://github.com/tractat-us/bee/pull/8" }
+      - { title: "Spike 1 report", url: "../spikes/2026-11-spike-1-renderer-glue.md" }
+
+  task-2:
+    kind: task
+    title: "The board lattice and its projection (spike 2, part 1)"
+    status: done
+    depends_on: [task-1]
+    started: "2026-11-07T01:38Z"
+    landed: "2026-11-07T02:02Z"
+    links:
+      - { title: "Plan, Task 2", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-2-the-board-lattice-and-its-projection-spike-2-part-1" }
+      - { title: "bee#9", url: "https://github.com/tractat-us/bee/pull/9" }
+      - { title: "Spike 2 report", url: "../spikes/2026-11-spike-2-crdt-behind-a2ui.md" }
+
+  task-3:
+    kind: task
+    title: "The relay (spike 2, part 2)"
+    status: done
+    depends_on: [task-2]
+    started: "2026-11-07T02:13Z"
+    landed: "2026-11-07T02:44Z"
+    links:
+      - { title: "Plan, Task 3", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-3-the-relay-spike-2-part-2" }
+      - { title: "bee#15", url: "https://github.com/tractat-us/bee/pull/15" }
+      - { title: "bee#29, deltas not whole boards", url: "https://github.com/tractat-us/bee/pull/29" }
+
+  task-4:
+    kind: task
+    title: "The browser driver and two browsers (spike 2, part 3)"
+    status: done
+    depends_on: [task-3]
+    started: "2026-11-07T02:55Z"
+    landed: "2026-11-07T03:30Z"
+    links:
+      - { title: "Plan, Task 4", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-4-the-browser-driver-and-two-browsers-spike-2-part-3" }
+      - { title: "bee#16", url: "https://github.com/tractat-us/bee/pull/16" }
+
+  task-5:
+    kind: task
+    title: "Bridge mechanics (spike 3, first half)"
+    status: done
+    depends_on: [task-1]
+    started: "2026-11-07T01:47Z"
+    landed: "2026-11-07T02:12Z"
+    links:
+      - { title: "Plan, Task 5", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-5-bridge-mechanics-spike-3-first-half" }
+      - { title: "bee#13", url: "https://github.com/tractat-us/bee/pull/13" }
+      - { title: "Spike 3 report", url: "../spikes/2026-11-spike-3-bridge-mechanics.md" }
+
+  task-6:
+    kind: task
+    title: "Claims (spike 4)"
+    status: done
+    summary: "Exactly-once claims with fencing tokens, through a durable voter that never claims. Held about a day on kuilt learner admission (bee#11)."
+    depends_on: [task-1]
+    started: "2026-11-07T01:42Z"
+    landed: "2026-11-08T00:00Z"
+    links:
+      - { title: "Plan, Task 6", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-6-claims-spike-4" }
+      - { title: "bee#10", url: "https://github.com/tractat-us/bee/pull/10" }
+      - { title: "bee#26, learner grace", url: "https://github.com/tractat-us/bee/pull/26" }
+      - { title: "Spike 4 report", url: "../spikes/2026-11-spike-4-claims.md" }
+
+  bee-11:
+    kind: decision
+    title: "Claims blocked by kuilt learner admission: fix kuilt first, or work around it in bee?"
+    status: done
+    parent: task-6
+    started: "2026-11-07T01:44Z"
+    landed: "2026-11-07T14:43Z"
+    ruling:
+      date: "2026-11-07"
+      summary: "Fix kuilt first: a learner reconciler, then removal after a grace (kuilt#3120). bee bumps its kuilt pin and finishes Task 6 once kuilt publishes."
+      url: "https://github.com/tractat-us/bee/issues/11#issuecomment-6708367111"
+    links:
+      - { title: "bee#11", url: "https://github.com/tractat-us/bee/issues/11" }
+
+  task-7:
+    kind: task
+    title: "Join, which completes spikes 3 and 4"
+    status: done
+    summary: "A Claude session opens a surface, waits and answers; a second session sees it. Landed as #27, #32 and #33."
+    depends_on: [task-4, task-5, task-6]
+    started: "2026-11-07T21:49Z"
+    landed: "2026-11-08T02:17Z"
+    ruling:
+      date: "2026-11-07"
+      summary: "The post-Task-7 review hold is lifted. #27 lands first, then #32 and #33. Tasks 8, 9 and 10 start in parallel from main once #27 merges, and Iain reviews #27's deviations after the fact."
+      url: "https://github.com/tractat-us/bee/issues/6#issuecomment-6715926429"
+    links:
+      - { title: "Plan, Task 7", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-7-join-which-completes-spikes-3-and-4" }
+
+  task-8:
+    kind: task
+    title: "Sketch and the companion adapter (spike 5, the acceptance test)"
+    status: in-flight
+    summary: "The brainstorming visual companion's screens run through bee: v1's done-when."
+    depends_on: [bee-27]
+    started: "2026-11-08T02:13Z"
+    estimate:
+      low: 2
+      high: 24
+      unit: hours
+      basis: "One PR, larger than Tasks 2–5, which took about half an hour each from PR open to merge. The high end is Task 6's 22 h, for a task that meets a kuilt or renderer gap."
+      confidence: low
+    links:
+      - { title: "Plan, Task 8", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-8-sketch-and-the-companion-adapter-spike-5-the-acceptance-test" }
+      - { title: "bee#38", url: "https://github.com/tractat-us/bee/pull/38" }
+
+  task-9:
+    kind: task
+    title: "Durability of the board (spike 6)"
+    status: in-flight
+    summary: "The board survives host restarts and closed browsers, through a generic Quilter–DurableStore adapter."
+    depends_on: [bee-27]
+    started: "2026-11-08T02:15Z"
+    estimate:
+      low: 2
+      high: 24
+      unit: hours
+      basis: "Same basis as Task 8. QuiltedPersistence is a kuilt graduation candidate, so a kuilt gap is the likely way it runs long."
+      confidence: low
+    links:
+      - { title: "Plan, Task 9", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-9-durability-of-the-board-spike-6" }
+      - { title: "bee#39", url: "https://github.com/tractat-us/bee/pull/39" }
+
+  task-10:
+    kind: task
+    title: "A second screen, joined by LAN pairing (spike 7)"
+    status: in-flight
+    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. Started when #27 merged; its Draft PR, on spike/10-second-screen, isn't open yet."
+    depends_on: [bee-27]
+    started: "2026-11-08T02:01Z"
+    estimate:
+      low: 3
+      high: 24
+      unit: hours
+      basis: "The plan's largest new surface (a pairing state machine, a key gate and an e2e suite), so the low end sits above Tasks 2–5. Its hand check needs a second device, which Iain may have to run."
+      confidence: low
+    links:
+      - { title: "Plan, Task 10", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-10-a-second-screen-spike-7" }
+
+  task-11:
+    kind: task
+    title: "Working-day surfaces: Board, Poll, orphan decisions, history strip"
+    status: blocked
+    summary: "Needs the surface-data semantics of bee#19, which waits on kuilt#3126 (d)."
+    depends_on: [task-7, bee-19]
+    estimate:
+      low: 3
+      high: 24
+      unit: hours
+      basis: "Once unblocked. Same basis as Task 8, with a secondary test that needs two sessions and Iain on one board."
+      confidence: low
+    links:
+      - { title: "Plan, Task 11", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-11-working-day-surfaces-board-poll-orphan-decisions-history-strip" }
+
+  # ── bee pull requests and issues ─────────────────────────────────────
+  bee-27:
+    kind: pr
+    title: "Join the bridge, the board and claims"
+    status: done
+    parent: task-7
+    started: "2026-11-07T21:49Z"
+    landed: "2026-11-08T02:01Z"
+    links:
+      - { title: "bee#27", url: "https://github.com/tractat-us/bee/pull/27" }
+
+  bee-28:
+    kind: decision
+    title: "Detect a dead board link from the claims link, or from a per-spoke view?"
+    status: done
+    parent: task-7
+    started: "2026-11-07T21:51Z"
+    landed: "2026-11-07T23:53Z"
+    ruling:
+      date: "2026-11-07"
+      summary: "Detect a crash from the claims link: a node dropped after its learner grace is a PeerLost."
+      url: "https://github.com/tractat-us/bee/issues/28#issuecomment-6714701528"
+    links:
+      - { title: "bee#28", url: "https://github.com/tractat-us/bee/issues/28" }
+
+  bee-32:
+    kind: pr
+    title: "Detect a crashed agent from its claims link"
+    status: done
+    parent: task-7
+    depends_on: [bee-27, bee-28]
+    started: "2026-11-08T00:27Z"
+    landed: "2026-11-08T02:10Z"
+    links:
+      - { title: "bee#32", url: "https://github.com/tractat-us/bee/pull/32" }
+
+  bee-31:
+    kind: issue
+    title: "A late win whose link dies is released only by a later wait on that surface"
+    status: done
+    parent: task-7
+    started: "2026-11-08T00:23Z"
+    landed: "2026-11-08T02:17Z"
+    links:
+      - { title: "bee#31", url: "https://github.com/tractat-us/bee/issues/31" }
+
+  bee-33:
+    kind: pr
+    title: "Give back a late win whose claims link died, on the next link"
+    status: done
+    parent: bee-31
+    depends_on: [bee-27]
+    started: "2026-11-08T01:18Z"
+    landed: "2026-11-08T02:17Z"
+    links:
+      - { title: "bee#33", url: "https://github.com/tractat-us/bee/pull/33" }
+
+  bee-37:
+    kind: issue
+    title: "A wait's reserve can no longer fail, so make it fail loudly"
+    status: next
+    summary: "A follow-up from #33's re-review."
+    depends_on: [bee-33]
+    started: "2026-11-08T02:10Z"
+    links:
+      - { title: "bee#37", url: "https://github.com/tractat-us/bee/issues/37" }
+
+  bee-40:
+    kind: pr
+    title: "Move kuilt to 0.7.0-dev.1696"
+    status: in-flight
+    summary: "Takes kuilt's LatticeDotFun and CausalMap, slices (a) and (b) of kuilt#3126."
+    depends_on: [kuilt-3132, kuilt-3136]
+    started: "2026-11-08T02:15Z"
+    links:
+      - { title: "bee#40", url: "https://github.com/tractat-us/bee/pull/40" }
+
+  bee-14:
+    kind: decision
+    title: "Surface data semantics: merge or replace, concurrent card order, leaf encoding"
+    status: done
+    started: "2026-11-07T01:51Z"
+    landed: "2026-11-07T14:43Z"
+    ruling:
+      date: "2026-11-07"
+      summary: "Object writes replace, card order is an Rga of ids, and the prefix leaf encoding stands."
+      url: "https://github.com/tractat-us/bee/issues/14#issuecomment-6708367416"
+    links:
+      - { title: "bee#14", url: "https://github.com/tractat-us/bee/issues/14" }
+
+  bee-19:
+    kind: pr
+    title: "Surface data semantics: object writes replace, card order is an Rga of ids"
+    status: blocked
+    summary: "On hold until kuilt#3126 (d), the JsonCrdt v2 core, publishes."
+    depends_on: [bee-14, kuilt-3126-d]
+    started: "2026-11-07T14:51Z"
+    links:
+      - { title: "bee#19", url: "https://github.com/tractat-us/bee/pull/19" }
+
+  bee-23:
+    kind: issue
+    title: "ClaimTable: drop duplicate log entries through kuilt's ClientSessionTable"
+    status: blocked
+    summary: "Before production. Can't happen within one incarnation on the pinned kuilt. Closing a session needs kuilt's RoomHost tear contract, kuilt#3129 (bee#30)."
+    depends_on: [kuilt-3129]
+    started: "2026-11-07T20:43Z"
+    links:
+      - { title: "bee#23", url: "https://github.com/tractat-us/bee/issues/23" }
+
+  bee-21:
+    kind: issue
+    title: "Dogfood: bee as the board for its own development"
+    status: later
+    summary: "A first try after Task 9; the full version as Task 11's secondary test. The markdown stays the source of truth for now (ruled 2026-11-07)."
+    depends_on: [task-7, task-8, task-9, task-11]
+    links:
+      - { title: "bee#21", url: "https://github.com/tractat-us/bee/issues/21" }
+
+  # ── kuilt dependencies ───────────────────────────────────────────────
+  kuilt-3126:
+    kind: kuilt
+    title: "Shared causal context for JsonCrdt (epic)"
+    status: in-flight
+    summary: "Began as an ORMap.remove bug; ruled reset-and-replace, re-seed migration, and every nested use on a shared-context CausalMap. Split into (a)–(g)."
+    started: "2026-11-07T19:36Z"
+    estimate:
+      low: 1
+      high: 3
+      unit: days
+      basis: "From the issue being filed to the last slice merging. (a) and (b) each took about 3 h from PR open to merge. (c) is filed with no PR yet, and (d)–(g) are not filed. What remains is a chain of three: (c), then (d), then (e)–(g) in parallel, at 3–12 h each."
+      confidence: low
+    ruling:
+      date: "2026-11-07"
+      summary: "Reset and replace; migrate by re-seed; move every nested use to the shared-context CausalMap. The (a)–(g) split is confirmed."
+      url: "https://github.com/tractat-us/kuilt/issues/3126"
+    links:
+      - { title: "kuilt#3126", url: "https://github.com/tractat-us/kuilt/issues/3126" }
+
+  kuilt-3132:
+    kind: kuilt
+    title: "(a) LatticeDotFun, a dot store that joins its payloads"
+    status: done
+    summary: "Published in kuilt 0.7.0-dev.1696."
+    parent: kuilt-3126
+    started: "2026-11-07T22:27Z"
+    landed: "2026-11-08T01:29Z"
+    links:
+      - { title: "kuilt#3132", url: "https://github.com/tractat-us/kuilt/pull/3132" }
+
+  kuilt-3136:
+    kind: kuilt
+    title: "(b) CausalMap, one shared context for a map and its nested stores"
+    status: done
+    summary: "Published in kuilt 0.7.0-dev.1696."
+    parent: kuilt-3126
+    depends_on: [kuilt-3132]
+    started: "2026-11-07T23:01Z"
+    landed: "2026-11-08T01:43Z"
+    links:
+      - { title: "kuilt#3136", url: "https://github.com/tractat-us/kuilt/pull/3136" }
+
+  kuilt-3137:
+    kind: kuilt
+    title: "(c) A dot-store Rga"
+    status: in-flight
+    parent: kuilt-3126
+    started: "2026-11-07T23:54Z"
+    links:
+      - { title: "kuilt#3137", url: "https://github.com/tractat-us/kuilt/issues/3137" }
+
+  kuilt-3126-d:
+    kind: kuilt
+    title: "(d) JsonCrdt v2 core and path API"
+    status: next
+    parent: kuilt-3126
+    summary: "Drafted, not filed. bee#19 waits on it."
+    depends_on: [kuilt-3136, kuilt-3137]
+
+  kuilt-3126-e:
+    kind: kuilt
+    title: "(e) Migration by re-seed, and a format tag"
+    status: next
+    parent: kuilt-3126
+    summary: "Drafted, not filed."
+    depends_on: [kuilt-3126-d]
+
+  kuilt-3126-f:
+    kind: kuilt
+    title: "(f) Quilter frontier wiring (kuilt#2177)"
+    status: next
+    parent: kuilt-3126
+    summary: "Drafted, not filed."
+    depends_on: [kuilt-3126-d]
+
+  kuilt-3126-g:
+    kind: kuilt
+    title: "(g) Writerside and sample rewrite, and the ORMap guard"
+    status: next
+    parent: kuilt-3126
+    summary: "Drafted, not filed."
+    depends_on: [kuilt-3126-d]
+
+  kuilt-3133:
+    kind: kuilt
+    title: "kuilt-raft: prune a removed peer's replication state, and reset it at election"
+    status: in-flight
+    started: "2026-11-07T22:29Z"
+    links:
+      - { title: "kuilt#3133", url: "https://github.com/tractat-us/kuilt/pull/3133" }
+
+  kuilt-3134:
+    kind: kuilt
+    title: "kuilt-raft: a node stops campaigning once its removal is committed"
+    status: waiting-on-iain
+    summary: "A spec-critical engine change that departs from the issue's suggested fix; needs Iain's review before merge."
+    started: "2026-11-07T22:32Z"
+    links:
+      - { title: "kuilt#3134", url: "https://github.com/tractat-us/kuilt/pull/3134" }
+
+  kuilt-3129:
+    kind: kuilt
+    title: "session: the RoomHost contract says whether onRoom ends when its room tears"
+    status: in-flight
+    summary: "The tear signal bee needs to close a claims session when its learner leaves (bee#23). Slice 1, the conformance suite, is in review."
+    started: "2026-11-08T01:28Z"
+    links:
+      - { title: "kuilt#3129", url: "https://github.com/tractat-us/kuilt/issues/3129" }
+      - { title: "kuilt#3141, slice 1", url: "https://github.com/tractat-us/kuilt/pull/3141" }
+
+  # ── Outside the code ─────────────────────────────────────────────────
+  out-cla:
+    kind: outside
+    title: "Contributor agreement text and a signing check"
+    status: waiting-on-iain
+    summary: "A lawyer writes it, not an agent. Needed before the repo accepts outside contributions."
+    links:
+      - { title: "Epic bee#6", url: "https://github.com/tractat-us/bee/issues/6" }
+
+  out-kuilt-references:
+    kind: outside
+    title: "kuilt References policy: allow references to public tractat-us projects"
+    status: later
+    summary: "A kuilt AGENTS.md PR, landed once bee is public."
+    links:
+      - { title: "Epic bee#6", url: "https://github.com/tractat-us/bee/issues/6" }
