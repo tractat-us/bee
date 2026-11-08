@@ -8,9 +8,14 @@ const WORKING_ON = 'drawing the board page';
 const SURFACE = 'board-page-card';
 const TITLE = 'Pick a lunch spot';
 const CLAIM = `card:${SURFACE}/tacos`;
+// Opened before FIELD (ids tie-break the same way), so reopening it puts its card ahead of FIELD's.
+const OLDER = 'board-page-a-older';
+const FIELD = 'board-page-b-field';
 
 let agent;
 let identity;
+/** The token of the claim on CLAIM, once won, for afterAll to release it under. */
+let token;
 
 test.beforeAll(async () => {
   agent = await startBridge(process.env.BEE_E2E_PORT, 'e2e-agent');
@@ -24,13 +29,19 @@ test.beforeAll(async () => {
       { id: 'unsafe', component: 'Text', text: 'Raw HTML stays out: <img src=x onerror="window.__beeOwned = 1">' },
     ],
   });
+  // bee_claim answers `unavailable` until the bridge's claims link is up.
+  await expect.poll(() => agent.call('bee_board', {}).then((b) => b.claims), { timeout: 30_000 }).toBe('online');
 });
 
 test.afterAll(async () => {
-  // Closed and released, so no later spec sees this surface, and the bridge's exit orphans nothing.
-  await agent?.call('bee_release', { target: CLAIM }).catch(() => {});
-  await agent?.call('bee_surface_close', { surfaceId: SURFACE }).catch(() => {});
-  await agent?.kill();
+  // Released under its token, so the bridge's exit orphans nothing, and closed, so no later spec
+  // sees these surfaces. A release without the token frees only an orphaned target.
+  try {
+    if (token) expect((await agent.call('bee_release', { target: CLAIM, token })).released).toBe(true);
+  } finally {
+    for (const surfaceId of [SURFACE, OLDER, FIELD]) await agent?.call('bee_surface_close', { surfaceId }).catch(() => {});
+    await agent?.kill();
+  }
 });
 
 async function open(page, name) {
@@ -65,10 +76,46 @@ test('a claimed card shows who holds it', async ({ page }) => {
   await open(page, 'alex');
   await expect(card(page)).toBeVisible();
   await expect(card(page).locator('.bee-badge')).toHaveCount(0);
-  expect((await agent.call('bee_claim', { target: CLAIM })).outcome).toBe('won');
+  const claim = await agent.call('bee_claim', { target: CLAIM });
+  expect(claim.outcome).toBe('won');
+  token = claim.token;
   const badge = card(page).locator(`.bee-badge[data-claim-target="${CLAIM}"]`);
   await expect(badge).toHaveAttribute('data-claim-status', 'held', { timeout: 10_000 });
   await expect(badge).toHaveText('claimed by e2e-agent');
+});
+
+test('a focused field keeps its focus when a card is reopened from history ahead of it', async ({ browser, page }) => {
+  await agent.call('bee_surface_open', { surfaceId: OLDER, title: 'Older', components: [{ id: 'root', component: 'Text', text: 'older' }] });
+  await agent.call('bee_surface_open', {
+    surfaceId: FIELD,
+    title: 'Field',
+    components: [{ id: 'root', component: 'TextField', label: 'Note', value: { path: '/note' } }],
+    data: { note: '' },
+  });
+  await agent.call('bee_surface_close', { surfaceId: OLDER });
+  await open(page, 'alex');
+  const field = page.locator(`a2ui-surface[data-surface-id="${FIELD}"] a2ui-basic-textfield input`);
+  await field.focus();
+  await field.pressSequentially('half a thought');
+
+  // Another person reopens OLDER: a click on this page's history strip would take the focus itself.
+  const other = await browser.newContext();
+  try {
+    const sam = await other.newPage();
+    await open(sam, 'sam');
+    await sam.locator('#history summary').click();
+    await sam.locator(`#history button[data-surface-id="${OLDER}"]`).click();
+
+    const older = page.locator(`#board article.bee-card[data-surface-id="${OLDER}"]`);
+    await expect(older.locator('.bee-card-title')).toHaveText('Older', { timeout: 10_000 });
+    // In the board's order, by style, so no card was moved.
+    const position = (id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`).evaluate((e) => Number(e.style.order));
+    expect(await position(OLDER)).toBeLessThan(await position(FIELD));
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue('half a thought');
+  } finally {
+    await other.close();
+  }
 });
 
 test('the debug lines sit under a collapsed Details, off the board', async ({ page }) => {
