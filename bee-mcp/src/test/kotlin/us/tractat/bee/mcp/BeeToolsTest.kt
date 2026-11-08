@@ -4,12 +4,9 @@ package us.tractat.bee.mcp
 
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.ClientOptions
-import io.modelcontextprotocol.kotlin.sdk.server.Server
-import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.shared.RequestOptions
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
-import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -271,7 +268,7 @@ class BeeToolsTest {
         val reading = tools - BeeTools.WRITING
         assertAll(
             { assertEquals(BeeTools.WRITING, writing.keys, "every writing tool is registered") },
-            { assertEquals(setOf(BeeTools.BOARD, WaitTool.WAIT, WaitTool.LIST), reading.keys, "the rest only read") },
+            { assertEquals(setOf(BeeTools.BOARD, WaitTool.WAIT, WaitTool.LIST, WhiteboardGuide.EXAMPLES_TOOL), reading.keys, "the rest only read") },
             {
                 val unshared = writing.filterValues { !(it.startsWith("Puts ") && BeeTools.SHARED in it.substringBefore('.')) }
                 assertEquals(emptyMap(), unshared, "writing tools whose first sentence doesn't say it's shared")
@@ -422,15 +419,7 @@ internal class JoinRig(private val test: TestScope) {
 
     private suspend fun connect(bridge: BeeBridge): Client {
         val dispatcher = StandardTestDispatcher(test.testScheduler)
-        val server = Server(
-            Implementation("bee", "test"),
-            ServerOptions(
-                capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false)),
-                handlerCoroutineContext = dispatcher,
-            ),
-        )
-        WaitTool.register(server, BoardActionSource(bridge))
-        BeeTools.register(server, bridge)
+        val server = BeeServer.create(bridge, dispatcher)
         val (clientSide, serverSide) = LinkedTransport.pair()
         server.createSession(serverSide)
         return Client(Implementation("test", "test"), ClientOptions(handlerCoroutineContext = dispatcher))
