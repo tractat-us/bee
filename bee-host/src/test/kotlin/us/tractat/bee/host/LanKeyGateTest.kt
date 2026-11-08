@@ -91,15 +91,17 @@ class LanKeyGateTest {
     fun pageAndPairingNeedNoKey() = gated { client ->
         val page = client.get("/") { header(TEST_PEER, LAN) }.status
         var shown: PairingMessage? = null
+        var pending = false
         client.webSocket(PairingWire.PATH, request = { header(TEST_PEER, LAN) }) {
             shown = Json.decodeFromString(PairingMessage.serializer(), (incoming.receive() as Frame.Text).readText())
+            pending = pairing.isPending(PairingId((shown as PairingMessage.Code).pairing))
             close()
         }
         val code = assertIs<PairingMessage.Code>(shown)
         assertAll(
             { assertNotEquals(HttpStatusCode.Forbidden, page) },
             { assertTrue(code.code.matches(Regex("[0-9]{6}")), "a six-digit code: ${code.code}") },
-            { assertTrue(pairing.isPending(PairingId(code.pairing))) },
+            { assertTrue(pending, "the code names a live pairing") },
         )
     }
 
