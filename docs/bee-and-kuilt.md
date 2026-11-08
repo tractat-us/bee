@@ -74,12 +74,15 @@ flowchart TB
     web["Browser client<br/>bee-web"]
     mcp["Claude bridge<br/>bee-mcp"]
     host["Host<br/>bee-host"]
+    companion["Visual companion<br/>bee-companion"]
     core["Board, records and claims<br/>bee-core"]
     a2ui["Surfaces as A2UI<br/>bee-a2ui"]
   end
   subgraph kuilt
-    data["Shared data<br/>kuilt-crdt, kuilt-quilter"]
-    wire["Connections<br/>kuilt-websocket, kuilt-gossip"]
+    crdt["Mergeable data<br/>kuilt-crdt"]
+    quilter["Keeping copies in step<br/>kuilt-quilter"]
+    socket["Connections<br/>kuilt-websocket"]
+    gossip["Passing changes along<br/>kuilt-gossip"]
     vote["One agreed order<br/>kuilt-raft, kuilt-cluster"]
     alive["Noticing a peer has gone<br/>kuilt-liveness"]
     disk["Surviving a restart<br/>kuilt-store"]
@@ -87,20 +90,26 @@ flowchart TB
   web --> core
   mcp --> core
   host --> core
+  companion --> core
   core --> a2ui
-  core --> data
-  core --> wire
+  core --> crdt
+  core --> quilter
+  core --> socket
   core --> vote
-  a2ui --> data
+  a2ui --> crdt
+  web --> gossip
+  host --> gossip
+  mcp --> gossip
   web --> disk
   host --> disk
   host --> alive
   mcp --> alive
 ```
 
-Most of kuilt reaches the browser client, the bridge and the host through `bee-core`. `bee-a2ui`
-needs only kuilt's shared data, which matters in the next section. `bee-notions` uses no kuilt at
-all: it's the renderer's side of the page.
+The mergeable data, the connections and the agreed order reach the browser client, the bridge and
+the host through `bee-core`. Each of the three adds gossip itself, plus whichever of liveness and
+storage it needs. `bee-a2ui` needs only `kuilt-crdt`, which matters in the next section.
+`bee-notions` uses no kuilt at all: it's the renderer's side of the page.
 
 ## Why the line sits where it does
 
