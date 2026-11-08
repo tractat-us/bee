@@ -87,10 +87,13 @@ class BeeHost private constructor(
          * or WebKit), but can't navigate itself to a URL, by `location` or a link (spec §5.6).
          * That isn't "no network": WebRTC and DNS hints sit outside CSP (bee#49). CSP has no
          * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
-         * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
+         * `frame-src` does. `child-src` covers what falls back to it.
+         *
+         * Images load only from this host or `data:`: a card's Markdown can name an image
+         * anywhere, and would otherwise make every viewer fetch it. Nothing else is restricted,
          * so the page's sockets and its pairing stream need nothing more.
          */
-        const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
+        const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'; img-src 'self' data:"
 
         /**
          * Starts a host on [config]'s address, with its board and claims log under
