@@ -263,7 +263,7 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
 
 // Tab out of a sketch lands on its own Send, so Enter, meant for the sketch, would send it. A
 // keyboard press on Send counts only once Send has had focus for a moment.
-test('Enter just after tabbing out of a sketch records nothing', async ({ browser }) => {
+test('Enter just after tabbing out of a sketch records nothing', async ({ browser, browserName }) => {
   pushScreen('tabber.html', options.replace('Which layout?', 'Tab layout?') + '<input id="last">');
   const tia = await openBoard(browser, 'tia', 'Tab layout?');
   const { page, frame } = tia;
@@ -275,7 +275,8 @@ test('Enter just after tabbing out of a sketch records nothing', async ({ browse
   await settled(page);
   await expect(send).toBeEnabled();
   const focused = () => page.evaluate(() => `${document.activeElement?.className} ${document.activeElement?.disabled}`);
-  await page.keyboard.press('Tab');
+  // WebKit's Tab skips buttons by default, as Safari's does; Option-Tab reaches them.
+  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   // Precondition: Tab took focus to an enabled Send, so the Enter just after reached it.
   expect(await focused()).toBe('bee-proposal-send false');
   await page.keyboard.press('Enter');
