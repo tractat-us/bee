@@ -79,6 +79,19 @@ class BeeHost private constructor(
         const val CLAIMS_SESSION: String = "claims"
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
+        internal const val CSP_HEADER = "Content-Security-Policy"
+
+        /**
+         * The page's policy, sent with the page's files ([mountEndpoints]): no frame may load a
+         * URL. A `Sketch` frame shows its `srcdoc` (which this policy doesn't block, in Chromium
+         * or WebKit), but can't navigate itself to a URL, by `location` or a link (spec §5.6).
+         * That isn't "no network": WebRTC and DNS hints sit outside CSP (bee#49). CSP has no
+         * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
+         * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
+         * so the page's sockets and its pairing stream need nothing more.
+         */
+        const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
+
         /**
          * Starts a host on [config]'s address, with its board and claims log under
          * [HostConfig.dataDir]. Background work runs on [scope]. [Departures] reads a crash off

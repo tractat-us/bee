@@ -9,7 +9,6 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +22,6 @@ import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
 import us.tractat.bee.core.BoardClient
-import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
@@ -141,7 +139,7 @@ fun main() {
  */
 private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: String, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
     scope.launch {
-        val another = awaitAnotherBoard(board.lastFailure, pin) { namedBy(http, host) }
+        val another = awaitAnotherBoard(board.lastFailure, pin) { http.boardNamedOrNull(host) }
         System.err.println(another.message)
         ended.complete(another)
     }
@@ -149,16 +147,6 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
 
 /** The exit status of a bridge that ended because its host keeps another board. */
 private const val EXIT_ANOTHER_BOARD = 2
-
-/** The board the host names, or null if it can't be asked. */
-private suspend fun namedBy(http: HttpClient, host: String): BoardId? = try {
-    http.askBoardId(host)
-} catch (cancelled: CancellationException) {
-    throw cancelled
-} catch (@Suppress("TooGenericExceptionCaught") unanswered: Exception) {
-    logger.debug(unanswered) { "The host didn't name its board." }
-    null
-}
 
 /** `$BEE_SESSION_NAME`, else the working directory's basename (spec §5.2). */
 private fun sessionName(): String =

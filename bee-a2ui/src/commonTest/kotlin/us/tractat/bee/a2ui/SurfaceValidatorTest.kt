@@ -49,6 +49,17 @@ class SurfaceValidatorTest {
         assertEquals(emptyList(), SurfaceValidator.errors(view(root, tabs, go, component("label", "Text"))))
     }
 
+    /** `Sketch` is in the Notions catalog (Task 8), and its `html` is required. */
+    @Test
+    fun sketchIsInTheCatalogAndNeedsItsHtml() {
+        val sketch = component("root", "Sketch") { put("html", "<p>hi</p>") }
+        val bare = component("root", "Sketch")
+        assertEquals(
+            listOf(emptyList(), listOf("Component \"root\" is a Sketch with no html.")),
+            listOf(SurfaceValidator.errors(view(sketch)), SurfaceValidator.errors(view(bare))),
+        )
+    }
+
     @Test
     fun pollAndBoardWithTheirBindingsAreValid() {
         val root = component("root", "Column") { put("children", JsonArray(listOf(JsonPrimitive("poll"), JsonPrimitive("board")))) }

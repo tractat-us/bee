@@ -331,8 +331,10 @@ components plus these:
 
 - **`Sketch` (Iain: include now, replace later).** Agent-supplied HTML in a sandboxed iframe
   (`sandbox` without `allow-same-origin`, and a CSP of `default-src 'none'`). It's the mockup escape
-  hatch the visual companion needs. Clicks inside it reach the driver as A2UI actions through a
-  `postMessage` bridge. When A2UI gains its own way to embed content, bee switches to it.
+  hatch the visual companion needs. A sketch only proposes: a click inside it shows its choice in a
+  bar the page draws under the frame, and the page records the choice, as an A2UI action, only when
+  the viewer clicks that bar's own Send (bee#60). When A2UI gains its own way to embed content, bee
+  switches to it.
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
   appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
