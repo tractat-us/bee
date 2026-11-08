@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T02:14Z"
+as_of: "2026-11-08T02:18Z"
 
 sources:
   - title: "v1 plan"
@@ -46,6 +46,7 @@ order:
   - bee-31
   - bee-33
   - bee-37
+  - bee-40
   - bee-14
   - bee-19
   - bee-23
@@ -160,16 +161,11 @@ items:
   task-7:
     kind: task
     title: "Join, which completes spikes 3 and 4"
-    status: in-flight
-    summary: "A Claude session opens a surface, waits and answers; a second session sees it."
+    status: done
+    summary: "A Claude session opens a surface, waits and answers; a second session sees it. Landed as #27, #32 and #33."
     depends_on: [task-4, task-5, task-6]
     started: "2026-11-07T21:49Z"
-    estimate:
-      low: 5
-      high: 24
-      unit: hours
-      basis: "From #27 opening to the last of #27, #32 and #33 merging. #27 took 4.2 h from open to merge and #32 took 1.7 h; #33 is in review. Tasks 1–5 took 0.4–0.6 h from PR open to merge; Task 6, which met a kuilt gap, took 22 h."
-      confidence: low
+    landed: "2026-11-08T02:17Z"
     ruling:
       date: "2026-11-07"
       summary: "The post-Task-7 review hold is lifted. #27 lands first, then #32 and #33. Tasks 8, 9 and 10 start in parallel from main once #27 merges, and Iain reviews #27's deviations after the fact."
@@ -198,9 +194,9 @@ items:
     kind: task
     title: "Durability of the board (spike 6)"
     status: in-flight
-    summary: "The board survives host restarts and closed browsers, through a generic Quilter–DurableStore adapter. Started when #27 merged; its Draft PR, on spike/9-durability, isn't open yet."
+    summary: "The board survives host restarts and closed browsers, through a generic Quilter–DurableStore adapter."
     depends_on: [bee-27]
-    started: "2026-11-08T02:01Z"
+    started: "2026-11-08T02:15Z"
     estimate:
       low: 2
       high: 24
@@ -209,6 +205,7 @@ items:
       confidence: low
     links:
       - { title: "Plan, Task 9", url: "../superpowers/plans/2026-11-06-bee-v1.md#task-9-durability-of-the-board-spike-6" }
+      - { title: "bee#39", url: "https://github.com/tractat-us/bee/pull/39" }
 
   task-10:
     kind: task
@@ -280,19 +277,21 @@ items:
   bee-31:
     kind: issue
     title: "A late win whose link dies is released only by a later wait on that surface"
-    status: in-flight
+    status: done
     parent: task-7
     started: "2026-11-08T00:23Z"
+    landed: "2026-11-08T02:17Z"
     links:
       - { title: "bee#31", url: "https://github.com/tractat-us/bee/issues/31" }
 
   bee-33:
     kind: pr
     title: "Give back a late win whose claims link died, on the next link"
-    status: in-flight
+    status: done
     parent: bee-31
     depends_on: [bee-27]
     started: "2026-11-08T01:18Z"
+    landed: "2026-11-08T02:17Z"
     links:
       - { title: "bee#33", url: "https://github.com/tractat-us/bee/pull/33" }
 
@@ -300,11 +299,21 @@ items:
     kind: issue
     title: "A wait's reserve can no longer fail, so make it fail loudly"
     status: next
-    parent: bee-31
     summary: "A follow-up from #33's re-review."
+    depends_on: [bee-33]
     started: "2026-11-08T02:10Z"
     links:
       - { title: "bee#37", url: "https://github.com/tractat-us/bee/issues/37" }
+
+  bee-40:
+    kind: pr
+    title: "Move kuilt to 0.7.0-dev.1696"
+    status: in-flight
+    summary: "Takes kuilt's LatticeDotFun and CausalMap, slices (a) and (b) of kuilt#3126."
+    depends_on: [kuilt-3132, kuilt-3136]
+    started: "2026-11-08T02:15Z"
+    links:
+      - { title: "bee#40", url: "https://github.com/tractat-us/bee/pull/40" }
 
   bee-14:
     kind: decision
