@@ -25,6 +25,7 @@ import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.askBoardId
@@ -47,15 +48,13 @@ import kotlin.uuid.Uuid
 // pointed System.out at stderr. A plain top-level val starts with MainKt, before main runs.
 private val logger by lazy { KotlinLogging.logger {} }
 
-/** The host the bridge joins when `$BEE_HOST` is unset: the default port on loopback (plan, "Decisions"). */
-private const val DEFAULT_HOST = "ws://127.0.0.1:8233"
-
 /**
  * The bridge: a stdio MCP server, one per Claude session (spec §5.2), joined to the board.
  *
  * It holds a replica of the board (`/ws/board`) and a claims learner (`/ws/claims`) on the host at
- * `$BEE_HOST` (`ws://host:port`, default [DEFAULT_HOST]). Retiring an identity, on `/clear` or on
- * finding itself retired, proposes its `Depart` through Raft.
+ * `$BEE_HOST` ([beeHostFrom]: `ws://host:port`, or a `--lan` host's join link; default
+ * [DEFAULT_HOST]). A join link's key goes on both sockets: it admits a bridge on another machine.
+ * Retiring an identity, on `/clear` or on finding itself retired, proposes its `Depart` through Raft.
  */
 @OptIn(ExperimentalUuidApi::class)
 fun main() {
@@ -64,7 +63,8 @@ fun main() {
     val protocolOut: PrintStream = System.out
     System.setOut(System.err)
 
-    val host = System.getenv("BEE_HOST")?.takeIf { it.isNotBlank() }?.trimEnd('/') ?: DEFAULT_HOST
+    // Before anything starts: a BEE_HOST that names no host ends the bridge here, saying why.
+    val host = beeHostFrom(System.getenv("BEE_HOST"))
     val random = SecureRandom().asKotlinRandom()
     val clock = { Clock.System.now() }
     // The bridge's own work (the board, claims, a retire on /clear) runs here; one failure must not end the rest.
@@ -77,7 +77,7 @@ fun main() {
     val board = BoardClient(
         author,
         SpokeLoom(http, Dispatchers.Default, bridgeScope, author.value, random, clock).pinnedTo(pin),
-        Rendezvous.Existing(WebSocketAdvertisement("$host/ws/board", PeerId("bee-host"), "board")),
+        Rendezvous.Existing(WebSocketAdvertisement(host.socket("/ws/board"), PeerId("bee-host"), "board")),
         bridgeScope,
         clock,
     )
@@ -137,7 +137,7 @@ fun main() {
  * ends the process with [EXIT_ANOTHER_BOARD] once it has closed up. It doesn't follow the host: a
  * restart does.
  */
-private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: String, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
+private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClient, host: HostAddress, scope: CoroutineScope, ended: CompletableDeferred<AnotherBoard>) {
     scope.launch {
         val another = awaitAnotherBoard(board.lastFailure, pin) { http.boardNamedOrNull(host) }
         System.err.println(another.message)
