@@ -338,6 +338,31 @@ class BoardWideWaitTest {
     }
 
     /**
+     * A board-wide list reads a record a person reassigned to this session, as the wait does
+     * (spec §5.2: "Both tools then read ... any record a person reassigned to the session"). Same
+     * board as above: zed's orphan on `theirs` is reassigned to ada, and her board-wide list
+     * names it, and not the free click beside it.
+     */
+    @Test
+    fun aBoardWideListReadsARecordReassignedToItOnAnotherAgentsSurface() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val (granted, _) = rig.orphanBesideAFreeClickOnAnotherAgentsSurface(ada)
+
+        val listedBefore = ada.listBoard(since = null).first
+        val token = rig.claims.client(NodeId("iain-page")).reassign(granted, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        ada.link().client.table.first { it.reassigned(granted) }
+        val listed = ada.listBoard(since = null).first
+        val grantedId = BoardActionSource.recordId(ada.client.state.value.records("theirs").first { BoardActionSource.target(it.first) == granted }.first)
+        assertAll(
+            { assertEquals(emptyList(), listedBefore, "rig: before the reassign, nothing on zed's surface is ada's") },
+            { assertNotNull(token, "rig: the reassign committed") },
+            { assertEquals(listOf(grantedId), listed, "the board-wide list reads the reassigned record, and not the free click") },
+        )
+        rig.close()
+    }
+
+    /**
      * A surface whose meta hasn't reached this replica stays out of a board-wide scope under any
      * name, not only a pairing one, since its opener is unknown (spec §5.2). The ghost surface's
      * name is plain, so no reserved prefix keeps it out: only the unknown opener does. Its record
