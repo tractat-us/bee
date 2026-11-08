@@ -5,8 +5,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.w3c.dom.Element
@@ -33,6 +36,11 @@ import kotlin.time.Duration.Companion.seconds
  * - **A placeholder joins its card.** [BoardDriver] puts an invalid surface's placeholder in
  *   [root]; the chrome moves it into that surface's card as soon as it appears.
  * - **Live presence ages without a board change**, so the view is redrawn every [TICK] as well.
+ * - **An empty board says how to start.** With no surface open, [root] shows a quiet hint
+ *   (`.bee-empty-hint`): what the board is, and how a Claude session draws on it. It appears only
+ *   once the page is online and the board has stayed empty for [HINT_DELAY], because a page goes
+ *   online a moment before the host's board reaches it, and the hint mustn't flash over a full
+ *   board. It hides as soon as a surface opens.
  *
  * DOM hooks: `article.bee-card[data-surface-id]`, its `.bee-card-title` and `.bee-card-opener`
  * (`data-peer`, the opener's identity), `.bee-card-working`, and `.bee-badge`
@@ -41,6 +49,8 @@ import kotlin.time.Duration.Companion.seconds
 class BoardChrome(private val root: Element, private val strip: Element) {
     private val cards = mutableMapOf<String, Card>()
     private var peers: List<PeerView>? = null
+    private val hint: HTMLElement = (root.appendChild(emptyHint()) as HTMLElement).also { it.hidden = true }
+    private val empty = MutableStateFlow(false)
 
     init {
         observeChildren(root) { adoptPlaceholders() }
@@ -53,12 +63,24 @@ class BoardChrome(private val root: Element, private val strip: Element) {
 
     private fun slot(surfaceId: String): Element = card(surfaceId).body
 
-    /** Shows [board] and its live presence from [roster] as they change, until [scope] ends. */
-    fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence): Job = scope.launch {
+    /**
+     * Shows [board] and its live presence from [roster] as they change, until [scope] ends, and
+     * the empty-board hint while the board is empty and [online].
+     */
+    fun start(scope: CoroutineScope, board: StateFlow<BoardState>, roster: LivePresence, online: StateFlow<Boolean>): Job = scope.launch {
+        launch {
+            combine(empty, online) { isEmpty, isOnline -> isEmpty && isOnline }.distinctUntilChanged().collectLatest { quiet ->
+                if (quiet) delay(HINT_DELAY)
+                hint.hidden = !quiet
+            }
+        }
         combine(board, ticks(TICK)) { state, _ -> state }.collect { state -> show(BoardView.of(state, roster.peers())) }
     }
 
     fun show(view: BoardView) {
+        // Hidden here, not only by the hint's own collector, so it's never shown beside a card.
+        if (view.cards.isNotEmpty()) hint.hidden = true
+        empty.value = view.cards.isEmpty()
         val open = view.cards.map { it.surfaceId }.toSet()
         (cards.keys - open).forEach { id -> cards.remove(id)?.element?.remove() }
         view.cards.forEachIndexed { index, it -> card(it.surfaceId).show(it, index) }
@@ -126,10 +148,24 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         /** How often live presence is re-read, for entries that age out with no board change. */
         val TICK: Duration = 2.seconds
 
+        /** How long the board must stay empty, online, before the hint shows. */
+        val HINT_DELAY: Duration = 1.seconds
+
         const val CARD_CLASS = "bee-card"
         const val PLACEHOLDER_CLASS = "bee-invalid-surface"
         const val SURFACE_ID = "data-surface-id"
         const val PEER = "data-peer"
+        const val HINT_CLASS = "bee-empty-hint"
+
+        /** The empty board's hint: what it is, and the whiteboard prompt that starts a session on it. */
+        fun emptyHint(): Element = element("p", HINT_CLASS).also { hint ->
+            hint.appendChild(element("strong", "bee-empty-title").also { it.textContent = "Nothing on the board yet." })
+            hint.appendChild(element("span", "bee-empty-how").also { how ->
+                how.appendChild(document.createTextNode("The people here and their Claude sessions all share this board. Ask your session to draw on it: try "))
+                how.appendChild(element("code", "bee-empty-prompt").also { it.textContent = "/mcp__bee__whiteboard" })
+                how.appendChild(document.createTextNode("."))
+            })
+        }
 
         fun ticks(every: Duration): Flow<Unit> = flow {
             while (true) {

@@ -24,12 +24,14 @@ const STDERR_LINES = 40;
  * A request with no answer in REQUEST_TIMEOUT_MS fails, as does one in flight when the bridge
  * exits on its own; each failure quotes the bridge's last stderr lines. A request in flight when
  * `kill` ends the bridge is dropped: the test chose to end it.
+ *
+ * It joins the shared host unless `port` names a spec's own (host.mjs).
  */
-export async function startAgent(name) {
+export async function startAgent(name, { port = process.env.BEE_E2E_PORT } = {}) {
   const child = spawn(BRIDGE, [], {
     env: {
       ...process.env,
-      BEE_HOST: `ws://127.0.0.1:${process.env.BEE_E2E_PORT}`,
+      BEE_HOST: `ws://127.0.0.1:${port}`,
       BEE_SESSION_NAME: name,
       // Its own run dir: under a Claude session the bridge would otherwise overwrite, then delete,
       // the developer's real ~/.bee/run/<claudePid>.json.
