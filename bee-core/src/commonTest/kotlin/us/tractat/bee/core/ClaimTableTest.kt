@@ -86,6 +86,23 @@ class ClaimTableTest {
         )
     }
 
+    /**
+     * A bridge that leaves proposes `Depart(Left)` itself. The host skips an identity the board
+     * already lists as departed, but it can read the board just before the `Left` commits, as when
+     * its quiet check fires while the session is ending, and then commit its own `Depart` second.
+     * The first committed reason stands: the host's `Departures` relies on the table ignoring a
+     * second `Depart`.
+     */
+    @Test
+    fun theFirstDepartReasonStandsAgainstALaterOne() {
+        val t = table(ClaimCommand.Depart(alice, DepartReason.Left), ClaimCommand.Depart(alice, DepartReason.Crashed))
+        assertAll(
+            { assertEquals(DepartReason.Left, t.departReason(alice), "the host's later Crashed doesn't overwrite Left") },
+            { assertEquals(mapOf(alice to DepartReason.Left), t.retiredIdentities) },
+            { assertEquals(2L, t.appliedIndex, "the rejected Depart still advances the index") },
+        )
+    }
+
     @Test
     fun staleTokenCompleteIsRejected() {
         val t = table(

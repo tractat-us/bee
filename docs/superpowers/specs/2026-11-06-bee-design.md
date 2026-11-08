@@ -178,6 +178,11 @@ Claude session ── bee-mcp                                           ┘     
   same client core as the browser, compiled for the JVM, holding its own replica and connecting to
   the host the same way. Its lifetime *is* the session's **(design call)**: when it disconnects,
   the session crashed or ended.
+- **A session that ends says so (design call).** When the MCP session closes normally, by
+  stdin closing or by the signal Claude Code ends its servers with, the bridge departs its own
+  identity as `Left` (§6.4) before it exits. It waits at most 1 s, so an exit never hangs on a
+  host that's gone, and it queues nothing: a `Depart` that doesn't commit leaves the host to
+  depart it `Crashed` once its link is lost. A SIGKILL says nothing, so it still reads as a crash.
 - Gives each session a **peer identity** (session name plus a fresh instance id), distinct from
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
@@ -567,6 +572,13 @@ table over the committed log:
   the host commits `Depart(identity, reason)` through Raft, and the claim table rejects every later
   command from a retired identity. A bridge that finds itself retired re-identifies (§5.2). Only
   agents depart. A person's tabs come and go without retiring them.
+- **A departure has one of four reasons, and only the host's two alarm.** The host proposes
+  `Crashed` and `Quiet`. The bridge proposes `Cleared` on `/clear` and `Left` when its session
+  ends normally (§5.2). The claim table keeps the first committed `Depart` of an identity, so a
+  bridge's `Left` stands against the host's later lost-link `Crashed`. Every reason orphans the
+  identity's claims the same way. The page shows `crashed` and `quiet` struck through and in red,
+  and `cleared` and `left` muted, since a session that ended isn't a failure: the board outliving
+  its sessions is the point.
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.

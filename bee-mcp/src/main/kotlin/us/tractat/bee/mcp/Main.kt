@@ -37,6 +37,7 @@ import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
 import kotlin.system.exitProcess
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -99,10 +100,14 @@ fun main() {
     runBlocking { bridge.announce() }
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }
 
+    // Once, by whichever way out comes first; a second caller waits for the first to finish.
+    val leaving = lazy { leave(bridge) }
     ClearControl(identity, bridgeScope).use { clear ->
         // Claude Code ends its MCP servers with a signal, not only by closing stdin (spike 3), so
         // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
         Runtime.getRuntime().addShutdownHook(Thread(clear::close, "bee-clear-control-close"))
+        // Either way out, stdin closing or that signal, the session left on purpose: say so first.
+        Runtime.getRuntime().addShutdownHook(Thread({ leaving.value }, "bee-mcp-leave"))
         clear.start()
         val server = BeeServer.create(bridge)
         runBlocking {
@@ -115,6 +120,7 @@ fun main() {
             board.close()
         }
     }
+    leaving.value
     bridgeScope.cancel()
     http.close()
     logger.info { "bee-mcp ends." }
@@ -134,6 +140,38 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
         val another = awaitAnotherBoard(board.lastFailure, pin) { http.boardNamedOrNull(host) }
         System.err.println(another.message)
         ended.complete(another)
+    }
+}
+
+/**
+ * How long an ending bridge waits for its `Depart(Left)` to commit. A single voter commits it
+ * inline, so this only bounds a host that's gone, for an exit no SIGKILL follows (stdin closing).
+ *
+ * Measured (e2e `departures.spec.mjs`, host on loopback): from SIGINT to the bridge's exit, `Left`
+ * committed, took about 330 ms. Not measured: Claude Code's own grace. Public reports say `/exit`
+ * sends SIGINT, SIGTERM about 100 ms later, then SIGKILL about 400 ms after that; some say SIGKILL
+ * at once. So this bound is longer than that grace, and a SIGKILL before the commit leaves the
+ * host to depart the identity `Crashed`.
+ */
+private val LEAVE_BOUND = 1.seconds
+
+/**
+ * Departs [bridge]'s identity as [us.tractat.bee.core.DepartReason.Left] as the session ends,
+ * waiting at most [LEAVE_BOUND]. One that doesn't commit is departed `Crashed` by the host instead.
+ */
+private fun leave(bridge: BeeBridge) {
+    val who = bridge.self
+    val committed = try {
+        runBlocking { bridge.leave(LEAVE_BOUND) }
+    } catch (failure: Exception) {
+        // The top of a way out: a cancellation reaching here is a failure like any other.
+        logger.warn(failure) { "Leaving the board as $who failed; the host will depart it as crashed." }
+        return
+    }
+    if (committed) {
+        logger.info { "Left the board as $who." }
+    } else {
+        logger.warn { "$who's Depart(Left) didn't commit within $LEAVE_BOUND; the host will depart it as crashed." }
     }
 }
 

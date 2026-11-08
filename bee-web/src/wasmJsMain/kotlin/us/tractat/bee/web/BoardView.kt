@@ -27,7 +27,7 @@ sealed interface PeerState {
         override val name = "here"
     }
 
-    /** An agent the host retired, for [reason]: crashed, quiet or cleared. */
+    /** A retired agent, for [reason]: crashed or quiet, as the host judged, or cleared or left, as it said. */
     data class Departed(val reason: DepartReason) : PeerState {
         override val name = "departed"
     }
