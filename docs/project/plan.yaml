@@ -397,7 +397,7 @@ items:
       - { title: "bee#55", url: "https://github.com/tractat-us/bee/pull/55" }
 
   bee-58:
-    kind: issue
+    kind: decision
     title: "The host can hang up on an over-bound frame without its 1009 close frame"
     status: waiting-on-iain
     summary: "Iain decides whether the host must deliver the 1009 or a hang-up is an acceptable refusal. If it must, the fix lives in Ktor or kuilt."
@@ -409,7 +409,7 @@ items:
     kind: decision
     title: "Decision: a Sketch can forge the viewer's choice in Chromium, by focusing itself"
     status: waiting-on-iain
-    summary: "Found by #38's fifth review. WebKit blocks the focus steal; Firefox is untested."
+    summary: "Iain decides whether a Sketch only proposes a choice and the page commits it outside the frame, or v1 accepts and documents the Chromium-only forgery. Found by #38's fifth review; WebKit blocks the focus steal, and Firefox is untested."
     started: "2026-11-08T06:01Z"
     links:
       - { title: "bee#60", url: "https://github.com/tractat-us/bee/issues/60" }
