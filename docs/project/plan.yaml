@@ -11,7 +11,7 @@
 # wall-clock time from start to merge and leave out time waiting on Iain.
 
 schema_version: 1
-as_of: "2026-11-08T02:08Z"
+as_of: "2026-11-08T02:12Z"
 
 sources:
   - title: "v1 plan"
@@ -45,6 +45,7 @@ order:
   - bee-32
   - bee-31
   - bee-33
+  - bee-37
   - bee-14
   - bee-19
   - bee-23
@@ -167,7 +168,7 @@ items:
       low: 5
       high: 24
       unit: hours
-      basis: "From #27 opening to the last of #27, #32 and #33 merging. #27 took 4.2 h from open to merge; #32 and #33 are in review. Tasks 1–5 took 0.4–0.6 h from PR open to merge; Task 6, which met a kuilt gap, took 22 h."
+      basis: "From #27 opening to the last of #27, #32 and #33 merging. #27 took 4.2 h from open to merge and #32 took 1.7 h; #33 is in review. Tasks 1–5 took 0.4–0.6 h from PR open to merge; Task 6, which met a kuilt gap, took 22 h."
       confidence: low
     ruling:
       date: "2026-11-07"
@@ -267,10 +268,11 @@ items:
   bee-32:
     kind: pr
     title: "Detect a crashed agent from its claims link"
-    status: in-flight
+    status: done
     parent: task-7
     depends_on: [bee-27, bee-28]
     started: "2026-11-08T00:27Z"
+    landed: "2026-11-08T02:10Z"
     links:
       - { title: "bee#32", url: "https://github.com/tractat-us/bee/pull/32" }
 
@@ -292,6 +294,16 @@ items:
     started: "2026-11-08T01:18Z"
     links:
       - { title: "bee#33", url: "https://github.com/tractat-us/bee/pull/33" }
+
+  bee-37:
+    kind: issue
+    title: "A wait's reserve can no longer fail, so make it fail loudly"
+    status: next
+    parent: bee-31
+    summary: "A follow-up from #33's re-review."
+    started: "2026-11-08T02:10Z"
+    links:
+      - { title: "bee#37", url: "https://github.com/tractat-us/bee/issues/37" }
 
   bee-14:
     kind: decision
@@ -359,6 +371,7 @@ items:
     kind: kuilt
     title: "(a) LatticeDotFun, a dot store that joins its payloads"
     status: done
+    summary: "Published in kuilt 0.7.0-dev.1696."
     parent: kuilt-3126
     started: "2026-11-07T22:27Z"
     landed: "2026-11-08T01:29Z"
@@ -369,6 +382,7 @@ items:
     kind: kuilt
     title: "(b) CausalMap, one shared context for a map and its nested stores"
     status: done
+    summary: "Published in kuilt 0.7.0-dev.1696."
     parent: kuilt-3126
     depends_on: [kuilt-3132]
     started: "2026-11-07T23:01Z"
