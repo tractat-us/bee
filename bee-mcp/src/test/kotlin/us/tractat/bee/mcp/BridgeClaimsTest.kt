@@ -386,6 +386,55 @@ class BridgeClaimsTest {
     }
 
     /**
+     * A session that ends normally leaves: its `Depart` commits as `Left`, not the host's later
+     * `Crashed`, the board mirrors it so every page reads it, and the claim it held is orphaned as
+     * for any departure. Leaving mints no fresh identity: the process is ending.
+     */
+    @Test
+    fun leavingDepartsLeftAndOrphansTheClaims() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val (ada, _) = rig.clicked()
+        val recordId = ada.wait("s").record().string("recordId")
+        val target = BoardActionSource.target(BoardActionSource.parseRecordId(recordId))
+        val old = ada.bridge.self
+
+        val left = ada.bridge.leave(5.seconds)
+        val after = rig.voter.table.first { it.retired(old) }
+        val mirrored = ada.client.state.first { s -> s.departures().any { it.identity == old } }.departures().single { it.identity == old }
+        assertAll(
+            { assertTrue(left, "the Depart committed") },
+            { assertEquals(DepartReason.Left, after.departReason(old)) },
+            { assertEquals(DepartReason.Left, mirrored.reason, "the board mirrors it as left") },
+            { assertIs<ClaimStatus.Orphaned>(after.status(target), "the claim it held is orphaned") },
+            { assertEquals(old, ada.bridge.self, "no fresh identity") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Leaving never holds an exit past its bound: on a link whose host has stopped answering it
+     * gives up at the bound, and it queues nothing, since no later link would send it.
+     */
+    @Test
+    fun leavingGivesUpAtItsBoundAndQueuesNothing() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        rig.claims.host.holdUpFor(ada.node()).hold()
+        val old = ada.bridge.self
+
+        val started = testScheduler.currentTime
+        val left = ada.bridge.leave(1.seconds)
+        val took = (testScheduler.currentTime - started).milliseconds
+        assertAll(
+            { assertEquals(false, left, "it didn't commit") },
+            { assertEquals(1.seconds, took, "it gave up at the bound, not the link's own 10 s") },
+            { assertEquals(emptyList(), ada.connection.pendingDeparts.value, "nothing queued") },
+            { assertEquals(null, rig.voter.table.value.departReason(old)) },
+        )
+        rig.close()
+    }
+
+    /**
      * A claims link that dies (kuilt#3110: a refused dial ends its reconnect loop) is rebuilt.
      * While it's down, claim tools say claims are offline, `bee_board` says so, and a `/clear`
      * `Depart` waits; once a link is back, the `Depart` commits.

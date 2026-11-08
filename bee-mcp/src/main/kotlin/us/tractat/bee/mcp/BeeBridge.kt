@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
@@ -32,6 +33,7 @@ import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.Presence
@@ -39,6 +41,7 @@ import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -366,6 +369,18 @@ class BeeBridge(
     suspend fun awaitClaims() {
         claims.link.filterNotNull().first()
     }
+
+    /**
+     * The session ended on purpose (spec §5.2): proposes `Depart(self, Left)` on the live claims
+     * link, so the board shows it left, not crashed. Its claims are orphaned as for any departure.
+     * Waits at most [within], so an exit never hangs on a host that's gone. True if it committed.
+     *
+     * With no live link it proposes nothing, since the process is ending and a queued `Depart`
+     * would never be sent: the host departs the identity [DepartReason.Crashed] once its link is lost.
+     */
+    suspend fun leave(within: Duration): Boolean = withTimeoutOrNull(within) {
+        retiring.withLock { claims.link.value?.depart(self, DepartReason.Left) }
+    } == true
 
     /** Sets the "working on…" line beside this session on the board. */
     suspend fun status(line: String?) {
