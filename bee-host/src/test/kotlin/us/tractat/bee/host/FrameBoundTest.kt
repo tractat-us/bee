@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.kuilt.test.assertAll
 import java.io.DataInputStream
+import java.io.EOFException
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -66,6 +67,7 @@ class FrameBoundTest {
     private companion object {
         const val TIMEOUT_MS = 10_000
         const val TOO_BIG = 1009
+        const val NO_CLOSE_FRAME = -1
         const val OP_CLOSE = 0x8
         const val PAYLOAD_LEN_16 = 126
         const val PAYLOAD_LEN_64 = 127
@@ -91,10 +93,20 @@ class FrameBoundTest {
             return head.toString()
         }
 
-        /** Reads the host's frames, skipping pings and the like, until its close frame. */
+        /**
+         * Reads the host's frames, skipping pings and the like, until its close frame. A hang-up
+         * with no close frame comes back as code -1, naming the frames seen, so it fails the
+         * assertion on the code with that message rather than as a bare EOFException.
+         */
         fun DataInputStream.awaitClose(): Close {
+            val seen = mutableListOf<Int>()
             while (true) {
-                val opcode = readUnsignedByte() and 0x0F
+                val opcode = try {
+                    readUnsignedByte() and 0x0F
+                } catch (_: EOFException) {
+                    return Close(NO_CLOSE_FRAME, "the host hung up with no close frame, after opcodes $seen")
+                }
+                seen += opcode
                 val length = when (val short = readUnsignedByte() and 0x7F) {
                     PAYLOAD_LEN_16 -> readUnsignedShort().toLong()
                     PAYLOAD_LEN_64 -> readLong()

@@ -35,6 +35,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** The claims path over real loopback WebSockets: Netty, `KtorRoomHost`, CIO clients. */
 class ClaimsSmokeTest {
@@ -44,9 +45,15 @@ class ClaimsSmokeTest {
     @Test
     fun claimOverRealSockets() = smoke { voter, scope ->
         val a = client(scope, voter, NodeId("smoke-a"))
+        val started = TimeSource.Monotonic.markNow()
         val outcome = a.claim(target, alice)
+        val took = started.elapsedNow()
         System.err.println("[claims-spike] real sockets: claim latency ${a.latencies.value}")
-        assertIs<ClaimOutcome.Won>(outcome)
+        assertIs<ClaimOutcome.Won>(
+            outcome,
+            "a claim over real sockets came to $outcome after $took; voter table through ${voter.voter.table.value.appliedIndex}, " +
+                "client table through ${a.table.value.appliedIndex}, membership ${voter.voter.membership.value}",
+        )
     }
 
     /**
@@ -68,8 +75,8 @@ class ClaimsSmokeTest {
                 "b through ${b.table.value.appliedIndex}, membership ${voter.voter.membership.value}",
         )
         assertAll(
-            { assertIs<ClaimOutcome.Won>(first) },
-            { assertIs<ClaimOutcome.Won>(second) },
+            { assertIs<ClaimOutcome.Won>(first, "the first learner's claim came to $first") },
+            { assertIs<ClaimOutcome.Won>(second, "the second learner's claim came to $second") },
             { assertNotNull(aSaw, "the first learner still folds the log after the second joined") },
         )
     }
