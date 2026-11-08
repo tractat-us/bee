@@ -44,7 +44,8 @@ object WaitTool {
                 "Returns {record?, timedOut, cursor} within timeoutSeconds (default 45, at most 60). " +
                 "Pass the returned cursor to the next call to keep reading from where this one stopped. " +
                 "A record is returned with the claim token this session holds it under; one whose claim a person " +
-                "reassigned to this session, from another that left, arrives here too, under the reassign's token.",
+                "reassigned to this session, from another that left, arrives here too, under the reassign's token. " +
+                "A surface the host opened, such as a join request, is refused: the host handles its records.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") { put("type", "string") }
@@ -66,7 +67,7 @@ object WaitTool {
             name = LIST,
             description = "Lists the action records on a surface of the shared board, without waiting. " +
                 "Returns {records, cursor}. Pass a cursor a previous call returned as since to list only " +
-                "the records after it.",
+                "the records after it. A surface the host opened is refused, as bee_wait_action refuses it.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") { put("type", "string") }
