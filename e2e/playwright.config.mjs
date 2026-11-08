@@ -41,6 +41,9 @@ export default defineConfig({
   testMatch: '*.spec.mjs',
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
+  // Every spec shares the one host and its board, and a test that counts the board's records (the
+  // basis tests) reads another file's writes as its own. One worker runs the files one at a time.
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
