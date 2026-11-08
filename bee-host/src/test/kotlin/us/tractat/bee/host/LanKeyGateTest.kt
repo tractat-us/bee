@@ -48,7 +48,7 @@ class LanKeyGateTest {
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
         application {
-            mountEndpoints(pairing, TEST_PEERS, CompletableDeferred(), clock = { Clock.System.now() })
+            mountEndpoints(pairing, TEST_PEERS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }))
             routing {
                 for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
                     route(gated) { get(PROBE) { call.respondText("through the gate") } }
@@ -82,7 +82,7 @@ class LanKeyGateTest {
 
     @Test
     fun urlKeyAdmits() = gated { client ->
-        val ticket = assertIs<Opened.Ticket>(pairing.open())
+        val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val joinKey = pairing.mintJoinKey()
         val boardKeyed = client.dial("$BOARD&k=${key.value}", LAN)
@@ -97,7 +97,7 @@ class LanKeyGateTest {
 
     @Test
     fun wrongUrlKeyIsRefused() = gated { client ->
-        val ticket = assertIs<Opened.Ticket>(pairing.open())
+        val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val boardRight = client.dial("$BOARD&k=${key.value}", LAN)
         // The right key with its last character changed: a near miss, never the key itself.
