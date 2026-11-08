@@ -1,6 +1,8 @@
 // `Sketch`: agent-written HTML in a sandboxed frame (spec §5.6, plan Task 8). Invariant: the
 // HTML runs only inside `<iframe sandbox="allow-scripts">`, never with allow-same-origin, under a
-// CSP that allows no network, and the page acts only on messages whose source is that frame.
+// CSP that allows no network, and the page acts only on messages whose source is that frame, and
+// on a choice only while the viewer's click is fresh. The page's own CSP (bee-host's PAGE_CSP)
+// keeps the frame from navigating to a URL.
 //
 // A click on a `[data-choice]` element inside it reaches the board as the A2UI action `choice`,
 // with context `{choice, text}`. The frame reports it in the MCP Apps (SEP-1865) View-to-Host
@@ -20,6 +22,9 @@ export const SKETCH_SANDBOX = 'allow-scripts';
 export const CHOICE_ACTION = 'choice';
 
 const CHOICE_META = 'us.tractat.bee/choice';
+
+/** The least time between two choices from one frame: faster than a person clicks twice. */
+const CHOICE_GAP_MS = 250;
 
 /**
  * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
@@ -57,6 +62,7 @@ export class SketchElement extends A2uiLitElement {
     super();
     this.frame = null;
     this.shown = null;
+    this.lastChoiceAt = -Infinity;
     this.onMessage = (event) => this.receive(event);
   }
 
@@ -105,6 +111,10 @@ export class SketchElement extends A2uiLitElement {
     const message = event.data;
     if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0' || typeof message.method !== 'string') return;
     if (message.method === 'ui/message') {
+      if (!this.mayChoose()) {
+        this.reply(message.id, { error: { code: -32000, message: 'Refused: a choice needs a click by the viewer.' } });
+        return;
+      }
       const params = message.params ?? {};
       const choice = params._meta?.[CHOICE_META];
       const text = params.content?.type === 'text' ? String(params.content.text ?? '') : '';
@@ -115,6 +125,20 @@ export class SketchElement extends A2uiLitElement {
     } else {
       this.reply(message.id, { error: { code: -32601, message: `Method not found: ${message.method}` } });
     }
+  }
+
+  /**
+   * Whether a `ui/message` now is the viewer's: a choice is recorded as theirs, so the sketch may
+   * not send one on its own. A click inside the frame activates this page too (user activation
+   * reaches every ancestor), so `isActive` holds only for a few seconds after a real gesture. One
+   * choice per CHOICE_GAP_MS per frame keeps a sketch from flooding the board inside that window.
+   */
+  mayChoose() {
+    if (!navigator.userActivation?.isActive) return false;
+    const now = performance.now();
+    if (now - this.lastChoiceAt < CHOICE_GAP_MS) return false;
+    this.lastChoiceAt = now;
+    return true;
   }
 
   /** Answers request [id] (a notification, with no id, gets none). The frame's origin is opaque: '*'. */
