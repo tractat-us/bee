@@ -64,11 +64,11 @@ import kotlin.time.Instant
  * wait's [giveBack] follows the same rule, so no win is given back from under the claim that won it.
  *
  * **A claim reassigned to this identity is handed to the session, never given back** (Task 11,
- * bee#31). It's held as this bridge, and no wait or caller here received it, just like a stranded
- * late win, so the bridge's own record can't tell the two apart. The claim table can: a hold a
- * `Reassign` granted says so ([ClaimTable.reassigned]). The sweep and [giveBack] record such a
- * hold as handed over, so a wait passes it over and the session finds it, with its token, in
- * `bee_board`'s claim views.
+ * spec §6.4, bee#31). It's held as this bridge, and no wait or caller here received it, just like
+ * a stranded late win, so the bridge's own record can't tell the two apart. The claim table can: a
+ * hold a `Reassign` granted says so ([ClaimTable.reassigned]). The sweep leaves such a hold alone,
+ * and a wait on its record's surface that finds it ([giveBack]) takes it into its hands
+ * ([OwnClaim.Reassigned]) and returns the record under the grant's token, as for a win.
  *
  * @param author the [client]'s CRDT author (`mcp-<uuid>`), which every write names.
  * @param scope runs the sweep, for the bridge's lifetime.
@@ -155,8 +155,8 @@ class BeeBridge(
         claims.link.filterNotNull().flatMapLatest { it.client.table }.first { done(it.status(target)) }
     }
 
-    /** [target]'s status in this bridge's claim table, or null while claims are offline. */
-    fun claimStatus(target: ClaimTarget): ClaimStatus? = claims.link.value?.client?.table?.value?.status(target)
+    /** This bridge's claim table, as the live link has folded it, or null while claims are offline. */
+    fun claimTable(): ClaimTable? = claims.link.value?.client?.table?.value
 
     /** Opens surface [surfaceId] with [components] and [data]. */
     suspend fun open(surfaceId: String, title: String, components: List<JsonObject>, data: JsonObject) {
@@ -256,6 +256,14 @@ class BeeBridge(
         }
     }
 
+    /**
+     * Takes [token] on [target] out of a wait's hands, unreceived: a reassigned claim the wait
+     * took ([OwnClaim.Reassigned]) but couldn't return. It stays this session's, for its next wait.
+     */
+    internal fun unreserve(target: ClaimTarget, token: ClaimToken) {
+        ledger.update { if (it.reservations[target to token] == Reservation.InHand) it.copy(reservations = it.reservations - (target to token)) else it }
+    }
+
     /** Records that [token] on [target] reached a caller. */
     internal fun handedOver(target: ClaimTarget, token: ClaimToken) {
         ledger.update { it.with(target to token, Reservation.HandedOver) }
@@ -267,17 +275,23 @@ class BeeBridge(
     }
 
     /**
-     * Gives back this bridge's own claim of [target], held as [holder] under [token], unless a
-     * caller received it or another claim of this bridge has it in reach: a wait has it in hand,
-     * or a claim of [target] is in flight, whose win isn't in anyone's hands yet. That is the rule
-     * the sweep follows. One update reads its standing and marks it as being given back; then
-     * it's released. The caller claims the record again under a fresh token, and any release of
-     * [token] still on its way to the voter is rejected.
+     * Gives back this bridge's own claim of [target], held as [holder] under [token] in [table],
+     * unless a caller received it or another claim of this bridge has it in reach: a wait has it
+     * in hand, or a claim of [target] is in flight, whose win isn't in anyone's hands yet. That is
+     * the rule the sweep follows. One update reads its standing and marks it as being given back;
+     * then it's released. The caller claims the record again under a fresh token, and any release
+     * of [token] still on its way to the voter is rejected.
+     *
+     * A hold a `Reassign` granted ([ClaimTable.reassigned]) is never given back: if nothing here
+     * has it yet, the same update takes it into the caller's hands, and the caller returns it
+     * ([OwnClaim.Reassigned]). [table] is the one the caller read [token] from, so the check
+     * always runs against it.
      */
-    internal suspend fun giveBack(target: ClaimTarget, holder: PeerIdentity, token: ClaimToken): OwnClaim {
+    internal suspend fun giveBack(table: ClaimTable, target: ClaimTarget, holder: PeerIdentity, token: ClaimToken): OwnClaim {
         val key = target to token
-        claims.link.value?.client?.table?.value?.let { table ->
-            if (handOverIfReassigned(table, target, token)) return OwnClaim.HandedOver
+        if (table.reassigned(target) && table.status(target) == ClaimStatus.Held(holder, token)) {
+            val taken = ledger.getAndUpdate { if (key in it.reservations) it else it.with(key, Reservation.InHand) }.reservations[key] == null
+            if (taken) return OwnClaim.Reassigned(token)
         }
         val found = ledger.getAndUpdate { if (it.standing(key) == Standing.Givable) it.with(key, Reservation.GivingBack) else it }.standing(key)
         return when (found) {
@@ -305,21 +319,11 @@ class BeeBridge(
             val who = self
             table.targets.forEach { (target, status) ->
                 if (status !is ClaimStatus.Held || status.holder != who) return@forEach
-                if (handOverIfReassigned(table, target, status.token)) return@forEach
+                // Reassigned to this session: a wait on its record's surface returns it ([giveBack]).
+                if (table.reassigned(target)) return@forEach
                 if (markUnclaimed(target to status.token)) claims.queue(ClaimsConnection.Unreceived(target, who, status.token))
             }
         }
-    }
-
-    /**
-     * Records [token] on [target] as handed to this session if [table] shows a `Reassign` granted
-     * it: true if it did. A hold already marked otherwise (handed over, in a wait's hands, or being
-     * given back) keeps that mark: no `Reassign` mints a token a claim of this bridge's won.
-     */
-    private fun handOverIfReassigned(table: ClaimTable, target: ClaimTarget, token: ClaimToken): Boolean {
-        val granted = table.reassigned(target) && (table.status(target) as? ClaimStatus.Held)?.token == token
-        if (granted) ledger.update { if ((target to token) in it.reservations) it else it.with(target to token, Reservation.HandedOver) }
-        return granted
     }
 
     /** Marks [key] as being given back if nobody could still take it; true if it did. */
@@ -399,18 +403,21 @@ class BeeBridge(
 }
 
 /** What [BeeBridge.giveBack] found for a claim of the bridge's own. */
-internal enum class OwnClaim {
+internal sealed interface OwnClaim {
     /** A caller received it: the record is passed over. */
-    HandedOver,
+    data object HandedOver : OwnClaim
 
     /** Another claim of this bridge has won it or may still win it: wait that out. */
-    InReach,
+    data object InReach : OwnClaim
 
     /** Released, or no longer held under its token: claim the record again. */
-    GivenBack,
+    data object GivenBack : OwnClaim
 
     /** Its release didn't commit now and is queued until it does: back off, then claim again. */
-    Queued,
+    data object Queued : OwnClaim
+
+    /** A `Reassign` granted it to this session, under [token], now in the caller's hands: return the record. */
+    data class Reassigned(val token: ClaimToken) : OwnClaim
 }
 
 /** A write the bridge refused, with a message for the agent that names why. */

@@ -25,8 +25,8 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The board-backed [ActionSource] (spec §5.2, §6.3). Invariant: **a wait returns a record only
- * under a token its own claim won, and a claim this bridge holds but didn't hand over is given
- * back, whether or not a wait reaches it.** The bridge sweeps the live link's table as it catches
+ * under a token its own claim won or a `Reassign` granted this session, and any other claim this
+ * bridge holds but didn't hand over is given back, whether or not a wait reaches it.** The bridge sweeps the live link's table as it catches
  * up (tractat-us/bee#31), so a late win or a claim appended just before its link died is given back
  * on the next link. A wait that reaches such a claim first gives it back itself. A win, a wait's or
  * `bee_claim`'s, is kept while its claim is still in flight, so neither the sweep nor another wait
@@ -43,6 +43,11 @@ import kotlin.time.Duration.Companion.milliseconds
  * and claims the record again under a fresh token. So a release of the old token still on its way
  * to the voter is rejected, and can never free a record the wait returned. A target that reads free
  * retries. A token another claim of this bridge has won or may still win is waited out.
+ *
+ * **A record whose claim a person reassigned to this session is returned too** (spec §6.4): the
+ * wait's claim loses to this very session, and the table shows a `Reassign` granted the hold. The
+ * wait takes it into its hands ([OwnClaim.Reassigned]) and returns it under the grant's token, as
+ * for a win. If the wait ends before returning it, the hold stays this session's, for its next wait.
  *
  * A win is never lost at the wait's edge. If the bound lands just as the claim wins, the record
  * is handed over; if the wait ends any other way after the win (a cancel, an exception), the
@@ -85,10 +90,15 @@ class BoardActionSource internal constructor(
             return WaitResult(record = record, timedOut = false, cursor = encode(passed + got.id.dot))
         } finally {
             withContext(NonCancellable) {
-                if (!handed) won?.let { w -> bridge.releaseUnreceived(target(w.id), w.by, w.token) }
+                if (!handed) won?.let(::unreceived)
                 bridge.waiting(on = false)
             }
         }
+    }
+
+    /** A win this wait couldn't return is released; a reassigned claim is left this session's. */
+    private fun unreceived(w: Won) {
+        if (w.reassigned) bridge.unreserve(target(w.id), w.token) else bridge.releaseUnreceived(target(w.id), w.by, w.token)
     }
 
     /**
@@ -116,10 +126,11 @@ class BoardActionSource internal constructor(
                 continue
             }
             when (outcome) {
-                is ClaimOutcome.Won -> return Won(id, record, by, outcome.token)
-                is ClaimOutcome.Lost -> when (ownClaim(target, outcome, by)) {
+                is ClaimOutcome.Won -> return Won(id, record, by, outcome.token, reassigned = false)
+                is ClaimOutcome.Lost -> when (val own = ownClaim(target, outcome, by)) {
                     Own.Pass -> passed += id.dot
                     Own.Retry -> Unit
+                    is Own.Granted -> return Won(id, record, by, own.token, reassigned = true)
                 }
                 // No quorum: the record stays a candidate, tried again shortly.
                 ClaimOutcome.Unavailable -> delay(RETRY)
@@ -131,23 +142,33 @@ class BoardActionSource internal constructor(
     }
 
     /** What a claim [lost] to [by] itself means for the record. */
-    private enum class Own { Pass, Retry }
+    private sealed interface Own {
+        data object Pass : Own
+
+        data object Retry : Own
+
+        /** A `Reassign` granted it to this session under [token], now in this wait's hands. */
+        data class Granted(val token: ClaimToken) : Own
+    }
 
     private suspend fun ownClaim(target: ClaimTarget, lost: ClaimOutcome.Lost, by: PeerIdentity): Own {
         if (lost.holder != by) return Own.Pass
-        return when (val status = bridge.claimStatus(target)) {
+        // Offline since the claim was judged: claim it again, which holds for the link.
+        val table = bridge.claimTable() ?: return Own.Retry
+        return when (val status = table.status(target)) {
             // Released since the claim was judged: claim it again.
-            ClaimStatus.Free, null -> Own.Retry
+            ClaimStatus.Free -> Own.Retry
             is ClaimStatus.Held ->
                 if (status.holder != by) {
                     Own.Pass
                 } else {
-                    when (bridge.giveBack(target, by, status.token).also(afterGiveBack)) {
+                    when (val own = bridge.giveBack(table, target, by, status.token).also(afterGiveBack)) {
                         OwnClaim.HandedOver -> Own.Pass
                         OwnClaim.InReach -> Own.Retry.also { bridge.awaitOutOfReach(target, status.token) }
                         // Claim it again, under a fresh token.
                         OwnClaim.GivenBack -> Own.Retry
                         OwnClaim.Queued -> Own.Retry.also { delay(RETRY) }
+                        is OwnClaim.Reassigned -> Own.Granted(own.token)
                     }
                 }
             is ClaimStatus.Orphaned, is ClaimStatus.Done -> Own.Pass
@@ -172,7 +193,8 @@ class BoardActionSource internal constructor(
     private fun candidate(state: BoardState, surfaceId: String, passed: Set<Dot>) =
         state.records(surfaceId).firstOrNull { (id, _) -> id.dot !in passed }
 
-    private data class Won(val id: RecordId, val record: ActionRecord, val by: PeerIdentity, val token: ClaimToken)
+    /** A record this wait has in hand under [token]: won by its own claim, or [reassigned] to its session. */
+    private data class Won(val id: RecordId, val record: ActionRecord, val by: PeerIdentity, val token: ClaimToken, val reassigned: Boolean)
 
     companion object {
         /** How long a wait backs off after a claim found no quorum. */
