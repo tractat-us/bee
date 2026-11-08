@@ -113,10 +113,52 @@ test('a sketch that fits its frame to slide another sketch\'s Send back under th
   await page.waitForTimeout(1_500);
   await expect(records(page, 'target')).toHaveCount(0);
 
-  // Control: once Send has stayed put, the same click sends.
+  // Control: once Send has stayed put and the pointer has really moved on it, a click sends.
+  await page.mouse.move(at.x + 1, at.y);
   await expect(send(page, 'target')).toBeEnabled();
-  await page.mouse.click(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.up();
   await expect(records(page, 'target')).toHaveCount(1, { timeout: 10_000 });
 
   for (const surfaceId of ['mover', 'target']) await agent.call('bee_surface_close', { surfaceId });
+});
+
+// A sketch can learn where a resting pointer is (a frame grown over it hears `pointerover` with
+// its coordinates, in Chromium), then fit its frame so its own Send lands there, and wait out the
+// arming. A moving frame under a still pointer delivers only boundary events, never a
+// `pointermove`, so Send stays disarmed until the pointer really moves on it: the click the
+// person meant for whatever was there records nothing.
+test('a sketch that fits its own Send under a resting pointer records nothing until the pointer moves', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1600 });
+  await openSketch('lure', `${NO_MARGIN}<div id="box" style="height:150px">The lure</div>`);
+  await openSketch('below', `${NO_MARGIN}<div style="height:300px">What the person meant to click</div>`);
+  await open(page, 'sam');
+  await expect(frame(page, 'below').locator('body')).toContainText('meant to click', { timeout: 15_000 });
+  await expect.poll(() => inner(page, 'lure'), { timeout: 5_000 }).toBe(150);
+
+  await propose(page, 'lure', 'lured');
+  await expect(send(page, 'lure')).toBeEnabled();
+  const box = await send(page, 'lure').boundingBox();
+  // The pointer rests 100px below Send, on something else.
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 + 100 };
+  await page.mouse.move(at.x, at.y);
+  expect(await under(page, at)).not.toBe('bee-proposal-send');
+
+  // The sketch grows by 100px, and its Send lands under the resting pointer.
+  await resize(page, 'lure', 250);
+  await expect.poll(() => under(page, at), { timeout: 5_000 }).toBe('bee-proposal-send');
+  await page.waitForTimeout(600);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(1_500);
+  await expect(records(page, 'lure')).toHaveCount(0);
+
+  // Control: a real move on Send arms it, and the same click sends.
+  await page.mouse.move(at.x + 1, at.y);
+  await expect(send(page, 'lure')).toBeEnabled();
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(records(page, 'lure')).toHaveCount(1, { timeout: 10_000 });
+
+  for (const surfaceId of ['lure', 'below']) await agent.call('bee_surface_close', { surfaceId });
 });
