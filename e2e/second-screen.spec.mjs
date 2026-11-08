@@ -32,13 +32,36 @@ async function openRemote(browser, screen) {
 
 /** Opens the page on the laptop, from 127.0.0.1, as `name`. */
 async function openLaptop(browser, name = 'iain') {
+  return (await openTappedLaptop(browser, name)).page;
+}
+
+/**
+ * Opens the page on the laptop as `name`, keeping every board frame it sends (`up`) and receives
+ * (`down`) as bytes, so a test can search what crossed the wire.
+ */
+async function openTappedLaptop(browser, name) {
   const context = await browser.newContext();
   contexts.push(context);
   const page = await context.newPage();
+  const frames = { up: [], down: [] };
+  await page.routeWebSocket(/\/ws\/board/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((m) => {
+      frames.up.push(Buffer.from(m));
+      server.send(m);
+    });
+    server.onMessage((m) => {
+      frames.down.push(Buffer.from(m));
+      ws.send(m);
+    });
+  });
   await page.goto(`/?name=${name}`);
   await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
-  return page;
+  return { page, frames };
 }
+
+/** How many of `frames` carry `text`. The board's wire is CBOR, which keeps a string's UTF-8 bytes whole. */
+const carrying = (frames, text) => frames.filter((frame) => frame.includes(Buffer.from(text))).length;
 
 const code = (page) => page.locator('#pairing-code');
 
@@ -117,4 +140,55 @@ test('a screen peer never proposes a claim', async ({ browser }) => {
   });
   await remote.page.waitForTimeout(1_000);
   expect(remote.sockets.map((url) => url.pathname)).not.toContain('/ws/claims');
+});
+
+// §5.7: "The code itself is never written to the board". Live typing syncs a bound field as it is
+// typed, so the join request's code field must stay on the page that types it: the code leaves
+// that page only inside the admit record.
+test('a code typed but not yet admitted stays on the page that typed it', async ({ browser }) => {
+  const typist = await openTappedLaptop(browser, 'iain');
+  const watcher = await openTappedLaptop(browser, 'sam');
+  const remote = await openRemote(browser, 'room-e');
+
+  await expect(code(remote.page)).toHaveText(/^[0-9]{6}$/, { timeout: 15_000 });
+  const shown = await code(remote.page).textContent();
+  const joining = request(typist.page, 'room-e');
+  await joining.locator('a2ui-basic-textfield input').pressSequentially(shown, { delay: 40 });
+  // Well past live typing's 150 ms debounce: a synced field would have been written by now.
+  await typist.page.waitForTimeout(1_500);
+  const upBeforeAdmit = carrying(typist.frames.up, shown);
+  const downBeforeAdmit = carrying(watcher.frames.down, shown);
+  const watcherField = await request(watcher.page, 'room-e').locator('a2ui-basic-textfield input').inputValue();
+
+  // The control: Admit sends the code inside the record, from the typing page's own data model,
+  // and the watcher's tap sees it arrive.
+  await joining.getByRole('button', { name: 'Admit' }).click();
+  await expect(remote.page.locator('#status')).toHaveText('online as human:room-e', { timeout: 15_000 });
+  await expect.poll(() => carrying(watcher.frames.down, shown), { timeout: 5_000 }).toBeGreaterThan(0);
+
+  expect(upBeforeAdmit, 'frames the typing page sent with the code in them, before Admit').toBe(0);
+  expect(downBeforeAdmit, 'frames another page received with the code in them, before Admit').toBe(0);
+  expect(watcherField).toBe('');
+});
+
+// A join link's key goes from the address bar into this tab's storage, then leaves the address
+// bar, so a screenshot, a shared screen or a copied URL doesn't carry it on.
+test("a join link's key leaves the address bar once the page holds it", async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const remote = await openRemote(browser, 'room-f');
+  await admit(laptop, remote, 'room-f');
+  const key = await remote.page.evaluate(() => sessionStorage.getItem('bee.lan.key'));
+
+  const context = await browser.newContext();
+  contexts.push(context);
+  const linked = await context.newPage();
+  await linked.goto(`http://${LAN_NAME}:${process.env.BEE_E2E_PORT}/?screen=room-g&k=${key}`);
+  await expect(linked.locator('#status')).toHaveText('online as human:room-g', { timeout: 15_000 });
+  const search = await linked.evaluate(() => location.search);
+  const kept = await linked.evaluate(() => sessionStorage.getItem('bee.lan.key'));
+
+  expect(new URLSearchParams(search).has('k'), `location.search is ${search}`).toBe(false);
+  expect(new URLSearchParams(search).get('screen'), 'the rest of the query stays').toBe('room-g');
+  expect(kept).toBe(key);
+  await expect(linked.locator('#pairing')).toHaveCount(0);
 });
