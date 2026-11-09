@@ -30,8 +30,8 @@ These only read, so nobody else sees them happen:
 |---|---|
 | `bee_board` | Reads the board: the open surfaces with their contents, the closed ones, who is attached, and the claims. |
 | `bee_examples` | Reads the cheat-sheet: one small surface for each kind of component the board can show, ready to put up as it stands. |
-| `bee_wait_action` | Waits up to a minute for the next click, vote, answer or chat message, on one surface or on every surface this session opened. |
-| `bee_list_actions` | Lists the action records on one surface, or on every surface this session opened, without waiting. |
+| `bee_wait_action` | Waits up to a minute for the next click, vote, answer or chat message, on one surface or on every surface this session opened. Never one the session wrote itself, such as its own chat message. |
+| `bee_list_actions` | Lists the action records on one surface, or on every surface this session opened, without waiting, leaving out the ones the session wrote itself. |
 
 These write to the board, and everyone attached sees the result:
 

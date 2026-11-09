@@ -264,7 +264,9 @@ Claude session ── bee-mcp                                           ┘     
   clicks. The cursor is the set of record ids the caller has passed, not a position, and a record
   id is a CRDT dot, unique across authors and stable across a host restart. So a board-wide cursor
   never skips or repeats a record, and any cursor resumes a wait in either scope. It grows with
-  the session's own records, which v1 accepts.
+  the session's own records, which v1 accepts. **In either scope, a session never receives a
+  record its own identities wrote (design call, bee#214),** now or before a `/clear`: today that
+  is only its own Chat posts, so it never hears, or answers, itself.
 - **Records are addressed to a surface, never to a session instance (design call).** Session
   identities are fresh each time, so a record addressed to one would wait forever once that session
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling

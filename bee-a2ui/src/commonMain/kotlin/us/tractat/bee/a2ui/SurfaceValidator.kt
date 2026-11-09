@@ -132,9 +132,15 @@ object SurfaceValidator {
         }
     }
 
-    /** Every entry any Chat on [view] shows: not built yet. */
-    @Suppress("UNUSED_PARAMETER")
-    fun chatEntries(view: SurfaceView): Set<JsonElement> = emptySet()
+    /**
+     * Every entry any Chat on [view] shows, whatever its shape. A writer compares it before and
+     * after a write, so binding a Chat to entries appended raw can't show a message nobody posted.
+     */
+    fun chatEntries(view: SurfaceView): Set<JsonElement> = view.components.values
+        .filter { it["component"]?.stringOrNull() == CHAT }
+        .mapNotNull { chat -> (chat["messages"] as? JsonObject)?.get("path")?.stringOrNull() }
+        .flatMap { path -> (valueAt(view.data, path) as? JsonArray).orEmpty() }
+        .toSet()
 
     /** What a Chat message holds, each a string. */
     private val MESSAGE_FIELDS = listOf("id", "author", "text", "at")
