@@ -87,7 +87,11 @@ class BoardActionSource internal constructor(
         bridge.touch()
         refuseJoinRequests(bridge.board.value, scope)
         val passed = decode(cursor).toMutableSet()
-        bridge.waiting(on = true)
+        return bridge.waiting { waitFor(scope, passed, timeout) }
+    }
+
+    /** One wait's body, while the session shows waiting: claims the next record in [scope] within [timeout]. */
+    private suspend fun waitFor(scope: ActionScope, passed: MutableSet<Dot>, timeout: Duration): WaitResult {
         var won: Won? = null
         var handed = false
         try {
@@ -106,7 +110,6 @@ class BoardActionSource internal constructor(
         } finally {
             withContext(NonCancellable) {
                 if (!handed) won?.let { unreceived(it) }
-                bridge.waiting(on = false)
             }
         }
     }

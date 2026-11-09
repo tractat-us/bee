@@ -286,7 +286,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
         HistoryStrip(client, author, document.body!!, onProblem).start(scope)
         val presence = Presence(client, author, emptyFlow(), clock, scope) { failure -> log.warn(failure) { "Presence tracking failed." } }
         chrome.start(scope, client.state, presence.roster, client.online)
-        launch { presence.update(actor, status = null, lastActedAt = clock(), waiting = false) }
+        launch { presence.update(actor, status = null, lastActedAt = clock()) }
         if (access is Access.Keyed && !isLoopbackHost(window.location.hostname)) offerRepair(scope, client)
         reloadOnAnotherBoard(scope, client, pin)
 

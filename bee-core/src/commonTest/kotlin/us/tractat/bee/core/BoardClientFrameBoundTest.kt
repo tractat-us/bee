@@ -177,7 +177,7 @@ class BoardClientFrameBoundTest {
         relay.openHost()
         val alex = client(relay, overBound())
         val presence = Presence(alex, A, emptyFlow(), { now() }, backgroundScope, onFailure = {})
-        presence.update(PeerIdentity.human("alex"), status = null, lastActedAt = now(), waiting = false)
+        presence.update(PeerIdentity.human("alex"), status = null, lastActedAt = now())
         val boards = mutableListOf<BoardState>()
         backgroundScope.launch { alex.state.collect { boards += it } }
         alex.connect()

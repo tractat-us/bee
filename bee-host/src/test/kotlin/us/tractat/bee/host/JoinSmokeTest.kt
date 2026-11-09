@@ -88,7 +88,7 @@ class JoinSmokeTest {
                 val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, bridgeScope) { throw it }
                 withTimeout(10.seconds) { board.online.first { it } }
                 val link = withTimeout(10.seconds) { claims.link.filterNotNull().first() }
-                presence.update(ada, status = "smoke", lastActedAt = clock(), waiting = false)
+                presence.update(ada, status = "smoke", lastActedAt = clock())
                 val seen = withTimeoutOrNull(10.seconds) {
                     host.state.first { state -> state.presence.entries.values.any { it.value?.claimsNode == link.node } }
                 }

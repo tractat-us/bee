@@ -2,6 +2,7 @@ package us.tractat.bee.core
 
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import us.tractat.kuilt.core.PumpVerdict
 import us.tractat.kuilt.core.pumpIn
 import us.tractat.kuilt.crdt.EphemeralMapTracker
@@ -25,8 +27,10 @@ import kotlin.time.Instant
  * within [LivePresence.TTL].**
  *
  * The entry is whatever [update] last set, posted under [author] with the node of the peer's
- * newest claims link ([PresenceEntry.claimsNode]). Each post carries a clock that only grows, so
- * the newest post wins on every replica.
+ * newest claims link ([PresenceEntry.claimsNode]) and whether any of its [waiting] blocks is in
+ * progress. Each post carries a clock that only grows, so the newest post wins on every replica.
+ * Both are read as the post is made, under the lock that hands out its clock, so the newest post
+ * always carries the newest of each: no writer can post a stale `waiting` (bee#165).
  *
  * The node is the newest one [claimsNodes] gave, and it stays named while that link is down: the
  * host departs this peer `Crashed` once the voter drops the node it names (bee#28). A rebuilt link
@@ -51,6 +55,7 @@ class Presence(
     private val mutex = Mutex()
     private val facts = MutableStateFlow<Facts?>(null)
     private val claimsNode = MutableStateFlow<NodeId?>(null)
+    private val waits = MutableStateFlow(0)
     private var lastClock = 0L
 
     /** Everyone attached, as this peer's replica sees them. */
@@ -73,9 +78,28 @@ class Presence(
     }
 
     /** Sets what this peer shows, and posts it at once. */
-    suspend fun update(identity: PeerIdentity, status: String?, lastActedAt: Instant, waiting: Boolean) {
-        facts.value = Facts(identity, status, lastActedAt, waiting)
+    suspend fun update(identity: PeerIdentity, status: String?, lastActedAt: Instant) {
+        facts.value = Facts(identity, status, lastActedAt)
         post()
+    }
+
+    /**
+     * Runs [block] with this peer shown waiting: it [update]s at the start, and posts again at the
+     * end, which counts as acting, since waiting is never quiet. Blocks may overlap, as an HTTP
+     * session's calls do: the peer shows waiting while any is in progress, through every post
+     * meanwhile. The count is taken before anything can suspend and given back however the block
+     * ends, so a cancelled wait never leaves the peer shown waiting.
+     */
+    suspend fun <T> waiting(identity: PeerIdentity, status: String?, lastActedAt: Instant, block: suspend () -> T): T {
+        waits.update { it + 1 }
+        try {
+            update(identity, status, lastActedAt)
+            return block()
+        } finally {
+            waits.update { it - 1 }
+            touch(clock())
+            withContext(NonCancellable) { post() }
+        }
     }
 
     /**
@@ -91,13 +115,13 @@ class Presence(
             val current = facts.value ?: return
             val now = clock().toEpochMilliseconds()
             lastClock = maxOf(lastClock + 1, now)
-            current.entry(claimsNode.value) to lastClock
+            current.entry(claimsNode.value, waiting = waits.value > 0) to lastClock
         }
         client.mutate { it.postPresence(author, entry, at) }
     }
 
-    private data class Facts(val identity: PeerIdentity, val status: String?, val lastActedAt: Instant, val waiting: Boolean) {
-        fun entry(claimsNode: NodeId?) = PresenceEntry(identity, claimsNode, status, lastActedAt, waiting)
+    private data class Facts(val identity: PeerIdentity, val status: String?, val lastActedAt: Instant) {
+        fun entry(claimsNode: NodeId?, waiting: Boolean) = PresenceEntry(identity, claimsNode, status, lastActedAt, waiting)
     }
 
     companion object {
