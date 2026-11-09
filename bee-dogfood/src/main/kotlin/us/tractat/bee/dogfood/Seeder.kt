@@ -15,7 +15,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.delay
 import java.net.URLEncoder
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The board's MCP tools, as the seeder calls them: a tool's name and arguments in, its JSON answer out. */
@@ -42,18 +45,39 @@ enum class Outcome {
 /**
  * Draws [SeedSurface]s on a board through its MCP tools, each whole: one it doesn't find is opened,
  * one it finds is redrawn in place under the same id, so re-seeding never duplicates a surface.
+ *
+ * A session that has just joined reads its own replica of the board, which may not have caught up
+ * yet: its first `bee_board` can miss a surface that is there, and the open is then refused. The
+ * seeder takes that refusal as "not caught up", reads the board again after [retryAfter], and
+ * decides afresh, up to [attempts] times. The bridge offers no caught-up signal to wait on instead.
  */
-class Seeder(private val tools: BoardTools) {
-    suspend fun seed(surfaces: List<SeedSurface>): Map<String, Outcome> {
+class Seeder(
+    private val tools: BoardTools,
+    private val retryAfter: Duration = 250.milliseconds,
+    private val attempts: Int = 40,
+) {
+    suspend fun seed(surfaces: List<SeedSurface>): Map<String, Outcome> = surfaces.associate { it.id to draw(it) }
+
+    private suspend fun draw(surface: SeedSurface): Outcome {
+        repeat(attempts - 1) {
+            try {
+                return drawOnce(surface)
+            } catch (refused: ToolRefused) {
+                if (refused.tool != OPEN || ALREADY !in refused.reason) throw refused
+                delay(retryAfter)
+            }
+        }
+        return drawOnce(surface)
+    }
+
+    private suspend fun drawOnce(surface: SeedSurface): Outcome {
         val board = tools.call(BOARD, emptyMap())
         val open = board.getValue("open").jsonArray.associate { it.jsonObject.string("surfaceId") to it.jsonObject }
         val closed = board.getValue("closed").jsonArray.map { it.jsonPrimitive.content }.toSet()
-        return surfaces.associate { surface ->
-            surface.id to when {
-                surface.id in open -> if (drawn(open.getValue(surface.id), surface)) Outcome.Unchanged else update(surface, Outcome.Updated)
-                surface.id in closed -> update(surface, Outcome.UpdatedClosed)
-                else -> open(surface)
-            }
+        return when {
+            surface.id in open -> if (drawn(open.getValue(surface.id), surface)) Outcome.Unchanged else update(surface, Outcome.Updated)
+            surface.id in closed -> update(surface, Outcome.UpdatedClosed)
+            else -> open(surface)
         }
     }
 
@@ -93,8 +117,14 @@ class Seeder(private val tools: BoardTools) {
         const val BOARD = "bee_board"
         const val OPEN = "bee_surface_open"
         const val UPDATE = "bee_surface_update"
+
+        /** What `bee_surface_open` says of a surface already on the board (BeeBridge.open). */
+        const val ALREADY = "is already on the board"
     }
 }
+
+/** A tool's error answer: [tool] refused, saying [reason]. */
+class ToolRefused(val tool: String, val reason: String) : IllegalStateException("$tool was refused: $reason")
 
 
 /**
@@ -107,7 +137,7 @@ class McpBoardTools private constructor(private val http: HttpClient, private va
     override suspend fun call(name: String, arguments: Map<String, JsonElement>): JsonObject {
         val result = client.callTool(name, arguments)
         val text = result.content.filterIsInstance<TextContent>().joinToString("\n") { it.text }
-        check(result.isError != true) { "$name was refused: $text" }
+        if (result.isError == true) throw ToolRefused(name, text)
         return Json.parseToJsonElement(text).jsonObject
     }
 

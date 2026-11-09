@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -20,6 +21,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -55,11 +57,11 @@ class SeedOnHostTest {
             val second = seed(url, surfaces)
             val third = seed(url, listOf(changed))
             val board = withTimeout(10.seconds) { host.state.first { PlanBoard.SURFACE_ID in it.openSurfaces() } }
-            val read = readBoard(url)
-            val planNow = read.getValue("open").jsonArray.map { it.jsonObject }.single { it.string("surfaceId") == PlanBoard.SURFACE_ID }
             val key = changed.data.keys.single()
+            val read = readBoard(url) { open(it).any { surface -> surface.string("surfaceId") == PlanBoard.SURFACE_ID && key in surface.obj("data") } }
+            val planNow = open(read).single { it.string("surfaceId") == PlanBoard.SURFACE_ID }
             val cards = planNow.obj("data").obj(key).obj("cards").obj("items")
-            val ids = read.getValue("open").jsonArray.map { it.jsonObject.string("surfaceId") }
+            val ids = open(read).map { it.string("surfaceId") }
             assertAll(
                 { assertEquals(surfaces.associate { it.id to Outcome.Opened }, first, "a first seed opens all three") },
                 { assertEquals(surfaces.associate { it.id to Outcome.Unchanged }, second, "a second seed changes nothing") },
@@ -82,12 +84,22 @@ class SeedOnHostTest {
         }
     }
 
-    private suspend fun readBoard(url: String): JsonObject {
+    /** Reads the board through bee_board as a separate session, until [ready] holds: its replica catches up. */
+    private suspend fun readBoard(url: String, ready: (JsonObject) -> Boolean): JsonObject {
         val tools = McpBoardTools.join(url, "reader")
         return try {
-            tools.call(Seeder.BOARD, emptyMap())
+            withTimeout(10.seconds) {
+                var board = tools.call(Seeder.BOARD, emptyMap())
+                while (!ready(board)) {
+                    delay(100.milliseconds)
+                    board = tools.call(Seeder.BOARD, emptyMap())
+                }
+                board
+            }
         } finally {
             tools.leave()
         }
     }
+
+    private fun open(board: JsonObject): List<JsonObject> = board.getValue("open").jsonArray.map { it.jsonObject }
 }
