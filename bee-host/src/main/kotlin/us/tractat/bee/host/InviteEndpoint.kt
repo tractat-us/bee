@@ -9,9 +9,15 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import kotlinx.serialization.json.Json
+import us.tractat.bee.core.InviteEnd
 import us.tractat.bee.core.InviteLinks
+import us.tractat.bee.core.InviteWire
+import us.tractat.bee.core.MintedInvite
 import us.tractat.bee.core.PairingWire
+import us.tractat.bee.core.Redeemed
+import us.tractat.bee.core.Redemption
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -28,26 +34,66 @@ sealed interface Invitation {
     class Open(val name: String, val addresses: () -> List<String>) : Invitation
 
     /**
-     * A host behind a proxy ([Reach.Public]): its link is its public [url], bare. It holds no key,
-     * since a hosted board's join link admits no one ([JoinLink.Off]): whoever opens it pairs, and
-     * anyone already on admits them, so every admitted viewer may invite (Iain, 2026-11-08).
+     * A host behind a proxy ([Reach.Public]), at its public [url]. Its join link's key admits no
+     * one ([JoinLink.Off]); each invite is minted instead, from [invites]: a link that admits
+     * whoever opens it, for a day (#215). Every admitted viewer may mint one.
      */
-    data class Public(val url: PublicUrl) : Invitation
+    class Public(val url: PublicUrl, val invites: Invites) : Invitation
 }
 
+/** The longest redemption body: a 43-byte secret, a name of at most 40 characters in UTF-8, and JSON's keys. */
+private const val MAX_REDEMPTION_BYTES = 512
+
 /**
- * The host's join link at [InviteLinks.PATH], for a page to show as a QR code. On an
+ * The host's invites at [InviteLinks.PATH].
+ *
+ * `GET` gives a page the join link to show as a QR code, or says the page may mint one. On an
  * [Invitation.Open] host it answers the owner alone, a [Caller.local] caller with no key, read as
  * the socket gate reads it ([peers]), with a 403 to anyone else: another device holds a key
  * already, and doesn't pass it on. On an [Invitation.Public] host it answers any caller whose
- * `?k=` the host admits ([Pairing.admits]), since the link holds no key. A host that is
- * [Invitation.Closed] answers 404, and the page offers no invite.
+ * `?k=` the host admits ([Pairing.admits]) with the bare public URL and [InviteLinks.Joins.Anywhere],
+ * which tells the page to mint its link. A host that is [Invitation.Closed] answers 404, and the
+ * page offers no invite.
  *
  * An [Invitation.Open] link names the port the call arrived on ([arrivals]): the port the host is
  * bound to, and holds [Pairing.joinKey]'s key, which goes into the response only, never a log.
- * An [Invitation.Public] link is the public URL alone, with no key, whatever port the proxy dialled.
+ *
+ * On an [Invitation.Public] host only (others answer 404):
+ *
+ * - `POST` [InviteLinks.PATH], with an admitted `?k=`, mints an invite ([Invites.mint]) and answers
+ *   its [MintedInvite]: the public URL with the secret in its fragment, `#i=<secret>`. That answer
+ *   is the only place the secret ever appears.
+ * - `POST` [InviteWire.REDEEM_PATH], with a [Redemption] as its body (at most [MAX_REDEMPTION_BYTES],
+ *   read no further), needs no key: the secret is the capability. It answers a [Redeemed]: a device
+ *   key, or why not, with a status a proxy's own page can't be mistaken for.
  */
 fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAddress, arrivals: ArrivalAddress) {
+    post(InviteLinks.PATH) {
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        if (invitation !is Invitation.Public) return@post call.respond(HttpStatusCode.NotFound, "Only a hosted board mints invites: this one's join link is at GET.")
+        if (!pairing.admits(keyOf(call))) return@post call.respond(HttpStatusCode.Forbidden, "Only someone already on the board may invite.")
+        when (val minted = invitation.invites.mint()) {
+            is Mint.Minted -> {
+                val link = "${invitation.url.page}#${InviteWire.SECRET_PARAM}=${minted.secret.value}"
+                call.respondText(Json.encodeToString(MintedInvite.serializer(), MintedInvite(link, minted.expiresAt)), ContentType.Application.Json)
+            }
+            Mint.TooMany -> call.respond(HttpStatusCode.TooManyRequests, "Too many invites are live: the oldest lapses within a day.")
+        }
+    }
+    post(InviteWire.REDEEM_PATH) {
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        if (invitation !is Invitation.Public) return@post call.respond(HttpStatusCode.NotFound, "Only a hosted board has invites.")
+        val body = call.receiveAtMost(MAX_REDEMPTION_BYTES)
+            ?: return@post call.respondText("A redemption is a secret and a name, and nothing more.", status = HttpStatusCode.PayloadTooLarge)
+        val redemption = try {
+            Json.decodeFromString(Redemption.serializer(), body)
+        } catch (_: IllegalArgumentException) {
+            // kotlinx.serialization's SerializationException is an IllegalArgumentException.
+            return@post call.respondText("A redemption is JSON: an invite and a name.", status = HttpStatusCode.BadRequest)
+        }
+        val redeemed = invitation.invites.redeem(peers.of(call), redemption.invite, redemption.name)
+        call.respondText(Json.encodeToString(Redeemed.serializer(), redeemed), ContentType.Application.Json, statusOf(redeemed))
+    }
     get(InviteLinks.PATH) {
         call.response.header(HttpHeaders.CacheControl, "no-store")
         val keyed = { "?${PairingWire.KEY_PARAM}=${pairing.joinKey.value}" }
@@ -64,6 +110,16 @@ fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAd
                 InviteLinks(numeric = emptyList(), named = invitation.url.page, joins = InviteLinks.Joins.Anywhere)
             }
         }
+    }
+}
+
+private fun statusOf(redeemed: Redeemed): HttpStatusCode = when (redeemed) {
+    is Redeemed.Key -> HttpStatusCode.OK
+    is Redeemed.Refused -> when (redeemed.reason) {
+        InviteEnd.Unknown -> HttpStatusCode.NotFound
+        InviteEnd.Lapsed, InviteEnd.Used -> HttpStatusCode.Gone
+        InviteEnd.TooManyTries -> HttpStatusCode.TooManyRequests
+        InviteEnd.BadName -> HttpStatusCode.BadRequest
     }
 }
 

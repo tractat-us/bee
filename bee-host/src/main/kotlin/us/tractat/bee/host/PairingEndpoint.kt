@@ -72,10 +72,10 @@ private fun device(call: ApplicationCall, peers: PeerAddress) =
     Device(peers.of(call), screenName(call.request.queryParameters[PairingWire.SCREEN_PARAM]))
 
 /**
- * This call's body as text, or null if it is longer than [max] bytes. Anyone may call a pairing
+ * This call's body as text, or null if it is longer than [max] bytes. Anyone may call a pairing or invite
  * route, so the host reads at most [max] + 1 bytes of a body, whatever its length says.
  */
-private suspend fun ApplicationCall.receiveAtMost(max: Int): String? {
+internal suspend fun ApplicationCall.receiveAtMost(max: Int): String? {
     if ((request.contentLength() ?: 0) > max) return null
     val body = receiveChannel().readRemaining(max + 1L).readByteArray()
     return body.takeIf { it.size <= max }?.decodeToString()
