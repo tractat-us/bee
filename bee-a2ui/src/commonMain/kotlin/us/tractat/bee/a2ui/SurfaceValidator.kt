@@ -33,6 +33,9 @@ object SurfaceValidator {
      */
     const val BOARD = "Board"
 
+    /** People and agents talking: binds `messages`, appended `{id, author, text, at}` ([NotionActions]). */
+    const val CHAT = "Chat"
+
     /** The URL schemes a Board card's `href` may use. The page opens it, so never `javascript:`. */
     private val CARD_HREF_SCHEMES = listOf("http://", "https://")
 

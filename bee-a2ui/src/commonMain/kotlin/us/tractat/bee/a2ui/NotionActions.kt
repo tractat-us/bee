@@ -4,9 +4,19 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Instant
 
 /** The data write a Notions action makes beside its record: [value] at the JSON Pointer [path]. */
-data class NotionEdit(val path: String, val value: JsonElement)
+sealed interface NotionEdit {
+    val path: String
+    val value: JsonElement
+
+    /** [value] written at [path], from the register just read (A13). */
+    data class Write(override val path: String, override val value: JsonElement) : NotionEdit
+
+    /** [value] appended as a new entry of the append-only array at [path] (A12). */
+    data class Append(override val path: String, override val value: JsonElement) : NotionEdit
+}
 
 /**
  * What `Poll` and `Board` actions write (spec §5.6, plan Task 11), read from the surface the actor
@@ -30,13 +40,19 @@ object NotionActions {
     /** A `Board` drop: context `{card, column}`. */
     const val DROP = "drop"
 
+    /** A `Chat` send: context `{id, text}`. */
+    const val SEND = "send"
+
+    /** The most characters, in UTF-16 code units as a page's `maxlength` counts them, a Chat message holds. */
+    const val MAX_MESSAGE_LENGTH = 2000
+
     /**
      * The edit [action] by [actor] makes on [view], or null for an action that only records.
      *
      * @throws IllegalArgumentException for an answer naming no option of the poll, or a drop naming
      *   a card or column the board doesn't hold
      */
-    fun edit(view: SurfaceView, action: A2uiAction, actor: String): NotionEdit? {
+    fun edit(view: SurfaceView, action: A2uiAction, actor: String, at: Instant): NotionEdit? {
         val component = view.components[action.sourceComponentId] ?: return null
         return when (component.type() to action.name) {
             SurfaceValidator.POLL to ANSWER -> answer(view, component, action, actor)
@@ -53,7 +69,7 @@ object NotionActions {
         require(option in optionIds(view.at(poll.path("options")))) {
             "Poll \"${action.sourceComponentId}\" has no option \"$option\"."
         }
-        return NotionEdit("${poll.path("answers")}/${SurfaceFormat.escapeSegment(actor)}", JsonPrimitive(option))
+        return NotionEdit.Write("${poll.path("answers")}/${SurfaceFormat.escapeSegment(actor)}", JsonPrimitive(option))
     }
 
     private fun drop(view: SurfaceView, board: JsonObject, action: A2uiAction): NotionEdit {
@@ -62,7 +78,7 @@ object NotionActions {
         val cards = board.path("cards")
         require(card in view.items(cards)) { "Board \"${action.sourceComponentId}\" has no card \"$card\"." }
         require(column in view.items(board.path("columns"))) { "Board \"${action.sourceComponentId}\" has no column \"$column\"." }
-        return NotionEdit("$cards/items/${SurfaceFormat.escapeSegment(card)}/column", JsonPrimitive(column))
+        return NotionEdit.Write("$cards/items/${SurfaceFormat.escapeSegment(card)}/column", JsonPrimitive(column))
     }
 
     private fun optionId(entry: JsonElement): String? = when (entry) {
