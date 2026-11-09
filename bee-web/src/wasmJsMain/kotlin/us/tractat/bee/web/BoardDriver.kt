@@ -23,7 +23,7 @@ import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
-import us.tractat.kuilt.crdt.JsonCrdt
+import us.tractat.bee.core.RecordId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.crdt.ReplicaId
@@ -41,6 +41,8 @@ import kotlin.time.Instant
  *   value, and remote changes to it render once it's released.
  * - **A record's basis is captured inside the transform** that appends it, so it names exactly the
  *   state the record joins (`BasisTest.basisCapturedAtActionTimeIgnoresLaterMerges`).
+ * - **A pressed Button reads sent until its record is handled** ([SentButtons], bee#213), and a
+ *   press on it meanwhile is refused, so a double click writes one record.
  * - **A person's answer to an orphan decision is proposed by this page** (spec §6.4): it records
  *   the answer, then proposes the `Reassign` or `Release` through the person's own claims
  *   ([OrphanAnswering.ByPerson]). A room screen can't answer: its answer is refused, never recorded.
@@ -66,6 +68,7 @@ class BoardDriver(
     /** What the renderer shows for each surface: the last view rendered, held paths included. */
     private val rendered = mutableMapOf<String, SurfaceView>()
     private val placeholders = mutableMapOf<String, Element>()
+    private val sent = SentButtons { surfaceId, componentId, isSent -> NotionsSent.markSent(root, surfaceId, componentId, isSent) }
 
     /** Renders the board as it changes, and records every action, until [scope] ends. */
     fun start(scope: CoroutineScope): Job {
@@ -76,8 +79,12 @@ class BoardDriver(
             launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
             launch {
                 acted.collect { (action, seen) ->
+                    // Collected one at a time, so a second press waits here until the first is recorded.
+                    if (sent.waits(action.surfaceId, action.sourceComponentId)) return@collect
+                    val written = record(action, seen) ?: return@collect
+                    sent.pressed(action.sourceComponentId, seen, written.record, written.against)
                     // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
-                    if (record(action, seen) && action.answersAnOrphan()) launch { answer(action, checkNotNull(seen).data) }
+                    if (action.answersAnOrphan()) launch { answer(action, checkNotNull(seen).data) }
                 }
             }
         }
@@ -86,19 +93,22 @@ class BoardDriver(
     private fun show(state: BoardState) {
         val open = state.openSurfaces()
         (rendered.keys + placeholders.keys).filter { it !in open }.forEach { id ->
+            sent.settle(id, null, state)
             render(id, diff(rendered.remove(id), null))
             removePlaceholder(id)
         }
-        open.forEach { id -> show(id, requireNotNull(state.surfaceDoc(id))) }
+        open.forEach { id -> show(id, state) }
     }
 
-    private fun show(id: String, doc: JsonCrdt) {
+    private fun show(id: String, state: BoardState) {
         val view = try {
-            doc.toSurfaceView(id)
+            requireNotNull(state.surfaceDoc(id)).toSurfaceView(id)
         } catch (unreadable: IllegalArgumentException) {
+            sent.settle(id, null, state)
             return showPlaceholder(id, listOf("Surface $id can't be read: ${unreadable.message}"))
         }
         val errors = SurfaceValidator.errors(view)
+        sent.settle(id, view.takeIf { errors.isEmpty() }, state)
         if (errors.isNotEmpty()) return showPlaceholder(id, errors)
         removePlaceholder(id)
         val held = inputs.held(id)
@@ -149,12 +159,15 @@ class BoardDriver(
      * when they acted, names the orphaning the transform reads ([OrphanDecision.answered]). So the
      * answer lands in the round they answered, and [answer]'s proposal, fenced by [seen], decides
      * that same one; a round that landed in between refuses it (bee#83).
+     *
+     * @return the record appended, with the surface as the board held it then; null if refused
      */
-    private suspend fun record(action: A2uiAction, seen: SurfaceView?): Boolean {
+    private suspend fun record(action: A2uiAction, seen: SurfaceView?): Written? {
         if (answering == OrphanAnswering.Refused && action.answersAnOrphan()) {
             onProblem("A room screen can't answer ${action.surfaceId}: answer it from your own page.")
-            return false
+            return null
         }
+        var written: Written? = null
         try {
             client.mutate { state ->
                 val record = ActionRecord(
@@ -168,18 +181,22 @@ class BoardDriver(
                 )
                 val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
                 if (action.answersAnOrphan()) OrphanDecision.answered(seen?.data, view.data)
-                val written = NotionActions.edit(view, action, actor.toString())
+                val edited = NotionActions.edit(view, action, actor.toString())
                     ?.let { state.updateData(author, action.surfaceId, it.path, it.value) }
-                    ?: return@mutate state.appendRecord(author, record)
-                val recorded = state.piece(written).appendRecord(author, record)
-                Patch(written.delta.piece(recorded.delta))
+                val recorded = (edited?.let { state.piece(it) } ?: state).appendRecord(author, record)
+                // Read in the transform, so it names the record of whichever run lands.
+                written = Written(recorded.delta.records().single().first, view)
+                edited?.let { Patch(it.delta.piece(recorded.delta)) } ?: recorded
             }
-            return true
+            return checkNotNull(written)
         } catch (refused: IllegalArgumentException) {
             onProblem("Couldn't record ${action.name} on ${action.surfaceId}: ${refused.message}")
-            return false
+            return null
         }
     }
+
+    /** Record [record], appended while the board held its surface as [against]. */
+    private data class Written(val record: RecordId, val against: SurfaceView)
 
     /**
      * Proposes what the person chose, if [action] answers an orphan decision, for the orphaning

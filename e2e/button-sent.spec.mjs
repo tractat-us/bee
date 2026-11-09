@@ -64,14 +64,20 @@ test('a pressed button reads sent at once, with no agent answering, and a double
   // Nobody waits on this surface: whatever the button shows, the page showed it by itself.
   await button.dblclick();
   await expect(button).toHaveAttribute('aria-disabled', 'true', { timeout: 2_000 });
-  // The name a screen reader hears is unchanged, and the button stays focusable.
+  // The name a screen reader hears is unchanged, and the button stays focusable: aria-disabled,
+  // not disabled (as Sketch's Send, bee#193). Playwright reads aria-disabled as disabled.
   await expect(button).toHaveAccessibleName('Yes, file it');
-  await expect(button).toBeEnabled();
+  await expect(button).toBeDisabled();
+  expect(await button.evaluate((b) => b.disabled)).toBe(false);
+  await button.focus();
+  await expect(button).toBeFocused();
 
   await expect(records(page, id)).toHaveCount(1, { timeout: 5_000 });
-  // A second record would land within a moment of the first; give it one.
+  // A second record would land within a moment of the first; give it one. Then press it again,
+  // by mouse and key: force, since Playwright won't click what reads disabled.
   await page.waitForTimeout(1_000);
-  await button.click();
+  await button.click({ force: true });
+  await page.keyboard.press('Enter');
   await page.waitForTimeout(500);
   await expect(records(page, id)).toHaveCount(1);
 });
@@ -108,7 +114,7 @@ test('the sent look clears when the surface changes under the button, unhandled'
   await button.click();
   await expect(button).toHaveAttribute('aria-disabled', 'true', { timeout: 2_000 });
   // The way the host answers a wrong pairing code: new data on the surface, the record never done.
-  await agent.call('bee_surface_update', { surfaceId: id, data: { note: "That didn't work: try again." } });
+  await agent.call('bee_surface_update', { surfaceId: id, data: { '/note': "That didn't work: try again." } });
   await expect(surface(page, id)).toContainText("That didn't work", { timeout: 10_000 });
   await expect(button).not.toHaveAttribute('aria-disabled', 'true');
   await button.click();

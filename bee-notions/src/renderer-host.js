@@ -106,6 +106,25 @@ export function subscribeData(rootElement, surfaceId, path, handler) {
 }
 
 /**
+ * Shows Button `componentId` on surface `surfaceId` as sent, or not (bee#213): `aria-disabled` on
+ * its `<button>`, so a screen reader hears the state while the text stays as it is. It stays
+ * focusable and clickable, as Sketch's Send does (bee#193); bee's driver refuses a press on a sent
+ * button. The basic catalog renders into light DOM, as `<a2ui-basic-button>`, and Lit leaves an
+ * attribute it doesn't bind alone. A button not on the page is skipped.
+ */
+export function markSent(rootElement, surfaceId, componentId, sent) {
+  const surface = surfaceElement(rootElement, surfaceId);
+  if (!surface) return;
+  for (const element of surface.querySelectorAll('a2ui-basic-button')) {
+    if (element.context?.componentModel?.id !== componentId) continue;
+    const button = element.querySelector(':scope > button');
+    if (!button) continue;
+    if (sent) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+  }
+}
+
+/**
  * Reports focus entering and leaving a `TextField` under `rootElement`, as JSON
  * `{surfaceId, componentId, focused}`, or `{error}` for a field it can't place. The basic
  * catalog renders into light DOM, as `<a2ui-basic-textfield>`, so focus events reach the root
