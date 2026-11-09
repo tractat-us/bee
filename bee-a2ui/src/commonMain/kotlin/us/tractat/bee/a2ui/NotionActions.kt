@@ -79,6 +79,14 @@ object NotionActions {
         else -> null
     }
 
+    /** The id of the Chat in [view] whose `messages` binds [pointer], or null if no Chat binds it. */
+    @Suppress("UNUSED_PARAMETER")
+    fun chatAt(view: SurfaceView, pointer: String): String? = null
+
+    /** The message [actor] posts to Chat [chat] with [entry]: not built yet. */
+    @Suppress("UNUSED_PARAMETER")
+    fun post(chat: String, entry: JsonElement, actor: String, id: String, at: Instant): JsonObject = TODO("bee#214 review")
+
     /** A message from [actor], stamped [at], appended to the Chat's messages: `{id, author, text, at}`. */
     private fun send(chat: JsonObject, action: A2uiAction, actor: String, at: Instant): NotionEdit {
         val id = action.string("id")

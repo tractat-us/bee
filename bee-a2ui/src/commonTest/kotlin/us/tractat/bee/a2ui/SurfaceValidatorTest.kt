@@ -194,8 +194,8 @@ class SurfaceValidatorTest {
 
     /**
      * A writer may append only a whole message: `{id, author, text, at}`, each a string, its text
-     * neither blank nor past the cap. Rendering doesn't check it, so one bad message never hides a
-     * whole Chat; the page shows what it can.
+     * neither blank nor past the cap, its id held by no earlier message. Rendering doesn't check it,
+     * so one bad message never hides a whole Chat; the page shows what it can.
      */
     @Test
     fun appendErrorsNameAMalformedChatMessage() {
@@ -207,6 +207,7 @@ class SurfaceValidatorTest {
             buildJsonObject { put("id", "m4"); put("text", "who?"); put("at", "2026-11-09T12:00:00Z") },
             JsonPrimitive("just text"),
             message("m6", "x".repeat(NotionActions.MAX_MESSAGE_LENGTH)),
+            message("m1", "again"),
         )
         val withMessages = view(chat).copy(data = buildJsonObject { put("messages", JsonArray(messages)) }, appended = setOf("/messages"))
         assertAll(
@@ -218,6 +219,7 @@ class SurfaceValidatorTest {
                             "past the ${NotionActions.MAX_MESSAGE_LENGTH} a message holds.",
                         "Component \"root\" is a Chat whose message at /messages/3 isn't {id, author, text, at}, each a string.",
                         "Component \"root\" is a Chat whose message at /messages/4 isn't {id, author, text, at}, each a string.",
+                        "Component \"root\" is a Chat whose message at /messages/6 has id \"m1\", which /messages/0 holds.",
                     ),
                     SurfaceValidator.appendErrors(withMessages),
                 )

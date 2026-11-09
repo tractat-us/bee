@@ -116,6 +116,69 @@ class NotionActionsTest {
         )
     }
 
+    /** A page's send reusing an id the Chat already holds is refused, never appended as a second "m1". */
+    @Test
+    fun aSendReusingAnIdIsRefused() {
+        val refused = assertFailsWith<IllegalArgumentException> {
+            NotionActions.edit(chat("m1"), action("chat", NotionActions.SEND, "id" to "m1", "text" to "again"), "human:alex", AT)
+        }
+        assertEquals("A message on Chat \"chat\" reuses id \"m1\", which an earlier message holds.", refused.message)
+    }
+
+    /** An append to a path a Chat binds is a post; any other path isn't. */
+    @Test
+    fun chatAtNamesTheChatThatBindsAPath() {
+        assertAll(
+            { assertEquals("chat", NotionActions.chatAt(chat(), "/talk/messages")) },
+            { assertNull(NotionActions.chatAt(chat(), "/talk/other")) },
+            { assertNull(NotionActions.chatAt(poll(), "/options")) },
+        )
+    }
+
+    /** A session posts only text: its message is stamped with the session's identity, a fresh id and the time (bee#214). */
+    @Test
+    fun aPostIsStampedAsItsSession() {
+        val stamped = buildJsonObject {
+            put("id", "p1")
+            put("author", ADA)
+            put("text", "Ship it")
+            put("at", "2026-11-09T12:00:00Z")
+        }
+        assertAll(
+            { assertEquals(stamped, NotionActions.post("chat", buildJsonObject { put("text", "Ship it") }, ADA, "p1", AT)) },
+            {
+                assertEquals(
+                    stamped,
+                    NotionActions.post("chat", buildJsonObject { put("text", "Ship it"); put("author", ADA) }, ADA, "p1", AT),
+                    "naming its own identity is fine",
+                )
+            },
+        )
+    }
+
+    /** A post naming someone else, carrying its own id or time, or with no text, is refused, never quietly rewritten. */
+    @Test
+    fun aPostThatSpoofsOrStampsItselfIsRefused() {
+        fun refusal(entry: kotlinx.serialization.json.JsonElement) =
+            assertFailsWith<IllegalArgumentException> { NotionActions.post("chat", entry, ADA, "p1", AT) }.message
+        assertAll(
+            {
+                assertEquals(
+                    "A message on Chat \"chat\" can't name author \"human:alex\": it posts as $ADA.",
+                    refusal(buildJsonObject { put("text", "hi"); put("author", "human:alex") }),
+                )
+            },
+            {
+                assertEquals(
+                    "A message on Chat \"chat\" carries only text: its id, author and at are stamped for it.",
+                    refusal(buildJsonObject { put("text", "hi"); put("id", "mine") }),
+                )
+            },
+            { assertEquals("A message on Chat \"chat\" is {\"text\": \"…\"}; got \"hi\".", refusal(JsonPrimitive("hi"))) },
+            { assertEquals("A message on Chat \"chat\" is empty.", refusal(buildJsonObject { put("text", " ") })) },
+        )
+    }
+
     @Test
     fun anyOtherActionOnlyRecords() {
         val view = poll().let { it.copy(components = it.components + ("go" to component("go", "Button"))) }
@@ -144,13 +207,17 @@ class NotionActionsTest {
         appended = emptySet(),
     )
 
-    private fun chat() = SurfaceView(
+    private fun chat(vararg ids: String) = SurfaceView(
         id = "s",
         catalogId = NOTIONS_CATALOG_ID,
         components = mapOf(
             "chat" to component("chat", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/talk/messages") } },
         ),
-        data = JsonObject(emptyMap()),
+        data = buildJsonObject {
+            putJsonObject("talk") {
+                put("messages", JsonArray(ids.map { id -> buildJsonObject { put("id", id); put("author", "human:sam"); put("text", "hi"); put("at", "2026-11-09T11:00:00Z") } }))
+            }
+        },
         conflicts = emptyMap(),
         appended = emptySet(),
     )
@@ -200,5 +267,6 @@ class NotionActionsTest {
 
     private companion object {
         val AT: Instant = Instant.parse("2026-11-09T12:00:00Z")
+        const val ADA = "agent:ada#0badf00d"
     }
 }
