@@ -65,13 +65,21 @@ class ClaimsVoter private constructor(
         node.propose(ClaimCommand.encode(ClaimCommand.Depart(identity, reason)))
     }
 
-    /** Stops the voter and its relay. The store stays as it is, for the next boot. */
+    /**
+     * Stops the voter and its relay, and returns only once nothing of theirs still runs: no Raft
+     * append, no fold, no mirror publish (bee#151). The store stays as it is, for the next boot,
+     * and is free for whoever takes the data dir next the moment this returns.
+     */
     suspend fun close() {
         // The relay first: its learners' teardown evicts them from the cluster's overlay, which
         // throws once `cluster.close()` has closed the overlay's Quilter.
         relay.cancelAndJoin()
+        // `cluster.close()` only cancels the cluster's scope; it doesn't wait for it. The node's
+        // actor may be inside a store write then, which cancellation can't interrupt (a file write
+        // holds its thread). The cluster's scope is a child of [job], so joining [job] waits for it
+        // (tractat-us/kuilt#3160 asks for a close that joins). Joining [job] also waits out the fold.
         cluster.close()
-        job.cancel()
+        job.cancelAndJoin()
     }
 
     companion object {

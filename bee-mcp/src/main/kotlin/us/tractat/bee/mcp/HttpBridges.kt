@@ -11,6 +11,7 @@ import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,18 +68,34 @@ private val logger = KotlinLogging.logger {}
  *   like any other peer; on loopback or a LAN it changes nothing.
  * @param checkEvery how often the idle check runs
  * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
+ * @param closeServer how a session's server closes: the SDK's own [Server.close]. A test's way to have it fail
  */
-class HttpBridges(
+@Suppress("LongParameterList")
+class HttpBridges internal constructor(
     scope: CoroutineScope,
     private val clock: () -> Instant,
     private val random: Random,
     private val kept: KeptIdentities,
     private val keyKind: (String?) -> PresentedKey,
     private val dialKey: String,
-    private val idleAfter: Duration = IDLE_AFTER,
-    private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
-    private val maxSessions: Int = MAX_SESSIONS,
+    private val idleAfter: Duration,
+    private val checkEvery: Duration,
+    private val maxSessions: Int,
+    private val closeServer: suspend (Server) -> Unit,
 ) {
+    @Suppress("LongParameterList")
+    constructor(
+        scope: CoroutineScope,
+        clock: () -> Instant,
+        random: Random,
+        kept: KeptIdentities,
+        keyKind: (String?) -> PresentedKey,
+        dialKey: String,
+        idleAfter: Duration = IDLE_AFTER,
+        checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
+        maxSessions: Int = MAX_SESSIONS,
+    ) : this(scope, clock, random, kept, keyKind, dialKey, idleAfter, checkEvery, maxSessions, Server::close)
+
     private val supervisor = SupervisorJob(scope.coroutineContext[Job])
     private val work = CoroutineScope(scope.coroutineContext + supervisor + Dispatchers.Default)
     private val http = peerHttpClient()
@@ -128,8 +145,8 @@ class HttpBridges(
      */
     suspend fun close() = withContext(NonCancellable) {
         stopping = true
-        open.toList().forEach { it.end() }
-        departures.toList().joinAll()
+        open.snapshot().forEach { it.end() }
+        departures.snapshot().joinAll()
         supervisor.cancelAndJoin()
         http.close()
     }
@@ -245,10 +262,23 @@ class HttpBridges(
          * Closes the session's server, so its id answers 404 from now on, and departs the bridge.
          * The close departs it too, once connected; [depart] runs once, so a session that never
          * connected departs all the same.
+         *
+         * A server whose close throws still departs, and the host's close goes on to the next
+         * session, the voter and the board's last save. The SDK's (0.16.0) transport close throws
+         * `NoSuchElementException` when a client's GET stream ends during it: it reads its streams
+         * with `values.toList()`, which on one stream calls `iterator().next()` after `size`, while
+         * the stream's own handler removes it from that `ConcurrentHashMap` outside the close's lock.
          */
         suspend fun end() {
-            server.close()
-            depart()
+            try {
+                closeServer(server)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logger.warn(failure) { "${peer.bridge.self}'s MCP session didn't close cleanly; departing it all the same." }
+            } finally {
+                depart()
+            }
         }
 
         /**
@@ -290,6 +320,12 @@ class HttpBridges(
             job.invokeOnCompletion { departures -= job }
         }
     }
+
+    /**
+     * This set's members now, while others come and go. Not `toList()`: on a set of one it reads
+     * `size`, then `iterator().next()`, which throws if the member left in between.
+     */
+    private fun <T> Set<T>.snapshot(): List<T> = ArrayList(this)
 
     /** Which session a call is on: by its `Mcp-Session-Id`, or the one it opened. */
     private fun sessionOf(call: ApplicationCall): Session? = call.request.headers[SESSION_HEADER]?.let(byId::get)
