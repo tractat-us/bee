@@ -20,9 +20,10 @@ kill_timeout = "10s"
   strategy = "rolling"
 
 [env]
-  # Heap sized explicitly for the 512 MB VM below. Idle, the host's heap holds about 26 MB and the
-  # whole process about 180 MB; 256 MB of heap leaves the rest of the VM to metaspace, code cache,
-  # threads and Netty's buffers. Out of memory exits, so Fly restarts the machine.
+  # Heap sized explicitly for the 512 MB VM below. Idle, in this image, the host's heap holds about
+  # 26 MB and the whole process about 135 MB resident (2026-11-08); 256 MB of heap leaves the rest
+  # of the VM to metaspace, code cache, threads and Netty's buffers. Out of memory exits, so Fly
+  # restarts the machine.
   BEE_HOST_OPTS = "-Xmx256m -XX:+ExitOnOutOfMemoryError"
 
 # Provisioned 2026-11-08: `flyctl volumes create bee_data --size 1 --region iad`.
