@@ -34,3 +34,10 @@ dependencies {
     // bee-host's in-memory voter and relay, for the bridge's claims and board tests (Task 7).
     testImplementation(testFixtures(project(":bee-host")))
 }
+
+// PluginCommandsTest reads the plugin's command skills, so a change to one reruns the tests.
+tasks.test {
+    inputs.dir(rootProject.layout.projectDirectory.dir("plugins/bee/skills"))
+        .withPropertyName("pluginSkills")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

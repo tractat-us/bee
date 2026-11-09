@@ -10,8 +10,8 @@ claude plugin install bee@bee --scope local --config 'board_url=http://127.0.0.1
 ```
 
 The repository is private for now, so the first line needs your GitHub access to it. Start
-`claude` in that folder and type `/mcp__plugin_bee_bee__whiteboard`. The session draws on the
-board that `bin/bee-up` started on this machine.
+`claude` in that folder and type `/bee:draw login-flow`, or say "draw the login flow on the
+board". The session draws on the board that `bin/bee-up` started on this machine.
 
 The plugin needs a host that serves MCP over HTTP at `/mcp`. That lands with
 [#122](https://github.com/tractat-us/bee/pull/122). Against an older host, `/mcp` in Claude Code
@@ -23,12 +23,20 @@ shows `bee` as failed.
   board's host. The host runs a bridge for each session, so a plugin session gets the same 12 tools
   and the same briefing as the kit's bridge. Their names carry the plugin's prefix:
   `mcp__plugin_bee_bee__bee_board`, and so on.
-- **Two prompts.** `/mcp__plugin_bee_bee__whiteboard <topic>` whiteboards with the people in the
-  room. `/mcp__plugin_bee_bee__checkin <task>` keeps a status card for the session on the board
-  while it works. Both are the prompts [Setup](setup.md#whiteboard-with-a-session) describes, under
-  the plugin's longer names.
-- **A skill, `bee`.** It tells the session when to use the board, how to wait for an answer, and
-  what never goes on the board. It loads by itself when you mention the board, or by `/bee:bee`.
+- **Two short commands, or plain words.**
+
+    | Type | Or say | What the session does |
+    |---|---|---|
+    | `/bee:draw <topic>` | "draw this on the board", "let's whiteboard it" | Whiteboards with the people in the room until someone says done |
+    | `/bee:checkin [task]` | "check in on the board" | Keeps a status card for the session on the board while it works |
+
+    Each runs the same steps as the server's own prompt,
+    [`whiteboard` or `checkin`](setup.md#whiteboard-with-a-session). Those prompts are also there,
+    under the plugin's longer names: `/mcp__plugin_bee_bee__whiteboard` and
+    `/mcp__plugin_bee_bee__checkin`.
+
+- **A skill, `bee`.** It tells the session how to wait for an answer, what each card's state
+  means, and what never goes on the board. It loads by itself when you mention the board.
 
 ## Pick the board
 

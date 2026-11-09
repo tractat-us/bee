@@ -1,6 +1,6 @@
 ---
 name: bee
-description: Use when the person mentions the bee board, whiteboarding, "put it on the board", "check in on the board", "what's on the board", a click or answer waiting on the board, or before calling any bee_* tool. Says when to draw, how to wait for answers, and what never goes on the board.
+description: Use when the person mentions the bee board or asks what is on it ("what's on the board", "look at bee", "did anyone answer on the board"), when a click or answer may be waiting there, or before calling any bee_* tool. Says how to wait for answers, what each card state means, and what never goes on the board. Drawing goes to the draw skill, status cards to checkin.
 ---
 
 # bee: sharing the board
@@ -16,15 +16,16 @@ server by hand, the same tools also appear as `mcp__bee__bee_board`. Use one ser
 
 ## When to use the board
 
-- **Whiteboarding with the room.** The person types `/mcp__plugin_bee_bee__whiteboard <topic>`.
-  The prompt runs the whole loop: look, draw, keep it current, react to clicks, stop on Done. Asked
-  in plain words ("draw the login flow on the board"), do the same: `bee_board` first, then one
-  surface for the topic.
-- **Checking in while you work.** `/mcp__plugin_bee_bee__checkin <task>` keeps one status card per
-  session, named after its repo, and asks the person for decisions with buttons. Follow the prompt
-  step by step. It names the card and says when to glance for clicks.
-- **Anything else.** Before you draw a component you haven't drawn yet, call `bee_examples`. It
-  returns one working surface for each component the board renders.
+- **Whiteboarding with the room.** `/bee:draw <topic>`, or "draw the login flow on the board", runs
+  the whole loop: look, draw, keep it current, react to clicks, stop on Done.
+- **Checking in while you work.** `/bee:checkin [task]`, or "check in on the board", keeps one
+  status card for the session, named after its repo, and asks the person for decisions with
+  buttons.
+- **Anything else.** Look first with `bee_board`. Before you draw a component you haven't drawn
+  yet, call `bee_examples`. It returns one working surface for each component the board renders.
+
+The server's own prompts, `/mcp__plugin_bee_bee__whiteboard` and `/mcp__plugin_bee_bee__checkin`,
+run the same steps as `/bee:draw` and `/bee:checkin`.
 
 ## Waiting for an answer
 
