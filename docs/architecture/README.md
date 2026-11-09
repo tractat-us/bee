@@ -15,6 +15,7 @@ The spec under `docs/superpowers/specs/` is a plan. As it ships, what it decided
 | Doc | Truth for |
 |---|---|
 | [`product.md`](product.md) | what a person meets: the board, what they do on it, and what it takes to get onto it |
+| [`access.md`](access.md) | who may write to a board and who can take that away: keys, admission, hosts and eviction |
 
 ## Census
 
