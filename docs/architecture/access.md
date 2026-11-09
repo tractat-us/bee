@@ -140,18 +140,18 @@ host** takes the same slot on a host's bubble and clears the role.
 - **A host's command as an action record on the board, the shape Admit uses.** Admit works as a
   record because any writer may admit, so a forged one gains nothing. Make host and Evict are
   privileged, and a record's actor is declared, not attested. Reopen when tractat-us/kuilt#3149
-  gives records an attested author. (#164, this PR)
+  gives records an attested author. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 - **A role written to the board.** Any replica writes the board, so any writer could make itself a
-  host. The board carries a mirror for display only. (#164, this PR)
-- **A role held by name.** Anyone who opens the page with that `?name=` would hold it. (#164, this PR)
+  host. The board carries a mirror for display only. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
+- **A role held by name.** Anyone who opens the page with that `?name=` would hold it. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 - **"The last host can't be removed."** The root rule covers it, and it also stops a host someone
-  made from evicting the board's owner. (#164, this PR)
+  made from evicting the board's owner. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 - **Finding a bubble's key through its presence entry's claims node.** Presence is self-declared,
-  so a forged entry could aim an eviction at someone else's key. (#164, this PR)
+  so a forged entry could aim an eviction at someone else's key. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 - **Refusing a revoked key's new sockets but leaving its live ones.** An evicted page would keep
-  writing until it dropped. (#164, this PR)
+  writing until it dropped. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 - **A menu on an agent's bubble.** An agent shares its person's key, so evicting it would evict the
-  person; agents leave with the key. (#164, this PR)
+  person; agents leave with the key. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 
 ## Open
 
