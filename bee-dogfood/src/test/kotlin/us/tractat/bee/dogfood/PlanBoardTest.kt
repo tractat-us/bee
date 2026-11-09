@@ -5,6 +5,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.SurfaceValidator
+import us.tractat.bee.a2ui.SurfaceView
 import us.tractat.kuilt.test.assertAll
 import kotlin.io.path.Path
 import kotlin.io.path.readText
@@ -68,11 +71,23 @@ class PlanBoardTest {
         assertAll(
             { assertTrue(notDone.all { (id, item) -> cards[id]?.jsonObject?.string("column") == item.string("status") }, "every open item is a card in its column") },
             { assertTrue(cards.keys.count { items[it]?.string("status") == "done" } <= PlanBoard.DONE_SHOWN, "the done column is capped") },
+            {
+                val surface = PlanBoard.surface(real)
+                val view = SurfaceView(
+                    id = surface.id,
+                    catalogId = NOTIONS_CATALOG_ID,
+                    components = surface.components.associateBy { it.string("id") },
+                    data = surface.data,
+                    conflicts = emptyMap(),
+                    appended = emptySet(),
+                )
+                assertEquals(emptyList(), SurfaceValidator.errors(view), "every card's href and detail pass the validator")
+            },
         )
     }
 
     @Test
-    fun aLabelCarriesTheReferenceTitleAndFirstSentenceUnlessDone() {
+    fun aCardLinksItsReferenceAndTitleAndCarriesTheFirstSentenceUnlessDone() {
         val item = PlanYaml.parse(
             """
             kind: issue
@@ -85,9 +100,23 @@ class PlanBoardTest {
             """.trimIndent(),
         )
         val done = JsonObject(item + ("status" to JsonPrimitive("done")))
+        val unlinked = JsonObject(item - "links")
         assertAll(
-            { assertEquals("bee#21 · bee's own development board — Stand it up locally.", PlanBoard.label(item)) },
-            { assertEquals("bee#21 · bee's own development board", PlanBoard.label(done), "a done card drops its summary") },
+            {
+                assertEquals(
+                    mapOf(
+                        "label" to "bee#21 · bee's own development board",
+                        "column" to "next",
+                        "href" to "https://github.com/tractat-us/bee/issues/21",
+                        "detail" to "Stand it up locally.",
+                    ),
+                    PlanBoard.card(item).mapValues { it.value.jsonPrimitive.content },
+                )
+            },
+            { assertEquals("", PlanBoard.card(done).string("detail"), "a done card writes an empty detail, so a landed card loses its line") },
+            { assertEquals("bee#21 · bee's own development board", PlanBoard.card(done).string("label")) },
+            { assertEquals(null, PlanBoard.card(unlinked)["href"], "an item with no GitHub link has no href") },
+            { assertEquals("bee's own development board", PlanBoard.card(unlinked).string("label")) },
             { assertEquals("kuilt#3126", PlanBoard.ref(PlanYaml.parse("links: [{ title: k, url: 'https://github.com/tractat-us/kuilt/pull/3126' }]"))) },
         )
     }

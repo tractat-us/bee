@@ -32,8 +32,8 @@ the same id, so a second run never adds a copy; a surface whose files haven't ch
 ## What the three surfaces show
 
 - **Plan** is [`docs/project/plan.yaml`](project/schema.md) as a board: one column per status,
-  one card per item, each card naming its issue or PR, its title and the first sentence of its
-  summary. Only the five most recently landed items show under Done, with one card counting the
+  one card per item. Each card names its issue or PR and its title, linked to that issue or PR,
+  with the first sentence of its summary on a quieter line below. Only the five most recently landed items show under Done, with one card counting the
   rest, so the board stays readable.
 - **Morning report** is the newest `morning-report*.md` in the main checkout: its title, its TL;DR
   (or first paragraph) and its section headings. Before the first overnight run it says there's

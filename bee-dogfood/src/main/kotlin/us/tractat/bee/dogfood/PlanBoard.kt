@@ -35,8 +35,8 @@ object PlanYaml {
 
 /**
  * The plan as a `Board` notion (bee#21): one column per status in `column_order`, one card per item
- * in `order`. A card's label is all a `Board` card shows, so it carries the item's GitHub reference,
- * its title and, unless it's done, the first sentence of its summary.
+ * in `order`. A card's label is the item's GitHub reference and title, and links to that issue or
+ * PR (`href`, bee#197). Its `detail` line is the first sentence of the summary, unless it's done.
  *
  * Invariant 1 (a physical whiteboard, no clutter): the done column shows only its [DONE_SHOWN] most
  * recently landed cards, and one card counting the rest.
@@ -46,7 +46,9 @@ object PlanYaml {
  * of its column and card ids, and points the `Board`'s bindings there. A card added or removed
  * (the done cap moving included) gets a fresh key, so the board shows exactly this plan; a card
  * that only changes its label or column overwrites in place under the same key. Each set of ids
- * leaves its old key behind until bee#19 gives a write that replaces.
+ * leaves its old key behind until bee#19 gives a write that replaces. For the same reason every
+ * card writes its `detail`, empty when there is none, so a card that lands loses its summary
+ * line; an item that drops its GitHub link keeps its old `href` until then.
  */
 object PlanBoard {
     const val SURFACE_ID = "dogfood-plan"
@@ -72,18 +74,29 @@ object PlanBoard {
         return SeedSurface(SURFACE_ID, TITLE, listOf(root), buildJsonObject { put(key, board) })
     }
 
-    /** A card's label: `bee#21 · Title — First sentence of the summary.` */
-    fun label(item: JsonObject): String {
-        val title = item.string("title")
-        val head = listOfNotNull(ref(item), title).joinToString(" · ")
-        val summary = item.stringOrNull("summary")?.takeUnless { item.string("status") == DONE }
-        return if (summary == null) head else "$head — ${short(summary)}"
+    /** A card for [item]: its [label], its [href] when it has one, and its [detail]. */
+    fun card(item: JsonObject): JsonObject = buildJsonObject {
+        put("label", label(item))
+        put("column", item.string("status"))
+        href(item)?.let { put("href", it) }
+        put("detail", detail(item))
     }
 
+    /** A card's label: `bee#21 · Title`. */
+    fun label(item: JsonObject): String = listOfNotNull(ref(item), item.string("title")).joinToString(" · ")
+
+    /** A card's detail line: the summary's first sentence, or empty when the item is done or has none. */
+    fun detail(item: JsonObject): String =
+        item.stringOrNull("summary")?.takeUnless { item.string("status") == DONE }?.let(::short).orEmpty()
+
     /** The item's first GitHub issue or PR, as `<repo>#<n>`, or null if it links none. */
-    fun ref(item: JsonObject): String? = item["links"]?.jsonArray.orEmpty()
+    fun ref(item: JsonObject): String? = github(item)?.let { "${it.groupValues[1]}#${it.groupValues[2]}" }
+
+    /** The URL of the item's first GitHub issue or PR, which its card's label links to, or null. */
+    fun href(item: JsonObject): String? = github(item)?.value
+
+    private fun github(item: JsonObject): MatchResult? = item["links"]?.jsonArray.orEmpty()
         .firstNotNullOfOrNull { link -> GITHUB.find(link.jsonObject.string("url")) }
-        ?.let { "${it.groupValues[1]}#${it.groupValues[2]}" }
 
     /** [text]'s first sentence, cut to [SUMMARY_CHARS] at a word with an ellipsis. */
     fun short(text: String): String {
@@ -114,15 +127,16 @@ object PlanBoard {
         val done = order.filter { items.getValue(it).string("status") == DONE }
         val shownDone = done.sortedByDescending { items.getValue(it).stringOrNull("landed").orEmpty() }.take(DONE_SHOWN).toSet()
         val shown = order.filter { items.getValue(it).string("status") != DONE || it in shownDone }
-        val cards = shown.associateWith { id -> card(label(items.getValue(id)), items.getValue(id).string("status")) }
+        val cards = shown.associateWith { id -> card(items.getValue(id)) }
         val earlier = done.size - shownDone.size
-        val all = if (earlier > 0) cards + (EARLIER_DONE to card("+ $earlier earlier, in docs/project/plan.yaml", DONE)) else cards
+        val all = if (earlier > 0) cards + (EARLIER_DONE to earlierDone(earlier)) else cards
         return collection(all)
     }
 
-    private fun card(label: String, column: String) = buildJsonObject {
-        put("label", label)
-        put("column", column)
+    /** The card standing for the done items the column doesn't show. */
+    private fun earlierDone(count: Int) = buildJsonObject {
+        put("label", "+ $count earlier, in docs/project/plan.yaml")
+        put("column", DONE)
     }
 
     /** An ordered collection `{items, order}`, in [items]' iteration order. */
