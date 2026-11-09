@@ -136,6 +136,34 @@ class McpHttpTest {
     }
 
     /**
+     * The host runs at most [HttpBridges.MAX_SESSIONS] bridges: the next `initialize` is refused
+     * with a 503 and makes none. A session that ends frees its place.
+     */
+    @Test
+    fun theHostRunsAtMostMaxSessionsBridges() = runBlocking {
+        val host = startHost()
+        try {
+            val url = url(host, "?name=many")
+            val opened = List(HttpBridges.MAX_SESSIONS) { http.post(url) { initializeBody() } }
+            val full = withTimeout(TIMEOUT) { awaitCount(host, HttpBridges.MAX_SESSIONS) }
+            val refused = http.post(url) { initializeBody() }.status
+            val afterRefusal = host.bridges.count
+            http.delete(url) { header(SESSION_HEADER, requireNotNull(opened.first().headers[SESSION_HEADER])) }
+            withTimeout(TIMEOUT) { awaitCount(host, HttpBridges.MAX_SESSIONS - 1) }
+            val again = http.post(url) { initializeBody() }.status
+            assertAll(
+                { assertTrue(opened.all { it.status == HttpStatusCode.OK }, "rig: every session up to the cap opens") },
+                { assertEquals(HttpBridges.MAX_SESSIONS, full, "rig: one bridge per session") },
+                { assertEquals(HttpStatusCode.ServiceUnavailable, refused, "one more is refused") },
+                { assertEquals(HttpBridges.MAX_SESSIONS, afterRefusal, "the refused one made no bridge") },
+                { assertEquals(HttpStatusCode.OK, again, "a session that ended frees its place") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
      * Claude Code's first `initialize` names a protocol version newer than this SDK's, which the
      * SDK answers 400 before Claude Code retries. That session never initialized, so its bridge
      * never reaches the board: no presence, and no departure, when it closes.

@@ -144,6 +144,7 @@ if [ -n "$join" ]; then
     [ -n "$first" ] && origin="http://$first:$port"
     echo "  Or their Claude joins with nothing installed (Java and the kit not needed):"
     echo "      claude mcp add --scope user --transport http bee '$origin/mcp?k=$key&name=<them>'"
+    echo "  (If claude says bee already exists, they run  claude mcp remove --scope user bee  first.)"
     echo "  Plain HTTP on your network: don't put on the board what you wouldn't say in the room."
     if [ -n "$first" ] && command -v pbcopy >/dev/null 2>&1 && printf '%s' "http://$first:$port/?k=$key" | pbcopy; then
         echo "  Copied the first link to your clipboard."
@@ -153,10 +154,10 @@ elif [ "$lan_host" = 1 ]; then
     echo "  The host hasn't logged its join link yet; run bee-up again in a moment to print it."
 fi
 echo
-echo "  Your Claude session:  claude mcp add --scope user --transport http bee 'http://localhost:$port/mcp?name=$name'"
-echo "                        then start claude and type  /mcp__bee__whiteboard"
-echo "  Or, with the kit's bridge:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
-echo "  (If claude says bee already exists, run  claude mcp remove --scope user bee  first.)"
+echo "  Your Claude session:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
+echo "                        then type  /mcp__bee__whiteboard"
+# Not --scope user here: every claude on this machine, dispatched workers too, would join the board.
+echo "  Or, by URL in one folder:  claude mcp add --transport http bee 'http://127.0.0.1:$port/mcp?name=$name'"
 echo "  Stop the host:        bee-up --stop     (log: $log)"
 echo
 bee_open "$me"

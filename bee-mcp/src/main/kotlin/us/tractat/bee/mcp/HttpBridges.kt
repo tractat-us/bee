@@ -58,6 +58,7 @@ private val logger = KotlinLogging.logger {}
  *
  * @param scope the host's scope: the idle check and every bridge's work run under it
  * @param checkEvery how often the idle check runs
+ * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
  */
 class HttpBridges(
     scope: CoroutineScope,
@@ -65,6 +66,7 @@ class HttpBridges(
     private val random: Random,
     private val idleAfter: Duration = IDLE_AFTER,
     private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
+    private val maxSessions: Int = MAX_SESSIONS,
 ) {
     private val supervisor = SupervisorJob(scope.coroutineContext[Job])
     private val work = CoroutineScope(scope.coroutineContext + supervisor + Dispatchers.Default)
@@ -99,6 +101,8 @@ class HttpBridges(
             // A heartbeat on the GET stream, so a client's read timeout never ends a quiet one.
             sseHeartbeatConfig = { period = HEARTBEAT },
             sessionIdleTimeout = Duration.INFINITE,
+            // Beyond this the SDK answers 503 before any bridge is made.
+            maxSessions = maxSessions,
         ) { open(this) }
     }
 
@@ -157,10 +161,19 @@ class HttpBridges(
             inFlight.decrementAndGet()
         }
 
-        /** The session initialized as [sessionId]: files it there, and puts its bridge on the board. */
+        /** Guards [id] and [departing] together: a session either starts, then departs, or never starts. */
+        private val lifecycle = Any()
+
+        /**
+         * The session initialized as [sessionId]: files it there, and puts its bridge on the board.
+         * A session that has already departed stays off the board and out of [byId].
+         */
         fun start(sessionId: String) {
-            id = sessionId
-            byId[sessionId] = this
+            synchronized(lifecycle) {
+                if (departing.get()) return
+                id = sessionId
+                byId[sessionId] = this
+            }
             peer.start()
             bridgeScope.launch { peer.bridge.announce() }
             logger.info { "An MCP client over HTTP joins as ${peer.bridge.self}." }
@@ -191,9 +204,11 @@ class HttpBridges(
          * never initialized was never on the board, so it has nothing to depart.
          */
         fun depart() {
-            if (!departing.compareAndSet(false, true)) return
+            val started = synchronized(lifecycle) {
+                if (!departing.compareAndSet(false, true)) return
+                id
+            }
             val why = reason
-            val started = id
             val job = work.launch(CoroutineName("http-bridge-depart")) {
                 val who = peer.bridge.self
                 val committed = try {
@@ -222,6 +237,8 @@ class HttpBridges(
     private fun bind(call: ApplicationCall) {
         val session = call.attributes.getOrNull(OPENING) ?: return
         val id = call.response.headers[SESSION_HEADER] ?: return
+        // Once: a call may pass through its respond hook more than once.
+        call.attributes.remove(OPENING)
         session.start(id)
     }
 
@@ -253,6 +270,14 @@ class HttpBridges(
         val IDLE_AFTER: Duration = 2.minutes
 
         private val CHECK_EVERY: Duration = 5.seconds
+
+        /**
+         * How many MCP sessions the host runs bridges for at once, counting those still
+         * initializing. Each is a replica and a claims learner in the host's JVM; a room of people
+         * and their sessions is a handful, so 32 is room to spare and a bound on what a key-holder
+         * can make the host carry.
+         */
+        const val MAX_SESSIONS: Int = 32
 
         /**
          * How long a departing bridge waits for its claims link to come up, if it isn't yet. On
@@ -290,9 +315,11 @@ class HttpBridges(
                     proceed()
                 } finally {
                     session?.exit()
-                    sessions.bind(context)
                 }
             }
+            // Before any byte of the answer leaves, so no DELETE naming the new id can come first.
+            // The SDK has set the session's id header by then.
+            onCallRespond { call, _ -> sessions.bind(call) }
         }
     }
 }

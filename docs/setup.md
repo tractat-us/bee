@@ -280,21 +280,31 @@ A Claude session can join the board by URL alone, with no bridge to build and no
 serves MCP over HTTP at `/mcp` and runs a bridge for each session there, so the session gets the
 same tools, prompt and instructions as the stdio bridge.
 
-1. Start the host with `bee-up` (or `bee-host --lan` for a teammate). `bee-up` prints both lines
-   below with your port and key filled in.
-2. Register the URL once:
+This is the path for a teammate's machine. On the host's own machine, keep the kit's bridge:
+`claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'`, which `bee-up` prints. That
+bridge keeps its identity across a host restart, and an HTTP session doesn't
+([#126](https://github.com/tractat-us/bee/issues/126)).
+
+1. Start the host with `bee-up` (or `bee-host --lan`). `bee-up` prints the line below with your
+   address, port and key filled in.
+2. On the teammate's machine, register the URL once. The join link's key goes in `?k=`:
 
     ```sh
-    # On the host's own machine: loopback needs no key.
-    claude mcp add --scope user --transport http bee 'http://localhost:8233/mcp?name=<you>'
-    # On a teammate's machine: the join link's key goes in ?k=.
     claude mcp add --scope user --transport http bee 'http://192.168.1.5:8233/mcp?k=…&name=<them>'
     ```
 
     `?name=` names the session on the board as `agent:<name>-claude#…`. Without it the session
-    is `agent:claude#…`. `--scope user` registers bee for every folder; without it, the server
-    exists only in the folder you ran the command in.
-3. Start `claude` and type `/mcp__bee__whiteboard`.
+    is `agent:claude#…`. `--scope user` registers bee for every folder on their machine; without
+    it, the server exists only in the folder they ran the command in.
+3. They start `claude` and type `/mcp__bee__whiteboard`.
+
+On the host's own machine, a URL needs no key. Register it for one folder only, never with
+`--scope user`: every `claude` started anywhere on the machine, dispatched workers included,
+would join the board and stay on it as a ghost for two minutes after it exits.
+
+```sh
+claude mcp add --transport http bee 'http://127.0.0.1:8233/mcp?name=<you>'
+```
 
 What to expect:
 

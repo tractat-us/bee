@@ -8,8 +8,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
@@ -17,18 +15,7 @@ import kotlinx.io.asSource
 import kotlinx.io.buffered
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
-import us.tractat.bee.core.ClaimsConnection
-import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.HostAddress
-import us.tractat.bee.core.Presence
-import us.tractat.bee.core.SpokeLoom
-import us.tractat.bee.core.askBoardId
-import us.tractat.bee.core.pinnedTo
-import us.tractat.kuilt.core.PeerId
-import us.tractat.kuilt.core.Rendezvous
-import us.tractat.kuilt.crdt.ReplicaId
-import us.tractat.kuilt.raft.NodeId
-import us.tractat.kuilt.websocket.WebSocketAdvertisement
 import java.io.PrintStream
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -36,8 +23,6 @@ import kotlin.random.asKotlinRandom
 import kotlin.system.exitProcess
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 // Lazy, so the logger (whose start-up prints a line to stdout) starts only after main() has
 // pointed System.out at stderr. A plain top-level val starts with MainKt, before main runs.
@@ -51,7 +36,6 @@ private val logger by lazy { KotlinLogging.logger {} }
  * [DEFAULT_HOST]). A join link's key goes on both sockets: it admits a bridge on another machine.
  * Retiring an identity, on `/clear` or on finding itself retired, proposes its `Depart` through Raft.
  */
-@OptIn(ExperimentalUuidApi::class)
 fun main() {
     // stdout carries the MCP protocol, and nothing else may write there. Keep the real stream for
     // the transport and point System.out at stderr, so a log line or a stray print can't corrupt it.
