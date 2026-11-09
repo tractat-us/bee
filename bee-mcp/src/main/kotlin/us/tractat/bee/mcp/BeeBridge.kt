@@ -42,6 +42,7 @@ import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -292,10 +293,15 @@ class BeeBridge(
      * names, so a release decided on one orphaning is rejected once the target is orphaned again
      * (bee#83). A token this table doesn't show as this session's hold is read as an orphan's, so
      * a table that hasn't yet folded the orphaning still proposes the fenced release.
+     *
+     * A rebuilt link is published once it has folded a single entry, so the choice first waits,
+     * up to [RELEASE_CATCH_UP], for the table to fold the entry [token] names; otherwise a hold
+     * of this session's own would be read as an orphan's and its release rejected (bee#195).
      */
     suspend fun release(target: ClaimTarget, token: ClaimToken): Boolean {
         val client = live().client
         val by = beforeWrite()
+        withTimeoutOrNull(RELEASE_CATCH_UP) { client.table.first { it.appliedIndex >= token.index } }
         return if (client.table.value.status(target) == ClaimStatus.Held(by, token)) {
             client.release(target, by, token)
         } else {
@@ -525,6 +531,9 @@ internal sealed interface OwnClaim {
     /** A `Reassign` granted it to this session, under [token], now in the caller's hands: return the record. */
     data class Reassigned(val token: ClaimToken) : OwnClaim
 }
+
+/** How long [BeeBridge.release] waits for its link's table to fold the entry of the token it is given. */
+private val RELEASE_CATCH_UP: Duration = 5.seconds
 
 /** A write the bridge refused, with a message for the agent that names why. */
 open class BridgeRefusal(message: String) : Exception(message)
