@@ -31,8 +31,9 @@ timeout 600 ./gradlew publishToMavenLocal
 ls ~/.m2/repository/us/tractat/bee/
 ```
 
-No credentials or signing key are needed. Without them the build signs nothing and has no Central
-repository, so it can't upload by accident.
+No Central credentials or signing key are needed. Without them the build signs nothing and has no
+Central repository, so it can't upload by accident. You do still need the Tigris credentials that
+resolve kuilt (`settings.gradle.kts`), until bee builds against a kuilt release on Central.
 
 ## The public API
 
@@ -42,9 +43,10 @@ commit the new dump with it, so a reviewer sees the API change in the diff.
 
 ## Cutting a release
 
-1. Make sure bee builds against a kuilt release on Maven Central, not a `-dev` build. The
-   workflow refuses to release otherwise: a `-dev` kuilt is only on Tigris, so nobody could
-   resolve the release's dependencies.
+1. Make sure bee builds against a kuilt release on Maven Central, not a `-dev` build. A `-dev`
+   kuilt is only on Tigris, so nobody could resolve the release's dependencies. The workflow
+   refuses a `-dev` kuilt by name, and it has no Tigris credentials, so any dependency missing
+   from Central fails the build.
 2. Push a tag:
 
    ```bash

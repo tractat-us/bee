@@ -20,8 +20,9 @@ on:
 permissions:
   contents: read
 
+# Keyed on the version, so a tag push and a dispatch for the same release can't upload twice.
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-${{ github.event.inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -36,9 +37,8 @@ jobs:
       ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
       ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
       ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
-      # Org secrets: Tigris credentials for the us.tractat.kuilt Maven repository.
-      S3_BUILD_CACHE_ACCESS_KEY_ID: ${{ secrets.S3_BUILD_CACHE_ACCESS_KEY_ID }}
-      S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
+      # No Tigris credentials, on purpose: a release must resolve every dependency from Maven
+      # Central, as its consumers will. A kuilt that only Tigris serves then fails the build here.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -50,7 +50,9 @@ jobs:
           set -eu
           # A tag v0.1.0 releases 0.1.0. A dispatch names its version explicitly.
           if [ "$EVENT" = "push" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="$INPUT_VERSION"; fi
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+          # [[ =~ ]] matches the whole value. grep would pass a value with a newline in it, and the
+          # second line would then land in GITHUB_ENV as a variable of its own.
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::'$VERSION' is not a release version (x.y.z, optionally -suffix)." >&2
             exit 1
           fi
@@ -63,9 +65,9 @@ jobs:
           : "${ORG_GRADLE_PROJECT_mavenCentralUsername:?MAVEN_CENTRAL_USERNAME is not available to this repository}"
           : "${ORG_GRADLE_PROJECT_mavenCentralPassword:?MAVEN_CENTRAL_PASSWORD is not available to this repository}"
           : "${ORG_GRADLE_PROJECT_signingInMemoryKey:?SIGNING_KEY is not available to this repository}"
-          : "${S3_BUILD_CACHE_ACCESS_KEY_ID:?S3_BUILD_CACHE_ACCESS_KEY_ID is not available to this repository}"
-          # A released POM names bee's kuilt version, and a -dev kuilt lives only on Tigris, so no
-          # consumer of the release could resolve it. Release only against a kuilt on Central.
+          : "${ORG_GRADLE_PROJECT_signingInMemoryKeyPassword:?SIGNING_PASSWORD is not available to this repository}"
+          # A released POM names bee's kuilt version, and a -dev kuilt lives only on Tigris. Say so
+          # now, before the build fails to resolve it.
           KUILT=$(sed -n 's/^kuilt = "\(.*\)"/\1/p' gradle/libs.versions.toml)
           case "$KUILT" in
             ''|*-dev*) echo "::error::kuilt is '$KUILT' in gradle/libs.versions.toml. Move it to a kuilt release on Maven Central first." >&2; exit 1 ;;
@@ -88,7 +90,7 @@ jobs:
       # waits for a person. No configuration cache, as in kuilt: signing credentials pass through
       # Gradle properties, and the upload is a once-a-release task.
       - name: Upload to Maven Central (pending; release it by hand in the Portal)
-        run: timeout 600 ./gradlew -Pversion=${{ env.PUBLISH_VERSION }} --no-configuration-cache publishToMavenCentral --stacktrace --console=plain
+        run: timeout 600 ./gradlew -Pversion="$PUBLISH_VERSION" --no-configuration-cache publishToMavenCentral --stacktrace --console=plain
 
       - name: Create GitHub Release
         env:
@@ -97,4 +99,6 @@ jobs:
           set -eu
           PRE=""
           case "$PUBLISH_VERSION" in *-*) PRE="--prerelease" ;; esac
-          gh release create "v$PUBLISH_VERSION" --title "v$PUBLISH_VERSION" --generate-notes $PRE
+          # --target: a dispatch has no tag yet, and gh would otherwise tag main's head, which may
+          # not be the commit just built and uploaded.
+          gh release create "v$PUBLISH_VERSION" --target "$GITHUB_SHA" --title "v$PUBLISH_VERSION" --generate-notes $PRE
