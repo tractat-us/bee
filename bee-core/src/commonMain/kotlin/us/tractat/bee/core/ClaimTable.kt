@@ -38,6 +38,9 @@ sealed interface ClaimStatus {
  * - [ClaimCommand.Release] and [ClaimCommand.Complete] need the holder and its current token. A
  *   release with no token applies only to an [ClaimStatus.Orphaned] target.
  * - [ClaimCommand.Reassign] applies only to an orphaned target, and mints a new token.
+ * - A reassign or a token-less release decides one orphaning, named by the orphaned hold's token
+ *   (`orphan`), and applies as rejected once the target is orphaned under another (bee#83). An
+ *   entry from before bee#83 names none and applies to the current orphaning.
  * - [ClaimCommand.Depart] orphans every claim the identity holds, and every later command by a
  *   retired identity applies as rejected. Only agents depart (§6.4): a `Depart` of a human applies
  *   as rejected. The table can't check who proposed a `Depart`, so it trusts the log on that (the
@@ -137,18 +140,26 @@ class ClaimTable private constructor(
         if (retired(c.by)) return null
         val current = status(c.target)
         val allowed = when (c.token) {
-            null -> current is ClaimStatus.Orphaned
-            else -> current is ClaimStatus.Held && current.holder == c.by && current.token == c.token
+            null -> answers(current, c.orphan)
+            else -> c.orphan == null && current is ClaimStatus.Held && current.holder == c.by && current.token == c.token
         }
         return if (allowed) copy(claims = claims - c.target, grants = grants - c.target) else null
     }
 
     private fun reassign(c: ClaimCommand.Reassign, token: ClaimToken): ClaimTable? =
-        if (!retired(c.by) && !retired(c.to) && status(c.target) is ClaimStatus.Orphaned) {
+        if (!retired(c.by) && !retired(c.to) && answers(status(c.target), c.orphan)) {
             set(c.target, ClaimStatus.Held(c.to, token)).copy(grants = grants + (c.target to token))
         } else {
             null
         }
+
+    /**
+     * Whether a decision naming [orphan] answers [current]: the target is orphaned, under that
+     * token. A null [orphan] is an entry written before bee#83, which answered whatever orphaning
+     * was current, and still does, so a replayed log folds as it did.
+     */
+    private fun answers(current: ClaimStatus, orphan: ClaimToken?): Boolean =
+        current is ClaimStatus.Orphaned && (orphan == null || orphan == current.token)
 
     private fun complete(c: ClaimCommand.Complete): ClaimTable? {
         val current = status(c.target)
