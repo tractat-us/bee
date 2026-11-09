@@ -35,8 +35,66 @@ class BoardViewTest {
         assertAll(
             { assertEquals("Lunch", lunch.title) },
             { assertEquals(alice, lunch.openedBy) },
-            { assertEquals(OpenerState.Attached("naming the CLI"), lunch.opener) },
+            { assertEquals(OpenerState.Working("naming the CLI"), lunch.opener) },
             { assertEquals(OpenerState.Away, review.opener) },
+        )
+    }
+
+    /** An agent in `bee_wait_action` posts `waiting`: its card is heard now. */
+    @Test
+    fun anAgentOpenerIsListeningWhileItWaitsAndWorkingOtherwise() {
+        fun lunch(waiting: Boolean) =
+            BoardView.of(board(), attached(entry(alice, "naming the CLI", waiting))).cards.single { it.surfaceId == LUNCH }
+        assertAll(
+            { assertEquals(OpenerState.Listening("naming the CLI"), lunch(waiting = true).opener) },
+            { assertEquals(OpenerState.Working("naming the CLI"), lunch(waiting = false).opener) },
+            { assertEquals(false, lunch(waiting = true).unheard) },
+            { assertEquals(false, lunch(waiting = false).unheard) },
+        )
+    }
+
+    /** `waiting` means a session in `bee_wait_action`; a person's or the host's card has no such state. */
+    @Test
+    fun aPersonsOrTheHostsCardShowsItsOpenerAttachedNeverListening() {
+        val host = PeerIdentity.host("bee-host")
+        val state = board()
+            .piece { it.openSurface(A, NOTES, SurfaceMeta("Notes", NOTIONS_CATALOG_ID, iain, T0), listOf(root), JsonObject(emptyMap())) }
+            .piece { it.openSurface(HOST, ORPHAN, SurfaceMeta("Orphaned", NOTIONS_CATALOG_ID, host, T0), listOf(root), JsonObject(emptyMap())) }
+        val view = BoardView.of(state, attached(entry(iain, "taking notes", waiting = true), entry(host, null, waiting = true)))
+        assertAll(
+            { assertEquals(OpenerState.Attached("taking notes"), view.cards.single { it.surfaceId == NOTES }.opener) },
+            { assertEquals(OpenerState.Attached(null), view.cards.single { it.surfaceId == ORPHAN }.opener) },
+            { assertEquals(OpenerState.Away, BoardView.of(state, attached = emptyMap()).cards.single { it.surfaceId == ORPHAN }.opener) },
+        )
+    }
+
+    /**
+     * A session that left, crashed or went quiet takes no more answers, so its card is unheard. One
+     * that `/clear`ed still handles the surfaces it opened before (spec §5.2), so its card is not.
+     */
+    @Test
+    fun aCardIsUnheardOnlyWhenItsOpenerLeftCrashedOrWentQuiet() {
+        fun unheard(opener: OpenerState) = CardView(LUNCH, "Lunch", alice, opener, emptyList()).unheard
+        assertAll(
+            { assertEquals(true, unheard(OpenerState.Departed(DepartReason.Left))) },
+            { assertEquals(true, unheard(OpenerState.Departed(DepartReason.Crashed))) },
+            { assertEquals(true, unheard(OpenerState.Departed(DepartReason.Quiet))) },
+            { assertEquals(false, unheard(OpenerState.Departed(DepartReason.Cleared))) },
+            { assertEquals(false, unheard(OpenerState.Listening(null))) },
+            { assertEquals(false, unheard(OpenerState.Working(null))) },
+            { assertEquals(false, unheard(OpenerState.Attached(null))) },
+            { assertEquals(false, unheard(OpenerState.Away)) },
+        )
+    }
+
+    /** Through the board: the departure the host mirrors is what makes the card unheard. */
+    @Test
+    fun aCardWhoseOpenerDepartedOnTheBoardIsUnheard() {
+        val state = board().let { it.piece { s -> s.mirrorClaims(HOST, claims(it, departBob = true)) } }
+        val view = BoardView.of(state, attached(entry(alice, null)))
+        assertAll(
+            { assertEquals(true, view.cards.single { it.surfaceId == REVIEW }.unheard) },
+            { assertEquals(false, view.cards.single { it.surfaceId == LUNCH }.unheard) },
         )
     }
 
@@ -125,6 +183,8 @@ class BoardViewTest {
         val HOST = ReplicaId("host")
         const val LUNCH = "lunch"
         const val REVIEW = "review"
+        const val NOTES = "notes"
+        const val ORPHAN = "orphan-x"
         val alice = PeerIdentity.agent("alice", Random(1))
         val bob = PeerIdentity.agent("bob", Random(2))
         val carol = PeerIdentity.agent("carol", Random(3))

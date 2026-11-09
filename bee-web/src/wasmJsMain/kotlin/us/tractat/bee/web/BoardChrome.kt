@@ -42,8 +42,13 @@ import kotlin.time.Duration.Companion.seconds
  *   online a moment before the host's board reaches it, and the hint mustn't flash over a full
  *   board. It hides as soon as a surface opens.
  *
+ * - **A card says whether anyone hears it.** An agent opener's `.bee-card-state` reads `listening`
+ *   (`data-state="listening"`, in `bee_wait_action`) or `working`. A card whose opener is gone
+ *   ([CardView.unheard]) carries `data-unheard`, which mutes its actions, and a
+ *   `.bee-card-unheard` line saying so. The actions stay live: the record still lands on the board.
+ *
  * DOM hooks: `article.bee-card[data-surface-id]`, its `.bee-card-title` and `.bee-card-opener`
- * (`data-peer`, the opener's identity), `.bee-card-working`, and `.bee-badge`
+ * (`data-peer`, the opener's identity), `.bee-card-state`, `.bee-card-working`, and `.bee-badge`
  * (`data-claim-status`); in the strip, `li.bee-peer[data-peer][data-state]` with `.bee-peer-status`.
  * A departed peer's item and its card's `.bee-card-gone` carry `data-reason` ([reasonName]), so the
  * page alarms only on a departure the host judged (crashed or quiet), never on a session that left.
@@ -131,15 +136,21 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             meta.appendChild(element("span", "bee-card-by").also { it.textContent = "opened by " })
             meta.appendChild(name(view.openedBy, "bee-card-opener"))
             when (val opener = view.opener) {
-                is OpenerState.Attached -> opener.status?.let { status -> meta.appendChild(element("span", "bee-card-working").also { it.textContent = status }) }
-                is OpenerState.Departed -> meta.appendChild(
-                    element("span", "bee-card-gone").also {
-                        it.setAttribute(REASON, reasonName(opener.reason))
-                        it.textContent = departedText(opener.reason)
-                    },
-                )
+                is OpenerState.Attached -> meta.working(opener.status)
+                is OpenerState.Listening -> meta.live(LISTENING).working(opener.status)
+                is OpenerState.Working -> meta.live(WORKING).working(opener.status)
+                is OpenerState.Departed -> {
+                    meta.appendChild(
+                        element("span", "bee-card-gone").also {
+                            it.setAttribute(REASON, reasonName(opener.reason))
+                            it.textContent = departedText(opener.reason)
+                        },
+                    )
+                    if (view.unheard) head.appendChild(element("p", UNHEARD_CLASS).also { it.textContent = unheardText(view.openedBy, opener.reason) })
+                }
                 OpenerState.Away -> Unit
             }
+            if (view.unheard) element.setAttribute(UNHEARD, "") else element.removeAttribute(UNHEARD)
             if (view.claims.isEmpty()) return
             val badges = head.appendChild(element("ul", "bee-badges")) as Element
             view.claims.forEach { claim ->
@@ -165,6 +176,29 @@ class BoardChrome(private val root: Element, private val strip: Element) {
         const val PEER = "data-peer"
         const val REASON = "data-reason"
         const val HINT_CLASS = "bee-empty-hint"
+        const val UNHEARD = "data-unheard"
+        const val UNHEARD_CLASS = "bee-card-unheard"
+
+        /** An attached agent's `.bee-card-state`: in `bee_wait_action`, or at work. */
+        const val LISTENING = "listening"
+        const val WORKING = "working"
+
+        /** Appends an agent opener's [state], [LISTENING] or [WORKING], coloured as the strip colours it. */
+        fun Element.live(state: String): Element = also { meta ->
+            meta.appendChild(element("span", "bee-card-state").also {
+                it.setAttribute("data-state", state)
+                it.textContent = state
+            })
+        }
+
+        /** Appends the opener's "working on…" line, if it has one. */
+        fun Element.working(status: String?) {
+            status?.let { line -> appendChild(element("span", "bee-card-working").also { it.textContent = line }) }
+        }
+
+        /** The line under a card whose opener is gone: `iain-claude left — answers here wait for another session`. */
+        fun unheardText(openedBy: PeerIdentity, reason: DepartReason): String =
+            "${openedBy.name} ${departedText(reason)} — answers here wait for another session"
 
         /** The empty board's hint: what it is, and the whiteboard prompt that starts a session on it. */
         fun emptyHint(): Element = element("p", HINT_CLASS).also { hint ->
