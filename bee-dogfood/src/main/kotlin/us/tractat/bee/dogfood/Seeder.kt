@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLEncoder
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -48,9 +49,13 @@ enum class Outcome {
  * one it finds is redrawn in place under the same id, so re-seeding never duplicates a surface.
  *
  * A session that has just joined reads its own replica of the board, which may not have caught up
- * yet: its first `bee_board` can miss a surface that is there, and the open is then refused. The
- * seeder takes that refusal as "not caught up", reads the board again after [retryAfter], and
- * decides afresh, up to [attempts] times. The bridge offers no caught-up signal to wait on instead.
+ * yet: its first `bee_board` can miss a surface that is there. Opening it then isn't always
+ * refused. A replica that is behind takes the open, and the board gets a second, concurrent open
+ * of the surface (tractat-us/kuilt#3142, which would give a caught-up signal to wait on instead).
+ * So before it opens anything, the seeder re-reads the board every [retryAfter] until every
+ * surface it draws is there, open or closed, or [settle] runs out: a bound, not a proof. An open
+ * that is still refused as already there reads the board again after [retryAfter] and decides
+ * afresh, up to [attempts] times.
  */
 class Seeder(
     private val tools: BoardTools,
@@ -58,7 +63,21 @@ class Seeder(
     private val retryAfter: Duration = 250.milliseconds,
     private val attempts: Int = 40,
 ) {
-    suspend fun seed(surfaces: List<SeedSurface>): Map<String, Outcome> = surfaces.associate { it.id to draw(it) }
+    suspend fun seed(surfaces: List<SeedSurface>): Map<String, Outcome> {
+        awaitOnBoard(surfaces.map { it.id }.toSet())
+        return surfaces.associate { it.id to draw(it) }
+    }
+
+    /** Waits up to [settle] for every one of [ids] to show on the board (kuilt#3142). */
+    private suspend fun awaitOnBoard(ids: Set<String>) {
+        withTimeoutOrNull(settle) {
+            while (!onBoard(tools.call(BOARD, emptyMap())).containsAll(ids)) delay(retryAfter)
+        }
+    }
+
+    private fun onBoard(board: JsonObject): Set<String> =
+        board.getValue("open").jsonArray.map { it.jsonObject.string("surfaceId") }.toSet() +
+            board.getValue("closed").jsonArray.map { it.jsonPrimitive.content }
 
     private suspend fun draw(surface: SeedSurface): Outcome {
         repeat(attempts - 1) {
@@ -83,10 +102,15 @@ class Seeder(
         }
     }
 
-    /** Whether [current] already shows every component of [surface] as it would draw it. */
+    /**
+     * Whether [current] already shows every component of [surface] as it would draw it, and holds
+     * every data key it writes as it would write it: a card dragged on the board changes only data.
+     */
     private fun drawn(current: JsonObject, surface: SeedSurface): Boolean {
         val components = current.getValue("components").jsonArray.associateBy { it.jsonObject.string("id") }
-        return surface.components.all { components[it.string("id")] == it }
+        val data = current.obj("data")
+        return surface.components.all { components[it.string("id")] == it } &&
+            surface.data.all { (key, value) -> data[key] == value }
     }
 
     private suspend fun open(surface: SeedSurface): Outcome {
@@ -134,8 +158,7 @@ class ToolRefused(val tool: String, val reason: String) : IllegalStateException(
  * joins: `POST /mcp?name=<name>`. The host names its identity `<name>-claude`.
  */
 class McpBoardTools private constructor(private val http: HttpClient, private val transport: StreamableHttpClientTransport, private val client: Client) :
-    BoardTools,
-    AutoCloseable {
+    BoardTools {
     override suspend fun call(name: String, arguments: Map<String, JsonElement>): JsonObject {
         val result = client.callTool(name, arguments)
         val text = result.content.filterIsInstance<TextContent>().joinToString("\n") { it.text }
@@ -149,8 +172,6 @@ class McpBoardTools private constructor(private val http: HttpClient, private va
         client.close()
         http.close()
     }
-
-    override fun close() = http.close()
 
     companion object {
         suspend fun join(host: String, name: String): McpBoardTools {

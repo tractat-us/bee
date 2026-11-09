@@ -41,10 +41,12 @@ object PlanYaml {
  * Invariant 1 (a physical whiteboard, no clutter): the done column shows only its [DONE_SHOWN] most
  * recently landed cards, and one card counting the rest.
  *
- * A data write on the board merges objects and never removes a key, so a card dropped from the
- * plan would linger. Each seed therefore writes the board under a key named for its content's
- * hash, and points the `Board`'s bindings there: the board shows exactly this plan, and a re-seed
- * of an unchanged plan changes nothing.
+ * A data write on the board merges objects and never removes a key (bee#19), so a card dropped
+ * from the plan would linger. Each seed therefore writes the board under a key named for the hash
+ * of its column and card ids, and points the `Board`'s bindings there. A card added or removed
+ * (the done cap moving included) gets a fresh key, so the board shows exactly this plan; a card
+ * that only changes its label or column overwrites in place under the same key. Each set of ids
+ * leaves its old key behind until bee#19 gives a write that replaces.
  */
 object PlanBoard {
     const val SURFACE_ID = "dogfood-plan"
@@ -59,7 +61,8 @@ object PlanBoard {
             put("columns", columns(plan))
             put("cards", cards(plan))
         }
-        val key = "plan-${hash(board)}"
+        val ids = listOf("columns", "cards").map { board.obj(it).obj("items").keys.sorted() }
+        val key = "plan-${hash(JsonArray(ids.map { JsonArray(it.map(::JsonPrimitive)) }))}"
         val root = buildJsonObject {
             put("id", SeedSurface.ROOT)
             put("component", "Board")
