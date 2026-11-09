@@ -22,8 +22,11 @@ import us.tractat.bee.core.SurfaceMeta
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Instant
 
-/** A keyless device asking to join: where it dialled from, and the room-screen name it gave (A7), if any. */
-data class Device(val address: String, val screen: String?)
+/** A keyless device asking to join: who dialled ([Caller]), and the room-screen name it gave (A7), if any. */
+data class Device(val caller: Caller, val screen: String?) {
+    /** Where it dialled from, as the join request names it. */
+    val address: String get() = caller.address
+}
 
 /** How a pairing ended, for the device waiting on it. */
 sealed interface Resolution {
