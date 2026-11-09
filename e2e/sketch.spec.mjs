@@ -1,5 +1,5 @@
 // Sketch and the brainstorming companion on bee (Task 8, spike 5). A real bee-companion, built
-// by `:bee-companion:installDist`, joins the host Playwright started, over temporary screen and
+// by `:bee-companion:installDist`, joins a host of the spec's own, over temporary screen and
 // state directories, as a brainstorming session would point it. Each test pushes its own
 // screen; the newest one is the Sketch on the companion's own surface, `companion-<id>`, which it
 // keeps in state_dir/bee-companion.json.
@@ -10,9 +10,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { Host, freePort } from './host.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
-const port = process.env.BEE_E2E_PORT;
+// The spec's own host, so its companion's surfaces and records stay off every other spec's board
+// and the two can run in parallel workers (bee#74).
+const host = new Host(await freePort(), mkdtempSync(join(tmpdir(), 'bee-sketch-')));
+const port = host.port;
+test.use({ baseURL: host.url });
 const dirs = mkdtempSync(join(tmpdir(), 'bee-e2e-companion-'));
 const screenDir = join(dirs, 'content');
 const stateDir = join(dirs, 'state');
@@ -35,6 +40,7 @@ test.beforeAll(async () => {
   mkdirSync(screenDir, { recursive: true });
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(template, TEMPLATE);
+  await host.start();
   execFileSync(join(repo, 'gradlew'), [':bee-companion:installDist', '--console=plain', '--quiet'], {
     cwd: repo,
     timeout: 540_000,
@@ -53,13 +59,17 @@ test.beforeAll(async () => {
   expect(surfaceId).toMatch(/^companion-[0-9a-f]+$/);
 });
 
-// The board is shared with the other specs: the companion leaves it as the brainstorming loop
-// does, with a waiting screen, which closes its surface.
+// The companion leaves the board as the brainstorming loop does, with a waiting screen, which
+// closes its surface.
 test.afterAll(async () => {
-  if (!companion) return;
-  pushScreen('waiting.html', '<p>Continuing in terminal...</p>');
-  await expect.poll(() => companion.lines.some((l) => l.includes('screen-closed')), { timeout: 10_000 }).toBe(true);
-  companion.kill();
+  try {
+    if (!companion) return;
+    pushScreen('waiting.html', '<p>Continuing in terminal...</p>');
+    await expect.poll(() => companion.lines.some((l) => l.includes('screen-closed')), { timeout: 10_000 }).toBe(true);
+    companion.kill();
+  } finally {
+    if (host.process) await host.stop();
+  }
 });
 
 /** Writes screen `name`, newer than every screen before it, and returns its file name. */
