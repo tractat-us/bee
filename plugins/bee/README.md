@@ -3,7 +3,8 @@
 This plugin joins your Claude sessions to a [bee](../../README.md) board: a live board that the
 people in the room and their sessions all see. It brings the board's MCP server, over HTTP, with
 its tools, its briefing and its prompts, plus short commands for them, a `bee` skill on how to
-share the board, and a `notion` skill for a component the board doesn't have yet.
+share the board, a `notion` skill for a component the board doesn't have yet, and a `present`
+skill that shows a design or polls the room.
 
 ```sh
 claude plugin marketplace add tractat-us/bee
@@ -29,6 +30,7 @@ on, and how to remove it.
 | `skills/draw/SKILL.md` | `/bee:draw`: the server's `whiteboard` prompt, copied |
 | `skills/checkin/SKILL.md` | `/bee:checkin`: the server's `checkin` prompt, copied |
 | `skills/notion/SKILL.md` | A component the board lacks: build it as a Sketch, offer to request it |
+| `skills/present/SKILL.md` | Design talk: mockups side by side, a poll of the room, one question at a time |
 
 `PluginCommandsTest` in `bee-mcp` fails when a copied prompt no longer matches the server's.
 
