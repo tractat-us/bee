@@ -13,11 +13,13 @@ is on the board to admit it. So the first person in is always the owner, by key:
 1. **The owner opens the board:**
 
     ```sh
-    open "https://bee.tractat.us/?k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
+    open "https://bee.tractat.us/#k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
     ```
 
-    The page moves the key out of the address bar into that tab's storage. The key never appears
-    on the board or in a log. A new tab or another browser needs the link again, or pairs by code
+    The key rides in the fragment, after `#`, which a browser never sends, so it never reaches
+    Fly's proxy or the host. The page moves it out of the address bar into that tab's storage, and
+    it never appears on the board or in a log. The browser's own history may still keep the
+    visited URL, key and all. A new tab or another browser needs the link again, or pairs by code
     from the open tab.
 
 2. **Other devices, the owner's phone included,** open `https://bee.tractat.us`. Each shows a
@@ -31,7 +33,8 @@ is on the board to admit it. So the first person in is always the owner, by key:
       "https://bee.tractat.us/mcp?k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
     ```
 
-    The key ends up in `~/.claude.json`. The board's "Bring your Claude" panel shows the same line
+    Here the key is a query, which Claude Code sends with each call; the host logs no request
+    URLs. The key ends up in `~/.claude.json`. The board's "Bring your Claude" panel shows the same line
     with the viewer's own key, and a person who paired by code uses that.
 
 4. **The owner key** is the Fly secret `BEE_OWNER_KEY`; the host refuses to start without it. The
