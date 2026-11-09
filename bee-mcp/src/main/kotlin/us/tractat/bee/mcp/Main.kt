@@ -176,7 +176,7 @@ private fun bridgeTelemetry(session: String): ProcessTelemetry {
             Attr.SERVICE to "bee-mcp",
             Attr.ROLE to Role.BRIDGE,
             Attr.PID to ProcessHandle.current().pid().toString(),
-            "bee.session" to session,
+            Attr.SESSION to session,
         ),
     )
 }

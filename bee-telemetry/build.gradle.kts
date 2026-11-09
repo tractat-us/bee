@@ -60,6 +60,8 @@ kotlin {
         jvmMain.dependencies {
             // The edge that captures every line logback writes ([LogbackEdge]).
             implementation(libs.logback)
+            // The reader's --json lines (TimelineMain).
+            implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

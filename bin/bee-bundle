@@ -29,7 +29,7 @@ mkdir -p "$kit"
 "$java_home/bin/jlink" --add-modules "$modules" --strip-debug --no-header-files --no-man-pages \
     --compress zip-6 --output "$kit/runtime"
 cp -R "$root/bee-mcp/build/install/bee-mcp" "$root/bee-host/build/install/bee-host" "$kit/"
-cp "$root/bin/bee-env" "$root/bin/bee-up" "$root/bin/bee-join" "$root/bin/bee-session-start-hook" "$kit/"
+cp "$root/bin/bee-env" "$root/bin/bee-up" "$root/bin/bee-join" "$root/bin/bee-session-start-hook" "$root/bin/bee-telemetry" "$kit/"
 cat > "$kit/README.txt" <<'EOF'
 bee kit: a shared board for people and their Claude sessions.
 
@@ -39,6 +39,9 @@ Then start Claude as it prints, and type /mcp__bee__whiteboard.
 
 Run your own board:
     ./bee-up --name <you>
+
+See what the board's host and your sessions recorded, newest last:
+    ./bee-telemetry --tail 50
 
 macOS may refuse to run files from a downloaded zip. If it does:
     xattr -dr com.apple.quarantine .
