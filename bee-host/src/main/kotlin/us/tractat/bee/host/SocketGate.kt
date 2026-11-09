@@ -66,6 +66,8 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and the page at
  *   `/`, open to all: they are what a keyless device needs, and none carries board state, presence
  *   or claims. The page's files, and only they, carry [BeeHost.PAGE_CSP].
+ * - the join link at [us.tractat.bee.core.InviteLinks.PATH], to a loopback caller alone, and only
+ *   when [invitation] is open ([inviteEndpoint]).
  *
  * The gate is installed on the route nodes kuilt's own `webSocket(path)` created, so it applies to
  * whatever request Ktor routes there, however its path was spelled. Its key half is on whatever
@@ -79,6 +81,7 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * @param peers where each call came from; production passes [PeerAddress.DIRECT]
  * @param arrivals where each call arrived; production passes [ArrivalAddress.DIRECT]
  * @param desk serves the pairing channel, over [pairing]
+ * @param invitation whether the host has a join link to give its owner's page
  */
 @Suppress("LongParameterList")
 fun Application.mountEndpoints(
@@ -88,6 +91,7 @@ fun Application.mountEndpoints(
     peers: PeerAddress,
     arrivals: ArrivalAddress,
     desk: PairingDesk,
+    invitation: Invitation,
 ): HostEndpoints {
     installSiteGate(site, arrivals)
     installBoundedWebSockets()
@@ -113,6 +117,7 @@ fun Application.mountEndpoints(
             call.respondText(board.value)
         }
         pairingEndpoint(desk, peers)
+        inviteEndpoint(invitation, pairing, peers, arrivals)
         staticResources("/", "web") { modify { _, call -> call.response.header(BeeHost.CSP_HEADER, BeeHost.PAGE_CSP) } }
     }
     return HostEndpoints(relay, claims)

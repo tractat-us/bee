@@ -19,6 +19,12 @@ enum class Reach(val bind: String) {
         Loopback -> emptySet()
         Lan -> setOf(lanName())
     }
+
+    /** Whether a host with this reach has a join link to give its owner's page ([inviteEndpoint]). */
+    fun invitation(): Invitation = when (this) {
+        Loopback -> Invitation.Closed
+        Lan -> Invitation.Open(lanName(), ::lanAddresses)
+    }
 }
 
 /** This machine's name on the local network: its host name, as mDNS serves it (`<name>.local`). */
