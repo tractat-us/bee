@@ -30,11 +30,16 @@ fun main(args: Array<String>) {
         },
     )
     logger.info { "bee host on http://${config.bind}:${host.port}/ (data in ${config.dataDir})" }
-    if (config.reach == Reach.Lan) {
-        val lan = "http://${lanName()}:${host.port}/"
-        // The join link's key admits whoever holds the link, across restarts, until --new-link or --forget-devices.
-        val link = "$lan?${PairingWire.KEY_PARAM}=${host.pairing.joinKey.value}"
-        logger.info { "On your network: $lan. A device that opens it pairs with a code. Join link, no code: $link" }
+    when (val reach = config.reach) {
+        Reach.Loopback -> {}
+        Reach.Lan -> {
+            val lan = "http://${lanName()}:${host.port}/"
+            // The join link's key admits whoever holds the link, across restarts, until --new-link or --forget-devices.
+            val link = "$lan?${PairingWire.KEY_PARAM}=${host.pairing.joinKey.value}"
+            logger.info { "On your network: $lan. A device that opens it pairs with a code. Join link, no code: $link" }
+        }
+        // A hosted board's log goes to the platform's log store: no key goes in it.
+        is Reach.Public -> logger.info { "Served at ${reach.url}, behind its proxy. A device that opens it pairs with a code." }
     }
     runBlocking { awaitCancellation() }
 }
