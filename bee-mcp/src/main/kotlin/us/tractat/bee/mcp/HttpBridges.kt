@@ -24,6 +24,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import us.tractat.bee.telemetry.BeeTelemetry
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.HostAddress
 import java.util.concurrent.ConcurrentHashMap
@@ -67,6 +68,8 @@ class HttpBridges(
     private val idleAfter: Duration = IDLE_AFTER,
     private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
     private val maxSessions: Int = MAX_SESSIONS,
+    /** Where each bridge's tool calls are recorded: the host's telemetry, each span marked as its bridge's. */
+    private val telemetry: BeeTelemetry,
 ) {
     private val supervisor = SupervisorJob(scope.coroutineContext[Job])
     private val work = CoroutineScope(scope.coroutineContext + supervisor + Dispatchers.Default)
@@ -129,7 +132,7 @@ class HttpBridges(
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
         val peer = BridgePeer.join(host, name, http, bridgeScope, random, clock)
-        val server = BeeServer.create(peer.bridge)
+        val server = BeeServer.create(peer.bridge, telemetry)
         val session = Session(peer, bridgeScope, server)
         open += session
         call.attributes.put(OPENING, session)

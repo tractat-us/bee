@@ -16,6 +16,9 @@ import kotlinx.io.buffered
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.HostAddress
+import us.tractat.bee.telemetry.Attr
+import us.tractat.bee.telemetry.ProcessTelemetry
+import us.tractat.bee.telemetry.Role
 import java.io.PrintStream
 import java.nio.file.Path
 import java.security.SecureRandom
@@ -44,6 +47,7 @@ fun main() {
 
     // Before anything starts: a BEE_HOST that names no host ends the bridge here, saying why.
     val host = beeHostFrom(System.getenv("BEE_HOST"))
+    val telemetry = bridgeTelemetry(sessionName())
     val random = SecureRandom().asKotlinRandom()
     val clock = { Clock.System.now() }
     // The bridge's own work (the board, claims, a retire on /clear) runs here; one failure must not end the rest.
@@ -54,6 +58,8 @@ fun main() {
     val board = peer.board
     val pin = peer.pin
     val identity = peer.identity
+    // Before start(), which connects: watching after it could miss the first connect.
+    bridgeScope.watchBridge(board, pin, identity.current, host::describe, telemetry.telemetry, telemetry.resource)
     peer.start()
     val anotherBoard = CompletableDeferred<AnotherBoard>()
     endOnAnotherBoard(board, pin, http, host, bridgeScope, anotherBoard)
@@ -67,9 +73,19 @@ fun main() {
         // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
         Runtime.getRuntime().addShutdownHook(Thread(clear::close, "bee-clear-control-close"))
         // Either way out, stdin closing or that signal, the session left on purpose: say so first.
-        Runtime.getRuntime().addShutdownHook(Thread({ leaving.value }, "bee-mcp-leave"))
+        // Telemetry closes after, in the same hook: hooks run at once, so a hook of its own would
+        // stop recording before the leave it should record.
+        Runtime.getRuntime().addShutdownHook(
+            Thread(
+                {
+                    leaving.value
+                    telemetry.close()
+                },
+                "bee-mcp-leave",
+            ),
+        )
         clear.start()
-        val server = BeeServer.create(bridge)
+        val server = BeeServer.create(bridge, telemetry.telemetry)
         runBlocking {
             val transport = StdioServerTransport(System.`in`.asSource().buffered(), protocolOut.asSink().buffered())
             val closed = CompletableDeferred<Unit>()
@@ -84,6 +100,7 @@ fun main() {
     bridgeScope.cancel()
     http.close()
     logger.info { "bee-mcp ends." }
+    telemetry.close()
     // Closed up first: the run file went with ClearControl's use-block, the clients just above.
     if (anotherBoard.isCompleted) exitProcess(EXIT_ANOTHER_BOARD)
 }
@@ -143,3 +160,23 @@ private fun sessionName(): String =
     System.getenv("BEE_SESSION_NAME")?.takeIf { it.isNotBlank() }
         ?: Path.of("").toAbsolutePath().fileName?.toString()
         ?: "bee"
+
+/**
+ * The bridge's telemetry, under `$BEE_HOME/telemetry/bridge-<session>` (`~/.bee` without
+ * `BEE_HOME`): every log line, each tool call and the link to the host. A second bridge of the same
+ * session name takes `bridge-<session>-2`, and so on to `-4`; past that it records nothing. Off
+ * under `BEE_TELEMETRY=off`.
+ */
+private fun bridgeTelemetry(session: String): ProcessTelemetry {
+    val home = System.getenv("BEE_HOME")?.takeIf { it.isNotBlank() }?.let(Path::of) ?: Path.of(System.getProperty("user.home"), ".bee")
+    val name = "bridge-" + session.map { if (it.isLetterOrDigit() || it in "._-") it else '_' }.joinToString("")
+    return ProcessTelemetry.open(
+        dirs = listOf(name, "$name-2", "$name-3", "$name-4").map { home.resolve("telemetry").resolve(it) },
+        resource = mapOf(
+            Attr.SERVICE to "bee-mcp",
+            Attr.ROLE to Role.BRIDGE,
+            Attr.PID to ProcessHandle.current().pid().toString(),
+            "bee.session" to session,
+        ),
+    )
+}

@@ -34,7 +34,7 @@ bee_write_mcp_config() {
     cat > "$1" <<EOF
 { "mcpServers": { "bee": { "type": "stdio",
   "command": "$bee_mcp",
-  "env": { "JAVA_HOME": "$JAVA_HOME", "BEE_HOST": "$2", "BEE_SESSION_NAME": "$3" } } } }
+  "env": { "JAVA_HOME": "$JAVA_HOME", "BEE_HOST": "$2", "BEE_SESSION_NAME": "$3", "BEE_HOME": "$bee_home", "BEE_TELEMETRY": "${BEE_TELEMETRY:-on}" } } } }
 EOF
 }
 

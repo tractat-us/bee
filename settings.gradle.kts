@@ -50,4 +50,5 @@ include(
     ":bee-host",
     ":bee-mcp",
     ":bee-companion",
+    ":bee-telemetry",
 )

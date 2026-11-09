@@ -79,6 +79,9 @@ class BoardRelay(
     /** The host's merged board. */
     val state: StateFlow<BoardState> = quilter.state
 
+    /** Who is on the hub now: each spoke's fabric peer, and the host's own. */
+    val spokes: StateFlow<Set<PeerId>> = hub.peers
+
     init {
         // The Quilter may start reading on another thread before it is assigned, so the forward is
         // switched on only now. A frame read before this is merged but not forwarded; anti-entropy

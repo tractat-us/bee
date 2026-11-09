@@ -41,6 +41,7 @@ import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.bee.host.BoardStar
+import us.tractat.bee.telemetry.BeeTelemetry
 import us.tractat.bee.host.ClaimsRig
 import us.tractat.bee.host.ClaimsVoter
 import us.tractat.bee.host.Device
@@ -420,7 +421,7 @@ internal class JoinRig(private val test: TestScope) {
 
     private suspend fun connect(bridge: BeeBridge): Client {
         val dispatcher = StandardTestDispatcher(test.testScheduler)
-        val server = BeeServer.create(bridge, dispatcher)
+        val server = BeeServer.create(bridge, BeeTelemetry.Off, dispatcher)
         val (clientSide, serverSide) = LinkedTransport.pair()
         server.createSession(serverSide)
         return Client(Implementation("test", "test"), ClientOptions(handlerCoroutineContext = dispatcher))

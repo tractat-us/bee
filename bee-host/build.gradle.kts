@@ -25,6 +25,7 @@ dependencies {
     implementation(project(":bee-a2ui"))
     // The bridge, which the host runs for each MCP client over HTTP (HttpBridges).
     implementation(project(":bee-mcp"))
+    implementation(project(":bee-telemetry"))
     implementation(libs.kuilt.websocket)
     implementation(libs.kuilt.gossip)
     implementation(libs.kuilt.cluster)
