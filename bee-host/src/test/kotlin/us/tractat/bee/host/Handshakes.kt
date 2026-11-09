@@ -38,6 +38,39 @@ internal class Handshakes(private val port: Int) {
         response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
     }
 
+    /** The status and body of a `POST` of [body] to [path], with [host] and these other [headers], each `name: value`. */
+    fun post(path: String, host: String, body: String, vararg headers: String): Pair<String, String> = Socket().use { socket ->
+        val bytes = body.encodeToByteArray()
+        send(socket, "POST $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n$body")
+        val response = socket.getInputStream().readAllBytes().decodeToString()
+        response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
+    }
+
+    /** The status and body of a chunked `POST` of [chunks] to [path], with no `Content-Length`, with [host] and these other [headers]. */
+    fun postChunked(path: String, host: String, chunks: List<String>, vararg headers: String): Pair<String, String> = Socket().use { socket ->
+        val body = chunks.joinToString("") { "${it.encodeToByteArray().size.toString(16)}\r\n$it\r\n" } + "0\r\n\r\n"
+        send(socket, "POST $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n$body")
+        val response = socket.getInputStream().readAllBytes().decodeToString()
+        response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
+    }
+
+    /**
+     * The status of a chunked `POST` to [path] that sends [chunks] and then holds its body open,
+     * never sending the last chunk, with [host] and these other [headers]: a status arrives only if
+     * the host answers before the body ends. If none comes within [waitMs], the host was still
+     * reading, and this returns null.
+     */
+    fun postChunkedHeldOpen(path: String, host: String, chunks: List<String>, waitMs: Int, vararg headers: String): String? = Socket().use { socket ->
+        val body = chunks.joinToString("") { "${it.encodeToByteArray().size.toString(16)}\r\n$it\r\n" }
+        send(socket, "POST $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Transfer-Encoding: chunked\r\n\r\n$body")
+        socket.soTimeout = waitMs
+        try {
+            socket.getInputStream().statusCode()
+        } catch (_: java.net.SocketTimeoutException) {
+            null
+        }
+    }
+
     /**
      * Opens a server-sent event stream at [path], with [host] and these other [headers], each
      * `name: value`, and stays on it until the returned stream is closed: a device on its pairing channel.

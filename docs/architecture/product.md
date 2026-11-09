@@ -31,6 +31,17 @@ get onto it. A rule here binds every subsystem that puts something in front of a
     `withNobodyHereAPairingIsRefusedAtOnceAndLeavesNoRequest`, with its control: one person
     attached, and the same dial gets a code. `PublicHostTest` holds it on a real host.
 
+3.  **On a hosted board, an invite link admits whoever opens it, for a day, and asks their name
+    ([#215](https://github.com/tractat-us/bee/issues/215), ruling of 2026-11-09).** Anyone on
+    the board may press Invite and share the link. Whoever opens it types a name and joins, with
+    a key of their own, and nobody on the board has to let them in. The link is reusable until it
+    lapses, 24 hours after it was made. Every count is bounded: 25 devices per link, 10 live
+    links per key, 100 live on the board, and 100 devices a day by invite. That last count is
+    kept in memory, so it starts again whenever the host restarts: each deploy, or a crash. A
+    tab's Invite never shows a link that stopped working. Without a link, a device pairs by
+    code, as in invariant 2. Enforcer: `InvitesTest` and `HostedInviteTest`, and
+    `hosted.spec.mjs` in a browser.
+
 ## Current design
 
 - **The board is one page.** Open surfaces are cards in one column, newest first, and a card
@@ -40,6 +51,12 @@ get onto it. A rule here binds every subsystem that puts something in front of a
 - **Clearing the board closes surfaces, it doesn't delete them.** Closed surfaces wait in a
   collapsed history strip ([`HistoryStrip.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/HistoryStrip.kt),
   [spec §6.1](../superpowers/specs/2026-11-06-bee-design.md#61-surfaces)).
+- **Three ways onto a hosted board.** The owner opens it with the owner key. Anyone on it
+  presses Invite for a link, and whoever opens that link types a name and presses Join
+  ([`JoinByInvite.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/JoinByInvite.kt),
+  [`Invites.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/Invites.kt)). Without a
+  link, the page shows a code for someone on the board to type in. The runbook is
+  [Running hosted bee](../deploy.md#getting-on-the-board).
 - **The chrome is a bar and a collapsed "Details".** The bar holds the bee mark, the attached
   peers and whether the page is online. "Details" sits after the board, closed, with what the page
   knows for debugging ([`PageShell.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/PageShell.kt)).
@@ -56,8 +73,6 @@ and building the tool instead of the work is an anti-goal
   the default and adds no step to joining.
 - **Every way to install bee, and a one-click join from the board:** [#145](https://github.com/tractat-us/bee/issues/145).
   Under invariant 1, one path beats many, and the join adds no board chrome.
-- **Hosted bee on a tractat.us subdomain, with admission by a person:** [#145](https://github.com/tractat-us/bee/issues/145)
-  (a peer session is building it). Adds a step for the joiner, so it needs its justification.
 - **The bee app, a Kotlin Multiplatform kuilt app that hosts a board on a phone:**
   [#156](https://github.com/tractat-us/bee/issues/156). Adds an install path.
 - **A Compose A2UI renderer, in the app and maybe browsers:** [#158](https://github.com/tractat-us/bee/issues/158).
@@ -76,6 +91,18 @@ and building the tool instead of the work is an anti-goal
   Rejected: keeping it a spec goal traded off case by case. Iain made it fundamental. ([#152](https://github.com/tractat-us/bee/pull/152), 2026-11-08)
 - **bee is a medium, not an app with screens.** Rejected: a fixed layout with a screen per task.
   (Iain, [spec §1](../superpowers/specs/2026-11-06-bee-design.md#1-the-idea), 2026-11-06)
+- **A hosted board's invite link admits whoever opens it.** Rejected: a link that admits no one,
+  so every newcomer shows a code for someone on the board to type in. That was the 2026-11-08
+  ruling; the owner wanted a link to hand someone that just lets them in. ([#215](https://github.com/tractat-us/bee/issues/215), 2026-11-09)
+- **An invite is reusable for its day.** Rejected: a link that admits one device, then stops. One
+  link should do for a group, and the per-link cap bounds a forwarded one.
+  ([#215](https://github.com/tractat-us/bee/issues/215), 2026-11-09)
+- **An invite needs nobody on the board to let its holder in.** Rejected: a link that still waits
+  for someone on the board to admit. That's pairing by code again, and invariant 2 forbids waiting
+  on someone who isn't there. ([#215](https://github.com/tractat-us/bee/issues/215), 2026-11-09)
+- **A guess at an invite costs the host nothing.** Rejected: a per-address limit on unknown
+  secrets. An IPv6 caller sidesteps it with a fresh address per guess, and the table it keeps
+  grows without bound; the 256-bit secret is the defence. ([#218](https://github.com/tractat-us/bee/pull/218), 2026-11-09)
 
 ## Open
 
