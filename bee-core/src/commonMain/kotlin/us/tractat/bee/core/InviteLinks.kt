@@ -10,12 +10,25 @@ import kotlinx.serialization.Serializable
  *
  * @param numeric the link at each IPv4 address the host has on the network, the likeliest first:
  *   what a phone opens, since not every phone resolves `.local` names
- * @param named the link at the host's `.local` name
+ * @param named the link at the host's `.local` name, or a hosted board's public URL
+ * @param joins where a device that opens the link can join from: the room's network, or anywhere
+ *   for a hosted board (bee#145), whose link is its bare public URL and which any admitted page
+ *   may ask for
  */
 @Serializable
-data class InviteLinks(val numeric: List<String>, val named: String) {
+data class InviteLinks(val numeric: List<String>, val named: String, val joins: Joins = Joins.OnThisNetwork) {
     /** The one link a QR code carries: the first numeric one, else the named one. */
     val primary: String get() = numeric.firstOrNull() ?: named
+
+    /** Where a device that opens the link can join from. */
+    @Serializable
+    enum class Joins {
+        /** A `--lan` host: a phone or laptop on the room's network. */
+        OnThisNetwork,
+
+        /** A hosted board, behind its public URL: a phone or laptop anywhere. */
+        Anywhere,
+    }
 
     companion object {
         const val PATH: String = "/invite"

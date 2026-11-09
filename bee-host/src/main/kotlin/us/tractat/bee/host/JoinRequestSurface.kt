@@ -153,6 +153,7 @@ class JoinRequestSurface(
         private fun statusOf(reason: PairingEnd): String = when (reason) {
             PairingEnd.Expired -> "Nobody typed the code in time. The device can ask for a new one."
             PairingEnd.Voided -> "Three wrong codes: this request is void."
+            PairingEnd.NobodyHere -> "Nobody who can let this device in is here: the request is closed."
             PairingEnd.Busy, PairingEnd.TooSoon -> error("a request is never posted for a refused pairing")
         }
 

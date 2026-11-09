@@ -231,6 +231,7 @@ private fun endedText(reason: PairingEnd): String = when (reason) {
     PairingEnd.Voided -> "Three wrong codes were typed."
     PairingEnd.Busy -> "The host is busy pairing other devices. Try again later."
     PairingEnd.TooSoon -> "Wait a moment, then ask for a new code."
+    PairingEnd.NobodyHere -> "Nobody is here to let you in. Try again when someone is on the board."
 }
 
 @OptIn(ExperimentalUuidApi::class)
@@ -282,8 +283,8 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
         val chrome = BoardChrome(root, shell.peers)
         // A room screen has no person to bring a session, and its key is the room's own: never shown.
         if (!screen) chrome.addToHint(BringYourClaude(shell, McpCommand.of(window.location.origin, access, viewer)).opener())
-        // Only the owner's page invites, and the host says whose that is: on loopback, or by the
-        // owner key on a public host (bee#145). A screen never asks.
+        // The host says who may invite: the owner on a LAN host's own machine, or any admitted
+        // page on a public host (bee#145). A screen never asks.
         if (!screen) offerInvite(shell, query)
         val answering = if (screen) {
             OrphanAnswering.Refused
@@ -347,7 +348,7 @@ private fun claimsConnection(http: HttpClient, pin: BoardPin, query: String, sco
 /**
  * An Invite control in the bar, once the host gives this page its join links at
  * [InviteLinks.PATH], asked with the page's key [query] if it has one: a `--lan` host answers its
- * own machine, and a public host its owner's key. Anything else (a 404, a 403, no host) leaves
+ * own machine, and a public host any key it admits. Anything else (a 404, a 403, no host) leaves
  * the bar as it is.
  */
 private fun offerInvite(shell: PageShell, query: String) {

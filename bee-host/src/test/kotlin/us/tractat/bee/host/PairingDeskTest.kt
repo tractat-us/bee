@@ -19,6 +19,7 @@ import us.tractat.kuilt.test.assertAll
 import java.security.SecureRandom
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
@@ -64,18 +65,87 @@ class PairingDeskTest {
             requireNotNull(board.surfaceDoc(surfaceId)).toSurfaceView(surfaceId).data.getValue("status").jsonPrimitive.content
     }
 
-    private fun rig(body: suspend Rig.() -> Unit) = runTest(StandardTestDispatcher()) {
+    private fun rig(admitters: Admitters = Admitters.WHOEVER_COMES, body: suspend Rig.() -> Unit) = runTest(StandardTestDispatcher()) {
         val star = BoardStar(this).apply { start() }
         val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()), memoryKeys())
         val requests = JoinRequestSurface(star.relay, pairing, star.clock)
         requests.start(backgroundScope)
         runCurrent()
-        Rig(this, star, pairing, PairingDesk(pairing, CompletableDeferred(requests), Pairing.DWELL, star.clock)).apply {
+        Rig(this, star, pairing, PairingDesk(pairing, CompletableDeferred(requests), Pairing.DWELL, star.clock, admitters)).apply {
             try {
                 body()
             } finally {
                 hangUpAll()
             }
+        }
+    }
+
+    /** Who can admit, on a hosted board's desk: a test flips [here] as people come and go. */
+    private class Room(var here: Boolean) : Admitters {
+        override suspend fun anyHere(): Boolean = here
+    }
+
+    /**
+     * Product invariant 2's enforcer (`docs/architecture/product.md`): with nobody attached who can
+     * admit, a pairing is refused at once and leaves nothing on the board; with one person
+     * attached, the same dial gets a code and its request goes up.
+     */
+    @Test
+    fun withNobodyHereAPairingIsRefusedAtOnceAndLeavesNoRequest() {
+        val empty = Room(here = false)
+        rig(empty) {
+            val device = dial(LAN)
+            holdPastTheDwell()
+            assertAll(
+                { assertEquals(listOf<PairingMessage>(PairingMessage.Ended(PairingEnd.NobodyHere)), device.sent) },
+                { assertEquals(emptyList(), requests, "nothing waits on the board") },
+            )
+        }
+        val occupied = Room(here = true)
+        rig(occupied) {
+            val device = dial(LAN)
+            holdPastTheDwell()
+            assertAll(
+                { assertIs<PairingMessage.Code>(device.sent.single(), "the positive control: someone here, a code") },
+                { assertEquals(1, requests.size, "and its request is up") },
+            )
+        }
+    }
+
+    /** The last person leaves during the dwell: the request is never posted. */
+    @Test
+    fun nobodyLeftAfterTheDwellPostsNothing() {
+        val room = Room(here = true)
+        rig(room) {
+            val device = dial(LAN)
+            room.here = false
+            holdPastTheDwell()
+            assertAll(
+                { assertIs<PairingMessage.Code>(device.sent.first()) },
+                { assertEquals(PairingMessage.Ended(PairingEnd.NobodyHere), device.sent.last()) },
+                { assertEquals(emptyList(), requests) },
+            )
+        }
+    }
+
+    /** No request outlives its last admitter: it closes, and the device is told why. */
+    @Test
+    fun theLastAdmitterLeavingEndsAPostedRequest() {
+        val room = Room(here = true)
+        rig(room) {
+            val device = dial(LAN)
+            holdPastTheDwell()
+            val posted = requests.single()
+            val openWhileHere = posted in board.openSurfaces()
+            room.here = false
+            test.advanceTimeBy(Admitters.CHECK_EVERY + 1.milliseconds)
+            test.runCurrent()
+            assertAll(
+                { assertTrue(openWhileHere, "rig: the request was up while someone was here") },
+                { assertEquals(PairingMessage.Ended(PairingEnd.NobodyHere), device.sent.last()) },
+                { assertFalse(posted in board.openSurfaces(), "the request closed") },
+                { assertTrue("Nobody who can let this device in" in status(posted)) },
+            )
         }
     }
 

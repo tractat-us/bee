@@ -161,10 +161,9 @@ class BeeHost private constructor(
             // their loopback sockets need one like anyone's.
             val bridgeKey = secrets.key()
             // bee#106: every key outlives a restart; config.keyReset is how one stops admitting.
-            val keys = HostKeys.boot(KeyFile(config.dataDir.resolve(KeyFile.NAME)), secrets, config.keyReset, held = config.reach.heldKeys() + bridgeKey)
+            val keys = HostKeys.boot(KeyFile(config.dataDir.resolve(KeyFile.NAME)), secrets, config.keyReset, config.reach.joinLink(), held = config.reach.heldKeys() + bridgeKey)
             val pairing = Pairing(clock, secrets, keys, budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
-            val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             // The board the voter's departures are mirrored onto, once the core is up. Until then no
             // departure is known, and a kept identity a session takes that was retired is retired
             // again at its first write, as any bridge's is (`BeeBridge.beforeWrite`).
@@ -179,6 +178,13 @@ class BeeHost private constructor(
             // new link alone changes nothing here, since no session on the join link's key is kept.
             if (config.keyReset == KeyReset.ForgetDevices) kept.endWaits { it.caller != Caller.Loopback }
             val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, keys::kindOf, bridgeKey.value, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
+            val roster = CompletableDeferred<LivePresence>()
+            val admitters = when (config.reach) {
+                // Nothing waits on a hosted board for someone who isn't there (Iain, 2026-11-08).
+                is Reach.Public -> PeopleAttached(roster)
+                Reach.Lan, Reach.Loopback -> Admitters.WHOEVER_COMES
+            }
+            val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock, admitters)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())
@@ -203,6 +209,7 @@ class BeeHost private constructor(
                 val requests = JoinRequestSurface(core.board.relay, pairing, clock)
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
+                roster.complete(LivePresence(core.board.relay.state, clock, scope) { failure -> rosterLog.warn(failure) { "admitters: the roster missed a board change" } })
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
                 val unclaimed = retireUnclaimed(scope, kept, core.voter, config.mcpUnclaimedAfter, clock)
                 return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, unclaimed, lock, bridgeKey)
@@ -253,6 +260,8 @@ internal fun retireUnclaimed(scope: CoroutineScope, kept: KeptIdentities, voter:
             }
         }
     }
+
+private val rosterLog = KotlinLogging.logger("us.tractat.bee.host.Admitters")
 
 /** The voter's [ClaimMirror] onto [relay]'s board: the claims mirror and the departed list (A2). */
 fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.mutate { it.mirrorClaims(relay.replica, table) } }

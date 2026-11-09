@@ -171,7 +171,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
 
     /** A teammate's machine: the one line that adds bee for every folder, then start `claude` anywhere. */
     private fun teammate(command: McpCommand.Teammate) {
-        panel.appendChild(element("p", "").also { it.textContent = "In a terminal, run this. It replaces any earlier bee entry." })
+        panel.appendChild(element("p", "").also { it.textContent = "In a terminal, run this. It replaces any earlier bee entry. This line holds your key: don't share it." })
         panel.appendChild(lineRow(command.line, PRIMARY))
         panel.appendChild(copied)
         panel.appendChild(

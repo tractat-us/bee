@@ -456,7 +456,9 @@ needs no key. "Admitted by <name>" names the declared actor.
 
 - `Pairing.attempt` enforces the declared-kind check (`Attempt.NotHuman`, `PairingTest`).
 - No new gate may rest on peer kind until actors are attested. Review holds that until the type
-  below exists.
+  below exists. One exception, by Iain's ruling (2026-11-08, bee#145): a hosted board refuses a
+  pairing while no declared person is attached (product invariant 2). It can only refuse, never
+  admit, so an agent declaring itself a person gets a request posted that it still can't answer.
 - **Open (bee#64), before a second person or a keyed agent attaches:** a keyed connection's actor
   must match the identity its key was minted for. That's generic, so it's tractat-us/kuilt#3149:
   the relay attests each record's author by its connection. `Pairing.attempt` then takes the attested

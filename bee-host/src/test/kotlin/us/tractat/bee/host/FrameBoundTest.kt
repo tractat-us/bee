@@ -39,7 +39,7 @@ class FrameBoundTest {
     private val pairing = Pairing(clock, SecureSecrets(SecureRandom()), memoryKeys())
     private val board = BoardId.mint()
     private val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
-        mountEndpoints(board, pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock), Invitation.Closed)
+        mountEndpoints(board, pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock, Admitters.WHOEVER_COMES), Invitation.Closed)
     }.start(wait = false)
     private val port = runBlocking { server.engine.resolvedConnectors().first().port }
 

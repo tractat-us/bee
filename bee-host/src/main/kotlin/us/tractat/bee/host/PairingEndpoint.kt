@@ -6,7 +6,9 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.PairingEnd
@@ -50,16 +52,25 @@ fun Route.pairingEndpoint(desk: PairingDesk, peers: PeerAddress) {
  * **The device going away is the cancellation of [serve].** Whatever [serve] is doing when it is
  * cancelled, it ends the pairing and withdraws a posted request on the way out.
  *
+ * **Someone who can admit must be here** ([admitters]). On a hosted board a pairing opens only
+ * while a person is attached, its request is posted only if one still is after [dwell], and it
+ * ends [PairingEnd.NobodyHere] once the last one leaves, so no request outlives its last admitter
+ * (Iain, 2026-11-08). A LAN host's [Admitters.WHOEVER_COMES] lets a request wait for whoever comes.
+ *
  * @param joinRequests the board side of pairing, ready once the relay is up
+ * @param checkEvery how often a posted request asks [admitters] whether anyone is still here
  */
 class PairingDesk(
     private val pairing: Pairing,
     private val joinRequests: Deferred<JoinRequestSurface>,
     private val dwell: Duration,
     private val clock: () -> Instant,
+    private val admitters: Admitters,
+    private val checkEvery: Duration = Admitters.CHECK_EVERY,
 ) {
     /** Serves [device] until its pairing ends; [send] writes to its channel. Cancel it when the device leaves. */
     suspend fun serve(device: Device, send: suspend (PairingMessage) -> Unit) {
+        if (!admitters.anyHere()) return send(NOBODY_HERE)
         val ticket = when (val opened = pairing.open(device.caller)) {
             is Opened.Refused -> return send(PairingMessage.Ended(opened.wire))
             is Opened.Ticket -> opened
@@ -67,7 +78,7 @@ class PairingDesk(
         try {
             send(PairingMessage.Code(ticket.id.value, ticket.code, ticket.expiresAt))
             delay(dwell)
-            send(onTheBoard(ticket, device, joinRequests.await()))
+            send(if (admitters.anyHere()) onTheBoard(ticket, device, joinRequests.await()) else NOBODY_HERE)
         } finally {
             // A device gone before its request was posted leaves no pairing behind.
             pairing.end(ticket.id)
@@ -75,20 +86,27 @@ class PairingDesk(
     }
 
     /** Posts [ticket]'s request and waits for it to end: the device's last message. */
-    private suspend fun onTheBoard(ticket: Opened.Ticket, device: Device, requests: JoinRequestSurface): PairingMessage {
+    private suspend fun onTheBoard(ticket: Opened.Ticket, device: Device, requests: JoinRequestSurface): PairingMessage = coroutineScope {
         val resolution = requests.post(ticket, device)
+        // The last admitter leaving ends the request. An entry that won the race already resolved
+        // it, and `end` leaves it be.
+        val watch = launch { admitters.awaitNobody(checkEvery).also { requests.end(ticket.id, PairingEnd.NobodyHere) } }
         try {
-            // On the timer, expire the pairing. An entry that won the race already resolved it,
-            // and `end` leaves it be.
+            // On the timer, expire the pairing, likewise.
             val ended = withTimeoutOrNull(ticket.expiresAt - clock()) { resolution.await() }
                 ?: requests.end(ticket.id, PairingEnd.Expired).let { resolution.await() }
-            return when (ended) {
+            when (ended) {
                 is Resolution.Admitted -> PairingMessage.Key(ended.key.value)
                 is Resolution.Ended -> PairingMessage.Ended(ended.reason)
             }
         } finally {
+            watch.cancel()
             requests.withdraw(ticket.id)
         }
+    }
+
+    private companion object {
+        val NOBODY_HERE = PairingMessage.Ended(PairingEnd.NobodyHere)
     }
 }
 
