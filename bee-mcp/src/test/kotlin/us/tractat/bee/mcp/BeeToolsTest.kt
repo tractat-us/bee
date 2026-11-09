@@ -236,9 +236,11 @@ class BeeToolsTest {
         val ada = rig.session("ada")
         val bo = rig.session("bo")
 
+        val adaSees = ada.call(BeeTools.BOARD, emptyMap()).json()["you"]?.jsonPrimitive?.content
+        val boSees = bo.call(BeeTools.BOARD, emptyMap()).json()["you"]?.jsonPrimitive?.content
         assertAll(
-            { assertEquals(ada.bridge.self.toString(), ada.call(BeeTools.BOARD, emptyMap()).json().getValue("you").jsonPrimitive.content) },
-            { assertEquals(bo.bridge.self.toString(), bo.call(BeeTools.BOARD, emptyMap()).json().getValue("you").jsonPrimitive.content) },
+            { assertEquals(ada.bridge.self.toString(), adaSees) },
+            { assertEquals(bo.bridge.self.toString(), boSees) },
         )
         rig.close()
     }
@@ -256,8 +258,9 @@ class BeeToolsTest {
         ada.client.state.first { s -> s.departures().any { it.identity == gone } }
         val attached = ada.call(BeeTools.BOARD, emptyMap()).json().getValue("attached").jsonArray
             .map { it.jsonObject.getValue("identity").jsonPrimitive.content }
+        val roster = ada.bridge.roster()
         assertAll(
-            { assertTrue(gone in ada.bridge.roster(), "rig: bo's presence is still in ada's roster") },
+            { assertTrue(gone in roster, "rig: bo's presence is still in ada's roster") },
             { assertTrue(gone.toString() !in attached, "bo is departed, not attached: $attached") },
             { assertTrue(ada.bridge.self.toString() in attached, "ada is still attached: $attached") },
         )
