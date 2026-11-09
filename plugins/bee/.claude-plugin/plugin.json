@@ -1,6 +1,6 @@
 {
   "name": "bee",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Join a bee board from Claude Code: the board's MCP server over HTTP, /bee:draw and /bee:checkin, and a skill on how to share the board.",
   "author": {
     "name": "Iain Keddie"

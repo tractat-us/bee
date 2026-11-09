@@ -8,7 +8,8 @@ import kotlin.test.assertIs
 
 /**
  * The lines "Bring your Claude" offers: a teammate's, with this tab's key, for every folder; the
- * owner's, the kit's bridge first and a URL for one folder only; every URL shell-safe.
+ * owner's, the kit's bridge first and a URL for one folder only; each with a line for Codex; every
+ * URL shell-safe.
  */
 class McpCommandTest {
     private val origin = "http://192.168.1.20:8233"
@@ -38,6 +39,39 @@ class McpCommandTest {
             { assertEquals("claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'", command.line) },
             { assertEquals("claude mcp add --transport http bee 'http://127.0.0.1:8233/mcp?name=iain'", command.folderLine) },
             { assertFalse("--scope user" in command.line + command.folderLine, "the owner is never offered --scope user") },
+        )
+    }
+
+    /** `codex mcp add` replaces a `bee` it already has, so the teammate's Codex line needs no removal first. */
+    @Test
+    fun aKeyedViewerGetsACodexLineWithTheSameUrl() {
+        assertEquals(
+            "codex mcp add bee --url 'http://192.168.1.20:8233/mcp?k=s3cr3t&name=alex'",
+            McpCommand.of(origin, Access.Keyed("s3cr3t"), Viewer.Named("alex")).codexLine,
+        )
+    }
+
+    /** The owner's Codex line is for one run only, as the kit's line is: `codex mcp add` would reach every Codex here. */
+    @Test
+    fun theOwnersCodexLineSetsBeeForOneSessionOnly() {
+        val line = McpCommand.of("http://127.0.0.1:8233", Access.Loopback, Viewer.Named("sam")).codexLine
+        assertAll(
+            {
+                assertEquals(
+                    "codex -c 'mcp_servers.bee.url=\"http://127.0.0.1:8233/mcp?name=sam\"' -c 'mcp_servers.bee.default_tools_approval_mode=\"approve\"'",
+                    line,
+                )
+            },
+            { assertFalse("mcp add" in line, "the owner is never offered a user-wide Codex entry") },
+        )
+    }
+
+    /** The owner's URL sits in a TOML string inside a shell word: a `"` or `\` can't end the string, nor a `'` the word. */
+    @Test
+    fun anOriginCanNotBreakTheOwnersCodexLine() {
+        assertEquals(
+            "codex -c 'mcp_servers.bee.url=\"http://a'\\''\\\"\\\\.example:8233/mcp?name=alex\"' -c 'mcp_servers.bee.default_tools_approval_mode=\"approve\"'",
+            McpCommand.Owner("http://a'\"\\.example:8233", Viewer.Named("alex")).codexLine,
         )
     }
 

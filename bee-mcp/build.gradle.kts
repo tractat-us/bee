@@ -10,14 +10,15 @@ kotlin { jvmToolchain(25) }
 application { mainClass = "us.tractat.bee.mcp.MainKt" }
 
 // ToolsPageTest reads docs/tools.md, from this module's directory, and checks it names every tool
-// and prompt the bridge serves. PluginCommandsTest reads the plugin's command skills, which copy
-// the prompts. Both are inputs, so an edit to either reruns the tests.
+// and prompt the bridge serves. PluginCommandsTest reads the plugin's skills, whose command skills
+// copy the prompts, and its two manifests, Claude Code's and Codex's. Both are inputs, so an edit
+// to either reruns the tests.
 tasks.test {
     inputs.file(layout.projectDirectory.file("../docs/tools.md"))
         .withPropertyName("toolsPage")
         .withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs.dir(layout.projectDirectory.dir("../plugins/bee/skills"))
-        .withPropertyName("pluginSkills")
+    inputs.dir(layout.projectDirectory.dir("../plugins/bee"))
+        .withPropertyName("plugin")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
 

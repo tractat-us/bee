@@ -1,6 +1,7 @@
 // "Bring your Claude": the bar's control opens a panel with the line that points a viewer's own
 // Claude session at this board. A keyed viewer gets this tab's key and their name, for every
-// folder; the owner, on loopback, gets the kit's bridge line and a URL for one folder only.
+// folder; the owner, on loopback, gets the kit's bridge line and a URL for one folder only. Each
+// also gets a line for a Codex session.
 //
 // The keyed viewer is reached by a LAN name, `bee-lan.test`, which Chromium resolves to 127.0.0.1
 // (as in second-screen.spec.mjs): the page takes itself for a LAN device holding a join link's key,
@@ -17,12 +18,17 @@ const panel = (page) => page.locator('#bring-claude');
 const command = (page) => page.locator('#bring-claude-command');
 
 const folderCommand = (page) => page.locator('#bring-claude-folder-command');
+const codexCommand = (page) => page.locator('#bring-claude-codex-command');
 
 // A teammate's line: bee for every folder on their machine.
 const line = (origin, query) => `claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee '${origin}/mcp?${query}'`;
 // The owner's: the kit's bridge, as bee-up prints it, then a URL for one folder only.
 const KIT_LINE = "claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'";
 const folderLine = (origin, query) => `claude mcp add --transport http bee '${origin}/mcp?${query}'`;
+// A Codex session's: user-wide for a teammate, one run only for the owner.
+const codexLine = (origin, query) => `codex mcp add bee --url '${origin}/mcp?${query}'`;
+const ownerCodexLine = (origin, query) =>
+  `codex -c 'mcp_servers.bee.url="${origin}/mcp?${query}"' -c 'mcp_servers.bee.default_tools_approval_mode="approve"'`;
 
 async function openBoard(page, url) {
   await page.goto(url);
@@ -39,6 +45,7 @@ test('the owner on loopback gets the kit line first and a one-folder URL, each c
   await expect(panel(page)).toBeVisible();
   await expect(command(page)).toHaveText(KIT_LINE);
   await expect(folderCommand(page)).toHaveText(folder);
+  await expect(codexCommand(page)).toHaveText(ownerCodexLine(`http://127.0.0.1:${port}`, 'name=alex'));
   await expect(panel(page)).toContainText('the line bee-up printed');
   await expect(panel(page)).toContainText('/mcp__bee__whiteboard <topic>');
   await expect(panel(page)).not.toContainText('--scope user');
@@ -50,6 +57,9 @@ test('the owner on loopback gets the kit line first and a one-folder URL, each c
 
   await page.locator('#bring-claude-folder-copy').click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(folder);
+
+  await page.locator('#bring-claude-codex-copy').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(ownerCodexLine(`http://127.0.0.1:${port}`, 'name=alex'));
 });
 
 test('a keyed LAN viewer gets its key in the line, and only there', async ({ page }) => {
@@ -61,6 +71,7 @@ test('a keyed LAN viewer gets its key in the line, and only there', async ({ pag
   const expected = line(`http://${LAN_NAME}:${port}`, 'k=e2e-lan-key&name=sam');
   await expect(command(page)).toHaveText(expected);
   await expect(folderCommand(page)).toHaveCount(0);
+  await expect(codexCommand(page)).toHaveText(codexLine(`http://${LAN_NAME}:${port}`, 'k=e2e-lan-key&name=sam'));
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
 
   // No async clipboard here: Copy selects the line, copies it the old way if it can, and says which.
@@ -68,9 +79,10 @@ test('a keyed LAN viewer gets its key in the line, and only there', async ({ pag
   await expect(page.locator('#bring-claude-copied')).toHaveText(/^(Copied\.|Selected: press (⌘C|Ctrl\+C) to copy\.)$/);
   expect(await page.evaluate(() => window.getSelection().toString())).toBe(expected);
 
-  // The key is in the panel's text and nowhere else on the page.
+  // The key is in the panel's two lines, Claude's and Codex's, and nowhere else on the page.
   const html = await page.content();
-  expect(html.split('e2e-lan-key').length - 1).toBe(1);
+  expect(html.split('e2e-lan-key').length - 1).toBe(2);
+  expect((await panel(page).innerHTML()).split('e2e-lan-key').length - 1).toBe(2);
 });
 
 test('an unnamed viewer gets the placeholder and is told so, and the panel closes', async ({ page }) => {

@@ -1,0 +1,16 @@
+{
+  "name": "bee",
+  "version": "0.1.2",
+  "description": "Join a bee board from Codex: $bee:draw, $bee:checkin, and a skill on how to share the board. The board's server is added with codex mcp add.",
+  "homepage": "https://github.com/tractat-us/bee/blob/main/docs/codex.md",
+  "repository": "https://github.com/tractat-us/bee",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "bee",
+    "whiteboard",
+    "a2ui",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {}
+}
