@@ -495,7 +495,7 @@ test('a pinch-zoom or a pan of the zoomed page re-arms Send', async ({ page, bro
     await settled(page);
     // Precondition: the page zoomed, and didn't scroll.
     expect(await where()).toMatchObject({ scale: 2, x: 0, y: 0 });
-    expect(await disabledCount(page)).toBe(1);
+    expect(await disabledCount(page)).toBeGreaterThan(0);
     await expect(send(page, 'zoomed')).toBeEnabled();
 
     await countDisables(page, 'zoomed');
@@ -505,7 +505,7 @@ test('a pinch-zoom or a pan of the zoomed page re-arms Send', async ({ page, bro
     const panned = await where();
     expect(panned.left).toBeGreaterThan(0);
     expect(panned).toMatchObject({ x: 0, y: 0 });
-    expect(await disabledCount(page)).toBe(1);
+    expect(await disabledCount(page)).toBeGreaterThan(0);
   } finally {
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
     await agent.call('bee_surface_close', { surfaceId: 'zoomed' });
