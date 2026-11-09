@@ -71,5 +71,32 @@ class SpokeLoom(
         // only opens a window after connecting in which a broadcast has no flood target.
         return GossipSeam(base = base, random = random, clock = clock, jitter = Duration.ZERO..Duration.ZERO)
             .also { it.start(scope) }
+            .let { Diag171Seam(it, peerName) }
+    }
+}
+
+// TEMPORARY bee#171 diagnostic: logs every Quilt frame a spoke receives.
+private class Diag171Seam(private val base: Seam, private val name: String) : Seam by base {
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    override val incoming: kotlinx.coroutines.flow.Flow<us.tractat.kuilt.core.Swatch> = base.incoming.onEachDiag()
+
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    private fun kotlinx.coroutines.flow.Flow<us.tractat.kuilt.core.Swatch>.onEachDiag() = kotlinx.coroutines.flow.flow {
+        val ser = us.tractat.kuilt.quilter.QuiltMessage.serializer(BoardState.serializer())
+        collect { sw ->
+            try {
+                val m = sw.decode(kotlinx.serialization.cbor.Cbor, ser)
+                fun desc(b: BoardState) = b.surfaces.keys.filter { it.startsWith("ot") }.joinToString { id -> id + (if (SurfaceDoc.meta(b.surfaces[id]!!) == null) "[NOMETA]" else "[meta]") }
+                val line = when (m) {
+                    is us.tractat.kuilt.quilter.QuiltMessage.Delta -> "Delta from=${m.sender.value} seq=${m.seq} via=${sw.sender?.value} ${desc(m.delta)}"
+                    is us.tractat.kuilt.quilter.QuiltMessage.FullState -> "FullState from=${m.sender.value} up=${m.upThrough} via=${sw.sender?.value} ${desc(m.state)}"
+                    else -> null
+                }
+                if (line != null && line.contains("ot")) println("DIAG171 $name $line")
+            } catch (e: Exception) {
+                println("DIAG171 $name undecodable")
+            }
+            emit(sw)
+        }
     }
 }
