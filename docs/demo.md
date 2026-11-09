@@ -114,7 +114,7 @@ word, or one hyphenated word.
 - **A page shows "The page stopped".** Reload it; the board is intact. A known bug stops a page
   when a Poll is answered the instant it appears ([#171](https://github.com/tractat-us/bee/issues/171)),
   which is why step 5 waits a few seconds.
-- **An agent's card reads "working" just after the restart.** A known bug: the agent is waiting,
+- **An agent's card reads "working" after the restart.** A known bug: the agent is waiting,
   but its card doesn't say so yet ([#165](https://github.com/tractat-us/bee/issues/165)). A click
   still reaches it.
 - **Your teammate's Claude comes back from the restart as a new participant.** That's how a
