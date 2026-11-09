@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
@@ -73,10 +74,11 @@ class OpenBeforeWriteTest {
         val shownWithoutMeta = mutableListOf<String>()
         backgroundScope.launch {
             kim.state.collect { board ->
-                if (board.surfaceDoc(POLL) == null) return@collect
-                if (board.meta(POLL) == null) answerBeforeOpen = true
+                // Read raw, past the board's reads: whether the open's meta has landed in the doc.
+                val opened = board.surfaceDoc(POLL)?.let { it[SurfaceFormat.META] != null } ?: return@collect
+                if (!opened) answerBeforeOpen = true
                 runCatching { board.openSurfaces() }
-                    .onSuccess { open -> if (POLL in open && board.meta(POLL) == null) shownWithoutMeta += POLL }
+                    .onSuccess { open -> if (POLL in open && !opened) shownWithoutMeta += POLL }
                     .onFailure { readFailures += it }
             }
         }
