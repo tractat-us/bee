@@ -14,13 +14,13 @@ import kotlinx.serialization.json.JsonPrimitive
 object SurfaceValidator {
     /**
      * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog plus
-     * `Sketch`, `Poll` and `Board` (`bee-notions/src/catalog.js`), so it always matches what the
+     * `Sketch`, `Poll`, `Board` and `Photo` (`bee-notions/src/catalog.js`), so it always matches what the
      * renderer can draw.
      */
     val NOTIONS_COMPONENT_TYPES: Set<String> = setOf(
         "Text", "Image", "Icon", "Video", "AudioPlayer", "Row", "Column", "List", "Card", "Tabs",
         "Modal", "Divider", "Button", "TextField", "CheckBox", "ChoicePicker", "Slider", "DateTimeInput",
-        SKETCH, POLL, BOARD,
+        SKETCH, POLL, BOARD, PHOTO,
     )
 
     /** A question, options and per-peer answers ([NotionActions]): binds `question`, `options` and `answers`. */
@@ -29,10 +29,14 @@ object SurfaceValidator {
     /** Columns and draggable cards ([NotionActions]): binds `columns` and `cards`. */
     const val BOARD = "Board"
 
+    /** A phone camera's shot ([Photo]): binds `photo`, with an optional `prompt`. */
+    const val PHOTO = "Photo"
+
     /** The data bindings each Notions type needs, in the order its errors are named. */
     private val BINDINGS: Map<String, List<String>> = mapOf(
         POLL to listOf("answers", "options", "question"),
         BOARD to listOf("cards", "columns"),
+        PHOTO to listOf("photo"),
     )
 
     /**
