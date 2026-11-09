@@ -1,6 +1,6 @@
 ---
 name: bee
-description: Use when the person mentions the bee board or asks what is on it ("what's on the board", "look at bee", "did anyone answer on the board"), when a click or answer may be waiting there, or before calling any bee_* tool. Says how to wait for answers, what each card state means, and what never goes on the board. Drawing goes to the draw skill, status cards to checkin, a component the board lacks to notion.
+description: Use when the person mentions the bee board or asks what is on it ("what's on the board", "look at bee", "did anyone answer on the board"), when a click or answer may be waiting there, or before calling any bee_* tool. Says how to wait for answers, what each card state means, and what never goes on the board. Drawing goes to the draw skill, status cards to checkin, a component the board lacks to notion, and mockups or a vote in a design conversation to present.
 ---
 
 # bee: sharing the board
@@ -21,6 +21,9 @@ server by hand, the same tools also appear as `mcp__bee__bee_board`. Use one ser
 - **Checking in while you work.** `/bee:checkin [task]`, or "check in on the board", keeps one
   status card for the session, named after its repo, and asks the person for decisions with
   buttons.
+- **Showing a design, or asking the room.** "Mock it up", "compare these layouts", "take a vote":
+  the `present` skill puts one question at a time on the board, as mockups side by side or a poll,
+  and reads the answers. It takes the place of the brainstorming skill's visual companion.
 - **A piece the board doesn't have.** "Can the board show a timer?", or a chart, a QR code, a map:
   the `notion` skill looks for it, builds it now as a Sketch, and offers to request it from bee.
 - **Anything else.** Look first with `bee_board`. Before you draw a component you haven't drawn
