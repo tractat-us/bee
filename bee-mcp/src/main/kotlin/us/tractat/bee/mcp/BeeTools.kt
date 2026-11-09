@@ -18,6 +18,7 @@ import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimTarget
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
 
 /**
@@ -48,14 +49,14 @@ object BeeTools {
             name = BOARD,
             description = "Reads the shared board: the open surfaces with their components and data, the closed " +
                 "surface ids (newest first), who is attached, each claim the host has mirrored, and whether this " +
-                "session's claims are online. Attached lists each peer once: agents, and the people and room " +
-                "screens with the board open. A person's lastActedAt is when their page loaded. A claim a person " +
+                "session's claims are online. You is this session's own identity. Attached lists each peer once: " +
+                "agents, and the people and room screens with the board open, leaving out any that departed. A person's lastActedAt is when their page loaded. A claim a person " +
                 "reassigned to this session shows here as held by it; the record itself arrives through " +
                 "bee_wait_action, on its surface or board-wide, with its token.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),
         ) { _ ->
             bridge.touch()
-            answer(board(bridge.board.value, bridge.roster().values, bridge.claimsOnline))
+            answer(board(bridge.board.value, bridge.self, bridge.roster().values, bridge.claimsOnline))
         }
         server.addTool(
             name = OPEN,
@@ -168,7 +169,8 @@ object BeeTools {
         }
     }
 
-    private fun board(state: BoardState, attached: Collection<PresenceEntry>, claimsOnline: Boolean): JsonObject = buildJsonObject {
+    private fun board(state: BoardState, you: PeerIdentity, roster: Collection<PresenceEntry>, claimsOnline: Boolean): JsonObject = buildJsonObject {
+        put("you", you.toString())
         put(
             "open",
             buildJsonArray {
@@ -193,10 +195,12 @@ object BeeTools {
             JsonObject(state.claims.entries.mapValues { (_, v) -> buildJsonObject { put("status", v.status); put("holder", v.holder); put("token", v.token) } }),
         )
         put("departed", JsonArray(state.departures().map { JsonPrimitive("${it.identity} (${it.reason})") }))
+        // A departed identity never comes back, though its last presence entry lingers until it ages out.
+        val gone = state.departures().map { it.identity }.toSet()
         put(
             "attached",
             JsonArray(
-                attached.sortedBy { it.identity.toString() }.map { entry ->
+                roster.filterNot { it.identity in gone }.sortedBy { it.identity.toString() }.map { entry ->
                     buildJsonObject {
                         put("identity", entry.identity.toString())
                         put("status", entry.status)
