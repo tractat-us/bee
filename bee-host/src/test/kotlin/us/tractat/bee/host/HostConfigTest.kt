@@ -43,6 +43,25 @@ class HostConfigTest {
     }
 
     @Test
+    fun publicUrlBindsAllInterfacesBehindItsProxy() {
+        val parsed = HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--port", "8233"), home)
+        val behindTheProxy = Arrival("172.19.0.2", 8233)
+        assertAll(
+            { assertEquals(Reach.Public(PublicUrl.parse("https://bee.tractat.us/")), parsed.reach) },
+            { assertEquals("0.0.0.0", parsed.bind) },
+            { assertEquals(PeerAddress.FORWARDED, parsed.reach.peers()) },
+            { assertEquals(PeerAddress.DIRECT, Reach.Lan.peers(), "no proxy on the LAN") },
+            {
+                val headers = headersOf(HttpHeaders.Host to listOf("bee.tractat.us"), HttpHeaders.Origin to listOf("https://bee.tractat.us"))
+                assertNull(parsed.siteRule().refusal("/", headers, behindTheProxy))
+            },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--lan"), home) } },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/?k=fake"), home) } },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url"), home) } },
+        )
+    }
+
+    @Test
     fun hostNameAddsANameTheHostAnswersTo() {
         val named = HostConfig.fromArgs(listOf("--host-name", "bee-lan.test"), home)
         val local = Arrival("127.0.0.1", HostConfig.DEFAULT_PORT)

@@ -3,7 +3,6 @@ package us.tractat.bee.host
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 
 /** `--public-url`'s reading ([PublicUrl.parse]) and the names a browser gives it. */
 class PublicUrlTest {
@@ -44,6 +43,7 @@ class PublicUrlTest {
             "https://bee tractat.us/",
             "",
         )
-        assertAll(refused.map { text -> { assertFailsWith<IllegalArgumentException>(text) { PublicUrl.parse(text) }; Unit } })
+        val parsed = refused.filter { text -> runCatching { PublicUrl.parse(text) }.exceptionOrNull() !is IllegalArgumentException }
+        assertEquals(emptyList(), parsed, "each of these parses, or fails otherwise")
     }
 }
