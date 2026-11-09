@@ -228,6 +228,22 @@ class SurfaceValidatorTest {
         )
     }
 
+    /** What every Chat on a surface shows, whatever its shape, and nothing a Chat doesn't bind. */
+    @Test
+    fun chatEntriesAreWhatEveryChatShows() {
+        val one = component("one", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/a") } }
+        val two = component("two", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/b") } }
+        val data = buildJsonObject {
+            put("a", JsonArray(listOf(message("m1", "hi"))))
+            put("b", JsonArray(listOf(JsonPrimitive("raw"))))
+            put("c", JsonArray(listOf(message("m3", "unbound"))))
+        }
+        assertEquals(
+            setOf(message("m1", "hi"), JsonPrimitive("raw")),
+            SurfaceValidator.chatEntries(view(one, two).copy(data = data)),
+        )
+    }
+
     private fun message(id: String, text: String) = buildJsonObject {
         put("id", id)
         put("author", "human:alex")

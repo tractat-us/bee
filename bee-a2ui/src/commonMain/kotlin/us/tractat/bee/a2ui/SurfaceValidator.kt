@@ -132,6 +132,10 @@ object SurfaceValidator {
         }
     }
 
+    /** Every entry any Chat on [view] shows: not built yet. */
+    @Suppress("UNUSED_PARAMETER")
+    fun chatEntries(view: SurfaceView): Set<JsonElement> = emptySet()
+
     /** What a Chat message holds, each a string. */
     private val MESSAGE_FIELDS = listOf("id", "author", "text", "at")
 

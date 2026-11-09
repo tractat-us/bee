@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
@@ -108,6 +109,94 @@ class ChatPostTest {
             { assertEquals("bo, take the tests?", record.getValue("context").jsonObject.getValue("text").jsonPrimitive.content) },
         )
         rig.close()
+    }
+
+    /** A one-surface wait or list leaves out ada's own post too: she never receives what she wrote. */
+    @Test
+    fun aOneSurfaceWaitDoesNotReturnTheSessionsOwnPost() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, chatArgs("talk", append = posts("Note to self.")))
+        ada.client.state.first { it.records("talk").isNotEmpty() }
+
+        val own = ada.wait(mapOf("surfaceId" to "talk", "timeoutSeconds" to 1))
+        val listed = ada.call(WaitTool.LIST, mapOf("surfaceId" to "talk")).json().getValue("records") as JsonArray
+        assertAll(
+            { assertEquals(1, ada.client.state.value.records("talk").size, "rig: the post was recorded") },
+            { assertEquals(true, own.getValue("timedOut").jsonPrimitive.boolean, "ada's one-surface wait doesn't return her own post: $own") },
+            { assertEquals(0, listed.size, "nor does her list: $listed") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Posting as someone else takes no second call either (#217's re-review). An entry appended raw
+     * to a path no Chat binds can't be shown afterwards by binding a Chat there, new or rebound; and
+     * once a Chat binds the path, an append there is a post, stamped, so a foreign author is refused.
+     * A raw append to a path no Chat binds is still fine on its own: it's a plain append-only array.
+     */
+    @Test
+    fun noTwoCallsPostAsAnotherAuthorInEitherOrder() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val forged = JsonObject(
+            mapOf("/fake" to JsonArray(listOf(fields("id" to "x1", "author" to "human:alex", "text" to "I approve.", "at" to "2026-11-09T12:00:00Z")))),
+        )
+        // Once a Chat binds /fake, an append there is a post: text only, so a foreign author is what's left to try.
+        val spoofed = JsonObject(mapOf("/fake" to JsonArray(listOf(fields("text" to "I approve.", "author" to "human:alex")))))
+        val rebound = JsonArray(listOf(chat("chat", "/fake")))
+        val withNewChat = JsonArray(listOf(column("root", "chat", "late"), chat("late", "/fake")))
+        fun update(id: String, key: String, value: JsonElement) = mapOf("surfaceId" to id, key to value)
+        listOf("raw-rebind", "raw-new", "rebind-raw", "new-raw").forEach { id ->
+            ada.call(BeeTools.OPEN, mapOf("surfaceId" to id, "title" to "Talk", "components" to JsonArray(listOf(column("root", "chat"), chat("chat", "/messages")))))
+        }
+        val rawFirst = ada.call(BeeTools.UPDATE, update("raw-rebind", "append", forged))
+        val thenRebind = ada.call(BeeTools.UPDATE, update("raw-rebind", "components", rebound))
+        ada.call(BeeTools.UPDATE, update("raw-new", "append", forged))
+        val thenNewChat = ada.call(BeeTools.UPDATE, update("raw-new", "components", withNewChat))
+        val rebindFirst = ada.call(BeeTools.UPDATE, update("rebind-raw", "components", rebound))
+        val thenForgeRebound = ada.call(BeeTools.UPDATE, update("rebind-raw", "append", spoofed))
+        val newChatFirst = ada.call(BeeTools.UPDATE, update("new-raw", "components", withNewChat))
+        val thenForgeNew = ada.call(BeeTools.UPDATE, update("new-raw", "append", spoofed))
+        val state = ada.client.state.value
+        assertAll(
+            { assertEquals(null, rawFirst.isError, "control: a raw append no Chat shows is fine: ${rawFirst.text()}") },
+            { assertTrue(thenRebind.isError == true && "didn't post" in thenRebind.text(), thenRebind.text()) },
+            { assertTrue(thenNewChat.isError == true && "didn't post" in thenNewChat.text(), thenNewChat.text()) },
+            { assertEquals(null, rebindFirst.isError, "control: rebinding to an empty path is fine: ${rebindFirst.text()}") },
+            { assertTrue(thenForgeRebound.isError == true && "can't name author \"human:alex\"" in thenForgeRebound.text(), thenForgeRebound.text()) },
+            { assertEquals(null, newChatFirst.isError, "control: a new Chat over an empty path is fine: ${newChatFirst.text()}") },
+            { assertTrue(thenForgeNew.isError == true && "can't name author \"human:alex\"" in thenForgeNew.text(), thenForgeNew.text()) },
+            {
+                assertEquals(
+                    emptyList(),
+                    listOf("raw-rebind", "raw-new", "rebind-raw", "new-raw").flatMap { shownAuthors(state, it) },
+                    "no Chat shows a message ada didn't post",
+                )
+            },
+        )
+        rig.close()
+    }
+
+    private fun column(id: String, vararg children: String) = buildJsonObject {
+        put("id", id)
+        put("component", "Column")
+        put("children", JsonArray(children.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+    }
+
+    private fun chat(id: String, path: String) = buildJsonObject {
+        put("id", id)
+        put("component", "Chat")
+        put("messages", buildJsonObject { put("path", path) })
+    }
+
+    /** The authors of every message any Chat on surface [id] shows, read straight from its components and data. */
+    private fun shownAuthors(state: BoardState, id: String): List<String> {
+        val view = state.surfaceDoc(id)!!.toSurfaceView(id)
+        return view.components.values.filter { it["component"]?.jsonPrimitive?.content == "Chat" }.flatMap { chat ->
+            val key = chat.getValue("messages").jsonObject.getValue("path").jsonPrimitive.content.removePrefix("/")
+            (view.data[key] as? JsonArray).orEmpty().map { it.jsonObject.getValue("author").jsonPrimitive.content }
+        }
     }
 
     private suspend fun Session.wait(arguments: Map<String, Any?>): JsonObject {
