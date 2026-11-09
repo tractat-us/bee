@@ -9,6 +9,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.PairingWire
 import java.nio.file.Path
+import kotlin.system.exitProcess
 
 private val logger = KotlinLogging.logger {}
 
@@ -16,7 +17,12 @@ private val logger = KotlinLogging.logger {}
 fun main(args: Array<String>) {
     val config = HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val host = runBlocking { BeeHost.start(scope, config) }
+    val host = try {
+        runBlocking { BeeHost.start(scope, config) }
+    } catch (busy: DataDirInUse) {
+        logger.error { busy.message }
+        exitProcess(1)
+    }
     Runtime.getRuntime().addShutdownHook(
         Thread {
             host.close()

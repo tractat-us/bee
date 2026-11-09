@@ -54,6 +54,8 @@ class BeeHost private constructor(
     private val orphanDecisions: Job,
     /** The bridges this host runs for MCP clients over HTTP, at [MCP_PATH]. */
     val bridges: HttpBridges,
+    /** The host's hold on [HostConfig.dataDir], let go once [close] has saved the board. */
+    private val dataDir: DataDirLock,
 ) : AutoCloseable {
     /** The claims voter at [CLAIMS_PATH]. */
     val voter: ClaimsVoter get() = core.voter
@@ -74,14 +76,17 @@ class BeeHost private constructor(
     /**
      * Stops the host: the HTTP bridges first, each departing `Left` while the voter can still
      * commit it, then join requests and orphan decisions, since they write through the relay, then
-     * the core, whose voter's last mirror and server's last write are on the board before its last save.
+     * the core, whose voter's last mirror and server's last write are on the board before its last
+     * save. The data dir goes last, so the next host on it starts after that save.
      */
     override fun close() {
-        runBlocking {
-            bridges.close()
-            joinRequests.cancelAndJoin()
-            orphanDecisions.cancelAndJoin()
-            core.close()
+        dataDir.use {
+            runBlocking {
+                bridges.close()
+                joinRequests.cancelAndJoin()
+                orphanDecisions.cancelAndJoin()
+                core.close()
+            }
         }
     }
 
@@ -111,6 +116,8 @@ class BeeHost private constructor(
          * Starts a host on [config]'s address, with its board, claims log and keys under
          * [HostConfig.dataDir]. Background work runs on [scope]. [Departures] reads a crash off
          * the claims voter: a node it drops after the learner grace ([claimsLinkLoss], bee#28).
+         *
+         * @throws DataDirInUse if another host holds the data dir: this one touches nothing in it
          */
         suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost = start(scope, config, PeerAddress.DIRECT)
 
@@ -119,6 +126,17 @@ class BeeHost private constructor(
          * have a dial on a loopback socket count as one from another machine, which a key must admit.
          */
         internal suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress): BeeHost {
+            val lock = DataDirLock.take(config.dataDir)
+            return try {
+                start(scope, config, peers, lock)
+            } catch (failure: Throwable) {
+                lock.close()
+                throw failure
+            }
+        }
+
+        /** [start], on the data dir [lock] holds: nothing opens [HostConfig.dataDir] without one. */
+        private suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress, lock: DataDirLock): BeeHost {
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
             val secrets = SecureSecrets(SecureRandom())
@@ -142,7 +160,7 @@ class BeeHost private constructor(
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
-                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges)
+                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, lock)
             } catch (failure: Throwable) {
                 bridges.close()
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
