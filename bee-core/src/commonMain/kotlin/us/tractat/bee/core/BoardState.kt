@@ -244,7 +244,10 @@ class BoardState internal constructor(
      */
     fun withoutPresence(): BoardState = copy(presence = EphemeralMap.empty())
 
-    /** Every surface whose open has arrived, with its meta; one still waiting for its open is left out (bee#171). */
+    /**
+     * Every surface whose open has arrived, with its meta. One still waiting for its open is left
+     * out: a write can arrive before its surface's open ([SurfaceDoc.meta], bee#171).
+     */
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.mapNotNull { id -> SurfaceDoc.meta(surfaces[id]!!)?.let { id to it } }
 
