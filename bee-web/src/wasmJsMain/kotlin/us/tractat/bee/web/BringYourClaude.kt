@@ -161,7 +161,6 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
             is McpCommand.Owner -> owner(command)
         }
         codex(command)
-        panel.appendChild(copied)
         if (command.viewer == Viewer.Unnamed) {
             panel.appendChild(
                 element("p", "bring-claude-unnamed").also {
@@ -205,6 +204,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
     private fun teammate(command: McpCommand.Teammate) {
         panel.appendChild(element("p", "").also { it.textContent = "In a terminal, run this. It replaces any earlier bee entry. This line holds your key: don't share it." })
         panel.appendChild(lineRow(command.line, PRIMARY))
+        panel.appendChild(copied)
         panel.appendChild(
             then(
                 document.createTextNode("Then start "),
@@ -231,6 +231,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
             },
         )
         panel.appendChild(lineRow(command.folderLine, FOLDER))
+        panel.appendChild(copied)
     }
 
     /** Last, and quieter: the line for a viewer whose agent is Codex, not Claude. */

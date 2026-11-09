@@ -161,6 +161,9 @@ echo "                        then type  /mcp__bee__whiteboard"
 # Not --scope user here: every claude on this machine, dispatched workers too, would join the board.
 echo "  Or, by URL in one folder:  claude mcp add --transport http bee 'http://127.0.0.1:$port/mcp?name=$name'"
 # Codex's -c lasts one run, as --mcp-config does; codex mcp add would reach every codex here.
+# approve runs bee's tools unconfirmed, as --allowedTools does for Claude: anyone with the key can
+# put words on the board, and the session can post from its context in reply, call by call, with
+# no one confirming.
 echo "  Your Codex session:   codex -c 'mcp_servers.bee.url=\"http://127.0.0.1:$port/mcp?name=$name\"' -c 'mcp_servers.bee.default_tools_approval_mode=\"approve\"'"
 echo "  Stop the host:        bee-up --stop     (log: $log)"
 echo

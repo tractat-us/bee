@@ -112,7 +112,7 @@ plugins:
   - llmstxt:
       markdown_description: >-
         The pages below cover what bee is, how to run a board or join one from
-        Claude Code, the tools and prompts a session gets, its design, and what
+        Claude Code or Codex, the tools and prompts a session gets, its design, and what
         each spike found.
       full_output: llms-full.txt
       preprocess: llmstxt_preprocess.py
@@ -124,6 +124,7 @@ plugins:
           - setup.md: Running a board with bee-up, joining one from its link, and adding bee to Claude Code
           - tools.md: Every tool and prompt a Claude session gets from bee, one line each
           - plugin.md: The Claude Code plugin, which joins a session to a board with one install
+          - codex.md: Joining a board from Codex, with one line for the board and the same skills Claude Code gets
           - deploy.md: Running hosted bee at bee.tractat.us, from getting on the board to deploying its one Fly.io machine
           - dogfood.md: bee's own development board on your Mac, drawn from the plan, the morning report and the open decisions
           - superpowers/specs/2026-11-06-bee-design.md: The design spec, with its goals, architecture and the board's state

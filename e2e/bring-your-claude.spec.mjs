@@ -51,6 +51,8 @@ test('the owner on loopback gets the kit line first and a one-folder URL, each c
   await expect(panel(page)).not.toContainText('--scope user');
   await expect(page.locator('#bring-claude-unnamed')).toHaveCount(0);
 
+  // "Copied." shows under the Claude lines, above the Codex one.
+  expect(await page.evaluate(() => document.querySelector('#bring-claude-folder-line').nextElementSibling.id)).toBe('bring-claude-copied');
   await page.locator('#bring-claude-copy').click();
   await expect(page.locator('#bring-claude-copied')).toHaveText('Copied.');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(KIT_LINE);
@@ -74,6 +76,7 @@ test('a keyed LAN viewer gets its key in the line, and only there', async ({ pag
   await expect(codexCommand(page)).toHaveText(codexLine(`http://${LAN_NAME}:${port}`, 'k=e2e-lan-key&name=sam'));
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
 
+  expect(await page.evaluate(() => document.querySelector('#bring-claude-line').nextElementSibling.id)).toBe('bring-claude-copied');
   // No async clipboard here: Copy selects the line, copies it the old way if it can, and says which.
   await page.locator('#bring-claude-copy').click();
   await expect(page.locator('#bring-claude-copied')).toHaveText(/^(Copied\.|Selected: press (⌘C|Ctrl\+C) to copy\.)$/);
