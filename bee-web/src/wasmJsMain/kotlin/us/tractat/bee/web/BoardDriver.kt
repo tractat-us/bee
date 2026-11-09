@@ -147,16 +147,17 @@ class BoardDriver(
         }
         try {
             client.mutate { state ->
+                val basis = Basis.capture(state, action.surfaceId)
+                val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
                 val record = ActionRecord(
                     surfaceId = action.surfaceId,
                     componentId = action.sourceComponentId,
                     actor = actor,
                     name = action.name,
-                    context = action.context,
-                    basis = Basis.capture(state, action.surfaceId),
+                    context = NotionActions.recordedContext(view, action),
+                    basis = basis,
                     at = clock(),
                 )
-                val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
                 val written = NotionActions.edit(view, action, actor.toString())
                     ?.let { state.updateData(author, action.surfaceId, it.path, it.value) }
                     ?: return@mutate state.appendRecord(author, record)

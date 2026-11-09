@@ -2,6 +2,7 @@ package us.tractat.bee.mcp
 
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
+import us.tractat.bee.a2ui.Photo
 import kotlin.time.Duration
 
 /**
@@ -51,10 +52,13 @@ sealed interface ActionScope {
 /**
  * What one wait ended with: a [record] and the [cursor] after it, or [timedOut] with no record.
  *
+ * A record of a `Photo` being taken carries the [photo] it shows now, which the tool hands the agent as
+ * an image rather than as base64 text.
+ *
  * After a timeout, [cursor] is still a position to resume from. It may have moved past records the
  * caller could no longer claim (another session took them), so it need not equal the cursor passed in.
  */
-data class WaitResult(val record: JsonObject?, val timedOut: Boolean, val cursor: String) {
+data class WaitResult(val record: JsonObject?, val timedOut: Boolean, val cursor: String, val photo: Photo.Image? = null) {
     init {
         require((record == null) == timedOut) { "A wait either returns a record or times out: $this" }
     }

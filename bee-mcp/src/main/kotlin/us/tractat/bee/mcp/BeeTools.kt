@@ -14,6 +14,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import us.tractat.bee.a2ui.Photo
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
@@ -68,8 +69,10 @@ object BeeTools {
                 "options go in append, never data (options as strings or {id, label}), and answers is an object " +
                 "keyed by peer, which each answer writes. It also adds " +
                 "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +
-                "owner?} and a card {label, column}; a drop moves a card to another column. Each answer or drop is " +
-                "also an action record.",
+                "owner?} and a card {label, column}; a drop moves a card to another column. And it adds Photo, " +
+                "which binds photo by {\"path\": \"/…\"} (leave that path empty) and takes an optional prompt: a person " +
+                "taps it, their phone's camera opens, and the shot fills photo with {image, by}. Each answer, drop " +
+                "or photo is also an action record.",
             inputSchema = schema(required = listOf("surfaceId", "title", "components")) {
                 putJsonObject("surfaceId") { put("type", "string") }
                 putJsonObject("title") { put("type", "string") }
@@ -183,7 +186,8 @@ object BeeTools {
                             put("title", meta.title)
                             put("openedBy", meta.openedBy.toString())
                             put("components", JsonArray(view.components.values.toList()))
-                            put("data", view.data)
+                            // A photo's base64 would fill the agent's context as text; bee_wait_action hands it over as an image.
+                            put("data", Photo.elided(view.data))
                         },
                     )
                 }

@@ -393,6 +393,13 @@ components plus these:
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
   appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
+- **`Photo` (trial, bee#162):** one shot from a person's phone camera, which an agent places with a
+  prompt. The page opens the camera with `<input type="file" capture="environment">`, which needs
+  no secure context, unlike `getUserMedia`. It re-encodes the shot as a JPEG of at most 384 KiB,
+  which also strips EXIF and location, and writes it to the Photo's data. The record keeps only
+  the type and size, and `bee_wait_action` hands the agent the photo as an image. Photos live in the
+  board document, so a board's `FullState` carries every one it ever held, closed or not, which
+  caps a board at about 170.
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
   captures in the browser and returns a transcript as an action. Before it ships it needs a consent
   rule, because it records everyone in the room, not just the person who asked.

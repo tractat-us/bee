@@ -21,6 +21,9 @@ data class NotionEdit(val path: String, val value: JsonElement)
  *   keyed by id (a column `{title, owner?}`, a card `{label, column}`), and `order` an array of
  *   ids. The action [DROP], with context `{card, column}`, writes the card's `column` leaf.
  *
+ * - **`Photo`** binds `photo`. The action [Photo.TAKE], with context `{image}`, writes
+ *   `{image, by}` there, and its record keeps [recordedContext]: the type and size, not the bytes.
+ *
  * Every other action only records.
  */
 object NotionActions {
@@ -41,8 +44,20 @@ object NotionActions {
         return when (component.type() to action.name) {
             SurfaceValidator.POLL to ANSWER -> answer(view, component, action, actor)
             SurfaceValidator.BOARD to DROP -> drop(view, component, action)
+            SurfaceValidator.PHOTO to Photo.TAKE -> NotionEdit(component.path("photo"), Photo.taken(action, actor))
             else -> null
         }
+    }
+
+    /**
+     * The context [action]'s record keeps: its own, but for a Photo's [Photo.TAKE], whose image lives in
+     * the Photo's data and would otherwise sit in the board's permanent records on every retake.
+     *
+     * @throws IllegalArgumentException for a photo over the budget or of a type a Photo can't show
+     */
+    fun recordedContext(view: SurfaceView, action: A2uiAction): JsonObject {
+        val type = view.components[action.sourceComponentId]?.type()
+        return if (type == SurfaceValidator.PHOTO && action.name == Photo.TAKE) Photo.recordedContext(action) else action.context
     }
 
     /** Each option's id, in order: a string entry is its own id, an object entry names its `id`. */

@@ -119,6 +119,15 @@ object WhiteboardGuide {
             note = "People drag cards between columns; each drop moves the card and records \"drop\" with " +
                 "{card, column}. Add a card by writing /cards/items/<id> and a new /cards/order.",
         ),
+        Example(
+            name = "Photo: a phone's camera",
+            components = """[{"id":"root","component":"Photo","prompt":"A photo of the whiteboard","photo":{"path":"/photo"}}]""",
+            data = null,
+            append = null,
+            note = "For something physical: a whiteboard, a sketch on paper. A person taps Take a photo and their " +
+                "phone's camera opens; the shot lands at /photo as {image, by} for everyone, and records \"photo\". " +
+                "bee_wait_action returns that record with the photo as an image; bee_board shows only a note.",
+        ),
     )
 
     private const val SURFACES =
@@ -145,7 +154,7 @@ object WhiteboardGuide {
         |Surfaces
         |$SURFACES
         |${ESSENTIAL.joinToString("\n") { it.render() }}
-        |Call $EXAMPLES_TOOL for the rest: Text with Markdown, layout and a Button, Poll, and Board.
+        |Call $EXAMPLES_TOOL for the rest: Text with Markdown, layout and a Button, Poll, Board, and Photo.
     """.trimMargin()
 
     /** The [EXAMPLES_TOOL] tool's result: every entry in [EXAMPLES]. */
