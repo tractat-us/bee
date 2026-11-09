@@ -26,6 +26,15 @@ android {
         versionCode = 1
         versionName = "spike"
     }
+    buildTypes {
+        // Only to measure what R8 makes of the APK; signed with the debug key.
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "spike-rules.pro")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
