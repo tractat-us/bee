@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.w3c.dom.Element
-import org.w3c.dom.EventSource
 import org.w3c.dom.url.URLSearchParams
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardClient
@@ -35,6 +34,7 @@ import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
@@ -175,59 +175,88 @@ internal fun encodeURIComponent(value: String): String = js("encodeURIComponent(
 
 /**
  * Shows the pairing code full screen until a person types it on the board, then hands the key to
- * [admitted]. Nothing from the board reaches this page before then: the pairing channel carries
- * only the code and the key.
- *
- * The channel is an `EventSource`, closed on the host's last word: left open, a browser would dial
- * it again when the host ends the stream, and open a new pairing.
+ * [admitted]. Nothing from the board reaches this page before then: pairing carries only the code
+ * and the key.
  */
 private fun pair(screen: String?, admitted: (String) -> Unit) {
-    val panel = document.body!!.appendElement("section", "pairing")
-    panel.setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)")
-    val prompt = panel.appendElement("p", "pairing-prompt")
-    val code = panel.appendElement("p", "pairing-code")
-    code.setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums")
-    val again = panel.appendElement("button", "pairing-again")
-    again.textContent = "Show a new code"
-    again.setAttribute("hidden", "")
-    val query = screen?.let { "?${param(PairingWire.SCREEN_PARAM, it)}" }.orEmpty()
+    PairingPanel(screen, admitted).request()
+}
 
-    fun ended(why: String) {
+/**
+ * The pairing panel, pairing by poll (bee#209): `POST` [PairingWire.PATH] gets the code and a
+ * token, then a `POST` to [PairingWire.POLL_PATH] every [PairingWire.POLL_EVERY] asks what came of
+ * it. Each is a plain request and a complete response, so a proxy that holds an event stream back
+ * until it ends (a TLS-inspecting one, at work) can't leave the page waiting. Each request gives up
+ * after [PAIRING_FETCH_TIMEOUT_MS], and the page says when it can't get a code or lost the host,
+ * rather than wait for ever.
+ */
+private class PairingPanel(screen: String?, private val admitted: (String) -> Unit) {
+    private val panel = document.body!!.appendElement("section", "pairing").apply {
+        setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)")
+    }
+    private val prompt = panel.appendElement("p", "pairing-prompt")
+    private val code = panel.appendElement("p", "pairing-code").apply {
+        setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums")
+    }
+    private val again = panel.appendElement("button", "pairing-again").apply {
+        textContent = "Show a new code"
+        setAttribute("hidden", "")
+        addEventListener("click", { request() })
+    }
+    private val query = screen?.let { "?${param(PairingWire.SCREEN_PARAM, it)}" }.orEmpty()
+
+    /** Asks the host for a new code. */
+    fun request() {
+        again.setAttribute("hidden", "")
+        prompt.textContent = "Asking the host for a code…"
+        postText(PairingWire.PATH + query, "", PAIRING_FETCH_TIMEOUT_MS) { status, text ->
+            if (status == HTTP_OK && text != null) {
+                val opened = Json.decodeFromString(PairingPoll.serializer(), text)
+                show(opened.message, opened.token)
+            } else {
+                ended("Couldn't get a code from the host.")
+            }
+        }
+    }
+
+    /** Shows [message]; while it is a code, asks again in a moment with [token]. */
+    private fun show(message: PairingMessage, token: String) {
+        when (message) {
+            is PairingMessage.Code -> {
+                prompt.textContent = "Enter this code on the board to join"
+                code.textContent = message.code
+                poll(token, failures = 0)
+            }
+            is PairingMessage.Key -> {
+                sessionStorage.setItem(KEY_STORAGE, message.key)
+                panel.remove()
+                admitted(message.key)
+            }
+            is PairingMessage.Ended -> ended(endedText(message.reason))
+        }
+    }
+
+    /** Asks after [token]'s pairing in a moment; [failures] counts the asks in a row that went unanswered. */
+    private fun poll(token: String, failures: Int) {
+        window.setTimeout({
+            postText(PairingWire.POLL_PATH, token, PAIRING_FETCH_TIMEOUT_MS) { status, text ->
+                when {
+                    status == HTTP_OK && text != null -> show(Json.decodeFromString(PairingMessage.serializer(), text), token)
+                    // The host holds no pairing for this token: it ended while the page wasn't asking.
+                    status == HTTP_NOT_FOUND -> ended("This code stopped working. Ask for a new one.")
+                    failures + 1 >= MAX_POLL_FAILURES -> ended("Lost the host.")
+                    else -> poll(token, failures + 1)
+                }
+            }
+            null
+        }, PairingWire.POLL_EVERY.inWholeMilliseconds.toInt())
+    }
+
+    private fun ended(why: String) {
         prompt.textContent = why
         code.textContent = ""
         again.removeAttribute("hidden")
     }
-
-    fun request() {
-        again.setAttribute("hidden", "")
-        prompt.textContent = "Asking the host for a code…"
-        val channel = EventSource(PairingWire.PATH + query)
-        channel.onmessage = { event ->
-            when (val message = Json.decodeFromString(PairingMessage.serializer(), event.data.toString())) {
-                is PairingMessage.Code -> {
-                    prompt.textContent = "Enter this code on the board to join"
-                    code.textContent = message.code
-                }
-                is PairingMessage.Key -> {
-                    channel.close()
-                    sessionStorage.setItem(KEY_STORAGE, message.key)
-                    panel.remove()
-                    admitted(message.key)
-                }
-                is PairingMessage.Ended -> {
-                    channel.close()
-                    ended(endedText(message.reason))
-                }
-            }
-        }
-        // A browser can't say why a channel failed, only that it did.
-        channel.onerror = {
-            channel.close()
-            ended("Lost the host.")
-        }
-    }
-    again.addEventListener("click", { request() })
-    request()
 }
 
 private fun endedText(reason: PairingEnd): String = when (reason) {
@@ -400,6 +429,28 @@ private suspend fun askBoardId(): HostAnswer {
     }""",
 )
 private external fun fetchText(path: String, onDone: (String?, Boolean) -> Unit)
+
+/** How long a pairing request waits for its answer before the page counts it unanswered. */
+private const val PAIRING_FETCH_TIMEOUT_MS = 10_000
+
+/** Polls in a row that may go unanswered before the page says it lost the host. */
+private const val MAX_POLL_FAILURES = 5
+
+private const val HTTP_OK = 200
+private const val HTTP_NOT_FOUND = 404
+
+/**
+ * `POST`s [body] to [path] past every cache, giving up after [timeoutMs], and calls [onDone] with
+ * the status and the text: status 0 and no text when the fetch itself failed or timed out.
+ */
+@JsFun(
+    """(path, body, timeoutMs, onDone) => {
+        fetch(path, { method: 'POST', body, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) })
+            .then((r) => r.text().then((text) => [r.status, text]))
+            .then(([status, text]) => onDone(status, text), () => onDone(0, null));
+    }""",
+)
+private external fun postText(path: String, body: String, timeoutMs: Int, onDone: (Int, String?) -> Unit)
 
 /** The copy this tab reads and may keep: one [board]'s, in [store]. */
 private class Copy(val store: BrowserStore, val board: BoardId)
