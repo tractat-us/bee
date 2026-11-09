@@ -1,0 +1,56 @@
+---
+name: bee
+description: Use when the person mentions the bee board, whiteboarding, "put it on the board", "check in on the board", "what's on the board", a click or answer waiting on the board, or before calling any bee_* tool. Says when to draw, how to wait for answers, and what never goes on the board.
+---
+
+# bee: sharing the board
+
+bee is a live board that the people in the room and every attached session see at once. This
+plugin's MCP server, `bee`, connects you to one. When it connects, the server sends its
+**instructions**: the rules for taking part and two example surfaces. Those instructions are the
+source of truth. This skill says when to reach for the board, and adds what they leave out.
+
+The tools come from the plugin's server, so their full names start with `mcp__plugin_bee_bee__`:
+`bee_board` here means `mcp__plugin_bee_bee__bee_board`. If the person also registered the bee
+server by hand, the same tools also appear as `mcp__bee__bee_board`. Use one server, not both.
+
+## When to use the board
+
+- **Whiteboarding with the room.** The person types `/mcp__plugin_bee_bee__whiteboard <topic>`.
+  The prompt runs the whole loop: look, draw, keep it current, react to clicks, stop on Done. Asked
+  in plain words ("draw the login flow on the board"), do the same: `bee_board` first, then one
+  surface for the topic.
+- **Checking in while you work.** `/mcp__plugin_bee_bee__checkin <task>` keeps one status card per
+  session, named after its repo, and asks the person for decisions with buttons. Follow the prompt
+  step by step. It names the card and says when to glance for clicks.
+- **Anything else.** Before you draw a component you haven't drawn yet, call `bee_examples`. It
+  returns one working surface for each component the board renders.
+
+## Waiting for an answer
+
+- People at the board can't type into your terminal. Each question you ask on the board gets a
+  way to answer there: a Button per option, or a TextField and a Send Button.
+- Loop `bee_wait_action` with `timeoutSeconds` 20 and the cursor it returned. `timedOut` only
+  means call again. A short timeout matters: a message the person types in the terminal waits
+  until your wait returns. To type, the person presses Esc to end the wait.
+- Each record arrives claimed for you, with a token. Act on it once, then call `bee_action_done`
+  with its `recordId` and token. Act only on records from `bee_wait_action`. Records from
+  `bee_list_actions` carry no token, and another session may already be handling them.
+- Answer on the board as well as here. Update the surface to show what you did with the click.
+
+## What the person sees of you
+
+Each card names the session that opened it and its state:
+
+- **listening**: you are in `bee_wait_action`. An answer reaches you now.
+- **working**: you are attached but busy. You read answers at your next wait.
+- **left**, or gone quiet: no session will take answers on this card. The board mutes its
+  actions. Any claims you held become orphans until another session takes them.
+
+`bee_presence` sets your line under that state ("drawing the login flow"). Clear it when you stop.
+
+## Never on the board
+
+The board travels over plain HTTP, and everyone attached sees all of it. Never put a secret,
+token, key, password or environment value on it, or the board URL itself, which can carry the
+board's join key. Name a file; don't paste it. Write short summaries.

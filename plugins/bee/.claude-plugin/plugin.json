@@ -1,0 +1,26 @@
+{
+  "name": "bee",
+  "version": "0.1.0",
+  "description": "Join a bee board from Claude Code: the board's MCP server over HTTP, its whiteboard and checkin prompts, and a skill on how to share the board.",
+  "author": {
+    "name": "Iain Keddie"
+  },
+  "homepage": "https://github.com/tractat-us/bee/blob/main/docs/plugin.md",
+  "repository": "https://github.com/tractat-us/bee",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "bee",
+    "whiteboard",
+    "a2ui",
+    "mcp"
+  ],
+  "userConfig": {
+    "board_url": {
+      "type": "string",
+      "title": "bee board URL",
+      "description": "The board's MCP address: http://<host>:<port>/mcp?name=<you>, plus &k=<key> from the join link for a board on another machine. ${USER} is filled in.",
+      "default": "http://127.0.0.1:8233/mcp?name=${USER}",
+      "required": true
+    }
+  }
+}

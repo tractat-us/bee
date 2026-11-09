@@ -113,6 +113,7 @@ plugins:
         Docs:
           - index.md: What bee is
           - setup.md: Joining a Claude Code session to bee
+          - plugin.md: The Claude Code plugin that joins a session to a board
           - superpowers/specs/2026-11-06-bee-design.md: The design
           # A glob, so this line is a no-op until bee-and-kuilt.md exists: a plain
           # path the build can't find is a warning, and --strict fails on it.
@@ -142,6 +143,7 @@ nav:
   - Docs:
       - Home: index.md
       - Setup: setup.md
+      - Claude Code plugin: plugin.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
       - bee and kuilt: bee-and-kuilt.md
       - Spikes:
