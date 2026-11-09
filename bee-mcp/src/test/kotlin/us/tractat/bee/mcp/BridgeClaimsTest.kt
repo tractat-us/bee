@@ -1325,7 +1325,7 @@ class BridgeClaimsTest {
         rig.voter.depart(zed, DepartReason.Crashed)
         rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
 
-        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(target) as ClaimStatus.Orphaned).token)
         val stray = ClaimTarget("card:s/stray")
         val strayWon = rig.claims.client(NodeId("stray")).claim(stray, ada.bridge.self)
         val strayFreed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(stray) == ClaimStatus.Free } }
@@ -1367,7 +1367,7 @@ class BridgeClaimsTest {
 
         val open = async { ada.wait("s", cursor = first.cursor, timeoutSeconds = 30) }
         delay(3.seconds) // the wait is holding, its cursor past the record
-        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(target) as ClaimStatus.Orphaned).token)
         val waited = open.await()
         val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
         assertAll(
@@ -1397,7 +1397,7 @@ class BridgeClaimsTest {
         val first = ada.wait("s", timeoutSeconds = 2)
         rig.voter.depart(zed, DepartReason.Crashed)
         rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
-        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(target) as ClaimStatus.Orphaned).token)
 
         val taken = CompletableDeferred<Unit>()
         val early = launch { BoardActionSource(ada.bridge) { taken.complete(Unit); awaitCancellation() }.next("s", first.cursor, 60.seconds) }
