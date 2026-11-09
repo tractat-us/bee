@@ -64,6 +64,7 @@ class OpenBeforeWriteTest {
         val sam = star.client(SAM)
         val kim = star.client(KIM)
         sam.connect()
+        settle(400.milliseconds)
         kim.connect()
         settle(100.milliseconds)
 
