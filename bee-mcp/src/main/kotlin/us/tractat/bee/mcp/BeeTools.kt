@@ -146,14 +146,15 @@ object BeeTools {
         server.addTool(
             name = RELEASE,
             description = "Puts a release $SHARED: frees a target this session holds, under its token, or an " +
-                "orphaned target without one.",
-            inputSchema = schema(required = listOf("target")) {
+                "orphaned target, under the token bee_board's claimViews show for it. Frees nothing once the " +
+                "target is orphaned again under another token: read the board and decide again.",
+            inputSchema = schema(required = listOf("target", "token")) {
                 putJsonObject("target") { put("type", "string") }
                 putJsonObject("token") { put("type", "string") }
             },
         ) { request ->
             tool {
-                val token = request.optional("token")?.let(BoardActionSource::parseToken)
+                val token = BoardActionSource.parseToken(request.string("token"))
                 answer(buildJsonObject { put("released", bridge.release(ClaimTarget(request.string("target")), token)) })
             }
         }

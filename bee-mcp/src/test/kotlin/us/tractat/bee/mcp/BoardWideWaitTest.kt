@@ -322,7 +322,7 @@ class BoardWideWaitTest {
         val before = ada.waitBoard(timeoutSeconds = 2)
         val holding = async { ada.waitBoard(cursor = before.cursor, timeoutSeconds = 30) }
         ada.client.state.first { s -> s.latestPresence().any { it.identity == ada.bridge.self && it.waiting } }
-        val token = rig.claims.client(NodeId("iain-page")).reassign(granted, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(granted, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(granted) as ClaimStatus.Orphaned).token)
         val waited = holding.await()
         val again = ada.waitBoard(cursor = waited.cursor, timeoutSeconds = 2)
         val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }

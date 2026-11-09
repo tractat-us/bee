@@ -1309,6 +1309,45 @@ class BridgeClaimsTest {
     }
 
     /**
+     * An agent's `bee_release` of an orphan decides the orphaning it read on the board, not a later
+     * one (bee#83). zed's hold is orphaned in round 1; a person reassigns it to cy, who departs too,
+     * so it is orphaned again in round 2. Ada's release naming round 1's token frees nothing, and
+     * the control, naming round 2's, frees it. Her release of her own hold, under its token, frees it.
+     */
+    @Test
+    fun anAgentsOrphanReleaseNamingAnEarlierOrphaningIsRejected() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val target = ClaimTarget("card:s/orphan")
+        val zed = PeerIdentity.agent("zed", Random(9))
+        val cy = PeerIdentity.agent("cy", Random(10))
+        val zedWon = rig.claims.client(NodeId("zed")).claim(target, zed)
+        rig.voter.depart(zed, DepartReason.Crashed)
+        val round1 = (rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }.status(target) as ClaimStatus.Orphaned).token
+        val round2 = rig.claims.client(NodeId("iain-page")).reassign(target, to = cy, by = PeerIdentity.human("iain"), orphan = round1)
+        rig.voter.depart(cy, DepartReason.Crashed)
+        val reorphaned = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(target) == round2?.let { t -> ClaimStatus.Orphaned(cy, t) } } }
+
+        val stale = ada.bridge.release(target, round1)
+        val afterStale = rig.voter.table.value.status(target)
+        val current = round2?.let { ada.bridge.release(target, it) }
+        val own = ClaimTarget("card:s/own")
+        val ownWon = ada.bridge.claim(own)
+        val ownReleased = (ownWon as? ClaimOutcome.Won)?.let { ada.bridge.release(own, it.token) }
+        assertAll(
+            { assertIs<ClaimOutcome.Won>(zedWon, "rig: zed held the card") },
+            { assertNotNull(reorphaned, "rig: reassigned to cy, then orphaned again under cy's token") },
+            { assertEquals(false, stale, "a release naming round 1 frees nothing") },
+            { assertEquals<ClaimStatus?>(round2?.let { ClaimStatus.Orphaned(cy, it) }, afterStale, "round 2 still stands") },
+            { assertEquals(true, current, "control: a release naming round 2 frees it") },
+            { assertEquals(ClaimStatus.Free, rig.voter.table.value.status(target), "and the voter shows it free") },
+            { assertIs<ClaimOutcome.Won>(ownWon, "rig: ada claimed her own card") },
+            { assertEquals(true, ownReleased, "her own hold is released under its token") },
+        )
+        rig.close()
+    }
+
+    /**
      * A claim reassigned to a session reaches that session through its wait (Task 11, spec §6.4,
      * bee#31). An orphan is reassigned to ada by a person: held as ada, claimed by no wait of hers,
      * received by no caller, just as a stranded late win is. Her sweep keeps it, and her wait on its
@@ -1325,7 +1364,7 @@ class BridgeClaimsTest {
         rig.voter.depart(zed, DepartReason.Crashed)
         rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
 
-        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(target) as ClaimStatus.Orphaned).token)
         val stray = ClaimTarget("card:s/stray")
         val strayWon = rig.claims.client(NodeId("stray")).claim(stray, ada.bridge.self)
         val strayFreed = withTimeoutOrNull(10.seconds) { rig.voter.table.first { it.status(stray) == ClaimStatus.Free } }
@@ -1367,7 +1406,7 @@ class BridgeClaimsTest {
 
         val open = async { ada.wait("s", cursor = first.cursor, timeoutSeconds = 30) }
         delay(3.seconds) // the wait is holding, its cursor past the record
-        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(target) as ClaimStatus.Orphaned).token)
         val waited = open.await()
         val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
         assertAll(
@@ -1397,7 +1436,7 @@ class BridgeClaimsTest {
         val first = ada.wait("s", timeoutSeconds = 2)
         rig.voter.depart(zed, DepartReason.Crashed)
         rig.voter.table.first { it.status(target) is ClaimStatus.Orphaned }
-        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(target, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(target) as ClaimStatus.Orphaned).token)
 
         val taken = CompletableDeferred<Unit>()
         val early = launch { BoardActionSource(ada.bridge) { taken.complete(Unit); awaitCancellation() }.next("s", first.cursor, 60.seconds) }

@@ -43,7 +43,7 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
  * - **Answers belong to one orphaning.** The `Poll` binds its answers to
  *   `/rounds/<token>/answers`, and a new orphaning rebinds it to its own, empty, so no answer to an
  *   earlier one shows as an answer to this one. Earlier answers keep their path. The proposal an
- *   answer makes isn't fenced: a stale one applies to the current orphaning (tractat-us/bee#83).
+ *   answer makes names its orphaning by `/token`, so the table rejects a stale one (bee#83).
  * - **One surface it can't write stops no other.** A surface someone else wrote under an orphan id,
  *   in a shape this can't extend, is logged once and skipped; every other decision goes on. An
  *   orphaned view naming no holder or token is a broken mirror, and that propagates.
@@ -194,7 +194,7 @@ class OrphanDecisions(
         const val TITLE = "An orphaned claim needs a decision"
         const val TARGET = "target"
         const val HOLDER = "holder"
-        const val TOKEN = "token"
+        const val TOKEN = OrphanDecision.TOKEN
         const val QUESTION = "question"
         const val OPTIONS = "options"
         const val ANSWERS = "answers"

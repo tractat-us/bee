@@ -68,12 +68,17 @@ class BoardDriver(
     private val placeholders = mutableMapOf<String, Element>()
 
     /** Renders the board as it changes, and records every action, until [scope] ends. */
-    fun start(scope: CoroutineScope): Job = scope.launch {
-        launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
-        launch {
-            renderer.actions.collect { action ->
-                // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
-                if (record(action)) launch { answer(action) }
+    fun start(scope: CoroutineScope): Job {
+        // Asked before anything renders, so no action is missed. Each carries the surface as the
+        // person saw it when they acted: an answer decides the orphaning it shows (bee#83).
+        val acted = renderer.actions { action -> rendered[action.surfaceId] }
+        return scope.launch {
+            launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
+            launch {
+                acted.collect { (action, seen) ->
+                    // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
+                    if (record(action, seen) && action.answersAnOrphan()) launch { answer(action, checkNotNull(seen).data) }
+                }
             }
         }
     }
@@ -139,8 +144,13 @@ class BoardDriver(
      * board doesn't hold is refused by `Basis.capture`, and an answer or drop naming nothing the
      * surface holds by [NotionActions.edit], and a screen's answer to an orphan decision by this page;
      * the person is told, and it's never dropped quietly. True if it appended.
+     *
+     * An answer to an orphan decision is recorded only if [seen], the surface as the person saw it
+     * when they acted, names the orphaning the transform reads ([OrphanDecision.answered]). So the
+     * answer lands in the round they answered, and [answer]'s proposal, fenced by [seen], decides
+     * that same one; a round that landed in between refuses it (bee#83).
      */
-    private suspend fun record(action: A2uiAction): Boolean {
+    private suspend fun record(action: A2uiAction, seen: SurfaceView?): Boolean {
         if (answering == OrphanAnswering.Refused && action.answersAnOrphan()) {
             onProblem("A room screen can't answer ${action.surfaceId}: answer it from your own page.")
             return false
@@ -157,6 +167,7 @@ class BoardDriver(
                     at = clock(),
                 )
                 val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
+                if (action.answersAnOrphan()) OrphanDecision.answered(seen?.data, view.data)
                 val written = NotionActions.edit(view, action, actor.toString())
                     ?.let { state.updateData(author, action.surfaceId, it.path, it.value) }
                     ?: return@mutate state.appendRecord(author, record)
@@ -170,14 +181,17 @@ class BoardDriver(
         }
     }
 
-    /** Proposes what the person chose, if [action] answers an orphan decision; tells them if it didn't take. */
-    private suspend fun answer(action: A2uiAction) {
+    /**
+     * Proposes what the person chose, if [action] answers an orphan decision, for the orphaning
+     * [seen] shows; tells them if it didn't take.
+     */
+    private suspend fun answer(action: A2uiAction, seen: JsonObject) {
         val answers = (answering as? OrphanAnswering.ByPerson)?.answers ?: return
-        when (val outcome = answers.answered(action.surfaceId, action.name, action.context)) {
+        when (val outcome = answers.answered(action.surfaceId, action.name, action.context, seen)) {
             OrphanAnswers.Outcome.Offline ->
                 onProblem("Your answer on ${action.surfaceId} is recorded, but claims are offline, so nothing was decided. Answer again shortly.")
             is OrphanAnswers.Outcome.Proposed -> if (!outcome.applied) {
-                onProblem("Your answer on ${action.surfaceId} didn't take: the claim is no longer orphaned, or that peer has left.")
+                onProblem("Your answer on ${action.surfaceId} didn't take: the claim is no longer orphaned, it was orphaned again since, or that peer has left.")
             }
             OrphanAnswers.Outcome.NotADecision, OrphanAnswers.Outcome.Waited -> Unit
         }

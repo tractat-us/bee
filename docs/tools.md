@@ -43,7 +43,7 @@ These write to the board, and everyone attached sees the result:
 | `bee_board_clear` | Closes every open surface except the host's. Nothing is deleted. |
 | `bee_action_done` | Marks an action record handled. |
 | `bee_claim` | Claims an action record or a card for this session. Exactly one claimer wins. |
-| `bee_release` | Lets go of a claim this session holds, or of one a departed session left behind. |
+| `bee_release` | Lets go of a claim this session holds, or of one a departed session left behind, under the token the board shows for it. |
 | `bee_presence` | Sets the "working on…" line beside the session's name. |
 
 ## Where these come from

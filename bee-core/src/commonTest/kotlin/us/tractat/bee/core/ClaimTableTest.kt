@@ -200,6 +200,8 @@ class ClaimTableTest {
             ClaimCommand.Release(target, alice, null),
             ClaimCommand.Release(target, alice, ClaimToken(2, 9)),
             ClaimCommand.Reassign(target, to = iain, by = bob),
+            ClaimCommand.Reassign(target, to = iain, by = bob, orphan = ClaimToken(1, 2)),
+            ClaimCommand.Release(target, iain, null, orphan = ClaimToken(3, 4)),
             ClaimCommand.Complete(other, bob, ClaimToken(1, 4)),
             ClaimCommand.Depart(alice, DepartReason.Quiet),
         )
@@ -236,6 +238,73 @@ class ClaimTableTest {
             ClaimCommand.Release(target, bob, ClaimToken(1, 1)),
         )
         assertEquals(ClaimStatus.Held(bob, ClaimToken(1, 3)), t.status(target))
+    }
+
+    /**
+     * An answer to an orphan decision names the orphaning it answers by the orphaned hold's token
+     * (bee#83). Round 1 orphans alice's hold, `1:1`; a reassign to bob, then bob's departure, orphans
+     * the target again under `1:3`. A `Reassign` or token-less `Release` naming round 1 is a stale
+     * click on a decision its sender never saw, and is rejected; the same commands naming round 2
+     * apply.
+     */
+    @Test
+    fun anOrphanDecisionForAnEarlierOrphaningIsRejected() {
+        val round1 = ClaimToken(1, 1)
+        val round2 = ClaimToken(1, 3)
+        val reorphaned = table(
+            ClaimCommand.Claim(target, alice, P),
+            ClaimCommand.Depart(alice, DepartReason.Crashed),
+            ClaimCommand.Reassign(target, to = bob, by = iain, orphan = round1),
+            ClaimCommand.Depart(bob, DepartReason.Quiet),
+        )
+        val carol = PeerIdentity.agent("carol", Random(3))
+        fun after(command: ClaimCommand) = reorphaned.fold(entry(5, command)).status(target)
+        assertAll(
+            { assertEquals(ClaimStatus.Orphaned(bob, round2), reorphaned.status(target), "round 2 is open") },
+            {
+                assertEquals(
+                    ClaimStatus.Orphaned(bob, round2),
+                    after(ClaimCommand.Reassign(target, to = carol, by = iain, orphan = round1)),
+                    "a reassign answering round 1",
+                )
+            },
+            {
+                assertEquals(
+                    ClaimStatus.Orphaned(bob, round2),
+                    after(ClaimCommand.Release(target, iain, token = null, orphan = round1)),
+                    "a release answering round 1",
+                )
+            },
+            { assertEquals(ClaimStatus.Held(carol, ClaimToken(1, 5)), after(ClaimCommand.Reassign(target, to = carol, by = iain, orphan = round2))) },
+            { assertEquals(ClaimStatus.Free, after(ClaimCommand.Release(target, iain, token = null, orphan = round2))) },
+        )
+    }
+
+    /**
+     * An entry written before bee#83 names no orphaning: it still decodes, and applies to the
+     * current one, as it did when it committed, so a log replayed under this build folds to the
+     * table it folded to before. A null orphan stays off the wire.
+     */
+    @Test
+    fun anEntryNamingNoOrphaningDecodesAndAppliesAsBefore() {
+        val legacyReassign = """{"type":"reassign","target":"record:web-1:7","to":"human:iain","by":"human:iain"}"""
+        val legacyRelease = """{"type":"release","target":"record:web-1:7","by":"human:iain","token":null}"""
+        val orphaned = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Depart(alice, DepartReason.Crashed))
+        fun committed(json: String) = Committed.Entry(LogEntry(index = 3, term = 1, command = json.encodeToByteArray()))
+        assertAll(
+            { assertEquals(ClaimCommand.Reassign(target, to = iain, by = iain), ClaimCommand.decode(legacyReassign.encodeToByteArray())) },
+            { assertEquals(ClaimCommand.Release(target, iain, null), ClaimCommand.decode(legacyRelease.encodeToByteArray())) },
+            { assertEquals(legacyRelease, ClaimCommand.encode(ClaimCommand.Release(target, iain, null)).decodeToString()) },
+            { assertEquals(ClaimStatus.Held(iain, ClaimToken(1, 3)), orphaned.fold(committed(legacyReassign)).status(target)) },
+            { assertEquals(ClaimStatus.Free, orphaned.fold(committed(legacyRelease)).status(target)) },
+        )
+    }
+
+    /** A release names the holder's token or the orphaning's, never both. */
+    @Test
+    fun aReleaseNamingBothTokensIsRejected() {
+        val held = table(ClaimCommand.Claim(target, alice, P), ClaimCommand.Release(target, alice, ClaimToken(1, 1), orphan = ClaimToken(1, 1)))
+        assertEquals(ClaimStatus.Held(alice, ClaimToken(1, 1)), held.status(target))
     }
 
     private companion object {

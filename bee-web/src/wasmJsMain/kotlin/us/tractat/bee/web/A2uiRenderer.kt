@@ -43,14 +43,24 @@ external object Notions : JsAny {
 class A2uiRenderer(root: Element, place: (surfaceId: String, element: Element) -> Unit = { _, element -> root.appendChild(element) }) {
     private val host = Notions.createPlacedRendererHost(root, place)
     private val open = mutableSetOf<String>()
-    private val received = Channel<A2uiAction>(Channel.UNLIMITED)
 
-    /** User actions, in the order the renderer reported them. Collect it once. */
-    val actions: Flow<A2uiAction> = received.receiveAsFlow()
-
-    init {
-        host.onAction { json -> received.trySend(A2uiJson.decodeAction(json)) }
+    /**
+     * User actions, in the order the renderer reports them, each with what [witness] read for it.
+     * [witness] runs as the renderer reports the action, synchronously with the person's act, so
+     * nothing has rendered since: it reads what was on screen. Ask before the person can act, since
+     * an action reaches only the flows asked for before it, and collect each flow once.
+     */
+    fun <T> actions(witness: (A2uiAction) -> T): Flow<Witnessed<T>> {
+        val received = Channel<Witnessed<T>>(Channel.UNLIMITED)
+        host.onAction { json ->
+            val action = A2uiJson.decodeAction(json)
+            received.trySend(Witnessed(action, witness(action)))
+        }
+        return received.receiveAsFlow()
     }
+
+    /** A user [action], with what a witness read for it as the person acted ([seen]). */
+    data class Witnessed<out T>(val action: A2uiAction, val seen: T)
 
     /**
      * Applies [messages] in order.

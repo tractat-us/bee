@@ -287,8 +287,21 @@ class BeeBridge(
         }
     }
 
-    /** Releases [target]; [token] may be null only for an orphaned target. */
-    suspend fun release(target: ClaimTarget, token: ClaimToken?): Boolean = live().client.release(target, beforeWrite(), token)
+    /**
+     * Releases [target] under [token]: this session's own hold, or else the orphaning [token]
+     * names, so a release decided on one orphaning is rejected once the target is orphaned again
+     * (bee#83). A token this table doesn't show as this session's hold is read as an orphan's, so
+     * a table that hasn't yet folded the orphaning still proposes the fenced release.
+     */
+    suspend fun release(target: ClaimTarget, token: ClaimToken): Boolean {
+        val client = live().client
+        val by = beforeWrite()
+        return if (client.table.value.status(target) == ClaimStatus.Held(by, token)) {
+            client.release(target, by, token)
+        } else {
+            client.releaseOrphan(target, by, orphan = token)
+        }
+    }
 
     /** Marks [target] done under [token]. */
     suspend fun done(target: ClaimTarget, token: ClaimToken): Boolean = live().client.complete(target, beforeWrite(), token)
