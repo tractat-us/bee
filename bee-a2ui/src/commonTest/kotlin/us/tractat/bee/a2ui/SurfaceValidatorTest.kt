@@ -103,6 +103,7 @@ class SurfaceValidatorTest {
             "c1" to card { put("href", "https://github.com/tractat-us/bee/issues/197"); put("detail", "Cards link out.") },
             "c2" to card { put("href", "HTTP://example.test/plan") },
             "c3" to card {},
+            "c4" to card { put("href", "") },
         )
         assertEquals(emptyList(), SurfaceValidator.errors(linked))
     }

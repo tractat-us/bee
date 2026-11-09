@@ -96,7 +96,7 @@ object SurfaceValidator {
 
     /**
      * The problems with the cards a Board [component] binds in [data]: an `href` that isn't an
-     * `http:` or `https:` URL string, or a `detail` that isn't a string. Cards not written yet are fine.
+     * `http:` or `https:` URL string (empty is fine: it clears the link), or a `detail` that isn't a string. Cards not written yet are fine.
      */
     private fun cardErrors(id: String, component: JsonObject, data: JsonObject): List<String> {
         if (component["component"]?.stringOrNull() != BOARD) return emptyList()
@@ -105,7 +105,7 @@ object SurfaceValidator {
         return items.keys.sorted().flatMap { cardId ->
             val card = items.getValue(cardId) as? JsonObject ?: return@flatMap emptyList()
             listOfNotNull(
-                card["href"]?.takeUnless(::isCardHref)?.let {
+                card["href"]?.takeUnless { it.stringOrNull() == "" || isCardHref(it) }?.let {
                     "Component \"$id\" is a Board whose card \"$cardId\" has href $it, which isn't an http: or https: URL."
                 },
                 card["detail"]?.takeUnless { it.stringOrNull() != null }?.let {

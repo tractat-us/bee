@@ -47,8 +47,8 @@ object PlanYaml {
  * (the done cap moving included) gets a fresh key, so the board shows exactly this plan; a card
  * that only changes its label or column overwrites in place under the same key. Each set of ids
  * leaves its old key behind until bee#19 gives a write that replaces. For the same reason every
- * card writes its `detail`, empty when there is none, so a card that lands loses its summary
- * line; an item that drops its GitHub link keeps its old `href` until then.
+ * card writes its `href` and `detail`, empty when there is none, so a card that lands loses its
+ * summary line and an item that drops its GitHub link loses its `href`.
  */
 object PlanBoard {
     const val SURFACE_ID = "dogfood-plan"
@@ -74,11 +74,11 @@ object PlanBoard {
         return SeedSurface(SURFACE_ID, TITLE, listOf(root), buildJsonObject { put(key, board) })
     }
 
-    /** A card for [item]: its [label], its [href] when it has one, and its [detail]. */
+    /** A card for [item]: its [label], its [href] (empty when it has none), and its [detail]. */
     fun card(item: JsonObject): JsonObject = buildJsonObject {
         put("label", label(item))
         put("column", item.string("status"))
-        href(item)?.let { put("href", it) }
+        put("href", href(item).orEmpty())
         put("detail", detail(item))
     }
 

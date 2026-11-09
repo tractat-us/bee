@@ -115,7 +115,7 @@ class PlanBoardTest {
             },
             { assertEquals("", PlanBoard.card(done).string("detail"), "a done card writes an empty detail, so a landed card loses its line") },
             { assertEquals("bee#21 · bee's own development board", PlanBoard.card(done).string("label")) },
-            { assertEquals(null, PlanBoard.card(unlinked)["href"], "an item with no GitHub link has no href") },
+            { assertEquals(JsonPrimitive(""), PlanBoard.card(unlinked)["href"], "an item with no GitHub link writes an empty href") },
             { assertEquals("bee's own development board", PlanBoard.card(unlinked).string("label")) },
             { assertEquals("kuilt#3126", PlanBoard.ref(PlanYaml.parse("links: [{ title: k, url: 'https://github.com/tractat-us/kuilt/pull/3126' }]"))) },
         )

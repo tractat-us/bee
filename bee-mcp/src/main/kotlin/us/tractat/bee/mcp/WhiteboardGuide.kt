@@ -120,7 +120,7 @@ object WhiteboardGuide {
             note = "People drag cards between columns; each drop moves the card and records \"drop\" with " +
                 "{card, column}. Add a card by writing /cards/items/<id> and a new /cards/order. A card's " +
                 "optional href (http: or https: only) makes its label a link, and its optional detail is one " +
-                "short line under the label: keep the label short and put the rest there.",
+                "short line under the label: keep the label short and put the rest there. An empty href or detail clears it.",
         ),
     )
 

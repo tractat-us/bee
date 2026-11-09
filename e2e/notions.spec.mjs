@@ -231,6 +231,8 @@ test('a card with an href links its label, and clicking it opens the link and mo
   await expect(link).toHaveAttribute('href', BOARD_LINK_HREF);
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(link).toHaveAttribute('draggable', 'false');
+  await expect(link).toHaveAttribute('title', 'example.test'); // the host, so a userinfo trick shows on hover
   await expect(linked.locator('.detail')).toHaveText('The label is the link; this is its one quiet line.');
   // A card without an href shows its label as plain text, and no detail.
   await expect(card(alex.page, 'board-link', 'c2').locator('a')).toHaveCount(0);
@@ -248,9 +250,20 @@ test('a card with an href links its label, and clicking it opens the link and mo
   await expect(records(alex.page, 'board-link')).toHaveCount(recordsBefore);
 });
 
+test('a click right after a drag is cancelled, so the link is not followed', async ({ browser }) => {
+  const alex = await openLinkPeer(browser, 'alex');
+  peers = [alex];
+  const followed = await card(alex.page, 'board-link', 'c1').evaluate((li) => {
+    li.dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+    li.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    return li.querySelector('a.label').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  expect(followed).toBe(false); // the guard called preventDefault
+});
+
 // Chromium follows no link after a drag even without the link's draggable="false" or its
 // click-after-drag guard (both mutated out, this still passes), so this pins the behaviour, not
-// those two guards, which are kept for other engines and touch drags that this doesn't run.
+// those two guards; the next test pins them directly.
 test('a card with an href still drags by its label, and the drag follows no link', async ({ browser }) => {
   const alex = await openLinkPeer(browser, 'alex');
   peers = [alex];
@@ -311,5 +324,4 @@ test('markup in labels renders as text', async ({ browser }) => {
   await shown.locator('bee-poll li button').click();
   await expect(shown.locator('bee-poll .total')).toHaveText('1 answer', { timeout: 5_000 });
   await expect(shown.locator('img')).toHaveCount(0);
-  expect(await alex.page.evaluate(() => window.pwned)).toBeUndefined();
-});
+  expect(await alex.page.evaluate(() => window.pwned)).toBeUndefined();});

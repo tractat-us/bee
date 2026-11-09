@@ -105,7 +105,7 @@ const CARD_ROW = `display:block;min-height:2.75rem;padding:0.6rem 0.75rem;margin
 const LINK = `color:inherit;text-decoration:underline;text-decoration-color:${LINE};text-underline-offset:0.2em`;
 const DETAIL = `display:block;margin-top:0.15rem;color:${MUTED};font-size:0.85rem;`
   + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
-const CARD_OPEN =`border:2px solid ${ACCENT};padding:calc(0.6rem - 1px) calc(0.75rem - 1px)`;
+const CARD_OPEN = `border:2px solid ${ACCENT};padding:calc(0.6rem - 1px) calc(0.75rem - 1px)`;
 const MENU = 'display:flex;flex-direction:column;gap:0.4rem;margin-top:0.5rem';
 const MOVE = `min-height:2.75rem;padding:0.5rem 0.75rem;border:1px solid ${ACCENT};border-radius:8px;`
   + `background:color-mix(in srgb, ${ACCENT} 14%, ${CARD});color:${INK};font:inherit;text-align:left;cursor:pointer`;
@@ -198,8 +198,9 @@ export class BoardElement extends A2uiLitElement {
   label(card, label) {
     const href = cardHref(card.href);
     if (!href) return html`<span class="label">${label}</span>`;
-    return html`<a class="label" href=${href} target="_blank" rel="noopener noreferrer" draggable="false"
-        style=${LINK} @click=${(event) => { if (this.endsDrag(event)) event.preventDefault(); }}>${label}</a>`;
+    // The title names the host, so a userinfo trick (https://bee.tractat.us@evil.com) shows on hover.
+    return html`<a class="label" href=${href} title=${new URL(href).host} target="_blank" rel="noopener noreferrer"
+        draggable="false" style=${LINK} @click=${(event) => { if (this.endsDrag(event)) event.preventDefault(); }}>${label}</a>`;
   }
 
   /** The card's detail: one muted line, cut with an ellipsis, its whole text on hover. */
