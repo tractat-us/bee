@@ -112,16 +112,25 @@ internal object SurfaceDoc {
         return doc.set(SurfaceFormat.DATA, delta)
     }
 
-    fun meta(doc: JsonCrdt): SurfaceMeta {
-        val meta = doc[SurfaceFormat.META] as JsonNode.Object
+    /**
+     * [doc]'s meta, or null while its open hasn't arrived: the doc holds no meta yet, or meta
+     * without the fields an open writes.
+     *
+     * Workaround for bee#171: a page can receive another peer's write to a surface (a Poll answer)
+     * before the open that made the surface, so it holds a doc with data and no meta. Why the open
+     * arrives second is unexplained, and the root cause stays open on bee#171. Until it's found,
+     * a surface without its open's meta is no surface yet: the board's reads leave it out, and it
+     * shows once the open arrives. Remove the null once a write can never arrive before its open.
+     */
+    fun meta(doc: JsonCrdt): SurfaceMeta? {
+        val meta = doc[SurfaceFormat.META] as? JsonNode.Object ?: return null
         // Meta is read raw, never through decodeLeaf: a title may start with any characters.
-        fun field(key: String): String? = SurfaceFormat.metaString(meta.map[key] as JsonNode.Leaf)
-        fun required(key: String): String = requireNotNull(field(key)) { "Surface meta has no $key." }
+        fun field(key: String): String? = (meta.map[key] as? JsonNode.Leaf)?.let(SurfaceFormat::metaString)
         return SurfaceMeta(
-            title = required(SurfaceFormat.META_TITLE),
-            catalogId = required(SurfaceFormat.META_CATALOG_ID),
-            openedBy = PeerIdentity.parse(required(SurfaceFormat.META_OPENED_BY)),
-            openedAt = Instant.parse(required(SurfaceFormat.META_OPENED_AT)),
+            title = field(SurfaceFormat.META_TITLE) ?: return null,
+            catalogId = field(SurfaceFormat.META_CATALOG_ID) ?: return null,
+            openedBy = PeerIdentity.parse(field(SurfaceFormat.META_OPENED_BY) ?: return null),
+            openedAt = Instant.parse(field(SurfaceFormat.META_OPENED_AT) ?: return null),
             closedAt = field(SurfaceFormat.META_CLOSED_AT)?.let(Instant::parse),
         )
     }

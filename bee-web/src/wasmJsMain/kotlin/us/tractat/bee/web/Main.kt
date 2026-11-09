@@ -243,6 +243,8 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
     lateinit var scope: CoroutineScope
     val crashed = CoroutineExceptionHandler { _, failure ->
         scope.cancel()
+        // The page shows only the message; the stack goes to the console, for whoever debugs it.
+        log.error { "The page stopped.\n${failure.stackTraceToString()}" }
         status.textContent = "stopped"
         problem.textContent = "The page stopped: ${failure.message ?: failure::class.simpleName}"
     }
