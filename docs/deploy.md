@@ -38,9 +38,11 @@ is always the owner, by key. Below,
    it is asked for a name, presses **Join**, and is on the board, with a key of their own. Nobody
    has to be on the board to let them in. Your phone joins the same way.
 
-    - **Anyone with the link can join, for a day.** It works for up to 25 devices. Past that, or
-      past its day, reload the board and press Invite for a new one. Send it only to people
-      you'd let on the board.
+    - **Anyone with the link can join, for a day.** It works for up to 25 devices. A tab keeps
+      its link; for a new one, open the board in a new tab and press Invite there. Send it only
+      to people you'd let on the board.
+    - Each key may have 10 links live at once, and the board 100. The board lets in at most 100
+      devices a day by invite. Past a limit, Invite or the joiner's page says so.
     - The secret rides in the fragment, like your owner key, so it never reaches Fly's proxy or
       a log. The host keeps only its hash, in `invites` in the data dir, so a deploy keeps every
       live invite.
