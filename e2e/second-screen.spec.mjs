@@ -146,6 +146,26 @@ test('a page whose event streams are held back still pairs', async ({ browser })
   await admit(laptop, { page }, 'room-held');
 });
 
+// A TLS-inspecting proxy may answer with a page of its own, a 200 that isn't the host's. The page
+// says it couldn't get a code, rather than freeze. Then, polls answered that way are asked again,
+// and the pairing still completes once the host's own answers get through.
+test('a proxy page in place of the host answer is a failed request, not a frozen page', async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const context = await browser.newContext();
+  contexts.push(context);
+  const proxyPage = { status: 200, contentType: 'text/html', body: '<html><body>Acceptable use policy</body></html>' };
+  await context.route(/\/pair(\?|$)/, (route) => route.fulfill(proxyPage), { times: 1 });
+  let interstitials = 2;
+  await context.route(/\/pair\/poll$/, (route) => (interstitials-- > 0 ? route.fulfill(proxyPage) : route.continue()));
+  const page = await context.newPage();
+  await page.goto(`http://${LAN_NAME}:${host.port}/?screen=room-proxy`);
+
+  await expect(page.locator('#pairing-prompt')).toHaveText("Couldn't get a code from the host.", { timeout: 15_000 });
+  await page.locator('#pairing-again').click();
+  await admit(laptop, { page }, 'room-proxy');
+  expect(interstitials, 'rig: polls met the proxy page first').toBeLessThan(0);
+});
+
 test('typing the code on the laptop admits the remote page', async ({ browser }) => {
   const laptop = await openLaptop(browser);
   const remote = await openRemote(browser, 'room-b');

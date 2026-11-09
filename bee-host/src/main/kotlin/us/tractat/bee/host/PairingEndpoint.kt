@@ -6,18 +6,21 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.http.HttpRequestLifecycle
-import io.ktor.server.request.receiveText
+import io.ktor.server.request.contentLength
+import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
+import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
@@ -29,8 +32,8 @@ import kotlin.time.Instant
 /** The longest room-screen name a join request shows. */
 private const val MAX_SCREEN_NAME = 40
 
-/** The longest body a poll reads: a token is 43 characters. */
-private const val MAX_TOKEN_CHARS = 64
+/** The longest body a poll may carry: a token is 43 bytes. A longer one is refused, unread. */
+private const val MAX_TOKEN_BYTES = 64
 
 /**
  * The pairing channel at [PairingWire.PATH] (spec §5.7, step 1): a keyless device opens it, gets a
@@ -56,7 +59,8 @@ fun Route.pairingEndpoint(desk: PairingDesk, polls: PairingPolls, peers: PeerAdd
         }
     }
     post(PairingWire.POLL_PATH) {
-        val token = call.receiveText().trim().take(MAX_TOKEN_CHARS)
+        val token = call.receiveAtMost(MAX_TOKEN_BYTES)
+            ?: return@post call.respondText("A poll carries its token and nothing more.", status = HttpStatusCode.PayloadTooLarge)
         when (val message = polls.poll(token)) {
             null -> call.respondText("This pairing is over: ask for a new code.", status = HttpStatusCode.NotFound)
             else -> call.respondJson(Json.encodeToString(PairingMessage.serializer(), message))
@@ -66,6 +70,16 @@ fun Route.pairingEndpoint(desk: PairingDesk, polls: PairingPolls, peers: PeerAdd
 
 private fun device(call: ApplicationCall, peers: PeerAddress) =
     Device(peers.of(call), screenName(call.request.queryParameters[PairingWire.SCREEN_PARAM]))
+
+/**
+ * This call's body as text, or null if it is longer than [max] bytes. Anyone may call a pairing
+ * route, so the host reads at most [max] + 1 bytes of a body, whatever its length says.
+ */
+private suspend fun ApplicationCall.receiveAtMost(max: Int): String? {
+    if ((request.contentLength() ?: 0) > max) return null
+    val body = receiveChannel().readRemaining(max + 1L).readByteArray()
+    return body.takeIf { it.size <= max }?.decodeToString()
+}
 
 /** Answers [json], which may carry a key, past every cache. */
 private suspend fun ApplicationCall.respondJson(json: String) {

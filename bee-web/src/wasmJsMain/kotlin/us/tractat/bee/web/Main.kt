@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import org.w3c.dom.Element
 import org.w3c.dom.url.URLSearchParams
@@ -187,7 +188,7 @@ private fun pair(screen: String?, admitted: (String) -> Unit) {
  * token, then a `POST` to [PairingWire.POLL_PATH] every [PairingWire.POLL_EVERY] asks what came of
  * it. Each is a plain request and a complete response, so a proxy that holds an event stream back
  * until it ends (a TLS-inspecting one, at work) can't leave the page waiting. Each request gives up
- * after [PAIRING_FETCH_TIMEOUT_MS], and the page says when it can't get a code or lost the host,
+ * after [PairingWire.REQUEST_TIMEOUT], and the page says when it can't get a code or lost the host,
  * rather than wait for ever.
  */
 private class PairingPanel(screen: String?, private val admitted: (String) -> Unit) {
@@ -209,12 +210,11 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
     fun request() {
         again.setAttribute("hidden", "")
         prompt.textContent = "Asking the host for a code…"
-        postText(PairingWire.PATH + query, "", PAIRING_FETCH_TIMEOUT_MS) { status, text ->
-            if (status == HTTP_OK && text != null) {
-                val opened = Json.decodeFromString(PairingPoll.serializer(), text)
-                show(opened.message, opened.token)
-            } else {
-                ended("Couldn't get a code from the host.")
+        postText(PairingWire.PATH + query, "", REQUEST_TIMEOUT_MS) { status, text ->
+            when (val opening = text?.takeIf { status == HTTP_OK }?.let { decodeOrNull(PairingPoll.serializer(), it) }) {
+                is PairingPoll.Opened -> show(opening.code, opening.token)
+                is PairingPoll.Refused -> ended(endedText(opening.ended.reason))
+                null -> ended("Couldn't get a code from the host.")
             }
         }
     }
@@ -225,7 +225,7 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
             is PairingMessage.Code -> {
                 prompt.textContent = "Enter this code on the board to join"
                 code.textContent = message.code
-                poll(token, failures = 0)
+                poll(token, answeredAt = Clock.System.now())
             }
             is PairingMessage.Key -> {
                 sessionStorage.setItem(KEY_STORAGE, message.key)
@@ -236,16 +236,21 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
         }
     }
 
-    /** Asks after [token]'s pairing in a moment; [failures] counts the asks in a row that went unanswered. */
-    private fun poll(token: String, failures: Int) {
+    /**
+     * Asks after [token]'s pairing in a moment. A lost ask, a timeout or an answer that isn't the
+     * host's (a proxy's own page, say) is asked again, until [PairingWire.IDLE] has passed since the
+     * host last answered, at [answeredAt]: by then the host has let the pairing go too.
+     */
+    private fun poll(token: String, answeredAt: Instant) {
         window.setTimeout({
-            postText(PairingWire.POLL_PATH, token, PAIRING_FETCH_TIMEOUT_MS) { status, text ->
+            postText(PairingWire.POLL_PATH, token, REQUEST_TIMEOUT_MS) { status, text ->
+                val answer = text?.takeIf { status == HTTP_OK }?.let { decodeOrNull(PairingMessage.serializer(), it) }
                 when {
-                    status == HTTP_OK && text != null -> show(Json.decodeFromString(PairingMessage.serializer(), text), token)
+                    answer != null -> show(answer, token)
                     // The host holds no pairing for this token: it ended while the page wasn't asking.
                     status == HTTP_NOT_FOUND -> ended("This code stopped working. Ask for a new one.")
-                    failures + 1 >= MAX_POLL_FAILURES -> ended("Lost the host.")
-                    else -> poll(token, failures + 1)
+                    Clock.System.now() - answeredAt >= PairingWire.IDLE -> ended("Lost the host.")
+                    else -> poll(token, answeredAt)
                 }
             }
             null
@@ -430,11 +435,18 @@ private suspend fun askBoardId(): HostAnswer {
 )
 private external fun fetchText(path: String, onDone: (String?, Boolean) -> Unit)
 
-/** How long a pairing request waits for its answer before the page counts it unanswered. */
-private const val PAIRING_FETCH_TIMEOUT_MS = 10_000
+private val REQUEST_TIMEOUT_MS = PairingWire.REQUEST_TIMEOUT.inWholeMilliseconds.toInt()
 
-/** Polls in a row that may go unanswered before the page says it lost the host. */
-private const val MAX_POLL_FAILURES = 5
+/**
+ * [text] as [serializer]'s type, or null if it isn't one. A proxy can answer 200 with a page of
+ * its own, so a body is the host's only once it decodes.
+ */
+private fun <T> decodeOrNull(serializer: KSerializer<T>, text: String): T? = try {
+    Json.decodeFromString(serializer, text)
+} catch (_: IllegalArgumentException) {
+    // kotlinx.serialization's SerializationException is an IllegalArgumentException.
+    null
+}
 
 private const val HTTP_OK = 200
 private const val HTTP_NOT_FOUND = 404

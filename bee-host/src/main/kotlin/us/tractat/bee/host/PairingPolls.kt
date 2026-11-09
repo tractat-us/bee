@@ -22,13 +22,17 @@ private val logger = KotlinLogging.logger {}
 /**
  * Pairing by poll (bee#209): the same pairing [desk] serves on the event stream, over plain
  * requests and complete responses, for a device behind a proxy that holds a stream back until it
- * ends. [open] starts a pairing and answers its first message with a secret token; [poll] with
- * that token answers the newest message, until the pairing's device stops asking.
+ * ends. [open] starts a pairing and answers its code with a secret token; [poll] with that token
+ * answers the newest message, until the pairing's device stops asking.
  *
  * **Not asking is hanging up.** A device that no poll has come from for [idle] has left, as a
  * dropped stream has: its pairing is cancelled, which ends it and withdraws a posted request
- * ([PairingDesk.serve]), and its token stops answering. A pairing that ended keeps its last message
- * until then, so a device whose poll was lost still gets its key on the next one.
+ * ([PairingDesk.serve]), and its token stops answering.
+ *
+ * **What the host holds is bounded.** A refused open ([PairingPoll.Refused]) holds nothing: no
+ * token, no session. A pairing that ended, with a key or without, keeps its last message for
+ * [idle] from its end, so a device whose poll was lost still gets its key on the next one; polls
+ * don't stretch that.
  *
  * Unlike the stream, a device that opens and never asks again leaves its request up from the dwell
  * until [idle] runs out, since [idle] outlasts [Pairing.DWELL] to ride out a slow or lost poll. The
@@ -44,10 +48,23 @@ class PairingPolls(
     private val desk: PairingDesk,
     private val scope: CoroutineScope,
     private val random: SecureRandom,
-    private val idle: Duration = IDLE,
+    private val idle: Duration = PairingWire.IDLE,
 ) {
-    private class Session(@Volatile var seen: Instant) {
-        @Volatile var latest: PairingMessage? = null
+    /** One open pairing's state between polls, from its [code] on. */
+    private class Session(code: PairingMessage.Code, @Volatile var seen: Instant) {
+        @Volatile var latest: PairingMessage = code
+            private set
+
+        @Volatile private var endedAt: Instant? = null
+
+        /** The pairing's last message, [message], came at [at]. */
+        fun end(message: PairingMessage, at: Instant) {
+            latest = message
+            endedAt = at
+        }
+
+        /** When the host lets this session go: [idle] after its end, or else after its last poll. */
+        fun deadline(idle: Duration): Instant = (endedAt ?: seen) + idle
     }
 
     private val sessions = ConcurrentHashMap<String, Session>()
@@ -55,25 +72,31 @@ class PairingPolls(
     /** The desk's clock, so a pairing's polls and its expiry keep one time. */
     private val clock: () -> Instant = desk.clock
 
-    /** Opens a pairing for [device], and answers what the desk told it first, with the token to poll by. */
+    /** Opens a pairing for [device]: its code and the token to poll by, or why it was refused. */
     suspend fun open(device: Device): PairingPoll {
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(TOKEN_BYTES).also(random::nextBytes))
         val digest = digest(token)
-        val session = Session(seen = clock())
         val first = CompletableDeferred<PairingMessage>()
-        sessions[digest] = session
         scope.launch {
             try {
                 coroutineScope {
+                    lateinit var session: Session
                     val serving = launch {
-                        desk.serve(device) {
-                            session.latest = it
-                            first.complete(it)
+                        desk.serve(device) { message ->
+                            if (first.isCompleted) {
+                                session.end(message, clock())
+                            } else {
+                                // Only a code opens a session: a refusal leaves nothing behind.
+                                if (message is PairingMessage.Code) session = Session(message, clock()).also { sessions[digest] = it }
+                                first.complete(message)
+                            }
                         }
                     }
                     serving.invokeOnCompletion { first.completeExceptionally(IllegalStateException("The pairing ended before its first message.", it)) }
-                    awaitSilence(session)
-                    serving.cancel()
+                    if (first.await() is PairingMessage.Code) {
+                        awaitDeadline(session)
+                        serving.cancel()
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -83,7 +106,11 @@ class PairingPolls(
                 sessions.remove(digest)
             }
         }
-        return PairingPoll(token, first.await())
+        return when (val message = first.await()) {
+            is PairingMessage.Code -> PairingPoll.Opened(token, message)
+            is PairingMessage.Ended -> PairingPoll.Refused(message)
+            is PairingMessage.Key -> error("A pairing's first message is never a key.")
+        }
     }
 
     /** The newest message for the pairing [token] opened, or null if the host holds none for it. Counts as the device still being here. */
@@ -92,22 +119,22 @@ class PairingPolls(
         session.latest
     }
 
-    /** Returns once [session]'s device has gone [idle] without a poll. */
-    private suspend fun awaitSilence(session: Session) {
+    /** How many pairings by poll the host holds now. */
+    internal fun holding(): Int = sessions.size
+
+    /** Returns once [session]'s deadline has passed. */
+    private suspend fun awaitDeadline(session: Session) {
         while (true) {
-            val left = session.seen + idle - clock()
+            val left = session.deadline(idle) - clock()
             if (!left.isPositive()) return
             delay(left)
         }
     }
 
-    companion object {
-        /** How long a device may go without polling before its pairing ends, as a hang-up would end it. */
-        val IDLE: Duration = PairingWire.POLL_EVERY * 5
+    private companion object {
+        const val TOKEN_BYTES = 32
 
-        private const val TOKEN_BYTES = 32
-
-        private fun digest(token: String): String =
+        fun digest(token: String): String =
             Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(token.encodeToByteArray()))
     }
 }
