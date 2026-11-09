@@ -246,8 +246,9 @@ class BoardState internal constructor(
      */
     fun withoutPresence(): BoardState = copy(presence = EphemeralMap.empty())
 
+    /** Every surface whose open has arrived, with its meta; one still waiting for its open is left out (bee#171). */
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
-        surfaces.keys.map { id -> id to SurfaceDoc.meta(surfaces[id]!!) }
+        surfaces.keys.mapNotNull { id -> SurfaceDoc.meta(surfaces[id]!!)?.let { id to it } }
 
     private fun writeSurface(replica: ReplicaId, id: String, write: (JsonCrdt) -> Patch<JsonCrdt>): Patch<BoardState> {
         requireReplica(replica)
