@@ -42,8 +42,9 @@ private val logger = KotlinLogging.logger {}
  * a coworker's Claude joins with a URL and nothing installed. Invariant: **each MCP session has one
  * bridge, and that bridge departs at most once, when its session closes**: `Left` when the client
  * deletes the session or its transport closes; `Quiet` when the session idles past [idleAfter]
- * ([IDLE_AFTER]). A host that stops ([close]) departs none: its sessions' identities are [kept],
- * so the session each client opens on the next host, at the same URL, is the same peer (bee#126).
+ * ([IDLE_AFTER]). A host that stops ([close]) departs only those that can't come back as
+ * themselves ([resumable]), `Left`: the others' identities are [kept], so the session each client
+ * opens on the next host, at the same URL, is the same peer (bee#126).
  *
  * Each bridge is a [BridgePeer], the same peer stdio's `bee-mcp` is: a replica and a claims learner
  * dialling the host's own board and claims sockets over loopback, so presence, claims, `/clear`
@@ -140,7 +141,8 @@ class HttpBridges(
         val name = sessionNameFrom(call.request.queryParameters[NAME_PARAM])
         val key = call.request.queryParameters[KEY_PARAM]
         val caller = Caller.of(key)
-        val resumed = if (resumable(name, keyKind(key))) kept.pickUp(name, caller) else null
+        val canResume = resumable(name, keyKind(key))
+        val resumed = if (canResume) kept.pickUp(name, caller) else null
         // The call arrived on the host's own port: the bridge dials it on loopback, which needs no key.
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
@@ -149,7 +151,7 @@ class HttpBridges(
             else -> BridgePeer.join(host, name, http, bridgeScope, random, clock, resumed.current, resumed.held)
         }
         val server = BeeServer.create(peer.bridge)
-        val session = Session(peer, bridgeScope, server, name, caller, resumed)
+        val session = Session(peer, bridgeScope, server, name, caller, canResume, resumed)
         open += session
         call.attributes.put(OPENING, session)
         // One server per session, so the one session it connects is this one: its close is the bridge's.
@@ -165,6 +167,11 @@ class HttpBridges(
         val server: Server,
         private val name: String,
         private val caller: Caller,
+        /**
+         * Whether a session at its client's URL may come back as this one ([resumable]). One that
+         * can't is never kept, and a host that stops departs it `Left`, as it did before bee#126.
+         */
+        private val canResume: Boolean,
         /** What the last host kept for this session's client, until the session starts and keeps its own. */
         private val resumed: KeptSession?,
     ) {
@@ -204,10 +211,12 @@ class HttpBridges(
             }
             peer.start()
             // Kept as it is now, and again each time it retires an identity, until it departs.
-            bridgeScope.launch(CoroutineName("http-bridge-kept")) {
-                peer.identity.current.collect { current ->
-                    synchronized(lifecycle) {
-                        if (!departing.get()) kept.live(this@Session, KeptSession(name, caller, current, peer.identity.held))
+            if (canResume) {
+                bridgeScope.launch(CoroutineName("http-bridge-kept")) {
+                    peer.identity.current.collect { current ->
+                        synchronized(lifecycle) {
+                            if (!departing.get()) kept.live(this@Session, KeptSession(name, caller, current, peer.identity.held))
+                        }
                     }
                 }
             }
@@ -239,7 +248,8 @@ class HttpBridges(
         /**
          * The session closed: departs the bridge, once, then ends its work. A bridge whose session
          * never initialized was never on the board, so it has nothing to depart, and what it picked
-         * up waits again. One that closes with its host departs nothing either, and stays kept.
+         * up waits again. One that closes with its host, and could come back as itself, departs
+         * nothing either, and stays kept; one that couldn't departs `Left`.
          */
         fun depart() {
             val started = synchronized(lifecycle) {
@@ -247,7 +257,7 @@ class HttpBridges(
                 id
             }
             val why = reason
-            val withHost = stopping
+            val withHost = stopping && canResume
             if (started == null) resumed?.let(kept::putBack)
             val job = work.launch(CoroutineName("http-bridge-depart")) {
                 val who = peer.bridge.self

@@ -186,6 +186,34 @@ class McpHttpRestartTest {
     }
 
     /**
+     * A session that can't come back as itself isn't kept: a host that stops departs it `Left`, as
+     * before bee#126, so its cards read as left at once, not as Away for twenty minutes.
+     */
+    @Test
+    fun aSessionThatCannotComeBackDepartsLeftWhenTheHostStops() = runBlocking {
+        val first = startHost()
+        val join = first.pairing.joinKey.value
+        val (bea, andrew) = try {
+            drawAndLearnWho(connect(url(first, "?name=bea&k=$join")), first, "bea-plan") to
+                drawAndLearnWho(connect(url(first, "?name=andrew")), first, "andrew-plan")
+        } finally {
+            first.close()
+        }
+        val kept = KeptSessionFile(dir.resolve(KeptSessionFile.NAME)).load()
+        val host = startHost()
+        try {
+            val departed = withTimeout(TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == bea } } }.departures()
+            assertAll(
+                { assertEquals(DepartReason.Left, departed.single { it.identity == bea }.reason, "the join link's session left with its host") },
+                { assertTrue(departed.none { it.identity == andrew }, "control: andrew, who can come back, didn't") },
+                { assertEquals(listOf(andrew), kept.map { it.current }, "only andrew is kept") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
      * Everyone who pastes the page's line unedited is `name=you` on the one join link, and a URL
      * with no name is anybody's: neither name comes back as the identity it had.
      */
