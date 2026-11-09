@@ -371,15 +371,21 @@ internal class JoinRig(private val test: TestScope) {
 
     /** How many releases of [target] under [token] the voter's log holds, committed or rejected. */
     suspend fun releasesOf(target: ClaimTarget, token: ClaimToken): Int =
-        DurableStoreRaftStorage.open(claims.store).entries(1).count { entry ->
-            val command = try {
+        commands().count { it is ClaimCommand.Release && it.target == target && it.token == token }
+
+    /** How many claims of [target] the voter's log holds, committed or lost. */
+    suspend fun claimsOf(target: ClaimTarget): Int = commands().count { it is ClaimCommand.Claim && it.target == target }
+
+    /** The claim commands in the voter's log, in order, past entries that aren't one (raft's own). */
+    private suspend fun commands(): List<ClaimCommand> =
+        DurableStoreRaftStorage.open(claims.store).entries(1).mapNotNull { entry ->
+            try {
                 ClaimCommand.decode(entry.command)
             } catch (_: SerializationException) {
                 null
             } catch (_: IllegalArgumentException) {
                 null
             }
-            command is ClaimCommand.Release && command.target == target && command.token == token
         }
 
     /** Posts a join request from the host, as `BeeHost` does for a keyless device; returns its surface id. */

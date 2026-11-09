@@ -157,7 +157,7 @@ class BeeBridge(
     suspend fun roster(): Map<PeerIdentity, PresenceEntry> = presence.roster.peers()
 
     /** Puts this session on the board's presence from the start, not only from its first tool call. */
-    suspend fun announce() = presence.update(self, statusLine, clock(), waiting = false)
+    suspend fun announce() = presence.update(self, statusLine, clock())
 
     /** Counts a read-only call as acting, so a session that only reads is never quiet. */
     fun touch() = presence.touch(clock())
@@ -441,14 +441,16 @@ class BeeBridge(
     /** Sets the "working on…" line beside this session on the board. */
     suspend fun status(line: String?) {
         val by = beforeWrite()
-        presence.update(by, line, clock(), waiting = false)
+        presence.update(by, line, clock())
         statusLine = line
     }
 
-    /** Marks this session as waiting on a surface, or no longer waiting; waiting is never quiet. */
-    suspend fun waiting(on: Boolean) {
-        presence.update(self, statusLine, clock(), waiting = on)
-    }
+    /**
+     * Runs [block] as one wait of this session, shown waiting on the board while it runs
+     * ([Presence.waiting]); waiting is never quiet. A wait claims the records it meets, and each
+     * claim's write posts presence too: those posts keep showing it waiting (bee#165).
+     */
+    suspend fun <T> waiting(block: suspend () -> T): T = presence.waiting(self, statusLine, clock(), block)
 
     /**
      * The identity to write as, after the retirement check. If the host retired the current
@@ -460,12 +462,12 @@ class BeeBridge(
         val mirrored = board.value
         val reason = table?.departReason(who) ?: mirrored.departures().firstOrNull { it.identity == who }?.reason
         if (reason == null) {
-            presence.update(who, statusLine, clock(), waiting = false)
+            presence.update(who, statusLine, clock())
             return@withLock who
         }
         val orphaned = orphanedBy(who, table, mirrored)
         identity.retire(reason)
-        presence.update(self, statusLine, clock(), waiting = false)
+        presence.update(self, statusLine, clock())
         throw BridgeRefusal(
             "This session was retired as $who ($reason), so the write was not made. " +
                 "Claims it left orphaned: ${orphaned.ifEmpty { listOf("none") }.joinToString()}. " +
