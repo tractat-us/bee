@@ -28,7 +28,7 @@ import kotlin.time.Instant
 private val AGENT = ReplicaId("agent")
 private val SAM = ReplicaId("web-sam")
 private val KIM = ReplicaId("web-kim")
-private const val POLL = "poll"
+private const val POLL = "otpoll"
 
 private fun TestScope.settle(duration: Duration) {
     advanceTimeBy(duration)
@@ -39,7 +39,7 @@ class OpenBeforeWriteTest {
     @Test
     fun experiment() = runTest(StandardTestDispatcher()) {
         val results = mutableListOf<String>()
-        for (gap in listOf(100, 300, 600, 1000, 1500, 2500, 4000)) {
+        for (gap in listOf(100, 4000)) {
             results += "gap=$gap: " + scenario(gap.milliseconds)
         }
         println(results.joinToString("\n"))

@@ -10,7 +10,7 @@ const SEEN = { timeout: 15_000 };
 async function openPage(browser, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  page.on('console', (m) => { if (m.type() === 'error' || m.text().includes('DIAG171')) console.log(`[${name}] ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error') console.log(`[${name}] ${m.text()}`); });
   await page.goto(`/?name=${name}`);
   await expect(page.locator('#status')).toHaveText(/^online/, SEEN);
   return { page, context };
