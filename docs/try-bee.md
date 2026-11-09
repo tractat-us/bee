@@ -8,7 +8,7 @@ sessions draw on the board, read your clicks back and redraw. The board lives on
 in the cloud, and it outlasts every session that touches it.
 
 There are two ways in. **Joining** someone's board needs nothing installed. **Your own board**
-needs a zip and an Apple-silicon Mac.
+needs Homebrew, or a zip and an Apple-silicon Mac.
 
 ## Join someone's board
 
@@ -49,10 +49,18 @@ read as muted, because it comes back as a new participant ([#126](https://github
 
 ## Your own board
 
-You need the kit, `bee-kit-darwin-arm64.zip` (about 113 MB), from whoever sent you here. It runs
-on Apple-silicon Macs only and carries its own Java, so there is nothing else to install.
+1. Install bee with [Homebrew](https://brew.sh), on a Mac or on Linux:
 
-1. Unzip it and clear macOS's download quarantine, so the scripts may run:
+    ```sh
+    brew install tractat-us/tap/bee
+    ```
+
+    Type the whole name: plain `brew install bee` installs an unrelated tool. Homebrew brings the
+    Java bee needs.
+
+    Without Homebrew, use the kit, `bee-kit-darwin-arm64.zip` (about 113 MB), from whoever sent
+    you here. It runs on Apple-silicon Macs only and carries its own Java. Unzip it and clear
+    macOS's download quarantine, so the scripts may run:
 
     ```sh
     cd ~/Downloads                     # or wherever you saved it
@@ -61,10 +69,12 @@ on Apple-silicon Macs only and carries its own Java, so there is nothing else to
     xattr -dr com.apple.quarantine .
     ```
 
+    From the kit's folder, type `./bee-up` wherever this page says `bee-up`.
+
 2. Start your board:
 
     ```sh
-    ./bee-up --name <you>
+    bee-up --name <you>
     ```
 
     It opens the board in your browser, prints a join link and copies it to your clipboard. Send
@@ -91,7 +101,7 @@ on Apple-silicon Macs only and carries its own Java, so there is nothing else to
     sessions your tools start for you, and each stays listed for two minutes after it exits.
     That suits a dashboard (next section); leave it out if you run many sessions at once.
 
-The board is a folder, `~/.bee/host`. Stop it with `./bee-up --stop`; `./bee-up` brings it back,
+The board is a folder, `~/.bee/host`. Stop it with `bee-up --stop`; `bee-up` brings it back,
 with the same link, and everyone on it reconnects by themselves.
 
 ## Use it every day: one board for all your sessions
@@ -120,7 +130,7 @@ Otherwise it may hold your message for up to 20 seconds.
 **The link won't open from another laptop.** Many office Wi-Fi networks stop laptops reaching
 each other, even on the same network. bee needs one thing only: the other laptop must reach port
 8233 on the board's laptop. The quickest fix is a phone hotspot that both laptops join. The owner
-then runs `./bee-up` again, which prints a new address, and sends the new link. If that fails,
+then runs `bee-up` again, which prints a new address, and sends the new link. If that fails,
 each person runs [their own board](#your-own-board) instead.
 
 **Nobody can reach your board.** macOS's firewall may be blocking `java`. Open System Settings →
@@ -139,9 +149,9 @@ reconnect it, or restart Claude.
 **You want to start again from nothing.** On the board's laptop:
 
 ```sh
-./bee-up --stop
+bee-up --stop
 rm -rf ~/.bee/host
-./bee-up --name <you>
+bee-up --name <you>
 ```
 
 A fresh board has a fresh link: send it again, and restart each Claude session joined to the old
@@ -158,8 +168,8 @@ one.
 
     | To | Run |
     |---|---|
-    | Make the old link stop working | `./bee-up --new-link` |
-    | Cut off every device and session | `./bee-up --forget-devices` |
+    | Make the old link stop working | `bee-up --new-link` |
+    | Cut off every device and session | `bee-up --forget-devices` |
 
     Either one prints a new link, and the board survives it. Send the new link to the people you
     still want on the board. To bring their Claude back, they open the new link and paste
@@ -168,13 +178,13 @@ one.
 ## Stop or uninstall
 
 ```sh
-./bee-up --stop                   # stop your board; it is kept for next time
+bee-up --stop                        # stop your board; it is kept for next time
 claude mcp remove --scope user bee   # take bee out of Claude Code
-rm -rf ~/.bee                     # delete your board, its keys and its logs
+rm -rf ~/.bee                        # delete your board, its keys and its logs
 ```
 
-Then delete the `bee-kit-darwin-arm64` folder. If you only joined someone else's board, the
-`claude mcp remove` line is all you need.
+Then run `brew uninstall bee`, or delete the `bee-kit-darwin-arm64` folder. If you only joined
+someone else's board, the `claude mcp remove` line is all you need.
 
 ## Going further
 

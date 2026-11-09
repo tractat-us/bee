@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# bee-dist: build the release tarball the Homebrew formula installs.
+#
+#   bin/bee-dist <version>    # writes build/dist/bee-<version>.tar.gz
+#
+# The tarball holds the bridge (bee-mcp), the host (bee-host), and the bee-up, bee-join and
+# bee-session-start-hook launchers, under one bee-<version>/ folder. It carries no Java: the
+# formula depends on openjdk@25 and sets JAVA_HOME. Every jar in it is platform-neutral (Netty's
+# native QUIC jars come in every classifier), so one tarball serves every OS and CPU.
+set -euo pipefail
+[ $# -eq 1 ] || { echo "usage: bin/bee-dist <version>   (e.g. 0.1.0, no leading v)" >&2; exit 2; }
+version=${1#v}
+root=$(cd "$(dirname "$0")/.." && pwd)
+java_home=${JAVA_HOME:-$HOME/.sdkman/candidates/java/25.0.5.0+8-tem}
+"$java_home/bin/java" -version 2>&1 | grep -q 'version "25' || java_home=$HOME/.sdkman/candidates/java/25.0.5.0+8-tem
+
+name="bee-$version"
+out="$root/build/dist"
+stage="$out/$name"
+
+# --no-watch-fs: file-system watching can miss a source change and ship a stale page bundle
+# (tractat-us/bee#102).
+(cd "$root" && JAVA_HOME=$java_home ./gradlew :bee-host:installDist :bee-mcp:installDist --no-watch-fs --console=plain -q)
+rm -rf "$stage" "$out/$name.tar.gz"
+mkdir -p "$stage"
+cp -R "$root/bee-mcp/build/install/bee-mcp" "$root/bee-host/build/install/bee-host" "$stage/"
+# The bridge's jars are all among the host's: hard-link each identical one, and tar stores it once
+# (about 80 MB down to 40).
+for jar in "$stage"/bee-mcp/lib/*.jar; do
+    twin="$stage/bee-host/lib/$(basename "$jar")"
+    if [ -f "$twin" ] && cmp -s "$jar" "$twin"; then ln -f "$twin" "$jar"; fi
+done
+cp "$root/bin/bee-env" "$root/bin/bee-up" "$root/bin/bee-join" "$root/bin/bee-session-start-hook" "$stage/"
+cp "$root/LICENSE" "$root/README.md" "$stage/"
+echo "$version" > "$stage/VERSION"
+# COPYFILE_DISABLE: macOS tar would otherwise add ._ resource-fork files.
+(cd "$out" && COPYFILE_DISABLE=1 tar -czf "$name.tar.gz" "$name")
+echo "$out/$name.tar.gz ($(du -h "$out/$name.tar.gz" | cut -f1))"

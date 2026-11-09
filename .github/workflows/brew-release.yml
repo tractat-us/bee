@@ -1,0 +1,188 @@
+# Ships bee to Homebrew: `brew install tractat-us/tap/bee`. Modelled on fgn's release.yml (build,
+# attach to a GitHub Release, then a tap-bump job gated on HOMEBREW_TAP_TOKEN), with two
+# differences:
+#
+# - One job, not a matrix: bin/bee-dist's tarball holds JVM jars and shell launchers only, so one
+#   ubuntu build serves every OS and CPU. The formula supplies Java through openjdk@25.
+# - The tarball goes on bee's own release. fgn mirrors its binaries onto homebrew-tap's releases
+#   because fgn is internal and its assets aren't publicly fetchable; bee is public.
+#
+# Shares the v<x.y.z> tag with publish.yml (Maven Central). Either workflow may create the GitHub
+# Release first: this one attaches to it if it exists, and creates it otherwise.
+#
+# Building needs the Tigris credentials, as ci.yml does: bee's kuilt pin resolves only from
+# there (tractat-us/bee#131). A prerelease tag (v0.2.0-rc.1) builds and attaches but leaves the
+# tap alone.
+name: brew-release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, such as 0.1.0 (no leading v). Tags the dispatched commit.'
+        required: true
+
+permissions:
+  contents: read
+
+# Keyed on the tag, so a tag push and a dispatch for the same version can't race each other.
+concurrency:
+  group: brew-release-${{ github.event_name == 'push' && github.ref_name || format('v{0}', github.event.inputs.version) }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tarball:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write       # create the GitHub Release, or attach to it
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      sha256: ${{ steps.sha.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compute release version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -eu
+          if [ "$EVENT" = "push" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="$INPUT_VERSION"; fi
+          # [[ =~ ]] matches the whole value, so a newline can't smuggle a second output line.
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a release version (x.y.z, optionally -suffix)." >&2
+            exit 1
+          fi
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+          { echo "version=$VERSION"; echo "prerelease=$PRERELEASE"; } >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25.0.5'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: wrapper
+          # A release reads main's cache and never writes one.
+          cache-read-only: true
+
+      - name: Build the tarball
+        env:
+          S3_BUILD_CACHE_ACCESS_KEY_ID: ${{ secrets.S3_BUILD_CACHE_ACCESS_KEY_ID }}
+          S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
+          timeout 600 bin/bee-dist "$VERSION"
+
+      # The same check as the formula's test block, on the unpacked tarball: the host serves the
+      # board page and answers MCP, and bee-up --stop ends it.
+      - name: Smoke-test the tarball
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          tar -xzf "build/dist/bee-$VERSION.tar.gz" -C "$smoke"
+          export BEE_HOME="$smoke/home" BEE_NO_OPEN=1
+          up="$smoke/bee-$VERSION/bee-up"
+          trap '"$up" --stop || true' EXIT
+          timeout 120 "$up" --name smoke --port 8262 --local --data-dir "$smoke/data"
+          curl -fsS http://127.0.0.1:8262/ | grep -q '<html'
+          curl -fsS -X POST 'http://127.0.0.1:8262/mcp?name=smoke' \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
+            | grep -q '"serverInfo"'
+          echo "The tarball's host served / and answered MCP initialize."
+
+      - name: Compute SHA-256
+        id: sha
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: echo "sha256=$(sha256sum "build/dist/bee-$VERSION.tar.gz" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Attach to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          set -eu
+          TAG="v$VERSION"
+          ASSET="build/dist/bee-$VERSION.tar.gz"
+          PRE=""
+          [ "$PRERELEASE" = true ] && PRE="--prerelease"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          # --target: a dispatch has no tag yet, and gh would otherwise tag main's head.
+          # A failed create is publish.yml creating the same release a moment earlier: attach.
+          elif ! gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "$TAG" --generate-notes $PRE; then
+            sleep 5
+            gh release upload "$TAG" "$ASSET" --clobber
+          fi
+
+  # A job-level `if:` can't read the secrets context, so a job probes for the token and the tap
+  # bump gates on its output (as in fgn). A missing or misnamed secret skips the bump; it never
+  # fails the release.
+  check-token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_token: ${{ steps.probe.outputs.has_token }}
+    steps:
+      - id: probe
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then echo "has_token=true"; else echo "has_token=false"; fi >> "$GITHUB_OUTPUT"
+
+  tap-bump:
+    needs: [tarball, check-token]
+    if: needs.check-token.outputs.has_token == 'true' && needs.tarball.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out homebrew-tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tractat-us/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Open the bump PR
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.tarball.outputs.version }}
+          SHA256: ${{ needs.tarball.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          cd homebrew-tap
+          FORMULA=Formula/bee.rb
+          sed -i -E "s|releases/download/v[^/]+/bee-[^/]+\.tar\.gz|releases/download/v${VERSION}/bee-${VERSION}.tar.gz|" "$FORMULA"
+          sed -i -E "s|sha256 \"[0-9a-f]{64}\"|sha256 \"${SHA256}\"|" "$FORMULA"
+          if ! grep -q "bee-${VERSION}.tar.gz" "$FORMULA" || ! grep -q "$SHA256" "$FORMULA"; then
+            echo "::error::$FORMULA didn't take the new url and sha256"; cat "$FORMULA"; exit 1
+          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          BRANCH="bump/bee-v${VERSION}"
+          git checkout -b "$BRANCH"
+          git commit -am "bump: bee formula to v${VERSION}"
+          git push origin "$BRANCH"
+          gh pr create --repo tractat-us/homebrew-tap --base main --head "$BRANCH" \
+            --title "bump: bee formula to v${VERSION}" \
+            --body "Automated bump from [tractat-us/bee release v${VERSION}](https://github.com/tractat-us/bee/releases/tag/v${VERSION})."

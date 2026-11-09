@@ -1,14 +1,18 @@
 # Sourced by bee-up and bee-join: finds the bridge, the host and a Java 25 runtime, whether these
-# scripts run from a bee checkout (bin/) or from an unzipped kit (bee-bundle's layout, with its own
-# runtime/ beside them). Sets: bee_root, bee_mcp, bee_host, bee_home, and exports JAVA_HOME.
+# scripts run from a bee checkout (bin/), from an unzipped kit (bee-bundle's layout, with its own
+# runtime/ beside them) or from the release tarball (bee-dist's layout, no runtime/, which Homebrew
+# installs). Sets: bee_root, bee_mcp, bee_host, bee_home, and exports JAVA_HOME.
 
+# pwd, not pwd -P: Homebrew's wrappers run these scripts through the formula's opt/ symlink, and
+# the MCP config written below must keep naming that path so it survives brew upgrade.
 bee_here=$(cd "$(dirname "$0")" && pwd)
 bee_home=${BEE_HOME:-$HOME/.bee}
 
-if [ -d "$bee_here/runtime" ]; then
-    # An unzipped kit: everything sits beside the scripts, prebuilt.
+if [ -d "$bee_here/bee-host" ]; then
+    # A prebuilt layout: everything sits beside the scripts. A kit brings its own runtime; the
+    # release tarball takes JAVA_HOME from its caller (the Homebrew wrapper names openjdk@25).
     bee_root=$bee_here
-    export JAVA_HOME="$bee_root/runtime"
+    [ -d "$bee_root/runtime" ] && export JAVA_HOME="$bee_root/runtime"
     bee_mcp="$bee_root/bee-mcp/bin/bee-mcp"
     bee_host="$bee_root/bee-host/bin/bee-host"
 else
@@ -25,7 +29,8 @@ else
     fi
 fi
 
-[ -x "$JAVA_HOME/bin/java" ] || { echo "No Java 25 at $JAVA_HOME. Set JAVA_HOME to a JDK 25, or use a bee kit." >&2; exit 1; }
+[ -x "${JAVA_HOME:-}/bin/java" ] || { echo "No Java 25 at ${JAVA_HOME:-(JAVA_HOME unset)}. Set JAVA_HOME to a JDK 25, or use a bee kit." >&2; exit 1; }
+export JAVA_HOME
 
 # Writes an MCP config at $1 that runs the bridge against BEE_HOST $2, named $3.
 bee_write_mcp_config() {
