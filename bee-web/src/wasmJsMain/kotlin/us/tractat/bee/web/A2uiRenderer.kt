@@ -17,8 +17,11 @@ external interface RendererHost : JsAny {
     /** Applies a JSON array of A2UI messages; returns a JSON array of the errors reported. */
     fun process(messagesJson: String): String
 
-    /** Calls [handler] with each user action, as the JSON of web_core's ActionPayload. */
-    fun onAction(handler: (String) -> Unit)
+    /**
+     * Calls [handler] with each user action, as the JSON of web_core's ActionPayload, and the data
+     * path of the Button instance pressed for it, or null if no Button press made it.
+     */
+    fun onAction(handler: (json: String, instance: String?) -> Unit)
 }
 
 @JsModule("@bee/notions")
@@ -52,15 +55,19 @@ class A2uiRenderer(root: Element, place: (surfaceId: String, element: Element) -
      */
     fun <T> actions(witness: (A2uiAction) -> T): Flow<Witnessed<T>> {
         val received = Channel<Witnessed<T>>(Channel.UNLIMITED)
-        host.onAction { json ->
+        host.onAction { json, instance ->
             val action = A2uiJson.decodeAction(json)
-            received.trySend(Witnessed(action, witness(action)))
+            received.trySend(Witnessed(action, witness(action), instance))
         }
         return received.receiveAsFlow()
     }
 
-    /** A user [action], with what a witness read for it as the person acted ([seen]). */
-    data class Witnessed<out T>(val action: A2uiAction, val seen: T)
+    /**
+     * A user [action], with what a witness read for it as the person acted ([seen]), and the data
+     * path of the Button instance pressed for it ([instance]): `/`, or a list template row's, such
+     * as `/items/1`. Null if no Button press made it.
+     */
+    data class Witnessed<out T>(val action: A2uiAction, val seen: T, val instance: String?)
 
     /**
      * Applies [messages] in order.

@@ -32,6 +32,8 @@ import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.InviteLinks
+import us.tractat.bee.core.InviteWire
+import us.tractat.bee.core.MintedInvite
 import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
@@ -58,7 +60,7 @@ import kotlin.uuid.Uuid
 private val log = KotlinLogging.logger("us.tractat.bee.web.Main")
 
 /** Where this tab keeps the key pairing gave it. A tab's own storage: a new tab on a LAN device pairs again. */
-private const val KEY_STORAGE = "bee.lan.key"
+internal const val KEY_STORAGE = "bee.lan.key"
 
 /** How this page may reach the host's board (spec §5.7). */
 internal sealed interface Access {
@@ -73,6 +75,14 @@ internal sealed interface Access {
 
     /** The page came over the network with no key: it pairs before it sees anything. */
     data object NeedsPairing : Access
+
+    /**
+     * The page came with a hosted board's invite, `#i=<secret>`, and no key (bee#215): it asks a
+     * name and redeems [secret] for a key before it sees anything ([JoinByInvite]).
+     */
+    data class Invited(val secret: String) : Access {
+        override fun toString(): String = "Invited(…)"
+    }
 }
 
 /**
@@ -113,6 +123,10 @@ fun main() {
     when (val access = accessOf(params)) {
         is Access.Admitted -> startBoard(http, actor, viewerOf(params), screen, access)
         Access.NeedsPairing -> pair(params.get(PairingWire.SCREEN_PARAM)) { key -> startBoard(http, actor, viewerOf(params), screen, Access.Keyed(key)) }
+        // The person names themselves: the board, their line and their presence carry that name.
+        is Access.Invited -> JoinByInvite(access.secret, params.get("name"), pairByCode = { admitted -> pair(null, admitted) }) { name, key ->
+            startBoard(http, PeerIdentity.human(name ?: GUEST), name?.let(Viewer::Named) ?: Viewer.Unnamed, screen = false, Access.Keyed(key))
+        }.ask()
     }
 }
 
@@ -120,9 +134,12 @@ fun main() {
 private fun viewerOf(params: URLSearchParams): Viewer =
     params.get("name")?.takeIf { it.isNotBlank() }?.let(Viewer::Named) ?: Viewer.Unnamed
 
+/** Who a person who gave no name is. */
+private const val GUEST = "guest"
+
 private fun actorOf(params: URLSearchParams): PeerIdentity {
     val screen = params.get(PairingWire.SCREEN_PARAM)?.takeIf { it.isNotBlank() }
-    val name = screen ?: params.get("name")?.takeIf { it.isNotBlank() } ?: "guest"
+    val name = screen ?: params.get("name")?.takeIf { it.isNotBlank() } ?: GUEST
     return PeerIdentity.human(name)
 }
 
@@ -139,13 +156,16 @@ private fun actorOf(params: URLSearchParams): PeerIdentity {
 private fun accessOf(params: URLSearchParams): Access {
     val fragment = URLSearchParams(window.location.hash.removePrefix("#").toJsString())
     val given = params.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() } ?: fragment.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() }
-    given?.let {
-        sessionStorage.setItem(KEY_STORAGE, it)
-        window.history.replaceState(null, "", window.location.pathname + searchWithoutKey() + hashWithoutKey())
-    }
+    // A hosted board's invite (bee#215) rides in the fragment too, and leaves the address bar the same way.
+    val invite = fragment.get(InviteWire.SECRET_PARAM)?.takeIf { it.isNotEmpty() }
+    given?.let { sessionStorage.setItem(KEY_STORAGE, it) }
+    invite?.let { sessionStorage.setItem(INVITE_STORAGE, it) }
+    if (given != null || invite != null) window.history.replaceState(null, "", window.location.pathname + searchWithoutKey() + hashWithoutKey())
     val key = sessionStorage.getItem(KEY_STORAGE)
+    val invited = sessionStorage.getItem(INVITE_STORAGE)
     return when {
-        key != null -> Access.Keyed(key)
+        key != null -> Access.Keyed(key).also { sessionStorage.removeItem(INVITE_STORAGE) }
+        invited != null -> Access.Invited(invited)
         isLoopbackHost(window.location.hostname) -> Access.Loopback
         else -> Access.NeedsPairing
     }
@@ -170,7 +190,7 @@ private fun pageHost(access: Access.Admitted): HostAddress = HostAddress.parse(
     },
 )
 
-private fun param(name: String, value: String): String = "$name=${encodeURIComponent(value)}"
+internal fun param(name: String, value: String): String = "$name=${encodeURIComponent(value)}"
 
 internal fun encodeURIComponent(value: String): String = js("encodeURIComponent(value)")
 
@@ -196,8 +216,12 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
         setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)")
     }
     private val prompt = panel.appendElement("p", "pairing-prompt")
+    // One click or tap selects the whole code, so it copies whole: someone joining from elsewhere
+    // sends it by chat (bee#212). `user-select: all` does it for a click. A phone's WebKit sends no
+    // mouse events for a tap on an element nothing listens to, so the listener selects it there.
     private val code = panel.appendElement("p", "pairing-code").apply {
-        setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums")
+        setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums;-webkit-user-select:all;user-select:all")
+        addEventListener("click", { selectText(this) })
     }
     private val again = panel.appendElement("button", "pairing-again").apply {
         textContent = "Show a new code"
@@ -263,6 +287,15 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
         again.removeAttribute("hidden")
     }
 }
+
+/** Selects all of [element]'s text. */
+@JsFun(
+    """(element) => {
+        const selection = window.getSelection();
+        if (selection) selection.selectAllChildren(element);
+    }""",
+)
+private external fun selectText(element: Element)
 
 private fun endedText(reason: PairingEnd): String = when (reason) {
     PairingEnd.Expired -> "Nobody typed the code in time."
@@ -387,13 +420,57 @@ private fun claimsConnection(http: HttpClient, pin: BoardPin, query: String, sco
  * An Invite control in the bar, once the host gives this page its join links at
  * [InviteLinks.PATH], asked with the page's key [query] if it has one: a `--lan` host answers its
  * own machine, and a public host any key it admits. Anything else (a 404, a 403, no host) leaves
- * the bar as it is.
+ * the bar as it is. A public host's link is minted, by `POST` to the same path with the same key,
+ * when the panel opens (bee#215).
  */
 private fun offerInvite(shell: PageShell, query: String) {
-    fetchText(InviteLinks.PATH + if (query.isEmpty()) "" else "?$query") { text, _ ->
-        if (text != null) Invite(shell, Json.decodeFromString(InviteLinks.serializer(), text))
+    val path = InviteLinks.PATH + if (query.isEmpty()) "" else "?$query"
+    fetchText(path) { text, _ ->
+        val links = text?.let { decodeOrNull(InviteLinks.serializer(), it) } ?: return@fetchText
+        val source = when (links.joins) {
+            InviteLinks.Joins.OnThisNetwork -> InviteSource.Fixed(links)
+            InviteLinks.Joins.Anywhere -> InviteSource.Minted { done -> mintInvite(path, done) }
+        }
+        Invite(shell, source)
     }
 }
+
+/**
+ * This tab's invite from the host at [path]. The page sends the secret of the one it holds, if
+ * any, in the body: the host gives that one back while it still works, so a reload doesn't spend
+ * one of the minter's live invites, and otherwise mints a new one. A link that stopped working
+ * (used up, lapsed, or forgotten by a host that forgot its devices) is so replaced, and never
+ * shown again. Calls [done] with it, or with why not in words for the panel: the host's own,
+ * when it says too many are live.
+ */
+private fun mintInvite(path: String, done: (Result<MintedInvite>) -> Unit) {
+    val held = sessionStorage.getItem(MINTED_STORAGE)?.let { decodeOrNull(MintedInvite.serializer(), it) }
+    val secret = held?.link?.substringAfter("#${InviteWire.SECRET_PARAM}=", missingDelimiterValue = "").orEmpty()
+    postText(path, secret, REQUEST_TIMEOUT_MS) { status, text ->
+        val minted = text?.takeIf { status == HTTP_OK }?.let { decodeOrNull(MintedInvite.serializer(), it) }
+        // Once the host answers, the tab holds only what it gave now: a refusal means the old link
+        // didn't work either, or the host would have given it back. No answer (status 0) keeps it.
+        when {
+            minted != null -> sessionStorage.setItem(MINTED_STORAGE, Json.encodeToString(MintedInvite.serializer(), minted))
+            status != 0 -> sessionStorage.removeItem(MINTED_STORAGE)
+        }
+        done(
+            when {
+                minted != null -> Result.success(minted)
+                status == HTTP_TOO_MANY && !text.isNullOrBlank() -> Result.failure(IllegalStateException(text))
+                else -> Result.failure(IllegalStateException("Couldn't make a link. Close this and try again."))
+            },
+        )
+    }
+}
+
+private const val HTTP_TOO_MANY = 429
+
+/** Where this tab keeps the invite it minted, as its key is kept: the tab's own storage (bee#215). */
+private const val MINTED_STORAGE = "bee.invite.minted"
+
+/** Where this tab keeps an invite's secret until it is redeemed or refused, so a reload still has it (bee#215). */
+internal const val INVITE_STORAGE = "bee.invite"
 
 /** What asking the host for its board came to. */
 private sealed interface HostAnswer {
@@ -435,20 +512,20 @@ private suspend fun askBoardId(): HostAnswer {
 )
 private external fun fetchText(path: String, onDone: (String?, Boolean) -> Unit)
 
-private val REQUEST_TIMEOUT_MS = PairingWire.REQUEST_TIMEOUT.inWholeMilliseconds.toInt()
+internal val REQUEST_TIMEOUT_MS = PairingWire.REQUEST_TIMEOUT.inWholeMilliseconds.toInt()
 
 /**
  * [text] as [serializer]'s type, or null if it isn't one. A proxy can answer 200 with a page of
  * its own, so a body is the host's only once it decodes.
  */
-private fun <T> decodeOrNull(serializer: KSerializer<T>, text: String): T? = try {
+internal fun <T> decodeOrNull(serializer: KSerializer<T>, text: String): T? = try {
     Json.decodeFromString(serializer, text)
 } catch (_: IllegalArgumentException) {
     // kotlinx.serialization's SerializationException is an IllegalArgumentException.
     null
 }
 
-private const val HTTP_OK = 200
+internal const val HTTP_OK = 200
 private const val HTTP_NOT_FOUND = 404
 
 /**
@@ -462,7 +539,7 @@ private const val HTTP_NOT_FOUND = 404
             .then(([status, text]) => onDone(status, text), () => onDone(0, null));
     }""",
 )
-private external fun postText(path: String, body: String, timeoutMs: Int, onDone: (Int, String?) -> Unit)
+internal external fun postText(path: String, body: String, timeoutMs: Int, onDone: (Int, String?) -> Unit)
 
 /** The copy this tab reads and may keep: one [board]'s, in [store]. */
 private class Copy(val store: BrowserStore, val board: BoardId)
@@ -557,15 +634,19 @@ private fun searchWithoutKey(): String {
     return params.toString().let { if (it.isEmpty()) "" else "?$it" }
 }
 
-/** The page's fragment with any key taken out: `#…`, or empty when nothing is left. A fragment with no key stays as it was. */
+/**
+ * The page's fragment with any key or invite taken out: `#…`, or empty when nothing is left. A
+ * fragment with neither stays as it was.
+ */
 private fun hashWithoutKey(): String {
     val params = URLSearchParams(window.location.hash.removePrefix("#").toJsString())
-    if (!params.has(PairingWire.KEY_PARAM)) return window.location.hash
-    params.delete(PairingWire.KEY_PARAM)
+    val secrets = listOf(PairingWire.KEY_PARAM, InviteWire.SECRET_PARAM)
+    if (secrets.none { params.has(it) }) return window.location.hash
+    secrets.forEach { params.delete(it) }
     return params.toString().let { if (it.isEmpty()) "" else "#$it" }
 }
 
-private fun Element.appendElement(tag: String, id: String): Element =
+internal fun Element.appendElement(tag: String, id: String): Element =
     document.createElement(tag).also {
         it.id = id
         appendChild(it)

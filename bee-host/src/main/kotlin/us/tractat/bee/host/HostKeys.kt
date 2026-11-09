@@ -195,23 +195,14 @@ class KeyFile(private val path: Path) : KeyStore {
     }
 
     override fun save(keys: StoredKeys) {
-        val dir = path.toAbsolutePath().parent
-        Files.createDirectories(dir)
-        val text = buildString {
-            appendLine("# bee-host keys: the join link's key, and a SHA-256 of each paired device's key. Owner-only.")
-            appendLine("$JOIN ${keys.join.value}")
-            keys.devices.forEach { appendLine("$DEVICE ${it.value}") }
-        }
-        val temp = Files.createTempFile(dir, ".${path.fileName}-", ".tmp", *ownerOnly(dir))
-        try {
-            FileChannel.open(temp, WRITE).use { channel ->
-                channel.write(ByteBuffer.wrap(text.encodeToByteArray()))
-                channel.force(true)
-            }
-            Files.move(temp, path, ATOMIC_MOVE, REPLACE_EXISTING)
-        } finally {
-            Files.deleteIfExists(temp)
-        }
+        writeOwnerOnly(
+            path,
+            buildString {
+                appendLine("# bee-host keys: the join link's key, and a SHA-256 of each paired device's key. Owner-only.")
+                appendLine("$JOIN ${keys.join.value}")
+                keys.devices.forEach { appendLine("$DEVICE ${it.value}") }
+            },
+        )
     }
 
     private fun unreadable(): String =
@@ -224,12 +215,32 @@ class KeyFile(private val path: Path) : KeyStore {
 
         private const val JOIN = "join"
         private const val DEVICE = "device"
-
-        private fun ownerOnly(dir: Path): Array<FileAttribute<*>> =
-            if ("posix" in dir.fileSystem.supportedFileAttributeViews()) {
-                arrayOf(PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE)))
-            } else {
-                emptyArray()
-            }
     }
 }
+
+/**
+ * Replaces [path] with [text], whole: a temporary file beside it, readable and writable only by
+ * its owner where the file system has POSIX permissions, forced to disk and moved over [path]
+ * atomically. A crash leaves the old file or the new, never a mix.
+ */
+internal fun writeOwnerOnly(path: Path, text: String) {
+    val dir = path.toAbsolutePath().parent
+    Files.createDirectories(dir)
+    val temp = Files.createTempFile(dir, ".${path.fileName}-", ".tmp", *ownerOnly(dir))
+    try {
+        FileChannel.open(temp, WRITE).use { channel ->
+            channel.write(ByteBuffer.wrap(text.encodeToByteArray()))
+            channel.force(true)
+        }
+        Files.move(temp, path, ATOMIC_MOVE, REPLACE_EXISTING)
+    } finally {
+        Files.deleteIfExists(temp)
+    }
+}
+
+private fun ownerOnly(dir: Path): Array<FileAttribute<*>> =
+    if ("posix" in dir.fileSystem.supportedFileAttributeViews()) {
+        arrayOf(PosixFilePermissions.asFileAttribute(setOf(OWNER_READ, OWNER_WRITE)))
+    } else {
+        emptyArray()
+    }

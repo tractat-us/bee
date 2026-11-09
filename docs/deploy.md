@@ -7,8 +7,9 @@ for whoever runs it.
 
 ## Getting on the board
 
-Nobody reaches a hosted board from loopback, and a device can only pair by code while someone
-admitted is on the board to admit it. So the first person in is always the owner, by key. Below,
+Nobody reaches a hosted board from loopback. A device gets on by an invite link someone already
+on made, or by a code while someone admitted is on the board to admit it. So the first person in
+is always the owner, by key. Below,
 `<your owner key>` is the owner key, from wherever you keep secrets. Never paste it on the board.
 
 1. **Open the board with your key:**
@@ -32,10 +33,32 @@ admitted is on the board to admit it. So the first person in is always the owner
     Here the key is a query, which Claude Code sends with each call; the host logs no request
     URLs. The line, key included, ends up in `~/.claude.json`.
 
-3. **Invite someone** by sending them `https://bee.tractat.us/?name=<their name>`. Their page
-   shows a six-digit code. Someone already on the board types it in and presses **Admit**. Your
-   phone joins the same way. With nobody admitted on the board, the request is refused at once:
-   keep your own tab open while people join.
+3. **Invite someone:** press **Invite** on the board and send them the link it shows, or let
+   them scan its code. The link looks like `https://bee.tractat.us/#i=<secret>`. Whoever opens
+   it is asked for a name, presses **Join**, and is on the board, with a key of their own. Nobody
+   has to be on the board to let them in. Your phone joins the same way.
+
+    - **Anyone with the link can join, for a day.** It works for up to 25 devices. Send it only
+      to people you'd let on the board.
+    - **Invite always shows a link that still works.** A tab keeps its link while it has uses
+      and more than an hour left, and each time Invite opens, it checks with the host. Once the
+      link is used up, near its end, or forgotten by the host, Invite shows a new one. Close and
+      reopen Invite to check again.
+    - Each key may have 10 links live at once, and the board 100. The board lets in at most 100
+      devices a day by invite, counted since the host last started. Past a limit, Invite or the
+      joiner's page says so.
+    - **When the host forgets its devices** (`bee-host --forget-devices`), every invite stops
+      working with every device key. The next time Invite opens, it shows a new link. Only the
+      owner gets back on by opening a new tab, with the owner link; everyone else gets on again
+      by a new invite or a code.
+    - The secret rides in the fragment, like your owner key, so it never reaches Fly's proxy or
+      a log. The host keeps only its hash, in `invites` in the data dir, so a deploy keeps every
+      live invite.
+    - Add `?name=<their name>` before the `#` to fill the name in for them.
+    - **Without a link**, someone opening `https://bee.tractat.us/` gets a six-digit code instead.
+      Someone already on the board types it in and presses **Admit**. With nobody admitted on the
+      board, that request is refused at once. An invite that lapsed or was used up offers that
+      code too.
 
 4. **Their Claude:** once admitted, they open the board's **Bring your Claude** panel. It shows
    the same `claude mcp add` line with their own key in it.
@@ -50,7 +73,7 @@ admitted is on the board to admit it. So the first person in is always the owner
     ```
 
     The app restarts with the new key. The old one then stops admitting, in any `claude mcp`
-    config too.
+    config too. Rotating it leaves invites and the keys they gave alone.
 
 ## Deploy
 

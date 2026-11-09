@@ -3,6 +3,8 @@ package us.tractat.bee.host
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
@@ -12,6 +14,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.InviteLinks
+import us.tractat.bee.core.InviteWire
 import us.tractat.kuilt.test.assertAll
 import java.net.InetAddress
 import java.security.SecureRandom
@@ -87,6 +90,28 @@ class InviteEndpointTest {
     @Test
     fun aHostOnLoopbackAloneHasNoInvite() = host(Invitation.Closed) { client ->
         assertEquals(HttpStatusCode.NotFound, client.invite(LOOPBACK).status)
+    }
+
+    /** Minted invites are a hosted board's (bee#215): a LAN or loopback host neither mints nor redeems one. */
+    @Test
+    fun onlyAHostedBoardMintsOrRedeemsAnInvite() {
+        for (invitation in listOf(Invitation.Open(LAN_NAME) { listOf(LAPTOP) }, Invitation.Closed)) {
+            host(invitation) { client ->
+                val mint = client.post(InviteLinks.PATH) {
+                    header(TEST_PEER, LOOPBACK)
+                    header(HttpHeaders.Host, "$LOOPBACK:$PORT")
+                }
+                val redeem = client.post(InviteWire.REDEEM_PATH) {
+                    header(TEST_PEER, LAN_DEVICE)
+                    header(HttpHeaders.Host, "$LAPTOP:$PORT")
+                    setBody("""{"invite":"x","name":"sam"}""")
+                }
+                assertAll(
+                    { assertEquals(HttpStatusCode.NotFound, mint.status, "mint on $invitation") },
+                    { assertEquals(HttpStatusCode.NotFound, redeem.status, "redeem on $invitation") },
+                )
+            }
+        }
     }
 
     @Test

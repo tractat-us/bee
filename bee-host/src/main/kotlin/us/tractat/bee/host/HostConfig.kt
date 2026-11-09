@@ -19,8 +19,8 @@ sealed interface Reach {
     /** The public URLs a host with this reach is served at, through its proxy ([SiteRule]). */
     fun publicUrls(): Set<PublicUrl>
 
-    /** Whether a host with this reach has a join link to give its owner's page ([inviteEndpoint]). */
-    fun invitation(): Invitation
+    /** Whether a host with this reach has a join link to give its owner's page ([inviteEndpoint]); a hosted one mints each from [invites]. */
+    fun invitation(invites: () -> Invites): Invitation
 
     /** Where each call to a host with this reach came from ([mountEndpoints]). */
     fun peers(): PeerAddress
@@ -39,7 +39,7 @@ sealed interface Reach {
 
         override fun publicUrls(): Set<PublicUrl> = emptySet()
 
-        override fun invitation(): Invitation = Invitation.Closed
+        override fun invitation(invites: () -> Invites): Invitation = Invitation.Closed
 
         override fun peers(): PeerAddress = PeerAddress.DIRECT
 
@@ -56,7 +56,7 @@ sealed interface Reach {
 
         override fun publicUrls(): Set<PublicUrl> = emptySet()
 
-        override fun invitation(): Invitation = Invitation.Open(lanName(), ::lanAddresses)
+        override fun invitation(invites: () -> Invites): Invitation = Invitation.Open(lanName(), ::lanAddresses)
 
         override fun peers(): PeerAddress = PeerAddress.DIRECT
 
@@ -78,7 +78,8 @@ sealed interface Reach {
      *
      * **Only paired device keys write** (Iain's device-keys-only ruling, bee#159): the join link
      * admits nothing ([JoinLink.Off]), so a device gets on by its code, which anyone already on
-     * types (Iain, 2026-11-08: any admitted person can admit anyone, for now).
+     * types (the 2026-11-08 ruling: any admitted person can admit anyone, for now), or by an invite
+     * someone already on minted, which admits whoever opens it for a day (#215, [Invites]).
      */
     data class Public(val url: PublicUrl, val client: ForwardedPeer, val owner: OwnerKey) : Reach {
         override val bind: String = ALL_INTERFACES
@@ -87,7 +88,7 @@ sealed interface Reach {
 
         override fun publicUrls(): Set<PublicUrl> = setOf(url)
 
-        override fun invitation(): Invitation = Invitation.Public(url)
+        override fun invitation(invites: () -> Invites): Invitation = Invitation.Public(url, invites())
 
         override fun peers(): PeerAddress = client
 

@@ -25,15 +25,18 @@ export { NOTIONS_CATALOG_ID, notionsCatalog };
  *   element; defaults to appending it to `rootElement`, so surfaces show in creation order
  * @returns `process(messagesJson)`, which applies a JSON array of A2UI messages and
  *   returns a JSON array of the errors the processor reported (empty when none), and
- *   `onAction(handler)`, which calls `handler` with each user action as a JSON string
+ *   `onAction(handler)`, which calls `handler` with each user action as a JSON string, and the
+ *   data path of the Button instance pressed for it ([pressedInstance]), or null
  */
 export function createRendererHost(rootElement, catalogs = [notionsCatalog], place = (id, element) => rootElement.appendChild(element)) {
   injectBasicCatalogStyles();
   provideMarkdown(rootElement);
   const actionHandlers = [];
+  const pressed = pressedInstance(rootElement);
   const processor = new MessageProcessor(catalogs, (action) => {
     const json = JSON.stringify(action);
-    for (const handler of actionHandlers) handler(json);
+    const instance = pressed();
+    for (const handler of actionHandlers) handler(json, instance);
   });
   const mounted = new Map();
 
@@ -66,6 +69,28 @@ export function createRendererHost(rootElement, catalogs = [notionsCatalog], pla
  */
 export function createPlacedRendererHost(rootElement, place) {
   return createRendererHost(rootElement, [notionsCatalog], place);
+}
+
+/**
+ * Which Button instance a click is pressing, while that click is delivered: its data context's path,
+ * such as `/` or, for a row of a list template, `/items/1`. Template rows share their component
+ * id, so this path is what tells them apart (web_core's `dataContext.path`).
+ *
+ * A click is seen at the root on its way down, before the button's own handler dispatches the
+ * action, and forgotten on its way back up. The dispatch runs inside that handler, synchronously,
+ * so an action reads the path of the click that made it; an action no click made reads null.
+ *
+ * @returns a function giving the path of the Button instance being pressed now, or null
+ */
+function pressedInstance(rootElement) {
+  let path = null;
+  rootElement.addEventListener('click', (event) => {
+    path = event.target?.closest?.('a2ui-basic-button')?.context?.dataContext?.path ?? null;
+  }, true);
+  rootElement.addEventListener('click', () => {
+    path = null;
+  });
+  return () => path;
 }
 
 /**
@@ -103,6 +128,29 @@ export function subscribeData(rootElement, surfaceId, path, handler) {
   if (!dataModel) return null;
   const subscription = dataModel.subscribe(path, (value) => handler(JSON.stringify(value ?? null)));
   return { unsubscribe: () => subscription.unsubscribe() };
+}
+
+/**
+ * Shows Button `componentId` on surface `surfaceId` as sent, or not (bee#213): `aria-disabled` on
+ * its `<button>`, so a screen reader hears the state while the text stays as it is. It stays
+ * focusable and clickable, as Sketch's Send does (bee#193); bee's driver refuses a press on a sent
+ * button. The basic catalog renders into light DOM, as `<a2ui-basic-button>`, and Lit leaves an
+ * attribute it doesn't bind alone. A button not on the page is skipped.
+ *
+ * @param instance the data path of the instance pressed ([pressedInstance]), so one row of a list
+ *   template is marked and not its siblings; null marks every instance of `componentId`
+ */
+export function markSent(rootElement, surfaceId, componentId, instance, sent) {
+  const surface = surfaceElement(rootElement, surfaceId);
+  if (!surface) return;
+  for (const element of surface.querySelectorAll('a2ui-basic-button')) {
+    if (element.context?.componentModel?.id !== componentId) continue;
+    if (instance !== null && element.context?.dataContext?.path !== instance) continue;
+    const button = element.querySelector(':scope > button');
+    if (!button) continue;
+    if (sent) button.setAttribute('aria-disabled', 'true');
+    else button.removeAttribute('aria-disabled');
+  }
 }
 
 /**

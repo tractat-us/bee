@@ -5,16 +5,32 @@ import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.events.KeyboardEvent
 import us.tractat.bee.core.InviteLinks
+import us.tractat.bee.core.MintedInvite
+
+/** Where the Invite panel's link comes from. */
+internal sealed interface InviteSource {
+    /** A `--lan` host's join link: the same every time the panel opens. */
+    class Fixed(val links: InviteLinks) : InviteSource
+
+    /**
+     * A hosted board's (bee#215): [mint] asks the host for the tab's invite, which the host gives
+     * back while it still works or replaces with a new one, and calls back with it or with why
+     * not. The panel asks each time it opens, so it never shows a link that stopped working.
+     */
+    class Minted(val mint: (done: (Result<MintedInvite>) -> Unit) -> Unit) : InviteSource
+}
 
 /**
  * "Invite": on a page that may invite (never a room screen), a control in the page's bar that
- * opens a panel with the host's join link as a QR code to scan from a phone or a laptop in the
- * room, the link as text with Copy, and the host's other links.
+ * opens a panel with a join link as a QR code to scan from a phone or a laptop, the link as text
+ * with Copy, and the host's other links.
  *
  * - **Only from the host, which says who may invite.** The links come from `GET`
  *   [InviteLinks.PATH], which a `--lan` host answers on its own machine alone, and a
- *   `--public-url` host to any page it admitted, with its bare public URL, since any admitted
- *   person can admit anyone (bee#145). Without them there is no control.
+ *   `--public-url` host to any page it admitted, since any admitted person can admit anyone
+ *   (bee#145). Without them there is no control.
+ * - **A hosted board's link admits whoever opens it, for a day** (bee#215). The panel mints it
+ *   when it first opens ([InviteSource.Minted]): the public URL with a secret in its fragment.
  * - **Legible across a room.** The code is an SVG, [QR_PIXELS] a side or the panel's width,
  *   dark on white whatever the page's theme, with the standard's four-module quiet zone.
  * - **Like Bring your Claude.** The panel sits in the page's flow under the bar and pushes the
@@ -24,7 +40,7 @@ import us.tractat.bee.core.InviteLinks
  * `<svg>` whose `data-text` is the link it encodes), `#invite-link`, `#invite-copy`,
  * `#invite-copied`, `#invite-close` and, when the host has more links, `#invite-others`.
  */
-internal class Invite(shell: PageShell, private val links: InviteLinks) {
+internal class Invite(shell: PageShell, private val source: InviteSource) {
     private val toggle: HTMLElement = (element("button", "invite-toggle") as HTMLElement).also {
         it.textContent = "Invite"
         it.setAttribute("type", "button")
@@ -37,13 +53,21 @@ internal class Invite(shell: PageShell, private val links: InviteLinks) {
         it.hidden = true
         requireNotNull(shell.problem.parentElement) { "#problem isn't on the page." }.insertBefore(it, shell.problem.nextSibling)
     }
-    private val line: Element = element("code", "invite-link").also { it.textContent = links.primary }
+    private val code: Element = element("div", "invite-code")
+    private val line: Element = element("code", "invite-link")
     private val copied: Element = element("p", "invite-copied").also { it.setAttribute("aria-live", "polite") }
+    private val others: Element = element("ul", "invite-others").also {
+        it.setAttribute("aria-label", "The same link at the host's other addresses")
+    }
+
+    /** The link the panel shows, once it has one. */
+    private var shown: String? = null
+
 
     init {
         panel.appendChild(heading())
-        panel.appendChild(element("div", "invite-code").also { it.appendChild(qrSvg(links.primary)) })
-        panel.appendChild(element("p", "invite-scan").also { it.textContent = scanText(links.joins) })
+        panel.appendChild(code)
+        panel.appendChild(element("p", "invite-scan").also { it.textContent = scanText(source) })
         panel.appendChild(
             element("div", "invite-line").also { row ->
                 row.appendChild(line)
@@ -57,18 +81,10 @@ internal class Invite(shell: PageShell, private val links: InviteLinks) {
             },
         )
         panel.appendChild(copied)
-        val others = (links.numeric + links.named).distinct() - links.primary
-        if (others.isNotEmpty()) {
-            panel.appendChild(
-                element("ul", "invite-others").also { list ->
-                    list.setAttribute("aria-label", "The same link at the host's other addresses")
-                    others.forEach { other -> list.appendChild(element("li", "").also { it.textContent = other }) }
-                },
-            )
-        }
-        toggle.addEventListener("click", { show(panel.hidden) })
+        if (source is InviteSource.Fixed) show(source.links)
+        toggle.addEventListener("click", { open(panel.hidden) })
         document.addEventListener("keydown", { event ->
-            if ((event as KeyboardEvent).key == "Escape" && !panel.hidden) show(false)
+            if ((event as KeyboardEvent).key == "Escape" && !panel.hidden) open(false)
         })
     }
 
@@ -79,19 +95,51 @@ internal class Invite(shell: PageShell, private val links: InviteLinks) {
                 it.textContent = "×"
                 it.setAttribute("type", "button")
                 it.setAttribute("aria-label", "Close")
-                it.addEventListener("click", { show(false) })
+                it.addEventListener("click", { open(false) })
             },
         )
     }
 
-    private fun show(open: Boolean) {
+    private fun open(open: Boolean) {
         panel.hidden = !open
         toggle.setAttribute("aria-expanded", open.toString())
         if (!open) copied.textContent = ""
+        // A hosted board's link is asked for at each opening: the host gives the tab's back while it works.
+        if (open && source is InviteSource.Minted) mint(source)
+    }
+
+    private fun mint(source: InviteSource.Minted) {
+        if (shown == null) line.textContent = "Making a link…"
+        source.mint { result ->
+            result.fold(
+                onSuccess = { invite ->
+                    if (invite.link != shown) show(InviteLinks(numeric = emptyList(), named = invite.link, joins = InviteLinks.Joins.Anywhere))
+                },
+                onFailure = { failure ->
+                    // A link that may have stopped working is never left on show.
+                    shown = null
+                    while (code.firstChild != null) code.removeChild(code.firstChild!!)
+                    line.textContent = failure.message ?: "Couldn't make a link. Close this and try again."
+                },
+            )
+        }
+    }
+
+    /** Shows [links]: the primary one as a code and as text, and the rest in a list. */
+    private fun show(links: InviteLinks) {
+        shown = links.primary
+        while (code.firstChild != null) code.removeChild(code.firstChild!!)
+        code.appendChild(qrSvg(links.primary))
+        line.textContent = links.primary
+        while (others.firstChild != null) others.removeChild(others.firstChild!!)
+        val rest = (links.numeric + links.named).distinct() - links.primary
+        rest.forEach { other -> others.appendChild(element("li", "").also { it.textContent = other }) }
+        if (rest.isEmpty()) others.remove() else panel.appendChild(others)
     }
 
     private fun copy() {
-        writeClipboard(links.primary) { written ->
+        val link = shown ?: return
+        writeClipboard(link) { written ->
             copied.textContent = when {
                 written || selectAndCopy(line) -> "Copied."
                 else -> "Selected: press ${copyKeys()} to copy."
@@ -99,29 +147,33 @@ internal class Invite(shell: PageShell, private val links: InviteLinks) {
         }
     }
 
-    private companion object {
-        const val PANEL_ID = "invite"
-        const val SVG_NS = "http://www.w3.org/2000/svg"
+    companion object {
+        private const val PANEL_ID = "invite"
+        private const val SVG_NS = "http://www.w3.org/2000/svg"
 
         /** The code's side on screen, in CSS pixels, when the panel is that wide. */
-        const val QR_PIXELS = 320
+        private const val QR_PIXELS = 320
 
         /** The standard's light margin around the symbol, in modules. */
-        const val QUIET_ZONE = 4
+        private const val QUIET_ZONE = 4
 
-        /** Where a device that scans the code can join from: a hosted board's link works anywhere (bee#145). */
-        fun scanText(joins: InviteLinks.Joins): String = when (joins) {
-            InviteLinks.Joins.OnThisNetwork -> "Scan to join on a phone or laptop on this network."
-            InviteLinks.Joins.Anywhere -> "Scan to join on a phone or laptop."
+
+        /** Where a device that scans the code can join from, and for a hosted board's minted link, for how long (bee#145, bee#215). */
+        private fun scanText(source: InviteSource): String = when (source) {
+            is InviteSource.Fixed -> when (source.links.joins) {
+                InviteLinks.Joins.OnThisNetwork -> "Scan to join on a phone or laptop on this network."
+                InviteLinks.Joins.Anywhere -> "Scan to join on a phone or laptop."
+            }
+            is InviteSource.Minted -> "Scan to join on a phone or laptop. Anyone with this link can join, for a day."
         }
 
-        fun element(tag: String, id: String): Element = document.createElement(tag).also { if (id.isNotEmpty()) it.id = id }
+        private fun element(tag: String, id: String): Element = document.createElement(tag).also { if (id.isNotEmpty()) it.id = id }
 
-        fun svgElement(tag: String, vararg attributes: Pair<String, String>): Element =
+        private fun svgElement(tag: String, vararg attributes: Pair<String, String>): Element =
             document.createElementNS(SVG_NS, tag).also { svg -> attributes.forEach { (name, value) -> svg.setAttribute(name, value) } }
 
         /** [text] as a QR code: one white square, one path of dark modules, crisp at any scale. */
-        fun qrSvg(text: String): Element {
+        private fun qrSvg(text: String): Element {
             val code = QrCode.of(text)
             val side = code.size + 2 * QUIET_ZONE
             val modules = buildString {

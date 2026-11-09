@@ -103,11 +103,12 @@ word, or one hyphenated word.
 
 ## On the hosted board
 
-The same demo runs at `https://bee.tractat.us`, with no laptop hosting it. Its owner opens it with
-the owner key, then sends you `https://bee.tractat.us/?name=<your name>`. Your page shows a
-six-digit code. The owner types it on the board and presses **Admit**. Then **Bring your Claude**
-gives you one line, with your own key in it: don't share it. A join is refused while nobody who
-can let you in is on the board. [Running hosted bee](deploy.md) covers the owner's side.
+The same demo runs at `https://bee.tractat.us`, with no laptop hosting it. Anyone on the board
+presses **Invite** and sends you the link it shows. Open it, type your name, press **Join**, and
+you're on. The link works for a day, for anyone who has it. Then **Bring your Claude** gives you
+one line, with your own key in it: don't share it. Without a link, the bare address shows you a
+six-digit code for someone on the board to type in. [Running hosted bee](deploy.md) covers the
+owner's side.
 
 ## What to say
 
