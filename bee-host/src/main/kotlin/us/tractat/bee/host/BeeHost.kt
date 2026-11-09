@@ -137,7 +137,7 @@ class BeeHost private constructor(
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk)
+                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())
             }
             server.start(wait = false)
             try {
