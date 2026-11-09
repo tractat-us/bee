@@ -82,7 +82,7 @@ test('a pressed button reads sent at once, with no agent answering, and a double
   await expect(records(page, id)).toHaveCount(1);
 });
 
-test('the sent look clears once an agent marks the record done, and the button presses again', async ({ page }) => {
+test('the sent look holds while an agent works on the press, and clears once it marks the record done', async ({ page }) => {
   const id = 'button-sent-handled';
   await openAsk(id);
   await open(page, 'alex');
@@ -94,8 +94,13 @@ test('the sent look clears once an agent marks the record done, and the button p
   await expect(button).toHaveAttribute('aria-disabled', 'true', { timeout: 2_000 });
   const { record } = await waited;
   expect(record?.name, "the agent's wait returned alex's press").toBe('file');
-  // Claimed is not handled: it still reads sent while the agent works on it.
-  await page.waitForTimeout(1_000);
+  // Claimed is not handled: once the page shows the agent holding the record, the button still reads sent.
+  const badge = page.locator(`#board article.bee-card[data-surface-id="${id}"] .bee-badge[data-claim-target="record:${record.recordId}"]`);
+  await expect(badge).toHaveAttribute('data-claim-status', 'held', { timeout: 10_000 });
+  await expect(button).toHaveAttribute('aria-disabled', 'true');
+  // The agent writes to the card while it works, as a check-in card's /now: the press still reads sent.
+  await agent.call('bee_surface_update', { surfaceId: id, data: { '/note': 'filing it now' } });
+  await expect(surface(page, id)).toContainText('filing it now', { timeout: 10_000 });
   await expect(button).toHaveAttribute('aria-disabled', 'true');
 
   await agent.call('bee_action_done', { recordId: record.recordId, token: record.token });
@@ -119,4 +124,34 @@ test('the sent look clears when the surface changes under the button, unhandled'
   await expect(button).not.toHaveAttribute('aria-disabled', 'true');
   await button.click();
   await expect(records(page, id)).toHaveCount(2, { timeout: 5_000 });
+});
+
+test('each row of a templated list is its own button: pressing one leaves the others pressable', async ({ page }) => {
+  const id = 'button-sent-rows';
+  await agent.call('bee_surface_open', {
+    surfaceId: id,
+    title: 'Approve which?',
+    components: [
+      { id: 'root', component: 'Column', children: { componentId: 'row', path: '/items' } },
+      { id: 'row', component: 'Button', child: 'row-label', action: { event: { name: 'approve', context: { item: { path: 'name' } } } } },
+      { id: 'row-label', component: 'Text', text: { path: 'name' } },
+    ],
+    data: { items: [{ name: 'Alpha' }, { name: 'Beta' }] },
+  });
+  await open(page, 'alex');
+  const row = (name) => surface(page, id).getByRole('button', { name });
+  await expect(row('Alpha')).toBeVisible({ timeout: 10_000 });
+  await expect(row('Beta')).toBeVisible();
+
+  await row('Alpha').dblclick();
+  await expect(row('Alpha')).toHaveAttribute('aria-disabled', 'true', { timeout: 2_000 });
+  await expect(records(page, id)).toHaveCount(1, { timeout: 5_000 });
+  await expect(row('Beta')).not.toHaveAttribute('aria-disabled', 'true');
+
+  await row('Beta').click();
+  await expect(row('Beta')).toHaveAttribute('aria-disabled', 'true', { timeout: 2_000 });
+  await expect(records(page, id)).toHaveCount(2, { timeout: 5_000 });
+  // A second record for either row would land within a moment; give it one.
+  await page.waitForTimeout(500);
+  await expect(records(page, id)).toHaveCount(2);
 });
