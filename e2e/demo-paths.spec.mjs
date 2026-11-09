@@ -345,8 +345,8 @@ test('7. a teammate without the key, or with a wrong one, is refused', async () 
   const statuses = {
     mcpNoKey: (await mcp('name=mallory')).status,
     mcpWrongKey: (await mcp('name=mallory&k=not-the-key')).status,
-    socketNoKey: (await socket('name=mallory')).status,
-    socketWrongKey: (await socket('k=not-the-key')).status,
+    socketNoKey: await socket('name=mallory'),
+    socketWrongKey: await socket('k=not-the-key'),
     // Positive controls: the same calls with the key get past the gate.
     mcpKey: await mcp(`name=mallory&k=${rig.key}`).then(async (r) => {
       // Ends the session it opened, so no stray bridge stays on the board.
@@ -355,7 +355,7 @@ test('7. a teammate without the key, or with a wrong one, is refused', async () 
       if (id) await fetch(`${origin}/mcp?k=${rig.key}`, { method: 'DELETE', headers: { 'mcp-session-id': id } });
       return r.status;
     }),
-    socketKey: (await socket(`k=${rig.key}`)).status,
+    socketKey: await socket(`k=${rig.key}`),
   };
   expect(statuses).toEqual({ mcpNoKey: 403, mcpWrongKey: 403, socketNoKey: 403, socketWrongKey: 403, mcpKey: 200, socketKey: 101 });
 });
