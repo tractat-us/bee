@@ -488,7 +488,9 @@ test('a pinch-zoom or a pan of the zoomed page re-arms Send', async ({ page, bro
   await propose(page, 'zoomed', 'zoomed');
   await expect(send(page, 'zoomed')).toBeEnabled();
   const cdp = await page.context().newCDPSession(page);
-  const where = () => page.evaluate(() => ({ scale: visualViewport.scale, left: visualViewport.offsetLeft, x: scrollX, y: scrollY }));
+  const where = () => page.evaluate(() => ({
+    scale: visualViewport.scale, pan: visualViewport.offsetLeft + visualViewport.offsetTop, x: scrollX, y: scrollY,
+  }));
   try {
     await countDisables(page, 'zoomed');
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
@@ -499,12 +501,14 @@ test('a pinch-zoom or a pan of the zoomed page re-arms Send', async ({ page, bro
     await expect(send(page, 'zoomed')).toBeEnabled();
 
     await countDisables(page, 'zoomed');
-    await cdp.send('Input.synthesizeScrollGesture', { x: 50, y: 50, xDistance: -100, yDistance: -100, gestureSourceType: 'touch' });
+    // A wheel on a zoomed page pans the visual viewport before it scrolls the page. (A touch
+    // scroll gesture over CDP pans it on macOS, but not on CI's Linux.)
+    await page.mouse.move(5, 5);
+    await page.mouse.wheel(100, 100);
+    await expect.poll(async () => (await where()).pan, { timeout: 5_000 }).toBeGreaterThan(0);
     await settled(page);
     // Precondition: the visual viewport panned, and the page didn't scroll.
-    const panned = await where();
-    expect(panned.left).toBeGreaterThan(0);
-    expect(panned).toMatchObject({ x: 0, y: 0 });
+    expect(await where()).toMatchObject({ x: 0, y: 0 });
     expect(await disabledCount(page)).toBeGreaterThan(0);
   } finally {
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
