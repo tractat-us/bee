@@ -474,6 +474,42 @@ test('a Send moved with no scroll or resize records nothing until it re-arms', a
   await agent.call('bee_surface_close', { surfaceId: 'shifted' });
 });
 
+// bee#84: a pinch-zoom, and a pan of the zoomed page, move Send on the screen with no scroll or
+// resize on `window` and no change to its client box: only `visualViewport` hears them. Each one
+// re-arms Send. (The disarm is the signal: a click Playwright aims on a zoomed page misses.)
+test('a pinch-zoom or a pan of the zoomed page re-arms Send', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Zoom and pan are driven over CDP');
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSketch('zoomed', `${NO_MARGIN}<div style="height:150px">Zoomed</div>`);
+  await open(page, 'gu');
+  await expect(frame(page, 'zoomed').locator('body')).toContainText('Zoomed', { timeout: 15_000 });
+  await propose(page, 'zoomed', 'zoomed');
+  await expect(send(page, 'zoomed')).toBeEnabled();
+  const cdp = await page.context().newCDPSession(page);
+  const where = () => page.evaluate(() => ({ scale: visualViewport.scale, left: visualViewport.offsetLeft, x: scrollX, y: scrollY }));
+  try {
+    await countDisables(page, 'zoomed');
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+    await settled(page);
+    // Precondition: the page zoomed, and didn't scroll.
+    expect(await where()).toMatchObject({ scale: 2, x: 0, y: 0 });
+    expect(await disabledCount(page)).toBe(1);
+    await expect(send(page, 'zoomed')).toBeEnabled();
+
+    await countDisables(page, 'zoomed');
+    await cdp.send('Input.synthesizeScrollGesture', { x: 50, y: 50, xDistance: -100, yDistance: -100, gestureSourceType: 'touch' });
+    await settled(page);
+    // Precondition: the visual viewport panned, and the page didn't scroll.
+    const panned = await where();
+    expect(panned.left).toBeGreaterThan(0);
+    expect(panned).toMatchObject({ x: 0, y: 0 });
+    expect(await disabledCount(page)).toBe(1);
+  } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+    await agent.call('bee_surface_close', { surfaceId: 'zoomed' });
+  }
+});
+
 // A touch held on Send while it re-arms is a pointer resting on it, so Send waits for it to leave.
 // Lifting the touch leaves Send, and the next clean tap sends.
 test('a touch held on Send across its arming leaves it usable once lifted', async ({ browser, browserName }) => {
