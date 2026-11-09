@@ -47,18 +47,25 @@ class PageShell private constructor(
 
         /**
          * The bee mark, in the text colour (`#brand` sets the page's accent): the shapes of the
-         * favicon (`favicon.svg`), whose stripes are cut out so the bar shows through.
+         * favicon (`favicon.svg`), whose stripes are cut out so the bar shows through. Each wing is
+         * two quilt patches stitched together (kuilt), and the stripes slant on Kotlin's diagonal.
          */
-        private const val BEE_MARK: String =
+        private val BEE_MARK: String =
             """<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true" focusable="false">""" +
                 """<defs><mask id="bee-mark-stripes"><rect width="32" height="32" fill="#fff"/>""" +
-                """<rect y="18.4" width="32" height="2.6" fill="#000"/><rect y="23.6" width="32" height="2.6" fill="#000"/></mask></defs>""" +
+                """<path d="M8 19.6L24 15.6V18.2L8 22.2ZM8 24.8L24 20.8V23.4L8 27.4Z" fill="#000"/></mask></defs>""" +
                 """<g fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">""" +
                 """<path d="M14.4 7.6C13.6 5 12 3.6 9.6 3.2M17.6 7.6C18.4 5 20 3.6 22.4 3.2" fill="none" stroke-width="1.8"/>""" +
-                """<ellipse cx="8.6" cy="12.6" rx="6" ry="3.6" transform="rotate(28 8.6 12.6)" fill-opacity="0.3" stroke-width="1.8"/>""" +
-                """<ellipse cx="23.4" cy="12.6" rx="6" ry="3.6" transform="rotate(-28 23.4 12.6)" fill-opacity="0.3" stroke-width="1.8"/>""" +
+                wing(placed = "translate(8.6 12.6) rotate(28)", outerSweep = 0) +
+                wing(placed = "translate(23.4 12.6) rotate(-28)", outerSweep = 1) +
                 """<circle cx="16" cy="10" r="3" stroke="none"/>""" +
                 """<ellipse cx="16" cy="21.6" rx="5.6" ry="7.6" mask="url(#bee-mark-stripes)" stroke="none"/></g></svg>"""
+
+        /** One wing, [placed] beside the body: its outer patch (drawn by the arc's [outerSweep]) a shade darker, and a stitched seam between the two. */
+        private fun wing(placed: String, outerSweep: Int): String =
+            """<g transform="$placed"><ellipse rx="6" ry="3.6" fill-opacity="0.25" stroke-width="1.8"/>""" +
+                """<path d="M0-3.6A6 3.6 0 0 $outerSweep 0 3.6Z" fill-opacity="0.3" stroke="none"/>""" +
+                """<path d="M0-3.2V3.2" fill="none" stroke-width="0.8" stroke-dasharray="1.1 0.9"/></g>"""
 
         private fun element(tag: String, id: String): Element = document.createElement(tag).also { it.id = id }
     }
