@@ -39,10 +39,20 @@ data class PeerView(val identity: PeerIdentity, val state: PeerState, val status
 /** A claim on something a card shows: held by [holder], or orphaned when its holder departed. */
 data class ClaimBadge(val target: String, val holder: PeerIdentity, val orphaned: Boolean)
 
-/** Where a card's opener is: attached, retired by the host, or neither. */
+/**
+ * Where a card's opener is: attached, retired by the host, or neither. An attached agent is
+ * [Listening] or [Working], since what it is doing says whether an answer on its card is heard
+ * now; a person or the host is just [Attached].
+ */
 sealed interface OpenerState {
-    /** Attached now, with its "working on…" line if it has one. */
+    /** A person or the host, attached now, with its "working on…" line if it has one. */
     data class Attached(val status: String?) : OpenerState
+
+    /** An agent attached and in `bee_wait_action`: an answer on its card reaches it now. */
+    data class Listening(val status: String?) : OpenerState
+
+    /** An agent attached and at work, not waiting: it reads answers at its next wait. */
+    data class Working(val status: String?) : OpenerState
 
     /** Neither attached nor departed: a person who closed the page, or a peer between posts. */
     data object Away : OpenerState
@@ -61,7 +71,18 @@ data class CardView(
     val openedBy: PeerIdentity,
     val opener: OpenerState,
     val claims: List<ClaimBadge>,
-)
+) {
+    /**
+     * Whether no session of the opener's will take an answer on this card: it left, or the host
+     * judged it crashed or quiet ("declared dead, exactly as if it had crashed", spec §6.4). The
+     * card's actions stay live, because a record is addressed to its surface, never to a session,
+     * and any session may wait on any surface (§5.2); they only show muted.
+     *
+     * A `/clear` is not one: the bridge goes on handling the surfaces it opened under the identity
+     * it held before (§5.2), so an answer there is still heard.
+     */
+    val unheard: Boolean get() = opener is OpenerState.Departed && opener.reason != DepartReason.Cleared
+}
 
 /**
  * What the page shows around the renderer: a card per open surface, and the attached strip. Pure:
@@ -124,16 +145,18 @@ data class BoardView(val cards: List<CardView>, val peers: List<PeerView>) {
                     surfaceId = id,
                     title = meta.title,
                     openedBy = meta.openedBy,
-                    opener = opener(departed[meta.openedBy], attached[meta.openedBy]),
+                    opener = opener(meta.openedBy, departed[meta.openedBy], attached[meta.openedBy]),
                     claims = claims[id].orEmpty().sortedWith(compareBy({ !it.orphaned }, { it.target })),
                 )
             }
         }
 
-        private fun opener(departed: DepartReason?, attached: PresenceEntry?): OpenerState = when {
+        private fun opener(openedBy: PeerIdentity, departed: DepartReason?, attached: PresenceEntry?): OpenerState = when {
             departed != null -> OpenerState.Departed(departed)
-            attached != null -> OpenerState.Attached(attached.status)
-            else -> OpenerState.Away
+            attached == null -> OpenerState.Away
+            openedBy.kind != PeerKind.Agent -> OpenerState.Attached(attached.status)
+            attached.waiting -> OpenerState.Listening(attached.status)
+            else -> OpenerState.Working(attached.status)
         }
 
         /**

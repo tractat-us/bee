@@ -165,6 +165,18 @@
     .bee-card-working::before, .bee-card-gone::before { content: " · "; }
     .bee-card-working { font-style: italic; }
     .bee-card-gone[data-reason="crashed"], .bee-card-gone[data-reason="quiet"] { color: var(--alert); }
+    /* An agent opener's live state, in the strip's colours: listening is the strip's waiting, working its acting. */
+    .bee-card-state::before { content: " · "; color: var(--muted); }
+    .bee-card-state { font-weight: 600; }
+    .bee-card-state[data-state="listening"] { color: var(--waiting); }
+    .bee-card-state[data-state="working"] { color: var(--acting); }
+    /* Nobody of the opener's will answer: the actions stay usable, but read as muted. Content stays as it is. */
+    .bee-card-unheard { margin: 4px 0 0; font-size: 0.85em; color: var(--muted); font-style: italic; }
+    .bee-card[data-unheard] { border-style: dashed; }
+    .bee-card[data-unheard] .bee-card-body :is(button, input, textarea, select, [draggable="true"], bee-sketch) {
+      opacity: 0.5;
+      filter: grayscale(1);
+    }
     .bee-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
     .bee-badge {
       padding: 1px 8px;
