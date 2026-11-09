@@ -47,9 +47,9 @@ class HostConfigTest {
         val parsed = HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--port", "8233"), home)
         val behindTheProxy = Arrival("172.19.0.2", 8233)
         assertAll(
-            { assertEquals(Reach.Public(PublicUrl.parse("https://bee.tractat.us/")), parsed.reach) },
+            { assertEquals(Reach.Public(PublicUrl.parse("https://bee.tractat.us/"), ForwardedPeer.AppendedForwardedFor), parsed.reach) },
             { assertEquals("0.0.0.0", parsed.bind) },
-            { assertEquals(PeerAddress.FORWARDED, parsed.reach.peers()) },
+            { assertEquals(ForwardedPeer.AppendedForwardedFor, parsed.reach.peers(), "a proxy that appends its client, without --client-ip-header") },
             { assertEquals(PeerAddress.DIRECT, Reach.Lan.peers(), "no proxy on the LAN") },
             {
                 val headers = headersOf(HttpHeaders.Host to listOf("bee.tractat.us"), HttpHeaders.Origin to listOf("https://bee.tractat.us"))
@@ -58,6 +58,19 @@ class HostConfigTest {
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--lan"), home) } },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/?k=fake"), home) } },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url"), home) } },
+        )
+    }
+
+    @Test
+    fun clientIpHeaderNamesTheHeaderAPublicHostsProxySets() {
+        val parsed = HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--client-ip-header", "Fly-Client-IP"), home)
+        assertAll(
+            { assertEquals(ForwardedPeer.ClientHeader("Fly-Client-IP"), parsed.reach.peers()) },
+            { assertFailsWith<IllegalArgumentException>("not without --public-url") { HostConfig.fromArgs(listOf("--client-ip-header", "Fly-Client-IP"), home) } },
+            { assertFailsWith<IllegalArgumentException>("nor on a LAN host") { HostConfig.fromArgs(listOf("--lan", "--client-ip-header", "Fly-Client-IP"), home) } },
+            { assertFailsWith<IllegalArgumentException>("no header name") { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--client-ip-header", "Fly Client IP"), home) } },
+            { assertFailsWith<IllegalArgumentException>("an empty one") { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--client-ip-header", ""), home) } },
+            { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--client-ip-header"), home) } },
         )
     }
 
