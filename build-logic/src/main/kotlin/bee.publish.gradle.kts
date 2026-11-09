@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "us.tractat.bee"
-// A continuous build is `<beeVersionLine>.0-dev`; CI and a release pass -Pversion=<x.y.z>.
+// Every build is `<beeVersionLine>.0-dev` unless -Pversion=<x.y.z> is passed, as a release does.
 if (version == Project.DEFAULT_VERSION) {
     version = "${providers.gradleProperty("beeVersionLine").get()}.0-dev"
 }

@@ -9,7 +9,9 @@ and `docs/superpowers/specs/` for the design.
 
 **Status: v1 under construction.** It is built against the approved spec and plan in
 `docs/superpowers/`. Epic #6 and `docs/project/plan.yaml` track which tasks have landed. Don't
-scaffold code ahead of the plan. Build and test with `timeout 600 ./gradlew check`.
+scaffold code ahead of the plan. Build and test with `timeout 600 ./gradlew check`. A change to the
+public API of `bee-core` or `bee-a2ui` fails `check` until you run `./gradlew updateKotlinAbi` and
+commit the `api/` dump with it.
 
 ## bee and kuilt
 

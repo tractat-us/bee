@@ -1,5 +1,4 @@
-// Not "build-logic": the main checkout also includes ../kuilt, whose own build-logic would share the name.
-rootProject.name = "bee-build-logic"
+rootProject.name = "build-logic"
 
 dependencyResolutionManagement {
     repositories {
