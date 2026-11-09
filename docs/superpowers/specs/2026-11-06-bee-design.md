@@ -602,6 +602,13 @@ table over the committed log:
   this boot **(Iain, bee#44)**. Posting means one of its presence slots advanced while the host was
   watching it. An entry a surviving peer pushes back on reconnect doesn't count, because a dead
   agent's last entry never advances.
+- **Kept for its client: the one exception to both rules above (design call, bee#126).** An HTTP
+  session's identity that the last host kept, and that no session has picked up yet (§5.2), is
+  neither departed `Crashed` for its old node nor caught by the boot check: its only entry is one
+  a surviving peer pushed back, and Claude Code may take minutes to re-initialize. Its claims stay
+  held while it waits. If no session picks it up within 20 minutes of the first boot it waited
+  through (restarts don't extend that), bee departs it `Quiet`, not `Crashed` at 60 s. A boot
+  with `--forget-devices` departs those kept under a device's key at once.
 - **Quiet** means the agent hasn't acted for a while (for example, a long build). It shows as
   "quiet since …" until a timeout, then **the session is declared dead, exactly as if it had
   crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a reasonable
