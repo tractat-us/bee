@@ -30,9 +30,12 @@ fun interface ArrivalAddress {
  * - its `Host` names the port it arrived on, and a name the host goes by: `localhost`, a name in
  *   [names], or the very IP address it arrived on (`127.0.0.1`, `[::1]`, a LAN address). A DNS
  *   rebinding attack needs a name the attacker owns, and no such name is ever one of these.
- * - its `Origin`, if it has one, is the host's own: `http://` and the call's `Host`. A page from
- *   any other site, or from another port on this machine, has another origin, and a browser
- *   always says so on a WebSocket. The JVM bridge sends no `Origin`, so a missing one passes.
+ *   Or its `Host` is a [PublicUrl]'s authority in [publicUrls], on whatever port it arrived: a
+ *   TLS-terminating proxy dials the host on a port of its own (bee#145).
+ * - its `Origin`, if it has one, is the host's own: the public URL's origin for a public `Host`,
+ *   else `http://` and the call's `Host`. A page from any other site, or from another port on
+ *   this machine, has another origin, and a browser always says so on a WebSocket. The JVM bridge
+ *   sends no `Origin`, so a missing one passes.
  * - its Fetch Metadata, if it has any, says what the call's path allows (bee#54). A page loading
  *   the host as an `<img>`, a `<script>`, a frame or a no-cors `fetch` sends no `Origin`, but a
  *   browser marks it `Sec-Fetch-Site: cross-site`, or `same-site` from another port on this
@@ -59,8 +62,9 @@ fun interface ArrivalAddress {
  *
  * @param names the names the host answers to beyond `localhost`: its LAN name under [Reach.Lan],
  *   and any `--host-name`. Compared without case, as browsers lower-case a host name.
+ * @param publicUrls the URLs a proxy serves the host at: `--public-url`'s under [Reach.Public]
  */
-class SiteRule(names: Set<String>) {
+class SiteRule(names: Set<String>, private val publicUrls: Set<PublicUrl> = emptySet()) {
     private val names: Set<String> = names.mapTo(mutableSetOf(LOCALHOST)) { it.lowercase() }
 
     /**
@@ -70,10 +74,10 @@ class SiteRule(names: Set<String>) {
     fun refusal(path: String, headers: Headers, arrival: Arrival): String? {
         val host = headers[HttpHeaders.Host]
         val origin = headers[HttpHeaders.Origin]
-        val named = host?.let(::authority)
+        val ownOrigin = host?.let(::authority)?.let { originFor(it, arrival) }
         return when {
-            named == null || !answersTo(named, arrival) -> "This host doesn't go by \"$host\"."
-            origin != null && origin.lowercase() != "http://${named.spelled}" -> "Only the board's own page may call this host, not one from $origin."
+            ownOrigin == null -> "This host doesn't go by \"$host\"."
+            origin != null && origin.lowercase() != ownOrigin -> "Only the board's own page may call this host, not one from $origin."
             headers[SEC_PURPOSE] != null -> "This host doesn't answer a prefetch or a prerender."
             path in PAGE_PATHS -> "Another site may only link to the board's page, not load it.".takeIf { fromAnotherSite(headers) && !topLevelNavigation(headers) }
             !fromOwnOriginOrUnmarked(headers) -> "Only the board's own page may call this; another site may only link to the page."
@@ -90,8 +94,17 @@ class SiteRule(names: Set<String>) {
     private fun fromOwnOriginOrUnmarked(headers: Headers): Boolean =
         headers[FETCH_SITE].let { it == null || it.equals("same-origin", ignoreCase = true) }
 
+    /**
+     * The origin of the host's own page when a call names it [named] and arrives at [arrival]: a
+     * public URL's, on any port the proxy dialled, else `http://` and [named] when the host goes by
+     * it there; null when it doesn't.
+     */
+    private fun originFor(named: Authority, arrival: Arrival): String? =
+        publicUrls.firstOrNull { named.name == it.host && named.portOr(PublicUrl.defaultPort(it.scheme)) == it.port }?.origin
+            ?: "http://${named.spelled}".takeIf { answersTo(named, arrival) }
+
     private fun answersTo(named: Authority, arrival: Arrival): Boolean =
-        named.port == arrival.port && (named.name in names || sameAddress(named.name, arrival.address))
+        named.portOr(HTTP_PORT) == arrival.port && (named.name in names || sameAddress(named.name, arrival.address))
 
     private companion object {
         /** The page's own paths, the only ones another site may navigate to: what `staticResources("/", "web")` serves as `index.html`. */
@@ -105,10 +118,15 @@ class SiteRule(names: Set<String>) {
         const val MAX_PORT = 65_535
     }
 
-    /** A `Host` or origin authority, lower-cased: an IPv6 address keeps its brackets. */
-    private data class Authority(val name: String, val port: Int) {
-        /** As a browser writes it: no port when it is the default. */
-        val spelled: String get() = if (port == HTTP_PORT) name else "$name:$port"
+    /**
+     * A `Host` authority, lower-cased: an IPv6 address keeps its brackets. [port] is the one it
+     * names, if any; which port none means depends on the scheme the caller dialled.
+     */
+    private data class Authority(val name: String, val port: Int?) {
+        fun portOr(default: Int): Int = port ?: default
+
+        /** As a browser writes it for `http://`: no port when it is the default. */
+        val spelled: String get() = if (portOr(HTTP_PORT) == HTTP_PORT) name else "$name:$port"
     }
 
     /** [raw] as `name[:port]` or `[v6][:port]`, or null if it is neither. */
@@ -121,7 +139,7 @@ class SiteRule(names: Set<String>) {
             text.substringBefore(':') to text.substring(text.substringBefore(':').length)
         }
         val number = when {
-            port.isEmpty() -> HTTP_PORT
+            port.isEmpty() -> null
             port.startsWith(':') -> port.drop(1).toIntOrNull()?.takeIf { it in 1..MAX_PORT } ?: return null
             else -> return null
         }
