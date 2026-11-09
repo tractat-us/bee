@@ -168,11 +168,12 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
     private companion object {
         const val PANEL_ID = "bring-claude"
 
-        fun copyKeys(): String = if (window.navigator.platform.startsWith("Mac")) "⌘C" else "Ctrl+C"
-
         fun element(tag: String, id: String): Element = document.createElement(tag).also { if (id.isNotEmpty()) it.id = id }
     }
 }
+
+/** The keys that copy, on this viewer's platform. */
+internal fun copyKeys(): String = if (window.navigator.platform.startsWith("Mac")) "⌘C" else "Ctrl+C"
 
 /**
  * Writes [text] to the clipboard and calls [onDone] with whether it did. Without the async
@@ -186,7 +187,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
         clipboard.writeText(text).then(() => onDone(true), () => onDone(false));
     }""",
 )
-private external fun writeClipboard(text: String, onDone: (Boolean) -> Unit)
+internal external fun writeClipboard(text: String, onDone: (Boolean) -> Unit)
 
 /** Selects [element]'s text, so the viewer can copy it themselves, and copies it if the browser still lets a page. */
 @JsFun(
@@ -199,4 +200,4 @@ private external fun writeClipboard(text: String, onDone: (Boolean) -> Unit)
         try { return document.execCommand('copy'); } catch (e) { return false; }
     }""",
 )
-private external fun selectAndCopy(element: Element): Boolean
+internal external fun selectAndCopy(element: Element): Boolean
