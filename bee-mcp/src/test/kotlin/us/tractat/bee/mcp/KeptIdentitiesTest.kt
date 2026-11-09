@@ -10,6 +10,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 
 /** [KeptIdentities]: who gets a kept identity back after a host restart (bee#126), and who never does. */
 class KeptIdentitiesTest {
@@ -17,6 +19,8 @@ class KeptIdentitiesTest {
     private val file = KeptSessionFile(dir.resolve(KeptSessionFile.NAME))
     private val random = Random(126)
     private val andrewKey = Caller.of("andrews-key")
+    private var now = Instant.fromEpochSeconds(1_000)
+    private val clock = { now }
 
     @AfterTest
     fun cleanUp() {
@@ -24,10 +28,47 @@ class KeptIdentitiesTest {
     }
 
     @Test
+    fun aKeptSessionNobodyPicksUpIsUnclaimedOnceItsWindowPassesThenForgotten() {
+        val andrew = session("andrew-claude", andrewKey)
+        lastHostHad(andrew)
+        val next = KeptIdentities(file, { emptySet() }, clock)
+        val booted = now
+        now += 19.minutes
+        val early = next.unclaimed(now - 20.minutes)
+        now += 2.minutes
+        val due = next.unclaimed(now - 20.minutes)
+        next.forget(andrew)
+        assertAll(
+            { assertTrue(early.isEmpty(), "still inside its window at $now, booted $booted") },
+            { assertEquals(listOf(andrew), due, "its client never came back within the window") },
+            { assertTrue(file.load().isEmpty(), "forgotten on disk too, so the next host doesn't wait for it again") },
+            { assertNull(next.pickUp("andrew-claude", andrewKey), "and never offered") },
+        )
+    }
+
+    @Test
+    fun aPickedUpSessionIsNeverUnclaimedAndAPutBackOneWaitsAfresh() {
+        val andrew = session("andrew-claude", andrewKey)
+        lastHostHad(andrew)
+        val next = KeptIdentities(file, { emptySet() }, clock)
+        val taken = requireNotNull(next.pickUp("andrew-claude", andrewKey)) { "rig: andrew is kept" }
+        now += 21.minutes
+        val whileTaken = next.unclaimed(now - 20.minutes)
+        next.putBack(taken)
+        val justPutBack = next.unclaimed(now - 20.minutes)
+        now += 21.minutes
+        assertAll(
+            { assertTrue(whileTaken.isEmpty(), "a session holds it: not the host's to retire") },
+            { assertTrue(justPutBack.isEmpty(), "put back, its client has the whole window again") },
+            { assertEquals(listOf(andrew), next.unclaimed(now - 20.minutes), "until that passes too") },
+        )
+    }
+
+    @Test
     fun aSessionLiveWhenItsHostStoppedIsOfferedOnceToTheSameNameAndKey() {
         val andrew = session("andrew-claude", andrewKey)
         lastHostHad(andrew)
-        val next = KeptIdentities(file) { emptySet() }
+        val next = KeptIdentities(file, { emptySet() }, clock)
         val strangerKey = next.pickUp("andrew-claude", Caller.of("another-key"))
         val noKey = next.pickUp("andrew-claude", Caller.Loopback)
         val otherName = next.pickUp("bea-claude", andrewKey)
@@ -45,7 +86,7 @@ class KeptIdentitiesTest {
     @Test
     fun twoKeptSessionsUnderOneNameAndKeyAreNobodys() {
         lastHostHad(session("andrew-claude", andrewKey), session("andrew-claude", andrewKey))
-        val next = KeptIdentities(file) { emptySet() }
+        val next = KeptIdentities(file, { emptySet() }, clock)
         assertNull(next.pickUp("andrew-claude", andrewKey), "can't tell which is whose, so neither is offered")
     }
 
@@ -53,7 +94,7 @@ class KeptIdentitiesTest {
     fun anIdentityTheBoardRetiredIsNeverOffered() {
         val andrew = session("andrew-claude", andrewKey)
         lastHostHad(andrew)
-        val next = KeptIdentities(file) { setOf(andrew.current) }
+        val next = KeptIdentities(file, { setOf(andrew.current) }, clock)
         assertNull(next.pickUp("andrew-claude", andrewKey), "departed is permanent: its cards would read as unheard anyway")
     }
 
@@ -61,7 +102,7 @@ class KeptIdentitiesTest {
     fun aPickUpWhoseSessionNeverStartedWaitsAgain() {
         val andrew = session("andrew-claude", andrewKey)
         lastHostHad(andrew)
-        val next = KeptIdentities(file) { emptySet() }
+        val next = KeptIdentities(file, { emptySet() }, clock)
         val first = requireNotNull(next.pickUp("andrew-claude", andrewKey)) { "rig: andrew is kept" }
         next.putBack(first)
         assertEquals(andrew, next.pickUp("andrew-claude", andrewKey), "Claude Code's refused first initialize doesn't use it up")
@@ -69,7 +110,7 @@ class KeptIdentitiesTest {
 
     @Test
     fun aSessionIsKeptWhileLiveAndForgottenOnceItDeparts() {
-        val kept = KeptIdentities(file) { emptySet() }
+        val kept = KeptIdentities(file, { emptySet() }, clock)
         val owner = Any()
         val andrew = session("andrew-claude", andrewKey)
         kept.live(owner, andrew)
@@ -98,7 +139,13 @@ class KeptIdentitiesTest {
     @Test
     fun aFileThatDoesNotReadKeepsNothing() {
         Files.writeString(dir.resolve(KeptSessionFile.NAME), "not json")
-        assertTrue(file.load().isEmpty(), "sessions come back new, as before bee#126")
+        val notJson = file.load()
+        Files.write(dir.resolve(KeptSessionFile.NAME), byteArrayOf(0xC3.toByte(), 0x28))
+        val notUtf8 = file.load()
+        assertAll(
+            { assertTrue(notJson.isEmpty(), "sessions come back new, as before bee#126") },
+            { assertTrue(notUtf8.isEmpty(), "nor does a file that isn't UTF-8 stop the host") },
+        )
     }
 
     private fun session(name: String, caller: Caller): KeptSession {
@@ -108,7 +155,7 @@ class KeptIdentitiesTest {
 
     /** The store as a host leaves it that had [sessions] live when it stopped. */
     private fun lastHostHad(vararg sessions: KeptSession) {
-        val last = KeptIdentities(file) { emptySet() }
+        val last = KeptIdentities(file, { emptySet() }, clock)
         sessions.forEach { last.live(Any(), it) }
     }
 }

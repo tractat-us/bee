@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -19,10 +20,13 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.mcp.BeeTools
 import us.tractat.bee.mcp.BridgePeer
+import us.tractat.bee.mcp.HttpBridges
+import us.tractat.bee.mcp.KeptSessionFile
 import us.tractat.bee.mcp.peerHttpClient
 import us.tractat.kuilt.test.assertAll
 import java.net.ServerSocket
@@ -147,6 +151,56 @@ class McpHttpRestartTest {
             claude.close()
         } finally {
             presenter.board.close()
+            host.close()
+        }
+    }
+
+    /**
+     * Everyone who pastes the page's line unedited is `name=you` on the one join link, and a URL
+     * with no name is anybody's: neither name comes back as the identity it had.
+     */
+    @Test
+    fun aNameNobodyChoseNeverComesBackAsItsOldIdentity() = runBlocking {
+        val first = startHost()
+        val (placeholder, nameless) = try {
+            drawAndLearnWho(connect(url(first, "?name=${HttpBridges.PLACEHOLDER_NAME}")), first, "you-plan") to
+                drawAndLearnWho(connect(url(first, "")), first, "anon-plan")
+        } finally {
+            first.close()
+        }
+        val host = startHost()
+        try {
+            val placeholderAgain = drawAndLearnWho(connect(url(host, "?name=${HttpBridges.PLACEHOLDER_NAME}")), host, "you-after")
+            val namelessAgain = drawAndLearnWho(connect(url(host, "")), host, "anon-after")
+            assertAll(
+                { assertEquals("you-claude", placeholder.name, "rig: the page's placeholder name") },
+                { assertNotEquals(placeholder, placeholderAgain, "name=you is anybody's") },
+                { assertNotEquals(nameless, namelessAgain, "no name is anybody's") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
+     * A kept session whose client never comes back, with no peer left to post for it: the host
+     * departs it `Quiet` once its window passes, and forgets it, so its card isn't Away forever and
+     * its URL isn't left ambiguous.
+     */
+    @Test
+    fun aKeptSessionWhoseClientNeverComesBackDepartsQuietAndIsForgotten() = runBlocking {
+        val before = openThenRestart("?name=andrew", "andrew-plan")
+        val host = BeeHost.start(scope, HostConfig(port = 0, dataDir = dir, mcpUnclaimedAfter = 1.seconds))
+        try {
+            val departed = withTimeout(TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == before } } }
+                .departures().single { it.identity == before }
+            val kept = KeptSessionFile(dir.resolve(KeptSessionFile.NAME))
+            withTimeout(TIMEOUT) { while (kept.load().isNotEmpty()) delay(50) }
+            assertAll(
+                { assertEquals(DepartReason.Quiet, departed.reason, "the host judged it quiet") },
+                { assertTrue(kept.load().isEmpty(), "and keeps it no more") },
+            )
+        } finally {
             host.close()
         }
     }
