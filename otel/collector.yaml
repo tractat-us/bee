@@ -1,0 +1,35 @@
+# The collector bin/bee-otel-viewer runs in front of Grafana's otel-lgtm. It takes OTLP/HTTP from
+# bee processes on :4318 and passes it on.
+#
+# groupbyattrs is the one step that matters: kuilt's OTLP edge sends no resource
+# (tractat-us/kuilt#3153), and bee puts its process's identity on every record instead. This lifts
+# those attributes to the resource, so Grafana lists each host, bridge and page as its own service.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  groupbyattrs:
+    keys: [service.name, bee.role, bee.peer, bee.board, bee.session]
+  batch: {}
+
+exporters:
+  otlphttp:
+    endpoint: http://lgtm:4318
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [groupbyattrs, batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp]
+      processors: [groupbyattrs, batch]
+      exporters: [otlphttp]
+    metrics:
+      receivers: [otlp]
+      processors: [groupbyattrs, batch]
+      exporters: [otlphttp]

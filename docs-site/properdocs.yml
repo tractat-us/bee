@@ -118,6 +118,7 @@ plugins:
           - try-bee.md: Joining a board, or running your own, in a few minutes, from a Mac
           - setup.md: Running a board with bee-up, joining one from its link, and adding bee to Claude Code
           - tools.md: Every tool and prompt a Claude session gets from bee, one line each
+          - telemetry.md: Reading what the host and bridges recorded, and sending it to a collector
           - plugin.md: The Claude Code plugin, which joins a session to a board with one install
           - superpowers/specs/2026-11-06-bee-design.md: The design spec, with its goals, architecture and the board's state
           - bee-and-kuilt.md: What bee builds and what it takes from kuilt
@@ -151,6 +152,7 @@ nav:
       - Try bee: try-bee.md
       - Setup: setup.md
       - Tools and prompts: tools.md
+      - What bee recorded: telemetry.md
       - Claude Code plugin: plugin.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
       - bee and kuilt: bee-and-kuilt.md

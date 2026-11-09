@@ -2,7 +2,9 @@ package us.tractat.bee.telemetry
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,8 +91,14 @@ class RecordingTelemetry(
     // Touched only by the drain.
     private var writeFailing = false
 
+    private val recovery = CompletableDeferred<Unit>()
+
+    /** Completes once the buffer has recovered: nothing may read or drain it before. */
+    val recovered: Job get() = recovery
+
     private val drain = scope.launch {
         warp.recover()
+        recovery.complete(Unit)
         for (first in queue) {
             val batch = buildList {
                 add(first)

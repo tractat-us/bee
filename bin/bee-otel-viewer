@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# bee-otel-viewer: run a local OpenTelemetry viewer for bee's telemetry, in Docker.
+#
+#   bee-otel-viewer           # starts it; then run bee with BEE_OTLP_ENDPOINT=http://127.0.0.1:4318
+#   bee-otel-viewer --stop    # stops it, and forgets what it was sent
+#
+# Grafana opens at http://127.0.0.1:3000: Explore, then Loki for log lines and events, Tempo for
+# tool-call spans. A collector on 127.0.0.1:4318 takes bee's OTLP and hands it on. Nothing listens
+# off this machine.
+set -euo pipefail
+here=$(cd "$(dirname "$0")/../otel" && pwd)
+command -v docker >/dev/null || { echo "bee-otel-viewer needs Docker." >&2; exit 1; }
+
+if [ "${1:-}" = "--stop" ]; then
+    docker compose -f "$here/compose.yaml" down
+    exit 0
+fi
+
+docker compose -f "$here/compose.yaml" up -d
+echo
+echo "Viewer up: http://127.0.0.1:3000 (Explore: Loki for logs and events, Tempo for spans)."
+echo "Send bee's telemetry to it: start the host and bridges with BEE_OTLP_ENDPOINT=http://127.0.0.1:4318"
+echo "Stop it: bee-otel-viewer --stop"

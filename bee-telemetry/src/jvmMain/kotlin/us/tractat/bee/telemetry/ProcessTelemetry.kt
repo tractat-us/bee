@@ -7,6 +7,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.runBlocking
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.otel.WarpTelemetry
@@ -91,7 +93,7 @@ class ProcessTelemetry private constructor(
                 val (dir, lock) = dirs.firstNotNullOfOrNull { dir -> lockOrNull(dir)?.let { dir to it } }
                     ?: return off().also { log.warn { "Telemetry is off: other processes hold every directory it could use (${dirs.joinToString()})." } }
                 try {
-                    start(dir, lock, TelemetryResource(resource), clock, random, store, captureLogs)
+                    start(dir, lock, TelemetryResource(resource), clock, random, store, captureLogs, env)
                 } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) {
                     lock.release()
                     lock.channel().close()
@@ -112,19 +114,35 @@ class ProcessTelemetry private constructor(
             random: Random,
             store: (Path) -> DurableStore,
             captureLogs: Boolean,
+            env: (String) -> String?,
         ): ProcessTelemetry {
             val warp = WarpTelemetry(replicaOf(dir, random), store(dir.resolve("buffer")), maxSpans = MAX_SPANS, maxLogRecords = MAX_LOG_RECORDS)
             @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1) + CoroutineName("bee-telemetry"))
             val recording = RecordingTelemetry(warp, resource, clock, random, scope)
             val edge: Pair<LoggerContext, LogbackEdge>? = if (captureLogs) LogbackEdge.install(recording) else null
+            val export = otlpExport(env, warp, store(dir.resolve("otlp-sent")), clock)
+            val sending = export?.every(OtlpExport.PERIOD, scope, recording.recovered)
             return ProcessTelemetry(recording, resource, dir) {
                 edge?.let { (context, appender) -> appender.uninstall(context) }
-                runBlocking { recording.close(CLOSE_GRACE) }
+                runBlocking {
+                    recording.close(CLOSE_GRACE)
+                    // What the queue just wrote goes on too, so a bridge's last minute isn't left behind.
+                    sending?.cancelAndJoin()
+                    if (export != null) withTimeoutOrNull(CLOSE_GRACE) { export.send() }
+                }
                 scope.cancel()
                 lock.release()
                 lock.channel().close()
             }
+        }
+
+        /** The collector export [env] asks for, or null: a bad setting is logged and sends nothing, and recording carries on. */
+        private fun otlpExport(env: (String) -> String?, warp: WarpTelemetry, sent: DurableStore, clock: Clock): OtlpExport? = try {
+            OtlpExport.fromEnv(env, warp, sent, clock)
+        } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) {
+            log.warn { "Telemetry won't go to a collector: ${Redaction.scrub(failure.message.orEmpty())}" }
+            null
         }
 
         /** Telemetry that records nothing and holds nothing open. */

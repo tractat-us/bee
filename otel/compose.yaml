@@ -1,0 +1,17 @@
+# A local OpenTelemetry viewer for bee: bin/bee-otel-viewer runs this. Grafana (Loki for logs,
+# Tempo for traces) at http://127.0.0.1:3000, behind a collector on 127.0.0.1:4318. Both listen on
+# this machine only.
+name: bee-otel-viewer
+services:
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    command: ["--config=/etc/bee/collector.yaml"]
+    volumes:
+      - ./collector.yaml:/etc/bee/collector.yaml:ro
+    ports:
+      - "127.0.0.1:4318:4318"
+    depends_on: [lgtm]
+  lgtm:
+    image: grafana/otel-lgtm:0.8.6
+    ports:
+      - "127.0.0.1:3000:3000"

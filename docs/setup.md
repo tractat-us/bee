@@ -280,6 +280,7 @@ To read it back, run `bin/bee-telemetry`: it prints every record under `$BEE_HOM
 timeline, oldest first. `--role host`, `--peer <name>`, `--since 10m` and `--tail 50` narrow it,
 and `--json` prints JSONL. It copies each record before reading it, so a running host or bridge is
 never disturbed.
+[Seeing what bee did](telemetry.md) says how to read the record back, and how to look at it in Grafana.
 
 ## Run the host by hand
 
