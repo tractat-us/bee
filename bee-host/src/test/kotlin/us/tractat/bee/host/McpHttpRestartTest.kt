@@ -14,14 +14,21 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.mcp.BeeTools
+import us.tractat.bee.mcp.BridgePeer
+import us.tractat.bee.mcp.peerHttpClient
 import us.tractat.kuilt.test.assertAll
+import java.net.ServerSocket
 import java.nio.file.Files
+import kotlin.random.Random
+import kotlin.time.Clock
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -109,6 +116,41 @@ class McpHttpRestartTest {
         }
     }
 
+    /**
+     * The demo's setup: the presenter's stdio bridge stays connected across the restart, and its
+     * first-contact push brings the old host's presence slot for andrew back, old claims node and
+     * all. The voter drops that node a learner grace after boot; andrew, live on a new node, must
+     * not be departed for it.
+     */
+    @Test
+    fun aPeerThatSurvivesTheRestartNeverGetsTheResumedIdentityDeparted() = runBlocking {
+        val port = ServerSocket(0).use { it.localPort }
+        val first = startHost(port)
+        val presenter = BridgePeer.join(HostAddress.parse("ws://127.0.0.1:$port"), "presenter", peerHttpClient(), scope, Random(9), { Clock.System.now() })
+        presenter.start()
+        val before = drawAndLearnWho(connect(url(first, "?name=andrew")), first, "andrew-plan")
+        withTimeout(TIMEOUT) { presenter.board.state.first { s -> s.latestPresence().any { it.identity == before && it.claimsNode != null } } }
+        first.close()
+        val host = startHost(port)
+        try {
+            val claude = connect(url(host, "?name=andrew"))
+            val after = drawAndLearnWho(claude, host, "andrew-after")
+            // The rig: both slots are on the new board, the pushed-back one and the resumed one.
+            withTimeout(TIMEOUT) { host.state.first { s -> s.latestPresence().count { it.identity == before } >= 2 } }
+            val departed = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2 + 10.seconds) {
+                host.state.first { s -> s.departures().any { it.identity == before } }
+            }
+            assertAll(
+                { assertEquals(before, after, "rig: andrew came back as itself") },
+                { assertEquals(null, departed?.departures()?.filter { it.identity == before }, "andrew, live, was never departed") },
+            )
+            claude.close()
+        } finally {
+            presenter.board.close()
+            host.close()
+        }
+    }
+
     /** Starts a host, opens [surface] as a Claude at [query], stops the host, and returns who opened it. */
     private suspend fun openThenRestart(query: String, surface: String): PeerIdentity {
         val host = startHost()
@@ -119,7 +161,7 @@ class McpHttpRestartTest {
         }
     }
 
-    private suspend fun startHost() = BeeHost.start(scope, HostConfig(port = 0, dataDir = dir))
+    private suspend fun startHost(port: Int = 0) = BeeHost.start(scope, HostConfig(port = port, dataDir = dir))
 
     private fun url(host: BeeHost, query: String) = "http://127.0.0.1:${host.port}${BeeHost.MCP_PATH}$query"
 
