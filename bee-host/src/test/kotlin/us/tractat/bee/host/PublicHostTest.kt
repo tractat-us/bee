@@ -31,7 +31,7 @@ import kotlin.test.assertIs
  * behind Fly's proxy arrives with: `X-Forwarded-For: <client>, <app address>` and
  * `Fly-Client-IP: <client>` ([fly]). The proxy dials the host on a port of its own, so every dial
  * here names the public host with no port, whatever port the host bound. Every dial's TCP peer is
- * loopback, so a forwarded dial that is refused a keyless socket was refused for its headers.
+ * loopback, which grants nothing on a public host ([loopbackGrantsNothing]).
  *
  * A dial that must pass the site gate holds a paired device's [key], so a 403 is the site gate's.
  * A host that reads the rightmost `X-Forwarded-For` entry instead is [AppendingProxyHostTest]'s.
@@ -42,6 +42,7 @@ class PublicHostTest {
     private val config = HostConfig.fromArgs(
         listOf("--public-url", PUBLIC_URL, "--client-ip-header", "Fly-Client-IP", "--port", "0", "--data-dir", dataDir.toString()),
         home = Path.of("/nonexistent"),
+        environment = { name -> FAKE_OWNER_KEY.takeIf { name == OwnerKey.ENV } },
     )
     private val host = runBlocking { BeeHost.start(scope, config) }
     private val calls = Handshakes(host.port)
@@ -96,8 +97,7 @@ class PublicHostTest {
 
     /**
      * A dial the proxy forwards from loopback, or one that says it was, is no local caller: it
-     * needs a key. Each dial's TCP peer is loopback, which the last case shows is local without
-     * a forwarding header, so each refusal is its headers'.
+     * needs a key, as one with no forwarding header does ([loopbackGrantsNothing]).
      */
     @Test
     fun aForwardedCallIsNeverLocal() {
@@ -110,20 +110,48 @@ class PublicHostTest {
             { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN, "X-Forwarded-For: 203.0.113.7, $APP", "Fly-Client-IP: unknown"), "a client header that names no address") },
             { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN, "Fly-Client-IP: "), "an empty one") },
             { assertEquals(SWITCHING, calls.upgrade("$board&k=$key", PUBLIC_HOST, PUBLIC_ORIGIN, *fly("127.0.0.1")), "rig: a key admits it") },
-            { assertEquals(SWITCHING, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN), "rig: the same dial with no forwarding header is local") },
         )
     }
 
-    /** The invite is the public URL, and goes, as on a LAN host, only where the join link goes today. */
+    /** The invite is the public URL, and goes to the owner, by their key: being on the machine grants nothing. */
     @Test
-    fun theInviteLinkIsThePublicUrl() {
-        val (status, body) = calls.fetch(InviteLinks.PATH, "127.0.0.1:${host.port}")
-        val (forwardedStatus, forwardedBody) = calls.fetch(InviteLinks.PATH, PUBLIC_HOST, *CLIENT, SAME_ORIGIN)
+    fun theInviteLinkIsThePublicUrlForTheOwnerAlone() {
+        val invite = "${InviteLinks.PATH}?k=$FAKE_OWNER_KEY"
+        val (status, body) = calls.fetch(invite, PUBLIC_HOST, *CLIENT, SAME_ORIGIN)
+        val refusals = listOf(
+            calls.fetch(InviteLinks.PATH, "127.0.0.1:${host.port}"),
+            calls.fetch(InviteLinks.PATH, PUBLIC_HOST, *CLIENT, SAME_ORIGIN),
+            calls.fetch("${InviteLinks.PATH}?k=$key", PUBLIC_HOST, *CLIENT, SAME_ORIGIN),
+        )
         assertAll(
-            { assertEquals(OK, status) },
-            { assertEquals(InviteLinks(emptyList(), "$PUBLIC_URL?${PairingWire.KEY_PARAM}=${host.pairing.joinKey.value}"), Json.decodeFromString(InviteLinks.serializer(), body)) },
-            { assertEquals(FORBIDDEN, forwardedStatus, "a forwarded caller") },
-            { assertFalse(host.pairing.joinKey.value in forwardedBody) },
+            { assertEquals(OK, status, "the owner's page") },
+            { assertEquals(InviteLinks(emptyList(), PUBLIC_URL), Json.decodeFromString(InviteLinks.serializer(), body), "the bare URL: the join key lets no one in without a code") },
+            { assertFalse(host.pairing.joinKey.value in body) },
+            { assertEquals(listOf(FORBIDDEN, FORBIDDEN, FORBIDDEN), refusals.map { it.first }, "loopback with no key, a forwarded caller with none, a paired device") },
+            { assertFalse(refusals.any { host.pairing.joinKey.value in it.second }) },
+        )
+    }
+
+    /** Nobody is on loopback on a hosted machine, and a call from there gets nothing without a key. */
+    @Test
+    fun loopbackGrantsNothing() {
+        val loopback = "127.0.0.1:${host.port}"
+        assertAll(
+            { assertEquals(FORBIDDEN, calls.upgrade(board, loopback), "the board, with no key and no forwarded header") },
+            { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN), "the public name, no forwarding header") },
+            { assertEquals(FORBIDDEN, calls.upgrade(claims, loopback), "claims") },
+            { assertEquals(FORBIDDEN, calls.get(BeeHost.MCP_PATH, loopback), "MCP") },
+            { assertEquals(SWITCHING, calls.upgrade("$board&k=$FAKE_OWNER_KEY", loopback), "rig: the owner key admits the same dial") },
+        )
+    }
+
+    /** The owner opens `https://bee.tractat.us/#k=<owner key>`, and the page's sockets carry it. */
+    @Test
+    fun theOwnerKeyAdmitsTheBoardAndClaims() {
+        assertAll(
+            { assertEquals(SWITCHING, calls.upgrade("$board&k=$FAKE_OWNER_KEY", PUBLIC_HOST, PUBLIC_ORIGIN, *CLIENT)) },
+            { assertEquals(SWITCHING, calls.upgrade("$claims&k=$FAKE_OWNER_KEY", PUBLIC_HOST, PUBLIC_ORIGIN, *CLIENT)) },
+            { assertEquals(FORBIDDEN, calls.upgrade("$board&k=${FAKE_OWNER_KEY.dropLast(1)}x", PUBLIC_HOST, PUBLIC_ORIGIN, *CLIENT), "a near miss") },
         )
     }
 

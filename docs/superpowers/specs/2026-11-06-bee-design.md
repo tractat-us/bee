@@ -461,7 +461,9 @@ needs no key. "Admitted by <name>" names the declared actor.
   must match the identity its key was minted for. That's generic, so it's tractat-us/kuilt#3149:
   the relay attests each record's author by its connection. `Pairing.attempt` then takes the attested
   type, so a declared identity no longer compiles there. Loopback stays trusted, because the host
-  can't tell a person's browser from a process on its own machine.
+  can't tell a person's browser from a process on its own machine. A hosted board
+  (`--public-url`, bee#145) is the exception: behind its proxy being on loopback grants nothing,
+  and every peer, the owner and the host's own bridges included, holds a key.
 
 Rejected for v1 (bee#64):
 

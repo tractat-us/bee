@@ -68,6 +68,8 @@ class BeeHost private constructor(
     private val unclaimed: Job,
     /** The host's hold on [HostConfig.dataDir], let go once [close] has saved the board. */
     private val dataDir: DataDirLock,
+    /** The key the host's own bridges dial with, fresh per boot and held in memory alone: a test's, to prove it never reaches a log. */
+    internal val bridgeKey: DeviceKey,
 ) : AutoCloseable {
     /** The claims voter at [CLAIMS_PATH]. */
     val voter: ClaimsVoter get() = core.voter
@@ -155,8 +157,11 @@ class BeeHost private constructor(
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
             val secrets = SecureSecrets(SecureRandom())
+            // The host's own bridges' key, fresh per boot and held in memory alone: on a public host
+            // their loopback sockets need one like anyone's.
+            val bridgeKey = secrets.key()
             // bee#106: every key outlives a restart; config.keyReset is how one stops admitting.
-            val keys = HostKeys.boot(KeyFile(config.dataDir.resolve(KeyFile.NAME)), secrets, config.keyReset)
+            val keys = HostKeys.boot(KeyFile(config.dataDir.resolve(KeyFile.NAME)), secrets, config.keyReset, held = config.reach.heldKeys() + bridgeKey)
             val pairing = Pairing(clock, secrets, keys, budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
@@ -173,7 +178,7 @@ class BeeHost private constructor(
             // come back: the rest are retired at the first check, not held for the whole window. A
             // new link alone changes nothing here, since no session on the join link's key is kept.
             if (config.keyReset == KeyReset.ForgetDevices) kept.endWaits { it.caller != Caller.Loopback }
-            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, keys::kindOf, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
+            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, keys::kindOf, bridgeKey.value, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())
@@ -200,7 +205,7 @@ class BeeHost private constructor(
                 joinRequests.complete(requests)
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
                 val unclaimed = retireUnclaimed(scope, kept, core.voter, config.mcpUnclaimedAfter, clock)
-                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, unclaimed, lock)
+                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, unclaimed, lock, bridgeKey)
             } catch (failure: Throwable) {
                 bridges.close()
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)

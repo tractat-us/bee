@@ -30,7 +30,7 @@ import kotlin.test.assertIs
 class AppendingProxyHostTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val dataDir = Files.createTempDirectory("w1-appending-proxy-")
-    private val config = HostConfig.fromArgs(listOf("--public-url", PUBLIC_URL, "--port", "0", "--data-dir", dataDir.toString()), home = Path.of("/nonexistent"))
+    private val config = HostConfig.fromArgs(listOf("--public-url", PUBLIC_URL, "--port", "0", "--data-dir", dataDir.toString()), home = Path.of("/nonexistent")) { name -> FAKE_OWNER_KEY.takeIf { name == OwnerKey.ENV } }
     private val host = runBlocking { BeeHost.start(scope, config) }
     private val calls = Handshakes(host.port)
     private val board = "${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=${host.boardId}"
@@ -42,7 +42,7 @@ class AppendingProxyHostTest {
         dataDir.toFile().deleteRecursively()
     }
 
-    /** Each dial's TCP peer is loopback, which the last case shows is local without a forwarding header. */
+    /** Each dial's TCP peer is loopback, which grants nothing on a public host, with a forwarding header or without. */
     @Test
     fun aForwardedCallIsNeverLocal() {
         assertAll(
@@ -50,7 +50,8 @@ class AppendingProxyHostTest {
             { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN, "X-Forwarded-For: 203.0.113.7, 127.0.0.1"), "loopback, rightmost") },
             { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN, "Forwarded: for=127.0.0.1"), "RFC 7239's header") },
             { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN, "X-Forwarded-For: "), "an empty one") },
-            { assertEquals(SWITCHING, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN), "rig: the same dial with no forwarding header is local") },
+            { assertEquals(FORBIDDEN, calls.upgrade(board, PUBLIC_HOST, PUBLIC_ORIGIN), "nor the same dial with no forwarding header") },
+            { assertEquals(SWITCHING, calls.upgrade("$board&k=$FAKE_OWNER_KEY", PUBLIC_HOST, PUBLIC_ORIGIN, "X-Forwarded-For: 127.0.0.1"), "rig: a key admits the same dial") },
         )
     }
 

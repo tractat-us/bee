@@ -79,13 +79,15 @@ test('the owner on loopback gets Invite: a QR code of the join link, the link, a
   await expect(panel(page)).toBeHidden();
 });
 
-test('a keyed viewer gets no Invite, and never asks for the link', async ({ page }) => {
-  const asked = inviteRequests(page);
+// A keyed page asks, since on a hosted board its owner is a keyed page too (bee#145); a LAN host
+// refuses it, even from this machine by the LAN name, so its key goes no further.
+test('a keyed viewer gets no Invite: the host refuses it the link', async ({ page }) => {
+  const refused = page.waitForResponse((response) => new URL(response.url()).pathname === '/invite');
   await openBoard(page, `http://${LAN_NAME}:${host.port}/?name=sam&k=e2e-lan-key`);
+  expect((await refused).status()).toBe(403);
   // Bring your Claude is there; Invite is not.
   await expect(page.locator('#bar #bring-claude-toggle')).toBeVisible();
   await expect(toggle(page)).toHaveCount(0);
-  expect(asked).toEqual([]);
 });
 
 test('a room screen gets no Invite, and never asks for the link', async ({ page }) => {
