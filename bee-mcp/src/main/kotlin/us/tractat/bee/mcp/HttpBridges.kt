@@ -11,6 +11,7 @@ import io.ktor.server.routing.routing
 import io.ktor.util.AttributeKey
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -138,8 +139,8 @@ class HttpBridges internal constructor(
      */
     suspend fun close() = withContext(NonCancellable) {
         stopping = true
-        open.toList().forEach { it.end() }
-        departures.toList().joinAll()
+        open.snapshot().forEach { it.end() }
+        departures.snapshot().joinAll()
         supervisor.cancelAndJoin()
         http.close()
     }
@@ -255,10 +256,23 @@ class HttpBridges internal constructor(
          * Closes the session's server, so its id answers 404 from now on, and departs the bridge.
          * The close departs it too, once connected; [depart] runs once, so a session that never
          * connected departs all the same.
+         *
+         * A server whose close throws still departs, and the host's close goes on to the next
+         * session, the voter and the board's last save. The SDK's (0.16.0) transport close throws
+         * `NoSuchElementException` when a client's GET stream ends during it: it reads its streams
+         * with `values.toList()`, which on one stream calls `iterator().next()` after `size`, while
+         * the stream's own handler removes it from that `ConcurrentHashMap` outside the close's lock.
          */
         suspend fun end() {
-            closeServer(server)
-            depart()
+            try {
+                closeServer(server)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                logger.warn(failure) { "${peer.bridge.self}'s MCP session didn't close cleanly; departing it all the same." }
+            } finally {
+                depart()
+            }
         }
 
         /**
@@ -300,6 +314,12 @@ class HttpBridges internal constructor(
             job.invokeOnCompletion { departures -= job }
         }
     }
+
+    /**
+     * This set's members now, while others come and go. Not `toList()`: on a set of one it reads
+     * `size`, then `iterator().next()`, which throws if the member left in between.
+     */
+    private fun <T> Set<T>.snapshot(): List<T> = ArrayList(this)
 
     /** Which session a call is on: by its `Mcp-Session-Id`, or the one it opened. */
     private fun sessionOf(call: ApplicationCall): Session? = call.request.headers[SESSION_HEADER]?.let(byId::get)
