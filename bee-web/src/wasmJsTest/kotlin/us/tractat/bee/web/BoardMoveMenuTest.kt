@@ -59,13 +59,14 @@ class BoardMoveMenuTest {
     @Test
     fun choosingAColumnDispatchesDrop() = onEventLoop {
         val renderer = A2uiRenderer(root)
+        val actions = renderer.actions { }
         renderer.render(board("choose"))
         card("c1").click()
         val doing = awaitMoves().single { it.getAttribute("data-move") == "doing" }
         awaitTrue("the menu arms") { !doing.disabled }
         doing.click()
 
-        val action = withTimeout(UNTIL) { renderer.actions.first() }
+        val action = withTimeout(UNTIL) { actions.first().action }
         assertAll(
             { assertEquals("drop", action.name) },
             { assertEquals("c1", action.context["card"]?.jsonPrimitive?.content) },

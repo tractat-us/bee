@@ -1,7 +1,10 @@
 package us.tractat.bee.mcp
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -68,6 +71,72 @@ class BoardWideWaitTest {
             { assertEquals("kanban", record.string("surfaceId")) },
             { assertEquals(true, record.getValue("basisComplete").jsonPrimitive.boolean) },
             { assertEquals(ClaimStatus.Held(ada.bridge.self, token), rig.voter.table.value.status(target), "returned claimed, as a one-surface wait returns it") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A wait that passes over a record it can't take still shows the session waiting (bee#165).
+     * Without a cursor, as the whiteboard prompt loops after a host restart, a board-wide wait
+     * first claims the click it already marked done, loses, and passes it over. That claim is a
+     * write; its presence post must keep `waiting`, or the card reads `working` for the rest of
+     * the wait. The wait returning the next click proves it passed the done one and held.
+     */
+    @Test
+    fun aWaitThatPassesOverADoneRecordStillShowsWaiting() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        ada.call(BeeTools.OPEN, openArgs("poll"))
+        browser.state.first { "poll" in it.openSurfaces() }
+        browser.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
+        val first = ada.waitBoard().record()
+        ada.call(BeeTools.DONE, mapOf("recordId" to first.string("recordId"), "token" to first.string("token")))
+        val doneTarget = BoardActionSource.target(BoardActionSource.parseRecordId(first.string("recordId")))
+        rig.voter.table.first { it.status(doneTarget) is ClaimStatus.Done }
+
+        val waited = async { ada.waitBoard(timeoutSeconds = 30) }
+        delay(1.seconds)
+        val entry = ada.client.state.value.latestPresence().single { it.identity == ada.bridge.self }
+        val claimsOfDone = rig.claimsOf(doneTarget)
+        browser.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
+        val next = waited.await().record()
+        assertAll(
+            { assertEquals(2, claimsOfDone, "rig: the wait claimed the done click again, so its write happened mid-wait") },
+            { assertTrue(entry.waiting, "a session still waiting after passing over a done record reads waiting: $entry") },
+            { assertTrue(next.string("recordId") != first.string("recordId"), "the wait passed the done click and returned the next") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Two waits of one session overlap, as an HTTP session's calls can. When one returns a click,
+     * the session still shows waiting through the other (bee#165, review of #184): a wait that
+     * ends must not post `waiting = false` while another holds.
+     */
+    @Test
+    fun aWaitThatEndsLeavesTheSessionsOverlappingWaitShowing() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        ada.call(BeeTools.OPEN, openArgs("poll"))
+        browser.state.first { "poll" in it.openSurfaces() }
+
+        val waits = List(2) { async { ada.waitBoard(timeoutSeconds = 30) } }
+        delay(1.seconds)
+        browser.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
+        val ended = select { waits.forEach { wait -> wait.onAwait { it } } }
+        delay(1.seconds)
+        val entry = ada.client.state.value.latestPresence().single { it.identity == ada.bridge.self }
+        browser.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
+        val both = waits.awaitAll()
+        delay(1.seconds)
+        val after = ada.client.state.value.latestPresence().single { it.identity == ada.bridge.self }
+        assertAll(
+            { assertTrue(ended.record().string("recordId").isNotEmpty(), "rig: one wait returned the first click") },
+            { assertTrue(entry.waiting, "the other wait still holds, so the session reads waiting: $entry") },
+            { assertEquals(2, both.map { it.record().string("recordId") }.toSet().size, "rig: each wait returned its own click") },
+            { assertEquals(false, after.waiting, "both waits ended: not waiting") },
         )
         rig.close()
     }
@@ -322,7 +391,7 @@ class BoardWideWaitTest {
         val before = ada.waitBoard(timeoutSeconds = 2)
         val holding = async { ada.waitBoard(cursor = before.cursor, timeoutSeconds = 30) }
         ada.client.state.first { s -> s.latestPresence().any { it.identity == ada.bridge.self && it.waiting } }
-        val token = rig.claims.client(NodeId("iain-page")).reassign(granted, to = ada.bridge.self, by = PeerIdentity.human("iain"))
+        val token = rig.claims.client(NodeId("iain-page")).reassign(granted, to = ada.bridge.self, by = PeerIdentity.human("iain"), orphan = (rig.voter.table.value.status(granted) as ClaimStatus.Orphaned).token)
         val waited = holding.await()
         val again = ada.waitBoard(cursor = waited.cursor, timeoutSeconds = 2)
         val returned = waited.record?.let { BoardActionSource.target(BoardActionSource.parseRecordId(it.string("recordId"))) }
@@ -400,6 +469,7 @@ class BoardWideWaitTest {
         return orphan to free
     }
 
+    /** How many claims of [target] the voter's log holds, committed or rejected. */
     /** The reserved surface-id prefixes a board-wide scope leaves out by name, as `BoardActionSource` lists them. */
     private val HANDLED_ELSEWHERE_PREFIXES = listOf(PairingSurfaces.PREFIX, OrphanDecision.PREFIX, CompanionSurfaces.PREFIX)
 

@@ -6,10 +6,14 @@ import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
@@ -22,6 +26,7 @@ import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
 import kotlin.system.exitProcess
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 // Lazy, so the logger (whose start-up prints a line to stdout) starts only after main() has
@@ -61,7 +66,7 @@ fun main() {
     logger.info { "bee-mcp ${ProcessHandle.current().pid()} starts as ${identity.current.value}, on $host" }
 
     // Once, by whichever way out comes first; a second caller waits for the first to finish.
-    val leaving = lazy { leave(bridge) }
+    val leaving = lazy { leave(bridge, board) }
     ClearControl(identity, bridgeScope).use { clear ->
         // Claude Code ends its MCP servers with a signal, not only by closing stdin (spike 3), so
         // the run file goes on shutdown too. A SIGKILL still leaves it; the hook then finds a dead port.
@@ -77,7 +82,6 @@ fun main() {
             session.onClose { closed.complete(Unit) }
             anotherBoard.invokeOnCompletion { closed.complete(Unit) }
             closed.await()
-            board.close()
         }
     }
     leaving.value
@@ -104,8 +108,9 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
 }
 
 /**
- * How long an ending bridge waits for its `Depart(Left)` to commit. A single voter commits it
- * inline, so this only bounds a host that's gone, for an exit no SIGKILL follows (stdin closing).
+ * How long an ending bridge waits for its `Depart(Left)` to commit, and for the host to acknowledge
+ * its writes: both at once ([endSession]). A single voter commits inline and the host acknowledges
+ * within milliseconds, so this only bounds a host that's gone, or a link that's half-open.
  *
  * Measured (e2e `departures.spec.mjs`, host on loopback): from SIGINT to the bridge's exit, `Left`
  * committed, took about 330 ms. Not measured: Claude Code's own grace. Public reports say `/exit`
@@ -116,13 +121,20 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
 private val LEAVE_BOUND = 1.seconds
 
 /**
- * Departs [bridge]'s identity as [us.tractat.bee.core.DepartReason.Left] as the session ends,
- * waiting at most [LEAVE_BOUND]. One that doesn't commit is departed `Crashed` by the host instead.
+ * Ends [bridge]'s session on the board, by either way out: stdin closing, or the shutdown hook a
+ * signal runs, which is how Claude Code ends its servers. Both flush [board]'s writes and depart
+ * the identity as [us.tractat.bee.core.DepartReason.Left], together within [LEAVE_BOUND]
+ * ([endSession]). A `Depart` that doesn't commit is departed `Crashed` by the host instead.
  */
-private fun leave(bridge: BeeBridge) {
+private fun leave(bridge: BeeBridge, board: BoardClient) {
+    runBlocking { endSession(board, LEAVE_BOUND) { within -> depart(bridge, within) } }
+}
+
+/** Departs [bridge]'s identity as `Left`, waiting at most [within], and says how that went. */
+private suspend fun depart(bridge: BeeBridge, within: Duration) {
     val who = bridge.self
     val committed = try {
-        runBlocking { bridge.leave(LEAVE_BOUND) }
+        bridge.leave(within)
     } catch (failure: Exception) {
         // The top of a way out: a cancellation reaching here is a failure like any other.
         logger.warn(failure) { "Leaving the board as $who failed; the host will depart it as crashed." }
@@ -131,8 +143,39 @@ private fun leave(bridge: BeeBridge) {
     if (committed) {
         logger.info { "Left the board as $who." }
     } else {
-        logger.warn { "$who's Depart(Left) didn't commit within $LEAVE_BOUND; the host will depart it as crashed." }
+        logger.warn { "$who's Depart(Left) didn't commit within $within; the host will depart it as crashed." }
     }
+}
+
+/**
+ * An ending bridge's last steps on the board, run at once so the exit takes at most [within], not
+ * twice it: [depart], and wait for the host to acknowledge [board]'s writes, then close [board]
+ * (bee#116). Closing parts the connection, which cancels any write the seam hasn't sent yet
+ * (kuilt's `Quilter.close`); just after a redial, the first-contact sync can hold one back for
+ * longer than a session takes to end. An offline write is lost either way: it would ride the next
+ * connection's FullState.
+ *
+ * @param depart bounds itself by the [within] it's given, and doesn't throw
+ * @return whether the host acknowledged the writes in time
+ */
+internal suspend fun endSession(board: BoardClient, within: Duration, depart: suspend (Duration) -> Unit): Boolean = try {
+    coroutineScope {
+        launch { depart(within) }
+        flushed(board, within)
+    }
+} finally {
+    withContext(NonCancellable) { board.close() }
+}
+
+/** Whether the host acknowledged [board]'s writes within [within]; it says why not, if not. */
+private suspend fun flushed(board: BoardClient, within: Duration): Boolean {
+    val acknowledged = withTimeoutOrNull(within) { board.awaitAcknowledged() }
+    when (acknowledged) {
+        true -> Unit
+        false -> logger.warn { "This bridge isn't connected to the host, so any writes it made since its last connection are lost." }
+        null -> logger.warn { "The host didn't acknowledge this bridge's last writes within $within; any not yet sent are lost." }
+    }
+    return acknowledged == true
 }
 
 /** The exit status of a bridge that ended because its host keeps another board. */

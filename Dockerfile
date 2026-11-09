@@ -22,5 +22,6 @@ COPY bee-host/build/install/bee-host /app
 EXPOSE 8080
 ENTRYPOINT ["/bin/sh", "-c", "chown bee:bee /data && exec setpriv --reuid=bee --regid=bee --init-groups -- \"$0\" \"$@\""]
 # --public-url is hosted mode (#145). In it the host refuses to start without BEE_OWNER_KEY, a Fly
-# secret on the app (docs/deploy.md). JVM flags come from BEE_HOST_OPTS in fly.toml.
-CMD ["/app/bin/bee-host", "--public-url", "https://bee.tractat.us/", "--port", "8080", "--data-dir", "/data"]
+# secret on the app (docs/deploy.md). JVM flags come from BEE_HOST_OPTS in fly.toml. Fly's proxy
+# names each client in Fly-Client-IP; its rightmost X-Forwarded-For entry is the app's own address.
+CMD ["/app/bin/bee-host", "--public-url", "https://bee.tractat.us/", "--client-ip-header", "Fly-Client-IP", "--port", "8080", "--data-dir", "/data"]

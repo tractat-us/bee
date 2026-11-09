@@ -50,16 +50,38 @@ class RendererSeamTest {
     @Test
     fun clickReachesKotlinAsAnAction() = onEventLoop {
         val renderer = A2uiRenderer(root)
+        val actions = renderer.actions { }
         renderer.render(helloSurface("spike-1"))
 
         val button = awaitElement { deepQuery(root, "button") }
         button.click()
-        val action = withTimeout(UNTIL) { renderer.actions.first() }
+        val action = withTimeout(UNTIL) { actions.first().action }
 
         assertAll(
             { assertEquals("press", action.name) },
             { assertEquals("spike-1", action.surfaceId) },
             { assertEquals("press-button", action.sourceComponentId) },
+        )
+    }
+
+    /**
+     * An action's witness reads what was on screen as the person acted, not what is there when the
+     * action is collected (bee#83): what it reads changes right after the click, before collection.
+     */
+    @Test
+    fun anActionsWitnessReadsAsThePersonActs() = onEventLoop {
+        val renderer = A2uiRenderer(root)
+        var onScreen = "as clicked"
+        val actions = renderer.actions { onScreen }
+        renderer.render(helloSurface("witness"))
+
+        awaitElement { deepQuery(root, "button") }.click()
+        onScreen = "after the click"
+        val acted = withTimeout(UNTIL) { actions.first() }
+
+        assertAll(
+            { assertEquals("press", acted.action.name, "rig: the click reached Kotlin") },
+            { assertEquals("as clicked", acted.seen, "the witness read as the person acted") },
         )
     }
 

@@ -221,8 +221,9 @@ jobs:
           cd e2e
           timeout 600 npm ci
           timeout 600 npx playwright install --with-deps chromium
-          # demo-paths.spec.mjs runs in the demo job, which gates the merge.
-          BEE_E2E_SKIP_DEMO=1 timeout 600 npx playwright test
+          # demo-paths.spec.mjs runs in the demo job, which gates the merge. BEE_E2E_PREBUILT: the step
+          # above built the installs, so the webServer command skips its own build.
+          BEE_E2E_PREBUILT=1 BEE_E2E_SKIP_DEMO=1 timeout 600 npx playwright test
 
       - name: Test count
         if: always()
@@ -268,7 +269,8 @@ jobs:
           cd e2e
           timeout 600 npm ci
           timeout 600 npx playwright install --with-deps chromium
-          timeout 600 npx playwright test demo-paths.spec.mjs
+          # The installs are built above, so the webServer command skips its own build.
+          BEE_E2E_PREBUILT=1 timeout 600 npx playwright test demo-paths.spec.mjs
 
       - name: Playwright report
         if: failure()

@@ -1,5 +1,6 @@
 package us.tractat.bee.host
 
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -53,32 +54,77 @@ fun interface PeerAddress {
     fun of(call: ApplicationCall): Caller
 
     companion object {
-        private const val FORWARDED_FOR = "X-Forwarded-For"
-        private const val FORWARDED_HEADER = "Forwarded"
-
         /**
          * The TCP peer, never a forwarded header: no proxy stands in front of the host, and a
          * header is whatever the dialler says it is.
          */
         val DIRECT: PeerAddress = PeerAddress { Caller.byPeer(it.request.local.remoteAddress) }
-
-        /**
-         * Behind one trusted proxy ([Reach.Public]): the rightmost `X-Forwarded-For` entry, the one
-         * the proxy appended, since every entry left of it is whatever the client sent. A call
-         * with no such entry is its TCP peer's. A call carrying `X-Forwarded-For` or `Forwarded`
-         * is never [Caller.local], whatever its TCP peer: the proxy dials from wherever it runs,
-         * and a header claiming loopback came from someone who isn't.
-         */
-        val FORWARDED: PeerAddress = PeerAddress { call ->
-            val headers = call.request.headers
-            val forwardedFor = headers.getAll(FORWARDED_FOR).orEmpty().flatMap { it.split(',') }.map(String::trim).lastOrNull { it.isNotEmpty() }
-            when {
-                forwardedFor != null -> Caller.forwarded(forwardedFor)
-                headers.contains(FORWARDED_FOR) || headers.contains(FORWARDED_HEADER) -> Caller.forwarded(call.request.local.remoteAddress)
-                else -> Caller.byPeer(call.request.local.remoteAddress)
-            }
-        }
     }
+}
+
+/**
+ * Behind one trusted proxy ([Reach.Public]): each call's caller is the client the proxy names, read
+ * the way that proxy writes it ([AppendedForwardedFor] or [ClientHeader]). A call where the proxy
+ * names no usable client is its TCP peer's. A call carrying any forwarding header, `X-Forwarded-For`,
+ * `Forwarded` or [ClientHeader.name], is never [Caller.local], whatever its TCP peer: the proxy dials
+ * from wherever it runs, and a header claiming loopback came from someone who isn't. That decision
+ * is [of]'s alone; a variant only reads the client's address.
+ */
+sealed class ForwardedPeer : PeerAddress {
+    /** The headers whose presence marks a call as forwarded. */
+    protected abstract val forwarding: Set<String>
+
+    /** The client the proxy names in [headers], or null when it names none usable. */
+    protected abstract fun client(headers: Headers): String?
+
+    final override fun of(call: ApplicationCall): Caller {
+        val headers = call.request.headers
+        val peer = call.request.local.remoteAddress
+        return if (forwarding.none(headers::contains)) Caller.byPeer(peer) else Caller.forwarded(client(headers) ?: peer)
+    }
+
+    /**
+     * A proxy that appends the client it saw to `X-Forwarded-For`: the rightmost entry, since every
+     * entry left of it is whatever the client sent. Not Fly's proxy, whose rightmost entry is the
+     * app's own address, the same for every client ([ClientHeader]).
+     */
+    data object AppendedForwardedFor : ForwardedPeer() {
+        override val forwarding: Set<String> = setOf(FORWARDED_FOR, FORWARDED_HEADER)
+
+        override fun client(headers: Headers): String? =
+            headers.getAll(FORWARDED_FOR).orEmpty().flatMap { it.split(',') }.map(String::trim).lastOrNull { it.isNotEmpty() }
+    }
+
+    /**
+     * `--client-ip-header <name>`: a proxy that sets the header [name] to the client's address
+     * alone, as Fly's sets `Fly-Client-IP`. Its value names the client when it is one IP literal,
+     * trimmed; anything else names none.
+     */
+    data class ClientHeader(val name: String) : ForwardedPeer() {
+        init {
+            require(FIELD_NAME.matches(name)) { "Not a header name: $name" }
+        }
+
+        override val forwarding: Set<String> = setOf(FORWARDED_FOR, FORWARDED_HEADER, name)
+
+        override fun client(headers: Headers): String? = headers.getAll(name)?.singleOrNull()?.trim()?.takeIf(::isIpLiteral)
+    }
+
+    private companion object {
+        const val FORWARDED_FOR = "X-Forwarded-For"
+        const val FORWARDED_HEADER = "Forwarded"
+
+        /** An HTTP field name: RFC 9110's `token`. */
+        val FIELD_NAME = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+    }
+}
+
+/** Whether [literal] is an IP address, written as one. A host name is not, and nor is anything unparseable. */
+fun isIpLiteral(literal: String): Boolean = try {
+    InetAddress.ofLiteral(literal)
+    true
+} catch (_: IllegalArgumentException) {
+    false
 }
 
 /**

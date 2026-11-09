@@ -63,12 +63,10 @@ data class ClaimView(val status: String, val holder: String?, val token: String?
         /** [status] as mirrored at log index [logIndex]; a token reads `<term>:<index>`. */
         fun of(status: ClaimStatus, logIndex: Long): ClaimView = when (status) {
             ClaimStatus.Free -> ClaimView(FREE, null, null, logIndex)
-            is ClaimStatus.Held -> ClaimView(HELD, status.holder.toString(), status.token.text(), logIndex)
-            is ClaimStatus.Orphaned -> ClaimView(ORPHANED, status.holder.toString(), status.token.text(), logIndex)
+            is ClaimStatus.Held -> ClaimView(HELD, status.holder.toString(), status.token.text, logIndex)
+            is ClaimStatus.Orphaned -> ClaimView(ORPHANED, status.holder.toString(), status.token.text, logIndex)
             is ClaimStatus.Done -> ClaimView(DONE, status.by.toString(), null, logIndex)
         }
-
-        private fun ClaimToken.text() = "$term:$index"
     }
 }
 
@@ -246,7 +244,10 @@ class BoardState internal constructor(
      */
     fun withoutPresence(): BoardState = copy(presence = EphemeralMap.empty())
 
-    /** Every surface whose open has arrived, with its meta; one still waiting for its open is left out (bee#171). */
+    /**
+     * Every surface whose open has arrived, with its meta. One still waiting for its open is left
+     * out: a write can arrive before its surface's open ([SurfaceDoc.meta], bee#171).
+     */
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.mapNotNull { id -> SurfaceDoc.meta(surfaces[id]!!)?.let { id to it } }
 

@@ -1,5 +1,5 @@
-// bee's browser end-to-end suite. Playwright starts a real bee-host from
-// `./gradlew :bee-host:installDist` on a free loopback port, with a throwaway data dir,
+// bee's browser end-to-end suite. Playwright builds `./gradlew :bee-host:installDist` (and the
+// bridges' installs) and starts a real bee-host from it on a free loopback port, with a throwaway data dir,
 // and global-setup.mjs seeds fixture surfaces onto it through `:bee-host:e2eSeed`.
 //
 // The host's command line (`--port <n> --data-dir <dir> --host-name <name>`) is fixed here, for
@@ -36,6 +36,16 @@ const baseURL = `http://127.0.0.1:${port}`;
 const here = dirname(fileURLToPath(import.meta.url));
 const hasSpecs = readdirSync(here).some((f) => f.endsWith('.spec.mjs'));
 
+// The host and the specs' bridges run from installDist, so build the installs before the host
+// starts, or a run after a code edit tests the last install (bee#92). It is quick when they're up
+// to date. This lives in webServer's command because Playwright starts webServer before
+// globalSetup. --no-watch-fs: file watching can miss an edit and leave a stale page bundle
+// (bee#102). CI builds the installs in an earlier step and sets BEE_E2E_PREBUILT=1 to skip it.
+const prebuilt = !!process.env.BEE_E2E_PREBUILT;
+const build = prebuilt
+  ? ''
+  : './gradlew :bee-host:installDist :bee-mcp:installDist :bee-companion:installDist --no-watch-fs --console=plain -q && ';
+
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.mjs',
@@ -64,10 +74,12 @@ export default defineConfig({
   webServer: hasSpecs ? {
     // `--host-name bee-lan.test`: second-screen.spec.mjs reaches the host by that name, which the
     // host refuses as a rebinding name otherwise (bee#45).
-    command: `../bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR} --host-name bee-lan.test`,
+    command: `${build}exec bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR} --host-name bee-lan.test`,
+    cwd: join(here, '..'),
     url: `${baseURL}/`,
     reuseExistingServer: false,
-    timeout: 120_000,
+    // The build counts against this timeout, and a cold one bundles the whole page.
+    timeout: prebuilt ? 120_000 : 600_000,
     stdout: 'pipe',
     stderr: 'pipe',
   } : undefined,

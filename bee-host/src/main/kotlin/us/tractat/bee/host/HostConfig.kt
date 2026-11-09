@@ -54,9 +54,11 @@ sealed interface Reach {
     /**
      * `--public-url <url>`: every interface, behind one trusted TLS-terminating proxy that dials the
      * machine's private address (Fly.io's). A browser names the host by [url], and each call's
-     * caller is the one the proxy names ([PeerAddress.FORWARDED]).
+     * caller is the one the proxy names, read the way [client] says that proxy writes it:
+     * `--client-ip-header <name>` is [ForwardedPeer.ClientHeader], and without it,
+     * [ForwardedPeer.AppendedForwardedFor].
      */
-    data class Public(val url: PublicUrl) : Reach {
+    data class Public(val url: PublicUrl, val client: ForwardedPeer) : Reach {
         override val bind: String = ALL_INTERFACES
 
         override fun names(): Set<String> = emptySet()
@@ -65,7 +67,7 @@ sealed interface Reach {
 
         override fun invitation(): Invitation = Invitation.Public(url)
 
-        override fun peers(): PeerAddress = PeerAddress.FORWARDED
+        override fun peers(): PeerAddress = client
     }
 }
 
@@ -116,18 +118,22 @@ data class HostConfig(
         private const val BUDGET_FLAG = "--join-requests-per-hour"
         private const val NAME_FLAG = "--host-name"
         private const val PUBLIC_FLAG = "--public-url"
+        private const val CLIENT_IP_FLAG = "--client-ip-header"
 
         /**
          * Reads `--port <n>`, `--data-dir <dir>`, `--join-requests-per-hour <n>`, `--host-name <name>`,
          * `--public-url <url>` ([PublicUrl.parse], [Reach.Public]) and `--lan`, the form Playwright
-         * starts the host with (`--lan` and `--public-url` aside), which exclude each other. Without
+         * starts the host with (`--lan` and `--public-url` aside), which exclude each other.
+         * `--client-ip-header <name>` names the header a public host's proxy sets to the client's
+         * address ([ForwardedPeer.ClientHeader]), and needs `--public-url`. Without
          * `--data-dir` the data lives in `<home>/.bee/host`; without `--join-requests-per-hour`, it
          * is [PairingBudget.DEFAULT_PER_HOUR]. `--new-link` is [KeyReset.NewLink] and
          * `--forget-devices` is [KeyReset.ForgetDevices], which mints a new link too, so the two
          * together are `--forget-devices`.
          *
          * @throws IllegalArgumentException on an unknown or repeated flag, a flag without a value, a
-         *   bad port, a budget below one, a URL [PublicUrl.parse] refuses, or `--lan` with `--public-url`
+         *   bad port, a budget below one, a URL [PublicUrl.parse] refuses, `--lan` with `--public-url`,
+         *   or `--client-ip-header` without `--public-url` or with a value that is no header name
          */
         fun fromArgs(args: List<String>, home: Path): HostConfig {
             val repeatedSwitches = SWITCHES.filter { switch -> args.count { it == switch } > 1 }
@@ -138,19 +144,21 @@ data class HostConfig(
             val repeated = pairs.groupBy { it.first }.filterValues { it.size > 1 }.keys
             require(repeated.isEmpty()) { "Repeated flags: ${repeated.joinToString()}" }
             val flags = pairs.toMap()
-            val unknown = flags.keys - setOf("--port", "--data-dir", BUDGET_FLAG, NAME_FLAG, PUBLIC_FLAG)
+            val unknown = flags.keys - setOf("--port", "--data-dir", BUDGET_FLAG, NAME_FLAG, PUBLIC_FLAG, CLIENT_IP_FLAG)
             require(unknown.isEmpty()) {
                 "Unknown flags: ${unknown.joinToString()}. bee-host takes --port <n>, --data-dir <dir>, $BUDGET_FLAG <n>, $NAME_FLAG <name>, $PUBLIC_FLAG <url>, " +
-                    "$LAN_FLAG, $NEW_LINK_FLAG and $FORGET_FLAG."
+                    "$CLIENT_IP_FLAG <name>, $LAN_FLAG, $NEW_LINK_FLAG and $FORGET_FLAG."
             }
             val budget = flags[BUDGET_FLAG]?.let { PairingBudget(requireNotNull(it.toIntOrNull()) { "Not a number: $it" }) }
             val port = flags["--port"]?.let { requireNotNull(it.toIntOrNull()?.takeIf { p -> p in 0..65535 }) { "Not a port: $it" } }
             val public = flags[PUBLIC_FLAG]?.let(PublicUrl::parse)
             require(public == null || LAN_FLAG !in args) { "$LAN_FLAG and $PUBLIC_FLAG exclude each other: a public host binds every interface already." }
+            require(public != null || CLIENT_IP_FLAG !in flags) { "$CLIENT_IP_FLAG needs $PUBLIC_FLAG: only a host behind a proxy has one to name its clients." }
+            val client = flags[CLIENT_IP_FLAG]?.let(ForwardedPeer::ClientHeader) ?: ForwardedPeer.AppendedForwardedFor
             return HostConfig(
                 port = port ?: DEFAULT_PORT,
                 reach = when {
-                    public != null -> Reach.Public(public)
+                    public != null -> Reach.Public(public, client)
                     LAN_FLAG in args -> Reach.Lan
                     else -> Reach.Loopback
                 },

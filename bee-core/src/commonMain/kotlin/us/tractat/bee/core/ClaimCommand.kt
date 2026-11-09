@@ -24,7 +24,20 @@ value class ClaimTarget(val value: String) {
  * names a token other than the target's current one is stale and applies as rejected.
  */
 @Serializable
-data class ClaimToken(val term: Long, val index: Long)
+data class ClaimToken(val term: Long, val index: Long) {
+    /** How the board shows it: `<term>:<index>`. */
+    val text: String get() = "$term:$index"
+
+    companion object {
+        /** Reads what [text] writes; throws [IllegalArgumentException] on anything else. */
+        fun parse(text: String): ClaimToken {
+            val parts = text.split(':')
+            val numbers = parts.mapNotNull { it.toLongOrNull() }
+            require(parts.size == 2 && numbers.size == 2) { "Not a claim token: $text" }
+            return ClaimToken(numbers[0], numbers[1])
+        }
+    }
+}
 
 /**
  * One claim proposal's identity, unique by construction: the proposer's Raft [node] id, which kuilt
@@ -61,7 +74,12 @@ sealed interface ClaimCommand {
 
     /**
      * Give [target] back. The holder releases with its current [token]. A release with no token
-     * is any participant's decision on an orphaned target.
+     * is any participant's decision on an orphaned target, fenced by [orphan]: the orphaned hold's
+     * token, naming the orphaning it decides (bee#83).
+     *
+     * [orphan] is null in an entry written before bee#83, which names no orphaning and applies to
+     * the current one, as it did when it committed. It defaults so such an entry still decodes, and
+     * a null is left off the wire, so a holder's release encodes as it always did.
      */
     @Serializable
     @SerialName("release")
@@ -69,15 +87,22 @@ sealed interface ClaimCommand {
         val target: ClaimTarget,
         @Serializable(PeerIdentityAsString::class) val by: PeerIdentity,
         val token: ClaimToken?,
+        val orphan: ClaimToken? = null,
     ) : ClaimCommand
 
-    /** A participant's decision that an orphaned [target] goes [to] someone, with a new token. */
+    /**
+     * A participant's decision that an orphaned [target] goes [to] someone, with a new token. It is
+     * fenced by [orphan], the orphaned hold's token, naming the orphaning it decides (bee#83).
+     *
+     * [orphan] is null in an entry written before bee#83, as for [Release].
+     */
     @Serializable
     @SerialName("reassign")
     data class Reassign(
         val target: ClaimTarget,
         @Serializable(PeerIdentityAsString::class) val to: PeerIdentity,
         @Serializable(PeerIdentityAsString::class) val by: PeerIdentity,
+        val orphan: ClaimToken? = null,
     ) : ClaimCommand
 
     /** The holder finished [target], fenced by its current [token]. */

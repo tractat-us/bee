@@ -122,13 +122,27 @@ class ClaimsClient(
         return verdict.outcome
     }
 
-    /** True if the release committed and freed [target]; false if it was rejected or unavailable. */
-    suspend fun release(target: ClaimTarget, by: PeerIdentity, token: ClaimToken?, timeout: Duration = 10.seconds): Boolean =
+    /**
+     * True if holder [by]'s release of [target] under its current [token] committed and freed it;
+     * false if it was rejected or unavailable. An orphan is released with [releaseOrphan].
+     */
+    suspend fun release(target: ClaimTarget, by: PeerIdentity, token: ClaimToken, timeout: Duration = 10.seconds): Boolean =
         propose(ClaimCommand.Release(target, by, token), timeout)?.second == ClaimStatus.Free
 
-    /** The new token if the reassign committed, else null. */
-    suspend fun reassign(target: ClaimTarget, to: PeerIdentity, by: PeerIdentity, timeout: Duration = 10.seconds): ClaimToken? {
-        val (entry, after) = propose(ClaimCommand.Reassign(target, to, by), timeout) ?: return null
+    /**
+     * True if [by]'s decision to release orphaned [target] committed and freed it. [orphan] is the
+     * orphaned hold's token, naming the orphaning decided: once the target is orphaned under
+     * another, the release is rejected (bee#83).
+     */
+    suspend fun releaseOrphan(target: ClaimTarget, by: PeerIdentity, orphan: ClaimToken, timeout: Duration = 10.seconds): Boolean =
+        propose(ClaimCommand.Release(target, by, token = null, orphan = orphan), timeout)?.second == ClaimStatus.Free
+
+    /**
+     * The new token if the reassign of orphaned [target] committed, else null. [orphan] is the
+     * orphaned hold's token, as for [releaseOrphan].
+     */
+    suspend fun reassign(target: ClaimTarget, to: PeerIdentity, by: PeerIdentity, orphan: ClaimToken, timeout: Duration = 10.seconds): ClaimToken? {
+        val (entry, after) = propose(ClaimCommand.Reassign(target, to, by, orphan), timeout) ?: return null
         return (after as? ClaimStatus.Held)?.takeIf { it.holder == to && it.token == entry.token() }?.token
     }
 
