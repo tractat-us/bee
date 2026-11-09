@@ -1,5 +1,9 @@
 # bee
 
+[![CI](https://github.com/tractat-us/bee/actions/workflows/ci.yml/badge.svg)](https://github.com/tractat-us/bee/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-tractat--us.github.io%2Fbee-ffc107.svg)](https://tractat-us.github.io/bee/)
+[![License](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](LICENSE)
+
 A quilting bee is a group of people gathered around one quilt. Each person works their own corner
 and they talk while they sew.
 
