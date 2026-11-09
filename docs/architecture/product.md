@@ -44,6 +44,21 @@ and building the tool instead of the work is an anti-goal
 - **Bring-your-own identity**, anonymous by default, or SSO or OAuth:
   [#149](https://github.com/tractat-us/bee/issues/149). Under invariant 1 the anonymous path stays
   the default and adds no step to joining.
+- **Every way to install bee, and a one-click join from the board:** [#145](https://github.com/tractat-us/bee/issues/145).
+  Under invariant 1, one path beats many, and the join adds no board chrome.
+- **Hosted bee on a tractat.us subdomain, with admission by a person:** [#145](https://github.com/tractat-us/bee/issues/145)
+  (a peer session is building it). Adds a step for the joiner, so it needs its justification.
+- **The bee app, a Kotlin Multiplatform kuilt app that hosts a board on a phone:**
+  [#156](https://github.com/tractat-us/bee/issues/156). Adds an install path.
+- **A Compose A2UI renderer, in the app and maybe browsers:** [#158](https://github.com/tractat-us/bee/issues/158).
+  No new chrome.
+- **Make host / Evict on the peer bubbles:** [#164](https://github.com/tractat-us/bee/issues/164).
+  Adds controls, so each must name its need.
+- **A board-only view for projectors and the app:** [#168](https://github.com/tractat-us/bee/issues/168).
+  Removes clutter.
+- **HTTPS off loopback with a self-minted certificate:** [#73](https://github.com/tractat-us/bee/issues/73);
+  the design is PR [#163](https://github.com/tractat-us/bee/pull/163) (`transport.md`, not yet merged).
+  Adds a certificate prompt for the joiner unless trust is handled quietly.
 
 ## Settled — don't reopen
 
