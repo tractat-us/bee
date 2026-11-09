@@ -21,6 +21,7 @@ dependencies {
     runtimeOnly(libs.logback)
 
     testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(platform(libs.kuilt.bom))
     testImplementation(libs.kuilt.test)
     // SeedOnHostTest seeds a real host, in process, over the same HTTP MCP endpoint.
@@ -28,8 +29,10 @@ dependencies {
     testImplementation(project(":bee-core"))
 }
 
-// PlanBoardTest reads the real docs/project/plan.yaml, so an edit to it reruns the tests.
+// PlanBoardTest's smoke test reads the real docs/project/plan.yaml, so an edit to it reruns the tests.
+// A failure prints the whole assertion, so a red CI run says which outcome was wrong.
 tasks.test {
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
     inputs.file(layout.projectDirectory.file("../docs/project/plan.yaml"))
         .withPropertyName("plan")
         .withPathSensitivity(PathSensitivity.RELATIVE)

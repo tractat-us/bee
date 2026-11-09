@@ -19,6 +19,7 @@ import kotlinx.coroutines.delay
 import java.net.URLEncoder
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The board's MCP tools, as the seeder calls them: a tool's name and arguments in, its JSON answer out. */
@@ -53,6 +54,7 @@ enum class Outcome {
  */
 class Seeder(
     private val tools: BoardTools,
+    private val settle: Duration = 2.seconds,
     private val retryAfter: Duration = 250.milliseconds,
     private val attempts: Int = 40,
 ) {
