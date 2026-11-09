@@ -168,6 +168,9 @@ val realSocketTests = providers.gradleProperty("bee.realsocket.tests").orNull ==
 
 tasks.named("wasmJsBrowserTest") {
     dependsOn(karmaConfig)
+    // useConfigDirectory isn't an input, so a Karma config edit left the test up to date (bee#93).
+    // Track the sources, not karmaConfigDir: the doFirst below writes fixture.js into that copy.
+    inputs.dir("karma.config.d").withPropertyName("karmaConfig").withPathSensitivity(PathSensitivity.RELATIVE)
     if (realSocketTests) {
         val voter = gradle.sharedServices.registerIfAbsent("beeFixtureVoter", FixtureVoterService::class) {
             // Resolved now, to a plain path: a provider chained on the toolchain service
