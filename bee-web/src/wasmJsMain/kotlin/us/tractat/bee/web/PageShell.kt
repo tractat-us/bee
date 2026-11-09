@@ -46,38 +46,26 @@ class PageShell private constructor(
         }
 
         /**
-         * The bee mark, side-on and flying right, in the text colour (`#brand` sets the page's
-         * accent): the shapes of the favicon (`favicon.svg`), with its cuts letting the bar show
-         * through. Each wing is two quilt patches stitched together (kuilt), and the cuts at the
-         * waist leave a K (Kotlin) in the negative space.
+         * The bee mark, in the text colour (`#brand` sets the page's accent): the shapes of the
+         * favicon (`favicon.svg`), whose stripes are cut out so the bar shows through. Each wing is
+         * two quilt patches stitched together (kuilt).
          */
         private val BEE_MARK: String =
-            """
-            <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true" focusable="false">
-              <defs><mask id="bee-mark-cuts"><rect width="32" height="32" fill="#fff"/>
-                <path d="M8.8 0h1.6v32h-1.6zM12.2 0h1.6v32h-1.6z" fill="#000"/>
-                <path d="M16.6 12V26M17.2 19L22.4 13.8M17.2 19L22.4 24.2" fill="none" stroke="#000" stroke-width="1.3"/>
-              </mask></defs>
-              <g transform="translate(0 1.5)" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                <g transform="translate(15.3 12.8) rotate(35)">
-                  <ellipse rx="4.5" ry="2.4" fill-opacity="0.25" stroke-width="0.8"/>
-                  <path d="M0-2.4A4.5 2.4 0 0 0 0 2.4Z" fill-opacity="0.3" stroke="none"/>
-                  <path d="M0-2V2" fill="none" stroke-width="0.8" stroke-dasharray="1.1 0.9"/>
-                </g>
-                <g transform="translate(16.6 10) rotate(60)">
-                  <ellipse rx="6" ry="3.2" fill-opacity="0.25" stroke-width="1.4"/>
-                  <path d="M0-3.2A6 3.2 0 0 0 0 3.2Z" fill-opacity="0.3" stroke="none"/>
-                  <path d="M0-2.8V2.8" fill="none" stroke-width="0.8" stroke-dasharray="1.1 0.9"/>
-                </g>
-                <path d="M27.6 16.4C28 14.2 29.2 12.8 30.6 12.2" fill="none" stroke-width="1.4"/>
-                <g mask="url(#bee-mark-cuts)" stroke="none">
-                  <path d="M8 14C11 13.2 14.6 13.4 16.2 15C17.2 16.6 17.2 21.4 16.2 23C14.6 24.6 11 24.8 8 24L3 19Z"/>
-                  <circle cx="19.6" cy="19" r="3.8"/>
-                </g>
-                <path d="M27 16L30 19L27 22A3 3 0 0 1 27 16Z" stroke="none"/>
-              </g>
-            </svg>
-            """.trimIndent()
+            """<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true" focusable="false">""" +
+                """<defs><mask id="bee-mark-stripes"><rect width="32" height="32" fill="#fff"/>""" +
+                """<path d="M8 18.2Q16 19.4 24 18.2V20.6Q16 21.8 8 20.6ZM8 23.2Q16 24.4 24 23.2V25.6Q16 26.8 8 25.6Z" fill="#000"/></mask></defs>""" +
+                """<g fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">""" +
+                """<path d="M14.4 7.6C13.6 5 12 3.6 9.6 3.2M17.6 7.6C18.4 5 20 3.6 22.4 3.2" fill="none" stroke-width="1.8"/>""" +
+                wing(placed = "translate(8.6 12.6) rotate(28)", outerSweep = 0) +
+                wing(placed = "translate(23.4 12.6) rotate(-28)", outerSweep = 1) +
+                """<circle cx="16" cy="10" r="3" stroke="none"/>""" +
+                """<ellipse cx="16" cy="21.6" rx="5.6" ry="7.6" mask="url(#bee-mark-stripes)" stroke="none"/></g></svg>"""
+
+        /** One wing, [placed] beside the body: its outer patch (drawn by the arc's [outerSweep]) a shade darker, and a stitched seam between the two. */
+        private fun wing(placed: String, outerSweep: Int): String =
+            """<g transform="$placed"><ellipse rx="6" ry="3.6" fill-opacity="0.25" stroke-width="1.8"/>""" +
+                """<path d="M0-3.6A6 3.6 0 0 $outerSweep 0 3.6Z" fill-opacity="0.3" stroke="none"/>""" +
+                """<path d="M0-3.2V3.2" fill="none" stroke-width="0.8" stroke-dasharray="1.1 0.9"/></g>"""
 
         private fun element(tag: String, id: String): Element = document.createElement(tag).also { it.id = id }
     }
