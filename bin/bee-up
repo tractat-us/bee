@@ -67,8 +67,9 @@ if [ "$stop" = 1 ]; then
     exit 0
 fi
 
-args=(--port "$port")
-[ -n "$data_dir" ] && args+=(--data-dir "$data_dir")
+# The board lives under bee_home like everything else here, so a scratch BEE_HOME shares nothing
+# with ~/.bee. Named in host.args too, so a reset restarts the host on the same dir.
+args=(--port "$port" --data-dir "${data_dir:-$bee_home/host}")
 [ "$lan" = 1 ] && args+=(--lan)
 
 # A reset restarts the running host as it was started, on its own port and data dir, whatever
