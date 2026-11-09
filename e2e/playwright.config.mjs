@@ -39,6 +39,8 @@ const hasSpecs = readdirSync(here).some((f) => f.endsWith('.spec.mjs'));
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.mjs',
+  // CI's demo job runs demo-paths.spec.mjs as a merge gate; the smoke job skips it with this.
+  testIgnore: process.env.BEE_E2E_SKIP_DEMO ? 'demo-paths.spec.mjs' : undefined,
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
   // Every spec shares one host, its board and its seeded fixtures, so spec files run one at a
