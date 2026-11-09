@@ -40,9 +40,10 @@ private val logger = KotlinLogging.logger {}
 /**
  * The bridges a host runs on behalf of MCP clients that reach it over Streamable HTTP at [PATH], so
  * a coworker's Claude joins with a URL and nothing installed. Invariant: **each MCP session has one
- * bridge, and that bridge departs once, when its session closes**: `Left` when the client deletes
- * the session, its transport closes, or the host stops ([close]); `Quiet` when the session idles
- * past [idleAfter] ([IDLE_AFTER]).
+ * bridge, and that bridge departs at most once, when its session closes**: `Left` when the client
+ * deletes the session or its transport closes; `Quiet` when the session idles past [idleAfter]
+ * ([IDLE_AFTER]). A host that stops ([close]) departs none: its sessions' identities are [kept],
+ * so the session each client opens on the next host, at the same URL, is the same peer (bee#126).
  *
  * Each bridge is a [BridgePeer], the same peer stdio's `bee-mcp` is: a replica and a claims learner
  * dialling the host's own board and claims sockets over loopback, so presence, claims, `/clear`
@@ -57,6 +58,7 @@ private val logger = KotlinLogging.logger {}
  * Who may reach [PATH] is the host's business: the host gates it as it gates the board's sockets.
  *
  * @param scope the host's scope: the idle check and every bridge's work run under it
+ * @param kept the identities of the sessions the last host on this data dir had, and of these
  * @param checkEvery how often the idle check runs
  * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
  */
@@ -64,6 +66,7 @@ class HttpBridges(
     scope: CoroutineScope,
     private val clock: () -> Instant,
     private val random: Random,
+    private val kept: KeptIdentities,
     private val idleAfter: Duration = IDLE_AFTER,
     private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
     private val maxSessions: Int = MAX_SESSIONS,
@@ -74,6 +77,9 @@ class HttpBridges(
     private val open = ConcurrentHashMap.newKeySet<Session>()
     private val byId = ConcurrentHashMap<String, Session>()
     private val departures = ConcurrentHashMap.newKeySet<Job>()
+
+    /** Set once [close] begins: a session that closes from then on ends with its host, not by itself. */
+    @Volatile private var stopping = false
 
     /** How many MCP sessions have a bridge now. */
     val count: Int get() = open.size
@@ -107,10 +113,12 @@ class HttpBridges(
     }
 
     /**
-     * Ends every session, each departing `Left`, and waits for those departures. Call it before the
-     * host's sockets and voter stop, or no `Depart` can commit.
+     * Ends every session without departing it, since its client hasn't gone: its identities stay
+     * [kept], for the session the client opens on the next host. Waits for any departure already
+     * under way, so call it before the host's sockets and voter stop.
      */
     suspend fun close() = withContext(NonCancellable) {
+        stopping = true
         open.toList().forEach { it.end() }
         departures.toList().joinAll()
         supervisor.cancelAndJoin()
@@ -118,19 +126,26 @@ class HttpBridges(
     }
 
     /**
-     * A new MCP session's server, over a fresh bridge named for the call's `?name=`. The bridge
-     * stays off the board until the session initializes ([bind]): Claude Code's first POST offers
-     * a protocol version this SDK refuses, then retries, and that first session must leave no trace.
+     * A new MCP session's server, over a bridge named for the call's `?name=`: the identities the
+     * last host kept for that name and the call's key, if it kept one session's ([KeptIdentities]),
+     * else a fresh one. The bridge stays off the board until the session initializes ([bind]):
+     * Claude Code's first POST offers a protocol version this SDK refuses, then retries, and that
+     * first session must leave no trace.
      */
     private fun open(context: RoutingContext): Server {
         val call = context.call
         val name = sessionNameFrom(call.request.queryParameters[NAME_PARAM])
+        val caller = Caller.of(call.request.queryParameters[KEY_PARAM])
+        val resumed = kept.pickUp(name, caller)
         // The call arrived on the host's own port: the bridge dials it on loopback, which needs no key.
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
-        val peer = BridgePeer.join(host, name, http, bridgeScope, random, clock)
+        val peer = when (resumed) {
+            null -> BridgePeer.join(host, name, http, bridgeScope, random, clock)
+            else -> BridgePeer.join(host, name, http, bridgeScope, random, clock, resumed.current, resumed.held)
+        }
         val server = BeeServer.create(peer.bridge)
-        val session = Session(peer, bridgeScope, server)
+        val session = Session(peer, bridgeScope, server, name, caller, resumed)
         open += session
         call.attributes.put(OPENING, session)
         // One server per session, so the one session it connects is this one: its close is the bridge's.
@@ -139,7 +154,16 @@ class HttpBridges(
     }
 
     /** One MCP session's bridge and how recently its client was heard from. */
-    private inner class Session(val peer: BridgePeer, private val bridgeScope: CoroutineScope, val server: Server) {
+    @Suppress("LongParameterList")
+    private inner class Session(
+        val peer: BridgePeer,
+        private val bridgeScope: CoroutineScope,
+        val server: Server,
+        private val name: String,
+        private val caller: Caller,
+        /** What the last host kept for this session's client, until the session starts and keeps its own. */
+        private val resumed: KeptSession?,
+    ) {
         private val inFlight = AtomicInteger()
 
         @Volatile private var lastActive: Instant = clock()
@@ -175,8 +199,17 @@ class HttpBridges(
                 byId[sessionId] = this
             }
             peer.start()
+            // Kept as it is now, and again each time it retires an identity, until it departs.
+            bridgeScope.launch(CoroutineName("http-bridge-kept")) {
+                peer.identity.current.collect { current ->
+                    synchronized(lifecycle) {
+                        if (!departing.get()) kept.live(this@Session, KeptSession(name, caller, current, peer.identity.held))
+                    }
+                }
+            }
             bridgeScope.launch { peer.bridge.announce() }
-            logger.info { "An MCP client over HTTP joins as ${peer.bridge.self}." }
+            val again = if (resumed != null) " again, as the last host kept it" else ""
+            logger.info { "An MCP client over HTTP joins$again as ${peer.bridge.self}." }
         }
 
         fun idle(now: Instant): Boolean = inFlight.get() == 0 && now - lastActive >= idleAfter
@@ -201,7 +234,8 @@ class HttpBridges(
 
         /**
          * The session closed: departs the bridge, once, then ends its work. A bridge whose session
-         * never initialized was never on the board, so it has nothing to depart.
+         * never initialized was never on the board, so it has nothing to depart, and what it picked
+         * up waits again. One that closes with its host departs nothing either, and stays kept.
          */
         fun depart() {
             val started = synchronized(lifecycle) {
@@ -209,15 +243,22 @@ class HttpBridges(
                 id
             }
             val why = reason
+            val withHost = stopping
+            if (started == null) resumed?.let(kept::putBack)
             val job = work.launch(CoroutineName("http-bridge-depart")) {
                 val who = peer.bridge.self
                 val committed = try {
                     if (started == null) return@launch
+                    if (withHost) {
+                        logger.info { "$who's MCP session ends with its host; kept for its client's next session." }
+                        return@launch
+                    }
                     // A session can end before its claims link is up (a client that only checks the
                     // server, then deletes, on a slow machine): the Depart waits for the link and
                     // is proposed until it commits, as the host has no exit deadline to beat.
                     withTimeoutOrNull(DEPART_BOUND) { peer.bridge.departCommitted(why) } != null
                 } finally {
+                    if (!withHost) kept.drop(this@Session)
                     open -= this@Session
                     started?.let { byId.remove(it, this@Session) }
                     peer.board.close()
@@ -253,6 +294,9 @@ class HttpBridges(
 
         /** The query parameter naming the person whose Claude this is. */
         const val NAME_PARAM: String = "name"
+
+        /** The query parameter carrying the caller's key, off the laptop: what the host gates `/mcp` on. */
+        const val KEY_PARAM: String = "k"
 
         /**
          * How long a session may go with no request in flight and no GET stream open before it
