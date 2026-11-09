@@ -279,7 +279,9 @@ test('the demo, beat by beat', async ({ browser }) => {
     for (const page of [rig.ownerPage, rig.teammatePage]) await expect(page.locator('#status')).toHaveText(/^offline/, { timeout: 15_000 });
 
     const out = beeUp(['--name', 'iain', '--data-dir', rig.dataDir, '--port', String(rig.port), '--no-open']);
-    expect(out).toMatch(/restored as .*: [1-9][0-9]* surfaces/);
+    // The host's own receipt is what pins its restore: the open pages push their copies back at
+    // first contact, so the checks on them below pass on a host that restored nothing.
+    expect(out).toMatch(/restored as .*: 3 surfaces, [1-9][0-9]* records/);
     // The same join link: keys survive a restart (#109).
     expect(clipboard()).toBe(rig.link);
 
