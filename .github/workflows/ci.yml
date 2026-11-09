@@ -19,8 +19,9 @@ name: ci
 # its `if:` reports as passing to branch protection, so a `!cancelled()` gate would
 # turn a cancelled run green. Keep the job name stable — branch protection names it.
 #
-# The repo is private, so Actions minutes are billed: ubuntu-latest only, no matrix,
-# a timeout on every job, drafts skipped, superseded PR runs cancelled.
+# The repo is public, so standard runners cost nothing, but the org shares one queue of
+# concurrent jobs: ubuntu-latest only, no matrix, a timeout on every job, drafts skipped,
+# superseded PR runs cancelled.
 
 on:
   push:
