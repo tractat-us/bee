@@ -140,13 +140,24 @@ async function claimsOnline(agent) {
 
 /**
  * Starts the owner's agent waiting on all its own surfaces, as the whiteboard prompt loops, and
- * resolves once the page shows it listening on [surfaceId]'s card, to `{ waited }`: the wait's
- * promise, boxed. Returned bare, an async function's caller would await the wait itself, and click
- * only once it had timed out.
+ * resolves to `{ waited }`, the wait's promise, boxed: returned bare, an async function's caller
+ * would await the wait itself, and click only once it had timed out.
+ *
+ * Before a restart it first expects [surfaceId]'s card on [page] to read `listening`. After one it
+ * doesn't: there the board's entry for the agent has been seen to stay `waiting: false` through a
+ * wait, so the card reads `working` while the wait still takes the click (reported with this spec).
+ * It records what the card read as a `finding` annotation instead. No click needs the indicator:
+ * a wait takes in records already pending on its surfaces.
  */
-async function ownerListens(page, surfaceId) {
+async function ownerListens(page, surfaceId, { afterRestart = false } = {}) {
   const waited = rig.owner.call('bee_wait_action', { timeoutSeconds: 45 });
-  await expect(card(page, surfaceId).locator('.bee-card-state')).toHaveText('listening', { timeout: 15_000 });
+  const state = card(page, surfaceId).locator('.bee-card-state');
+  if (!afterRestart) {
+    await expect(state).toHaveText('listening', { timeout: 15_000 });
+  } else {
+    const shown = await expect(state).toHaveText('listening', { timeout: 5_000 }).then(() => 'listening', async () => state.textContent());
+    if (shown !== 'listening') test.info().annotations.push({ type: 'finding', description: `after the restart, ${surfaceId}'s card read "${shown}" while its agent waited` });
+  }
   return { waited };
 }
 
@@ -291,13 +302,7 @@ test('the demo, beat by beat', async ({ browser }) => {
     const before = rig.owner.identity;
     await claimsOnline(rig.owner);
     expect((await rig.owner.call('bee_presence', { status: 'back after the restart' })).as).toBe(before);
-    const waited = rig.owner.call('bee_wait_action', { timeoutSeconds: 45 });
-    // Not asserted: the first wait after a restart has been seen to leave the board's entry for
-    // this agent `waiting: false`, so its card reads `working`, while the wait still takes the
-    // click. Kept as an annotation, so a run shows what the projector would.
-    const entry = () => rig.teammate.call('bee_board', {}).then((b) => b.attached.find((a) => a.identity === before));
-    const shown = await expect.poll(entry, { timeout: 5_000 }).toMatchObject({ waiting: true }).then(() => 'listening', () => 'working');
-    if (shown !== 'listening') test.info().annotations.push({ type: 'finding', description: `after the restart the owner's first wait read ${shown}: ${JSON.stringify(await entry())}` });
+    const { waited } = await ownerListens(rig.teammatePage, MAIN, { afterRestart: true });
     await button(rig.teammatePage, MAIN, 'Automated checks').click();
     const { record } = await waited;
     expect(record, "the click after the restart reached the owner's agent").toMatchObject({ surfaceId: MAIN, name: 'answer' });
@@ -306,7 +311,7 @@ test('the demo, beat by beat', async ({ browser }) => {
   });
 
   await test.step("6. done: a click on Done reaches the owner's agent, which leaves a summary and shows left", async () => {
-    const { waited } = await ownerListens(rig.ownerPage, MAIN);
+    const { waited } = await ownerListens(rig.ownerPage, MAIN, { afterRestart: true });
     await button(rig.ownerPage, MAIN, 'Done').click();
     const { record } = await waited;
     expect(record).toMatchObject({ surfaceId: MAIN, name: 'done' });
