@@ -183,6 +183,19 @@ Claude session ── bee-mcp                                           ┘     
   identity as `Left` (§6.4) before it exits. It waits at most 1 s, so an exit never hangs on a
   host that's gone, and it queues nothing: a `Depart` that doesn't commit leaves the host to
   depart it `Crashed` once its link is lost. A SIGKILL says nothing, so it still reads as a crash.
+- **The host may run a bridge for a session that reaches it over HTTP (design call, bee#121).**
+  A Claude with nothing installed registers `<host>/mcp?k=<key>&name=<you>` as an HTTP MCP server.
+  The host serves MCP Streamable HTTP there, behind the same key gate as the board's sockets, and
+  runs one bridge per MCP session in its own JVM. That bridge is still a peer replica: it dials
+  the host's own board and claims sockets over loopback, posts presence, holds claims and departs
+  like a stdio bridge, and it offers the same tools, prompts and instructions. It reaches the board
+  only once the session initializes. It departs `Left` on a DELETE, a closed transport or a host
+  stop, and `Quiet` once the session has had no request in flight and no GET stream open for two
+  minutes. Claude Code holds its GET stream for the whole session and exits without a DELETE, so
+  a live session never idles and one that exited departs two minutes later. **The trade-off:** the
+  host now holds those sessions' liveness, which on the stdio path the session's own process
+  holds. A host restart ends them, nothing on the session's machine can say it crashed, and
+  `/clear` has no hook to reach them.
 - Gives each session a **peer identity** (session name plus a fresh instance id), distinct from
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a

@@ -23,6 +23,8 @@ dependencies {
     implementation(platform(libs.ktor.bom))
     implementation(project(":bee-core"))
     implementation(project(":bee-a2ui"))
+    // The bridge, which the host runs for each MCP client over HTTP (HttpBridges).
+    implementation(project(":bee-mcp"))
     implementation(libs.kuilt.websocket)
     implementation(libs.kuilt.gossip)
     implementation(libs.kuilt.cluster)
@@ -52,6 +54,8 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.cio)
     testImplementation(libs.ktor.client.websockets)
+    // McpHttpTest drives /mcp with the SDK's own Streamable HTTP client.
+    testImplementation(libs.mcp.kotlin.sdk.client)
     // HostRestartTest reads what the host logs when saving the board fails.
     testImplementation(libs.logback)
 

@@ -410,6 +410,21 @@ class BeeBridge(
         retiring.withLock { claims.link.value?.depart(self, DepartReason.Left) }
     } == true
 
+    /**
+     * Departs this bridge's identity as [reason] and suspends until the `Depart` has committed: on
+     * the live link now, or, with none up yet, queued on [claims] and proposed once one is. For a
+     * bridge the host runs ([HttpBridges]), which outlives its session and has no exit to beat;
+     * the caller bounds the wait.
+     */
+    suspend fun departCommitted(reason: DepartReason) {
+        val who = retiring.withLock {
+            val who = self
+            if (claims.depart(who, reason)) return
+            who
+        }
+        claims.pendingDeparts.first { pending -> pending.none { it.first == who } }
+    }
+
     /** Sets the "working on…" line beside this session on the board. */
     suspend fun status(line: String?) {
         val by = beforeWrite()

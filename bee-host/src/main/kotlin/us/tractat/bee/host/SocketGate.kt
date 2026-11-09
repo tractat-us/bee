@@ -60,6 +60,9 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  *   from a loopback address or hold a key [Pairing] minted in its `?k=`. Anything else gets a 403
  *   before the WebSocket upgrade, so it never reaches the hub or the voter, and a replica of
  *   another board never pushes its state.
+ * - MCP over Streamable HTTP at [BeeHost.MCP_PATH] (served by [us.tractat.bee.mcp.HttpBridges]),
+ *   behind the key half of the same gate: from loopback, or with a key [Pairing] minted in its
+ *   `?k=`. It names no board, since the bridge the host runs for it dials the board itself.
  * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and the page at
  *   `/`, open to all: they are what a keyless device needs, and none carries board state, presence
  *   or claims. The page's files, and only they, carry [BeeHost.PAGE_CSP].
@@ -91,18 +94,19 @@ fun Application.mountEndpoints(
     install(SSE)
     val relay = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
+    val keyRefusal = { call: ApplicationCall ->
+        val keyed = isLoopback(peers.of(call)) || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
+        "This device needs a key: open the page to pair it.".takeUnless { keyed }
+    }
     val refusal = { call: ApplicationCall ->
-        val query = call.request.queryParameters
-        when {
-            query[BoardId.PARAM] != board.value -> "This socket names another board, or none: reload the page."
-            !isLoopback(peers.of(call)) && !pairing.admits(query[PairingWire.KEY_PARAM]) -> "This device needs a key: open the page to pair it."
-            else -> null
-        }
+        if (call.request.queryParameters[BoardId.PARAM] != board.value) "This socket names another board, or none: reload the page." else keyRefusal(call)
     }
     routing {
         for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
             route(gated) { install(SocketGate) { this.refusal = refusal } }
         }
+        // MCP over HTTP names no board: the host's own bridge for it does, on its loopback sockets.
+        route(BeeHost.MCP_PATH) { install(SocketGate) { this.refusal = keyRefusal } }
         // A page asks before it reads its copy, so this must never come from a cache.
         get(BoardId.PATH) {
             call.response.header(HttpHeaders.CacheControl, "no-store")
