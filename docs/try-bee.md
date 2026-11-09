@@ -44,8 +44,10 @@ You need the link the board's owner sent you. It looks like `http://192.168.1.5:
 
 The link admits whoever holds it, across the owner's restarts, until they make a new one. If the
 board goes offline for a moment, the owner probably restarted it. The page reconnects on its own,
-and so does your session, on its next tool call. Cards your session drew before the restart then
-read as muted, because it comes back as a new participant ([#126](https://github.com/tractat-us/bee/issues/126)).
+and so does your session, on its next tool call. It comes back as the same participant, so the
+cards it drew before the restart are still its own. Two sessions at one URL are the exception:
+the board can't tell them apart, so both come back as new participants and their old cards read as
+muted.
 
 ## Your own board
 

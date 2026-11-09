@@ -378,9 +378,11 @@ serves MCP over HTTP at `/mcp` and runs a bridge for each session there, so the 
 same tools, prompt and instructions as the stdio bridge.
 
 This is the path for a teammate's machine. On the host's own machine, keep the kit's bridge:
-`claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'`, which `bee-up` prints. That
-bridge keeps its identity across a host restart, and an HTTP session doesn't
-([#126](https://github.com/tractat-us/bee/issues/126)).
+`claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'`, which `bee-up` prints. Each
+session on that bridge keeps its own identity across a host restart. An HTTP session keeps its
+identity too, since the host remembers which name and key each live session joined with. But two
+sessions at one URL look alike, so neither keeps its identity, and every session on the host's
+machine shares the keyless URL.
 
 1. Start the host with `bee-up` (or `bee-host --lan`). `bee-up` prints the line below with your
    address, port and key filled in.

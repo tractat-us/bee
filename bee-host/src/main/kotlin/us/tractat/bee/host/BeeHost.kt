@@ -78,8 +78,8 @@ class BeeHost private constructor(
 
     /**
      * Stops the host: the HTTP bridges first, departing none, so each comes back as itself on the
-     * next host (bee#126), though one whose client had just left still commits its `Left`; then join requests and orphan decisions, since they write through the relay, then
-     * the core, whose voter's last mirror and server's last write are on the board before its last
+     * next host (bee#126), though one whose client had just left still commits its `Left`; then
+     * join requests and orphan decisions, since they write through the relay, then the core, whose voter's last mirror and server's last write are on the board before its last
      * save. The data dir goes last, so the next host on it starts after that save.
      */
     override fun close() {
