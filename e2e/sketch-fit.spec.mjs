@@ -68,11 +68,15 @@ async function leaveAndReturn(page, at) {
   await page.mouse.move(at.x, at.y);
 }
 
-/** Counts, from now on, each time sketch [id]'s Send is disabled; `disabledCount` reads it. */
+/** Counts, from now on, each time sketch [id]'s Send is disarmed; `disabledCount` reads it. */
 const countDisables = (page, id) => send(page, id).evaluate((button) => {
   window.beeDisables = 0;
-  new MutationObserver(() => { if (button.disabled) window.beeDisables += 1; })
-    .observe(button, { attributes: true, attributeFilter: ['disabled'] });
+  new MutationObserver((changes) => {
+    for (const change of changes) {
+      const now = change.attributeName === 'disabled' ? button.disabled : button.getAttribute('aria-disabled') === 'true';
+      if (now && change.oldValue !== (change.attributeName === 'disabled' ? '' : 'true')) window.beeDisables += 1;
+    }
+  }).observe(button, { attributes: true, attributeOldValue: true, attributeFilter: ['disabled', 'aria-disabled'] });
 });
 const disabledCount = (page) => page.evaluate(() => window.beeDisables);
 
