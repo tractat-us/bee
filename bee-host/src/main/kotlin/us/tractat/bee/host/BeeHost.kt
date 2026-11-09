@@ -3,18 +3,23 @@ package us.tractat.bee.host
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTable
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
@@ -29,6 +34,7 @@ import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.asKotlinRandom
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -57,6 +63,8 @@ class BeeHost private constructor(
     private val orphanDecisions: Job,
     /** The bridges this host runs for MCP clients over HTTP, at [MCP_PATH]. */
     val bridges: HttpBridges,
+    /** Departs each session the last host kept that no client came back for ([retireUnclaimed]). */
+    private val unclaimed: Job,
     /** The host's hold on [HostConfig.dataDir], let go once [close] has saved the board. */
     private val dataDir: DataDirLock,
 ) : AutoCloseable {
@@ -79,13 +87,16 @@ class BeeHost private constructor(
     /**
      * Stops the host: the HTTP bridges first, departing none, so each comes back as itself on the
      * next host (bee#126), though one whose client had just left still commits its `Left`; then
-     * join requests and orphan decisions, since they write through the relay, then the core, whose voter's last mirror and server's last write are on the board before its last
-     * save. The data dir goes last, so the next host on it starts after that save.
+     * the retiring of kept sessions nobody came back for, join requests and orphan decisions, since
+     * they write through the voter or the relay, then the core, whose voter's last mirror and
+     * server's last write are on the board before its last save. The data dir goes last, so the
+     * next host on it starts after that save.
      */
     override fun close() {
         dataDir.use {
             runBlocking {
                 bridges.close()
+                unclaimed.cancelAndJoin()
                 joinRequests.cancelAndJoin()
                 orphanDecisions.cancelAndJoin()
                 core.close()
@@ -152,9 +163,11 @@ class BeeHost private constructor(
             // departure is known, and a kept identity a session takes that was retired is retired
             // again at its first write, as any bridge's is (`BeeBridge.beforeWrite`).
             val board = AtomicReference<StateFlow<BoardState>?>()
-            val kept = KeptIdentities(KeptSessionFile(config.dataDir.resolve(KeptSessionFile.NAME))) {
-                board.get()?.value?.departures().orEmpty().map { it.identity }.toSet()
-            }
+            val kept = KeptIdentities(
+                KeptSessionFile(config.dataDir.resolve(KeptSessionFile.NAME)),
+                retired = { board.get()?.value?.departures().orEmpty().map { it.identity }.toSet() },
+                clock = clock,
+            )
             val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
@@ -171,7 +184,8 @@ class BeeHost private constructor(
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
-                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, lock)
+                val unclaimed = retireUnclaimed(scope, kept, core.voter, config.mcpUnclaimedAfter, clock)
+                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, unclaimed, lock)
             } catch (failure: Throwable) {
                 bridges.close()
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
@@ -191,6 +205,34 @@ internal fun hostOrphanDecisions(scope: CoroutineScope, relay: BoardRelay, clock
 }
 
 private val orphanLog = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
+
+private val unclaimedLog = KotlinLogging.logger("us.tractat.bee.host.UnclaimedSessions")
+
+/**
+ * Departs each MCP-over-HTTP session the last host kept ([KeptIdentities]) that no session picked
+ * up within [after], `Quiet`, through [voter], then forgets it (bee#126). Nothing else would: no
+ * peer posts for it on this board, so `Departures`' quiet rule never sees it, and a second one
+ * under the same name and key would keep that URL from ever resuming. A `Depart` that fails is
+ * logged and tried again at the next check.
+ */
+internal fun retireUnclaimed(scope: CoroutineScope, kept: KeptIdentities, voter: ClaimsVoter, after: Duration, clock: () -> Instant): Job =
+    scope.launch(CoroutineName("unclaimed-sessions")) {
+        val every = minOf(Departures.CHECK_EVERY, after / 4)
+        while (true) {
+            delay(every)
+            kept.unclaimed(clock() - after).forEach { session ->
+                try {
+                    voter.depart(session.current, DepartReason.Quiet)
+                    kept.forget(session)
+                    unclaimedLog.info { "${session.current}'s client never came back within $after; departed it Quiet." }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    unclaimedLog.warn(failure) { "Couldn't depart ${session.current}, kept for a client that never came back; trying again." }
+                }
+            }
+        }
+    }
 
 /** The voter's [ClaimMirror] onto [relay]'s board: the claims mirror and the departed list (A2). */
 fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.mutate { it.mirrorClaims(relay.replica, table) } }
