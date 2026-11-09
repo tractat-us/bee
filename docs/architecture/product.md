@@ -81,7 +81,7 @@ and building the tool instead of the work is an anti-goal
   designed in [`access.md`](access.md#hosts-and-eviction). Right-click on a laptop, long-press on
   a phone, and a host sees **Make host** (or **Not host**, on a host) and **Evict**. Under
   invariant 1:
-  - **The need:** taking one device off a board. Today the only way is `--forget-devices`, a
+  - **It meets a need nothing else does**, taking one device off a board. Today the only way is `--forget-devices`, a
     restart that cuts off everyone. Make host meets the second need, someone besides the owner
     who can do that while the owner is away.
   - **Hidden until asked for.** The menu adds nothing to the strip. A member's page has no menu,
