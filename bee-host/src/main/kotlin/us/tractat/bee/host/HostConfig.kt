@@ -34,6 +34,8 @@ fun lanName(): String = InetAddress.getLocalHost().hostName.let { if ('.' in it)
  * @param keyReset what this boot does to the keys kept in [dataDir] ([HostKeys]): by default, nothing
  * @param mcpIdleAfter how long an MCP session over HTTP may idle before its bridge departs
  *   ([HttpBridges.IDLE_AFTER]); not a flag, a test's
+ * @param mcpMaxSessions how many MCP sessions over HTTP may have a bridge at once
+ *   ([HttpBridges.MAX_SESSIONS]); not a flag, a test's
  */
 data class HostConfig(
     val port: Int = DEFAULT_PORT,
@@ -43,6 +45,7 @@ data class HostConfig(
     val hostNames: Set<String> = emptySet(),
     val keyReset: KeyReset = KeyReset.Keep,
     val mcpIdleAfter: Duration = HttpBridges.IDLE_AFTER,
+    val mcpMaxSessions: Int = HttpBridges.MAX_SESSIONS,
 ) {
     /** The address the host binds, from [reach]. */
     val bind: String get() = reach.bind

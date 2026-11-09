@@ -213,17 +213,17 @@ class HttpBridges(
                 val who = peer.bridge.self
                 val committed = try {
                     if (started == null) return@launch
-                    // A session can end before its claims link is up (a client that only checks
-                    // the server, then deletes): wait for it, briefly, so the Depart has a link.
-                    withTimeoutOrNull(CLAIMS_BOUND) { peer.bridge.awaitClaims() }
-                    peer.bridge.leave(LEAVE_BOUND, why)
+                    // A session can end before its claims link is up (a client that only checks the
+                    // server, then deletes, on a slow machine): the Depart waits for the link and
+                    // is proposed until it commits, as the host has no exit deadline to beat.
+                    withTimeoutOrNull(DEPART_BOUND) { peer.bridge.departCommitted(why) } != null
                 } finally {
                     open -= this@Session
                     started?.let { byId.remove(it, this@Session) }
                     peer.board.close()
                     bridgeScope.cancel()
                 }
-                logger.info { "$who's MCP session ended; its Depart($why) ${if (committed) "committed" else "didn't commit, so the host departs it as crashed"}." }
+                logger.info { "$who's MCP session ended; its Depart($why) ${if (committed) "committed" else "didn't commit within $DEPART_BOUND"}." }
             }
             departures += job
             job.invokeOnCompletion { departures -= job }
@@ -280,10 +280,11 @@ class HttpBridges(
         const val MAX_SESSIONS: Int = 32
 
         /**
-         * How long a departing bridge waits for its claims link to come up, if it isn't yet. On
-         * loopback it comes up in tens of milliseconds; this only bounds a host that is stopping.
+         * How long a departing bridge keeps proposing its `Depart`, its claims link coming up first
+         * if it isn't yet. On loopback that takes tens of milliseconds; this bounds a host that is
+         * stopping, whose `close` waits on it.
          */
-        private val CLAIMS_BOUND: Duration = 5.seconds
+        private val DEPART_BOUND: Duration = 10.seconds
 
         /** Every GET stream sends a comment this often, well inside any client's read timeout. */
         private val HEARTBEAT: Duration = 15.seconds

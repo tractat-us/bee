@@ -113,7 +113,7 @@ private fun endOnAnotherBoard(board: BoardClient, pin: BoardPin, http: HttpClien
  * at once. So this bound is longer than that grace, and a SIGKILL before the commit leaves the
  * host to depart the identity `Crashed`.
  */
-internal val LEAVE_BOUND = 1.seconds
+private val LEAVE_BOUND = 1.seconds
 
 /**
  * Departs [bridge]'s identity as [us.tractat.bee.core.DepartReason.Left] as the session ends,

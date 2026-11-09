@@ -136,26 +136,28 @@ class McpHttpTest {
     }
 
     /**
-     * The host runs at most [HttpBridges.MAX_SESSIONS] bridges: the next `initialize` is refused
-     * with a 503 and makes none. A session that ends frees its place.
+     * The host runs at most [HostConfig.mcpMaxSessions] bridges ([HttpBridges.MAX_SESSIONS], 32, in
+     * production): the next `initialize` is refused with a 503 and makes none. A session that ends
+     * frees its place. The test caps at [CAP], so a full house costs a few bridges, not 32.
      */
     @Test
     fun theHostRunsAtMostMaxSessionsBridges() = runBlocking {
-        val host = startHost()
+        val host = startHost(maxSessions = CAP)
         try {
             val url = url(host, "?name=many")
-            val opened = List(HttpBridges.MAX_SESSIONS) { http.post(url) { initializeBody() } }
-            val full = withTimeout(TIMEOUT) { awaitCount(host, HttpBridges.MAX_SESSIONS) }
+            val opened = List(CAP) { http.post(url) { initializeBody() } }
+            val full = withTimeout(TIMEOUT) { awaitCount(host, CAP) }
             val refused = http.post(url) { initializeBody() }.status
             val afterRefusal = host.bridges.count
             http.delete(url) { header(SESSION_HEADER, requireNotNull(opened.first().headers[SESSION_HEADER])) }
-            withTimeout(TIMEOUT) { awaitCount(host, HttpBridges.MAX_SESSIONS - 1) }
+            withTimeout(TIMEOUT) { awaitCount(host, CAP - 1) }
             val again = http.post(url) { initializeBody() }.status
             assertAll(
                 { assertTrue(opened.all { it.status == HttpStatusCode.OK }, "rig: every session up to the cap opens") },
-                { assertEquals(HttpBridges.MAX_SESSIONS, full, "rig: one bridge per session") },
+                { assertEquals(CAP, full, "rig: one bridge per session") },
                 { assertEquals(HttpStatusCode.ServiceUnavailable, refused, "one more is refused") },
-                { assertEquals(HttpBridges.MAX_SESSIONS, afterRefusal, "the refused one made no bridge") },
+                { assertEquals(CAP, afterRefusal, "the refused one made no bridge") },
+                { assertEquals(32, HostConfig(dataDir = dir).mcpMaxSessions, "production caps at 32") },
                 { assertEquals(HttpStatusCode.OK, again, "a session that ended frees its place") },
             )
         } finally {
@@ -240,8 +242,11 @@ class McpHttpTest {
         }
     }
 
-    private suspend fun startHost(idleAfter: Duration = HttpBridges.IDLE_AFTER, peers: PeerAddress = PeerAddress.DIRECT) =
-        BeeHost.start(scope, HostConfig(port = 0, dataDir = dir, mcpIdleAfter = idleAfter), peers)
+    private suspend fun startHost(
+        idleAfter: Duration = HttpBridges.IDLE_AFTER,
+        peers: PeerAddress = PeerAddress.DIRECT,
+        maxSessions: Int = HttpBridges.MAX_SESSIONS,
+    ) = BeeHost.start(scope, HostConfig(port = 0, dataDir = dir, mcpIdleAfter = idleAfter, mcpMaxSessions = maxSessions), peers)
 
     private fun url(host: BeeHost, query: String) = "http://127.0.0.1:${host.port}${BeeHost.MCP_PATH}$query"
 
@@ -300,5 +305,6 @@ class McpHttpTest {
         val IDLE = 1.seconds
         const val ANOTHER_MACHINE = "192.168.1.20"
         const val SESSION_HEADER = "Mcp-Session-Id"
+        const val CAP = 3
     }
 }
