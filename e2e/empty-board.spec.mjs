@@ -50,7 +50,7 @@ test('an empty board shows how to start, and the first surface replaces the hint
   // The hint offers the bar's "Bring your Claude" panel too.
   await hint(page).locator('.bring-claude-open').click();
   await expect(page.locator('#bring-claude')).toBeVisible();
-  await expect(page.locator('#bring-claude-command')).toContainText('/mcp?name=alex');
+  await expect(page.locator('#bring-claude-folder-command')).toContainText('/mcp?name=alex');
   await page.locator('#bring-claude-close').click();
 
   await openSurface(FIRST, 'Hello, board.');
