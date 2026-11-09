@@ -7,8 +7,8 @@
 // needs no key, so whether the host refuses a keyless LAN socket is LanKeyGateTest's to prove,
 // not this suite's. What this suite proves is the page: it shows a code and nothing of the board
 // until a person on the laptop types that code, and then joins with the key it was given.
-import { test, expect } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { test, expect, devices, webkit } from '@playwright/test';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Host, freePort } from './host.mjs';
@@ -164,6 +164,79 @@ test('a proxy page in place of the host answer is a failed request, not a frozen
   await page.locator('#pairing-again').click();
   await admit(laptop, { page }, 'room-proxy');
   expect(interstitials, 'rig: polls met the proxy page first').toBeLessThan(0);
+});
+
+// bee#212: someone joining from elsewhere sends the code by chat, so copying it is the main thing
+// they do with it. One click selects the whole code, the copy is the six digits alone, and pasted
+// into the join request it admits. The paste event reads what the clipboard really holds.
+test('one click selects the code, and a copy is its six digits alone', async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const remote = await openRemote(browser, 'room-copy');
+  await expect(code(remote.page)).toHaveText(/^[0-9]{6}$/, { timeout: 15_000 });
+  const shown = await code(remote.page).textContent();
+
+  await code(remote.page).click();
+  expect(await remote.page.evaluate(() => window.getSelection().toString())).toBe(shown);
+  await remote.page.keyboard.press('ControlOrMeta+C');
+
+  const joining = request(laptop, 'room-copy');
+  const field = joining.locator('a2ui-basic-textfield input');
+  const pasted = laptop.evaluate(() => new Promise((resolve) => {
+    document.addEventListener('paste', (e) => resolve(e.clipboardData.getData('text/plain')), { once: true, capture: true });
+  }));
+  await field.focus();
+  await laptop.keyboard.press('ControlOrMeta+V');
+  expect(await pasted).toBe(shown);
+  await joining.getByRole('button', { name: 'Admit' }).click();
+  await expect(remote.page.locator('#status')).toHaveText('online as human:room-copy', { timeout: 15_000 });
+});
+
+// A phone's WebKit sends no mouse events for a tap on an element nothing listens to, so
+// `user-select: all` alone selects nothing there (bee#212). Chromium selects either way, and the
+// host-resolver flag above is Chromium's, so this test drives WebKit itself and reaches the LAN
+// name through a route. CI installs Chromium only, so it runs wherever WebKit is installed.
+test('one tap on a phone selects the code', async ({ browser }) => {
+  test.skip(!existsSync(webkit.executablePath()), 'WebKit is not installed');
+  const laptop = await openLaptop(browser);
+  const phone = await webkit.launch();
+  try {
+    const context = await phone.newContext({ ...devices['iPhone 15'] });
+    await context.route(`http://${LAN_NAME}:${host.port}/**`, async (route) => {
+      // The host still sees the name the page used, as it would from a LAN device.
+      const url = new URL(route.request().url());
+      const headers = { ...route.request().headers(), host: url.host };
+      url.hostname = '127.0.0.1';
+      await route.fulfill({ response: await route.fetch({ url: url.toString(), headers }) });
+    });
+    const page = await context.newPage();
+    await page.goto(`http://${LAN_NAME}:${host.port}/?screen=room-tap`);
+    await expect(code(page)).toHaveText(/^[0-9]{6}$/, { timeout: 15_000 });
+    const shown = await code(page).textContent();
+
+    await code(page).tap();
+    await expect.poll(() => page.evaluate(() => window.getSelection().toString())).toBe(shown);
+
+    // Admitted, so its pairing holds no place a later test needs.
+    const joining = request(laptop, 'room-tap');
+    await joining.locator('a2ui-basic-textfield input').fill(shown);
+    await joining.getByRole('button', { name: 'Admit' }).click();
+    await expect(joining).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await phone.close();
+  }
+});
+
+// A code typed or pasted with spaces in and around it still admits (bee#212).
+test('a code entered with spaces admits', async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const remote = await openRemote(browser, 'room-spaced');
+  await expect(code(remote.page)).toHaveText(/^[0-9]{6}$/, { timeout: 15_000 });
+  const shown = await code(remote.page).textContent();
+
+  const joining = request(laptop, 'room-spaced');
+  await joining.locator('a2ui-basic-textfield input').fill(` ${shown.slice(0, 3)} ${shown.slice(3)} `);
+  await joining.getByRole('button', { name: 'Admit' }).click();
+  await expect(remote.page.locator('#status')).toHaveText('online as human:room-spaced', { timeout: 15_000 });
 });
 
 test('typing the code on the laptop admits the remote page', async ({ browser }) => {
