@@ -199,7 +199,7 @@ class McpHttpRestartTest {
         } finally {
             first.close()
         }
-        val kept = KeptSessionFile(dir.resolve(KeptSessionFile.NAME)).load()
+        val kept = KeptSessionFile(dir.resolve(KeptSessionFile.NAME)).load().map { it.session }
         val host = startHost()
         try {
             val departed = withTimeout(TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == bea } } }.departures()

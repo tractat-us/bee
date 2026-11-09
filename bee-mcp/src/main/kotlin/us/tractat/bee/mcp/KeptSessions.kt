@@ -60,13 +60,19 @@ enum class PresentedKey {
     Device,
 }
 
+/**
+ * A [session] as a host keeps it: waiting for its client since [waitingSince], or live when the
+ * host saved it (null), so its wait starts at the next boot.
+ */
+data class StoredSession(val session: KeptSession, val waitingSince: Instant?)
+
 /** Where a host keeps its [KeptSession]s between boots. Production is [KeptSessionFile]. */
 interface KeptSessionStore {
     /** The sessions last saved, or none if none ever were. */
-    fun load(): List<KeptSession>
+    fun load(): List<StoredSession>
 
     /** Replaces what [load] returns with [sessions], whole. */
-    fun save(sessions: List<KeptSession>)
+    fun save(sessions: List<StoredSession>)
 }
 
 /**
@@ -98,9 +104,21 @@ interface KeptSessionStore {
 class KeptIdentities(private val store: KeptSessionStore, private val retired: () -> Set<PeerIdentity>, private val clock: () -> Instant) {
     private val lock = Any()
 
-    /** Each session the last host kept that no session has picked up, and since when it has waited. */
-    private val waiting: MutableMap<KeptSession, Instant> = clock().let { now -> store.load().associateWithTo(mutableMapOf()) { now } }
+    /**
+     * Each session the last host kept that no session has picked up, and since when it has waited:
+     * saved, so a host restarted inside the window doesn't restart it. One that was live when its
+     * host stopped, or that a file from before the time was saved names, waits from this boot.
+     */
+    private val waiting: MutableMap<KeptSession, Instant>
     private val live = mutableMapOf<Any, KeptSession>()
+
+    init {
+        val now = clock()
+        val loaded = store.load()
+        waiting = loaded.associateTo(mutableMapOf()) { it.session to (it.waitingSince ?: now) }
+        // A wait that starts now is saved now, or the next boot would start it again.
+        if (loaded.any { it.waitingSince == null }) save()
+    }
 
     /** The one session the last host kept for [name] and [caller], taken out of waiting; or null. */
     fun pickUp(name: String, caller: Caller): KeptSession? = synchronized(lock) {
@@ -137,7 +155,7 @@ class KeptIdentities(private val store: KeptSessionStore, private val retired: (
 
     private fun save() {
         try {
-            store.save(waiting.keys.toList() + live.values)
+            store.save(waiting.map { (session, since) -> StoredSession(session, since) } + live.values.map { StoredSession(it, waitingSince = null) })
         } catch (failure: IOException) {
             logger.error(failure) { "Couldn't save the HTTP sessions' identities; a host restart gives them new ones." }
         }
@@ -150,7 +168,7 @@ class KeptIdentities(private val store: KeptSessionStore, private val retired: (
  * the sessions it held come back as new identities, which is what they did before bee#126.
  */
 class KeptSessionFile(private val path: Path) : KeptSessionStore {
-    override fun load(): List<KeptSession> {
+    override fun load(): List<StoredSession> {
         val text = try {
             Files.readString(path)
         } catch (_: NoSuchFileException) {
@@ -170,7 +188,7 @@ class KeptSessionFile(private val path: Path) : KeptSessionStore {
         }
     }
 
-    override fun save(sessions: List<KeptSession>) {
+    override fun save(sessions: List<StoredSession>) {
         val dir = path.toAbsolutePath().parent
         Files.createDirectories(dir)
         val temp = Files.createTempFile(dir, ".${path.fileName}-", ".tmp")
@@ -186,11 +204,23 @@ class KeptSessionFile(private val path: Path) : KeptSessionStore {
     }
 
     @Serializable
-    private data class Stored(val name: String, val caller: String, val current: String, val held: List<String>) {
-        fun session() = KeptSession(name, Caller.read(caller), PeerIdentity.parse(current), held.map(PeerIdentity::parse).toSet())
+    private data class Stored(
+        val name: String,
+        val caller: String,
+        val current: String,
+        val held: List<String>,
+        /** Epoch milliseconds; absent while the session was live, and in a file from before it was saved. */
+        val waitingSince: Long? = null,
+    ) {
+        fun session() = StoredSession(
+            KeptSession(name, Caller.read(caller), PeerIdentity.parse(current), held.map(PeerIdentity::parse).toSet()),
+            waitingSince?.let(Instant::fromEpochMilliseconds),
+        )
 
         companion object {
-            fun of(session: KeptSession) = Stored(session.name, session.caller.value, session.current.toString(), session.held.map { it.toString() }.sorted())
+            fun of(stored: StoredSession) = with(stored.session) {
+                Stored(name, caller.value, current.toString(), held.map { it.toString() }.sorted(), stored.waitingSince?.toEpochMilliseconds())
+            }
         }
     }
 

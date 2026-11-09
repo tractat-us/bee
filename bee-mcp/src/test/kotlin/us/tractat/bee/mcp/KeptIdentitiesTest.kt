@@ -46,6 +46,37 @@ class KeptIdentitiesTest {
         )
     }
 
+    /**
+     * The window is the client's, not each boot's: a host restarted twice inside it still retires
+     * the session at the first boot's deadline, so its claims are never held for good.
+     */
+    @Test
+    fun restartsInsideTheWindowNeverRestartIt() {
+        val andrew = session("andrew-claude", andrewKey)
+        lastHostHad(andrew)
+        KeptIdentities(file, { emptySet() }, clock)
+        now += 10.minutes
+        KeptIdentities(file, { emptySet() }, clock)
+        now += 9.minutes
+        val third = KeptIdentities(file, { emptySet() }, clock)
+        val beforeDeadline = third.unclaimed(now - 20.minutes)
+        now += 2.minutes
+        assertAll(
+            { assertTrue(beforeDeadline.isEmpty(), "19 minutes after the first boot, still waiting") },
+            { assertEquals(listOf(andrew), third.unclaimed(now - 20.minutes), "21 minutes after the first boot, three boots later, due") },
+        )
+    }
+
+    /** A file from before the wait was saved: its sessions wait from this boot, and that is saved. */
+    @Test
+    fun aSessionSavedWithNoWaitWaitsFromThisBoot() {
+        val andrew = session("andrew-claude", andrewKey)
+        file.save(listOf(StoredSession(andrew, waitingSince = null)))
+        val booted = now
+        KeptIdentities(file, { emptySet() }, clock)
+        assertEquals(listOf(StoredSession(andrew, booted)), file.load(), "its wait starts now, on disk")
+    }
+
     @Test
     fun aPickedUpSessionIsNeverUnclaimedAndAPutBackOneWaitsAfresh() {
         val andrew = session("andrew-claude", andrewKey)
@@ -114,7 +145,7 @@ class KeptIdentitiesTest {
         val owner = Any()
         val andrew = session("andrew-claude", andrewKey)
         kept.live(owner, andrew)
-        val whileLive = file.load()
+        val whileLive = file.load().map { it.session }
         kept.drop(owner)
         val afterDepart = file.load()
         assertAll(
@@ -128,10 +159,10 @@ class KeptIdentitiesTest {
         val first = PeerIdentity.agent("andrew-claude", random)
         val current = PeerIdentity.agent("andrew-claude", random)
         val andrew = KeptSession("andrew-claude", andrewKey, current, setOf(first, current))
-        file.save(listOf(andrew))
+        file.save(listOf(StoredSession(andrew, Instant.fromEpochMilliseconds(42))))
         val text = Files.readString(dir.resolve(KeptSessionFile.NAME))
         assertAll(
-            { assertEquals(listOf(andrew), file.load(), "what was saved reads back, held identities and all") },
+            { assertEquals(listOf(StoredSession(andrew, Instant.fromEpochMilliseconds(42))), file.load(), "what was saved reads back, held identities and wait and all") },
             { assertFalse("andrews-key" in text, "the key itself is never written") },
         )
     }
