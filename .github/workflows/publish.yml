@@ -101,4 +101,11 @@ jobs:
           case "$PUBLISH_VERSION" in *-*) PRE="--prerelease" ;; esac
           # --target: a dispatch has no tag yet, and gh would otherwise tag main's head, which may
           # not be the commit just built and uploaded.
-          gh release create "v$PUBLISH_VERSION" --target "$GITHUB_SHA" --title "v$PUBLISH_VERSION" --generate-notes $PRE
+          # brew-release.yml runs on the same tag and may have created the release already. This
+          # job attaches nothing, so an existing release is fine, whichever job got there first.
+          if gh release view "v$PUBLISH_VERSION" >/dev/null 2>&1; then
+            echo "Release v$PUBLISH_VERSION already exists; leaving it as it is."
+          elif ! gh release create "v$PUBLISH_VERSION" --target "$GITHUB_SHA" --title "v$PUBLISH_VERSION" --generate-notes $PRE; then
+            # Lost a race with the other job between the view and the create.
+            gh release view "v$PUBLISH_VERSION" >/dev/null
+          fi
