@@ -36,7 +36,7 @@ class PairingTest {
     /** A LAN address no pairing here has used yet. */
     private fun fresh(): String = "192.168.1.${++addresses}"
 
-    private fun ticket(from: String = fresh()): Opened.Ticket = assertIs<Opened.Ticket>(pairing.open(from))
+    private fun ticket(from: String = fresh()): Opened.Ticket = assertIs<Opened.Ticket>(pairing.open(Caller.byPeer(from)))
 
     @Test
     fun matchingCodeFromHumanAdmits() {
@@ -135,11 +135,11 @@ class PairingTest {
     @Test
     fun pendingPairingsAreCapped() {
         val open = List(Pairing.MAX_PENDING) { ticket() }
-        val refused = pairing.open(fresh())
+        val refused = pairing.open(Caller.byPeer(fresh()))
         pairing.end(open.first().id)
-        val afterOneEnds = pairing.open(fresh())
+        val afterOneEnds = pairing.open(Caller.byPeer(fresh()))
         advance(2.minutes)
-        val afterExpiry = List(Pairing.MAX_PENDING) { pairing.open(fresh()) }
+        val afterExpiry = List(Pairing.MAX_PENDING) { pairing.open(Caller.byPeer(fresh())) }
         assertAll(
             { assertEquals(Opened.Busy, refused) },
             { assertIs<Opened.Ticket>(afterOneEnds) },
@@ -155,7 +155,7 @@ class PairingTest {
     fun expiredPairingStaysUntilItsOwnerEndsIt() {
         val expired = ticket()
         advance(2.minutes)
-        val next = pairing.open(fresh())
+        val next = pairing.open(Caller.byPeer(fresh()))
         assertAll(
             { assertIs<Opened.Ticket>(next) },
             { assertTrue(pairing.isPending(expired.id), "another open left the expired pairing to its owner") },
@@ -167,10 +167,10 @@ class PairingTest {
     fun secondPairingFromOneAddressIsRefusedWhileTheFirstWaits() {
         val first = ticket(LAN)
         advance(Pairing.COOLDOWN)
-        val second = pairing.open(LAN)
-        val elsewhere = pairing.open(OTHER_LAN)
+        val second = pairing.open(Caller.byPeer(LAN))
+        val elsewhere = pairing.open(Caller.byPeer(OTHER_LAN))
         pairing.end(first.id)
-        val afterTheFirstEnds = pairing.open(LAN)
+        val afterTheFirstEnds = pairing.open(Caller.byPeer(LAN))
         assertAll(
             { assertEquals(Opened.AlreadyPairing, second) },
             { assertIs<Opened.Ticket>(elsewhere, "another address isn't held up") },
@@ -181,12 +181,12 @@ class PairingTest {
     @Test
     fun anAddressOpensOncePerCooldown() {
         pairing.end(ticket(LAN).id)
-        val again = pairing.open(LAN)
-        val elsewhere = pairing.open(OTHER_LAN)
+        val again = pairing.open(Caller.byPeer(LAN))
+        val elsewhere = pairing.open(Caller.byPeer(OTHER_LAN))
         advance(Pairing.COOLDOWN - 1.milliseconds)
-        val justBefore = pairing.open(LAN)
+        val justBefore = pairing.open(Caller.byPeer(LAN))
         advance(1.milliseconds)
-        val after = pairing.open(LAN)
+        val after = pairing.open(Caller.byPeer(LAN))
         assertAll(
             { assertEquals(Opened.TooSoon, again) },
             { assertIs<Opened.Ticket>(elsewhere, "another address pairs while one is throttled") },
@@ -198,8 +198,8 @@ class PairingTest {
     /** Loopback reaches the board without a key, so limiting its pairing would protect nothing. */
     @Test
     fun loopbackIsLimitedOnlyByTheCap() {
-        val opened = listOf("127.0.0.1", "127.0.0.1", "::1").map { pairing.open(it) }
-        val past = pairing.open("127.0.0.1")
+        val opened = listOf("127.0.0.1", "127.0.0.1", "::1").map { pairing.open(Caller.byPeer(it)) }
+        val past = pairing.open(Caller.byPeer("127.0.0.1"))
         assertAll(
             { opened.forEach { assertIs<Opened.Ticket>(it) } },
             { assertEquals(Opened.Busy, past) },
@@ -214,19 +214,19 @@ class PairingTest {
     fun theBudgetBoundsPairingsAcrossEveryAddress() {
         val budgeted = Pairing(clock = { now }, secrets = ScriptedSecrets(), keys = memoryKeys(), budget = PairingBudget(3))
         val spent = List(3) {
-            assertIs<Opened.Ticket>(budgeted.open(fresh())).also { ticket ->
+            assertIs<Opened.Ticket>(budgeted.open(Caller.byPeer(fresh()))).also { ticket ->
                 budgeted.end(ticket.id)
                 advance(1.minutes)
             }
         }
-        val overBudget = budgeted.open(fresh())
-        val loopback = budgeted.open("127.0.0.1")
+        val overBudget = budgeted.open(Caller.byPeer(fresh()))
+        val loopback = budgeted.open(Caller.byPeer("127.0.0.1"))
         // The first pairing opened 3 minutes ago; its place frees an hour after it opened.
         advance(1.hours - 3.minutes - 1.milliseconds)
-        val justBefore = budgeted.open(fresh())
+        val justBefore = budgeted.open(Caller.byPeer(fresh()))
         advance(1.milliseconds)
-        val afterTheFirstFrees = budgeted.open(fresh())
-        val thenSpentAgain = budgeted.open(fresh())
+        val afterTheFirstFrees = budgeted.open(Caller.byPeer(fresh()))
+        val thenSpentAgain = budgeted.open(Caller.byPeer(fresh()))
         assertAll(
             { assertEquals(3, spent.size) },
             { assertEquals(Opened.OverBudget, overBudget) },
@@ -247,13 +247,13 @@ class PairingTest {
         val greedy = "192.168.1.200"
         var opened = 0
         repeat(359) {
-            (budgeted.open(greedy) as? Opened.Ticket)?.let {
+            (budgeted.open(Caller.byPeer(greedy)) as? Opened.Ticket)?.let {
                 opened++
                 budgeted.end(it.id)
             }
             advance(10.seconds)
         }
-        val other = budgeted.open(fresh())
+        val other = budgeted.open(Caller.byPeer(fresh()))
         assertAll(
             { assertEquals(2, opened, "10 / 5 pairings in the hour, however often it dials") },
             { assertIs<Opened.Ticket>(other, "a second address still pairs") },

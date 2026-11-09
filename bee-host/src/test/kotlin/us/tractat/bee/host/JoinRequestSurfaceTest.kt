@@ -40,7 +40,7 @@ import kotlin.time.Instant
 class JoinRequestSurfaceTest {
     private val iain = PeerIdentity.human("iain")
     private val ada = PeerIdentity.agent("ada", Random(1))
-    private val device = Device(address = "192.168.1.20", screen = "room")
+    private val device = Device(Caller.byPeer("192.168.1.20"), screen = "room")
 
     private class Rig(val test: TestScope, val star: BoardStar, val pairing: Pairing, val requests: JoinRequestSurface) {
         val relay get() = star.relay
@@ -79,7 +79,7 @@ class JoinRequestSurfaceTest {
     }
 
     private fun Rig.post(): Pair<Opened.Ticket, Deferred<Resolution>> {
-        val ticket = assertIs<Opened.Ticket>(pairing.open(device.address))
+        val ticket = assertIs<Opened.Ticket>(pairing.open(device.caller))
         val resolution = requests.post(ticket, device)
         test.runCurrent()
         return ticket to resolution

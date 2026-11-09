@@ -127,7 +127,7 @@ class BridgeJoinLinkTest {
     fun aBridgeOnTheJoinLinkAndAPairedDeviceAreAdmittedAfterARestart() = runBlocking {
         val first = startHost()
         val port = first.port
-        val ticket = assertIs<Opened.Ticket>(first.pairing.open(ANOTHER_MACHINE))
+        val ticket = assertIs<Opened.Ticket>(first.pairing.open(Caller.byPeer(ANOTHER_MACHINE)))
         val paired = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val joinKey = first.pairing.joinKey
         val bridge = Bridge(HostAddress.parse("http://127.0.0.1:$port/?k=${joinKey.value}"))

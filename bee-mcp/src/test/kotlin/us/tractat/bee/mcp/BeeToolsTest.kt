@@ -42,6 +42,7 @@ import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.bee.host.BoardStar
+import us.tractat.bee.host.Caller
 import us.tractat.bee.host.ClaimsRig
 import us.tractat.bee.host.ClaimsVoter
 import us.tractat.bee.host.Device
@@ -385,8 +386,8 @@ internal class JoinRig(private val test: TestScope) {
     fun joinRequest(): String {
         val pairing = Pairing(star.clock, SecureSecrets(SecureRandom()), memoryKeys())
         val requests = JoinRequestSurface(star.relay, pairing, star.clock).also { it.start(test.backgroundScope) }
-        val ticket = pairing.open("192.168.1.20") as Opened.Ticket
-        requests.post(ticket, Device("192.168.1.20", screen = null))
+        val ticket = pairing.open(Caller.byPeer("192.168.1.20")) as Opened.Ticket
+        requests.post(ticket, Device(Caller.byPeer("192.168.1.20"), screen = null))
         return JoinRequestSurface.surfaceId(ticket.id)
     }
 

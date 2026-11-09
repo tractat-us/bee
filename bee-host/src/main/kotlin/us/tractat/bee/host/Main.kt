@@ -13,7 +13,7 @@ import kotlin.system.exitProcess
 
 private val logger = KotlinLogging.logger {}
 
-/** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--join-requests-per-hour <n>] [--host-name <name>] [--lan] [--new-link] [--forget-devices]`. */
+/** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--join-requests-per-hour <n>] [--host-name <name>] [--lan | --public-url <url>] [--new-link] [--forget-devices]`. */
 fun main(args: Array<String>) {
     val config = HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

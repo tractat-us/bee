@@ -96,7 +96,7 @@ class LanKeyGateTest {
 
     @Test
     fun urlKeyAdmits() = gated { client ->
-        val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
+        val ticket = assertIs<Opened.Ticket>(pairing.open(Caller.byPeer(LAN)))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val joinKey = pairing.joinKey
         val boardKeyed = client.dial("$BOARD&k=${key.value}", LAN)
@@ -111,7 +111,7 @@ class LanKeyGateTest {
 
     @Test
     fun wrongUrlKeyIsRefused() = gated { client ->
-        val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
+        val ticket = assertIs<Opened.Ticket>(pairing.open(Caller.byPeer(LAN)))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val boardRight = client.dial("$BOARD&k=${key.value}", LAN)
         // The right key with its last character changed: a near miss, never the key itself.
