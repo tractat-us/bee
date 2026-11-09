@@ -129,8 +129,9 @@ class PublicHostTest {
     }
 
     /**
-     * The invite is the public URL, bare, and goes to any page the host admitted, since any
-     * admitted person can admit anyone (Iain, 2026-11-08). Being on the machine grants nothing.
+     * `GET` of the invite answers the public URL, bare, with [InviteLinks.Joins.Anywhere], which
+     * tells the page to mint its link ([HostedInviteTest]), and goes to any page the host admitted,
+     * since any admitted person can admit anyone (2026-11-08). Being on the machine grants nothing.
      */
     @Test
     fun anyAdmittedPageGetsTheBarePublicUrl() {

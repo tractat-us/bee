@@ -1,6 +1,6 @@
 // A hosted board, as `bee-host --public-url` runs it behind Fly.io's proxy (bee#145), with an
 // obviously fake owner key in BEE_OWNER_KEY. Being on loopback grants nothing there, and the join
-// link admits no one, so every page here holds the owner key or one pairing gave it.
+// link admits no one, so every page here holds the owner key or one pairing or an invite gave it.
 //
 // The public name is `bee-hosted.test`, which Chromium resolves to 127.0.0.1: a page on
 // `localhost` takes itself for the owner's own machine and dials with no key, which a hosted board
@@ -52,6 +52,9 @@ async function device(browser, address) {
 async function boarded(page) {
   await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
 }
+
+/** A minted invite: the public URL with a 256-bit secret in its fragment (bee#215). */
+const INVITE_LINK = () => new RegExp(`^${origin.replace(/[.]/g, '\\.')}/#i=[A-Za-z0-9_-]{43}$`);
 
 /** The key the host keeps for its join link, which a hosted board never admits. */
 const joinKey = () => readFileSync(join(host.dataDir, 'keys'), 'utf8').match(/^join (\S+)$/m)[1];
@@ -110,9 +113,9 @@ test('the owner admits a teammate by code, and the teammate brings their Claude 
   await owner.goto(`${origin}/?name=iain#k=${OWNER_KEY}`);
   await boarded(owner);
 
-  // The owner's invite is the bare public URL, which works from anywhere.
+  // The owner's invite is a minted link, which works from anywhere (bee#215).
   await owner.locator('#bar #invite-toggle').click();
-  await expect(owner.locator('#invite-link')).toHaveText(`${origin}/`);
+  await expect(owner.locator('#invite-link')).toHaveText(INVITE_LINK());
   await expect(owner.locator('#invite')).toContainText('Scan to join on a phone or laptop.');
   await expect(owner.locator('#invite')).not.toContainText('on this network');
 
@@ -133,7 +136,7 @@ test('the owner admits a teammate by code, and the teammate brings their Claude 
 
   // Any admitted person can admit anyone: Andrew gets Invite too.
   await andrew.locator('#bar #invite-toggle').click();
-  await expect(andrew.locator('#invite-link')).toHaveText(`${origin}/`);
+  await expect(andrew.locator('#invite-link')).toHaveText(INVITE_LINK());
 });
 
 test('a teammate opened with no name gets the placeholder in their line', async ({ browser }) => {
@@ -149,4 +152,70 @@ test('a teammate opened with no name gets the placeholder in their line', async 
   expect(line.name).toBe('you');
   expect(line.key).not.toBe(OWNER_KEY);
   await expect(guest.locator('#bring-claude-unnamed')).toContainText('put your own name there');
+});
+
+/** Opens [owner]'s Invite and reads the link it minted, with the secret in its fragment. */
+async function invited(owner) {
+  await owner.locator('#bar #invite-toggle').click();
+  const link = owner.locator('#invite-link');
+  await expect(link).toHaveText(INVITE_LINK());
+  const text = await link.textContent();
+  await expect(owner.locator('#invite-qr')).toHaveAttribute('data-text', text);
+  await expect(owner.locator('#invite')).toContainText('Anyone with this link can join, for a day.');
+  return { link: text, secret: text.split('#i=')[1] };
+}
+
+// bee#215: an invite admits whoever opens it, with nobody typing a code, and asks their name.
+test('an invite link admits whoever opens it, under the name they give, and is reusable', async ({ browser }) => {
+  const owner = await device(browser, '203.0.113.10');
+  await owner.goto(`${origin}/?name=alex#k=${OWNER_KEY}`);
+  await boarded(owner);
+  const { link, secret } = await invited(owner);
+
+  // A fresh browser, with ?name= to fill the prompt in.
+  const sam = await device(browser, '203.0.113.24');
+  const requests = [];
+  sam.on('request', (request) => requests.push({ url: request.url(), body: request.postData() ?? '' }));
+  await sam.goto(`${origin}/?name=sam#i=${secret}`);
+  await expect(sam.locator('#join-name')).toHaveValue('sam');
+  expect(sam.url(), 'the secret leaves the address bar at once').toBe(`${origin}/?name=sam`);
+  await sam.locator('#join-submit').click();
+  await boarded(sam);
+  await expect(sam.locator('#status')).toHaveText('online as human:sam');
+  await expect(owner.locator('#peers')).toContainText('sam');
+
+  expect(requests.length, "rig: the page's requests were seen").toBeGreaterThan(0);
+  expect(requests.filter((r) => r.url.includes(secret)), 'no URL carries the secret').toEqual([]);
+  const carriers = requests.filter((r) => r.body.includes(secret)).map((r) => new URL(r.url).pathname);
+  expect(carriers, 'only the redemption carries it, in its body').toEqual(['/invite/redeem']);
+
+  const line = await lineOf(sam);
+  expect(line.name).toBe('sam');
+  expect(line.key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  expect(line.key).not.toBe(OWNER_KEY);
+
+  // The same link, opened bare by someone else, who types a name.
+  const robin = await device(browser, '203.0.113.25');
+  await robin.goto(link);
+  await expect(robin.locator('#join-name')).toHaveValue('');
+  await robin.locator('#join-name').fill('robin');
+  await robin.locator('#join-name').press('Enter');
+  await boarded(robin);
+  await expect(robin.locator('#status')).toHaveText('online as human:robin');
+  expect((await lineOf(robin)).key).not.toBe(line.key);
+});
+
+test('an invite the board never made says so, and offers pairing by code instead', async ({ browser }) => {
+  const owner = await device(browser, '203.0.113.10');
+  await owner.goto(`${origin}/?name=alex#k=${OWNER_KEY}`);
+  await boarded(owner);
+
+  const kim = await device(browser, '203.0.113.26');
+  await kim.goto(`${origin}/#i=${'A'.repeat(43)}`);
+  await kim.locator('#join-name').fill('kim');
+  await kim.locator('#join-submit').click();
+  await expect(kim.locator('#join-problem')).toHaveText("This invite isn't one this board made.");
+  await kim.locator('#join-pair').click();
+  await admit(owner, kim);
+  await expect(kim.locator('#status')).toHaveText('online as human:kim');
 });

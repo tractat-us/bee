@@ -12,8 +12,8 @@ import kotlinx.serialization.Serializable
  *   what a phone opens, since not every phone resolves `.local` names
  * @param named the link at the host's `.local` name, or a hosted board's public URL
  * @param joins where a device that opens the link can join from: the room's network, or anywhere
- *   for a hosted board (bee#145), whose link is its bare public URL and which any admitted page
- *   may ask for
+ *   for a hosted board (bee#145), which any admitted page may ask, and whose answer is its bare
+ *   public URL: the page mints the link it shows ([InviteWire], bee#215)
  */
 @Serializable
 data class InviteLinks(val numeric: List<String>, val named: String, val joins: Joins = Joins.OnThisNetwork) {
@@ -26,7 +26,10 @@ data class InviteLinks(val numeric: List<String>, val named: String, val joins: 
         /** A `--lan` host: a phone or laptop on the room's network. */
         OnThisNetwork,
 
-        /** A hosted board, behind its public URL: a phone or laptop anywhere. */
+        /**
+         * A hosted board, behind its public URL: a phone or laptop anywhere. Its link is minted,
+         * by `POST` [PATH], when the page's Invite opens ([MintedInvite]).
+         */
         Anywhere,
     }
 
