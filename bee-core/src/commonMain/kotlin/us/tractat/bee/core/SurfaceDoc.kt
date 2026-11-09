@@ -114,27 +114,17 @@ internal object SurfaceDoc {
 
     /**
      * [doc]'s meta, or null while its open hasn't arrived: the doc holds no meta yet, or meta
-     * without the fields an open writes.
+     * without the fields an open writes. Meta of the wrong shape is corrupt, not early, and throws.
      *
      * A surface without its open's meta is no surface yet: the board's reads leave it out, and it
-     * shows once the open arrives. This is permanent, not a stopgap (bee#171). The open and a later
-     * write are separate deltas, often from different peers, and kuilt's Quilter applies deltas in
-     * order per origin, never causally across origins. So a page can merge another peer's write to
-     * a surface (a Poll answer) before the open that write was based on.
-     *
-     * A page that joins a running board makes that routine, not rare. Its gossip seam holds the
-     * first frame of every origin it sights mid-stream, the host and each agent, for up to the
-     * reorder grace (tractat-us/kuilt#2916), and its Quilter can't apply an agent's own deltas at
-     * all, since its cursor for an origin that was mid-stream never heals (tractat-us/kuilt#3148).
-     * Another page's first write comes from an origin it sights from the start, and passes at once.
-     * Fixing those two shortens the window, but doesn't close it: nothing in the Quilter's delivery
-     * orders one origin's write after another origin's open. `OpenBeforeWriteTest` in bee-host
-     * reproduces the order over the relay.
+     * shows once the open arrives (bee#171). The guard is permanent: kuilt orders deltas per origin,
+     * never across origins, so a surface's data can arrive before its open, unless kuilt adds
+     * cross-origin causal delivery.
      */
     fun meta(doc: JsonCrdt): SurfaceMeta? {
-        val meta = doc[SurfaceFormat.META] as? JsonNode.Object ?: return null
+        val meta = doc[SurfaceFormat.META]?.let { it as JsonNode.Object } ?: return null
         // Meta is read raw, never through decodeLeaf: a title may start with any characters.
-        fun field(key: String): String? = (meta.map[key] as? JsonNode.Leaf)?.let(SurfaceFormat::metaString)
+        fun field(key: String): String? = meta.map[key]?.let { SurfaceFormat.metaString(it as JsonNode.Leaf) }
         return SurfaceMeta(
             title = field(SurfaceFormat.META_TITLE) ?: return null,
             catalogId = field(SurfaceFormat.META_CATALOG_ID) ?: return null,

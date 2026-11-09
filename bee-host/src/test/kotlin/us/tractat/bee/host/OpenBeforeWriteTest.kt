@@ -51,6 +51,10 @@ private fun TestScope.settle(duration: Duration) {
  * forward of it. Another page's answer, that page's first write, comes from an origin the page
  * sights from seq 1, and passes at once. The Quilter delivers in order per origin, not causally
  * across origins, so nothing holds the answer back for the open it was based on.
+ *
+ * This repro leans on those two kuilt bugs. Once they're fixed it stops reproducing, and its
+ * precondition fails. The guard's lasting coverage is `BoardStateTest`'s
+ * `aWriteThatArrivesBeforeItsSurfacesOpenWaitsUnshownUntilTheOpenArrives`.
  */
 class OpenBeforeWriteTest {
     @Test
@@ -91,7 +95,7 @@ class OpenBeforeWriteTest {
 
         val answers = kim.state.value.surfaceDoc(POLL)?.toSurfaceView(POLL)?.data?.get("answers")
         assertAll(
-            { assertTrue(answerBeforeOpen, "precondition: kim held the answer before the open") },
+            { assertTrue(answerBeforeOpen, "precondition: kim held the answer before the open. If this fails after a kuilt upgrade, kuilt#2916/#3148 are fixed and this repro no longer reproduces; the guard's lasting coverage is BoardStateTest.aWriteThatArrivesBeforeItsSurfacesOpenWaitsUnshownUntilTheOpenArrives") },
             { assertEquals(emptyList(), readFailures, "reading kim's board never threw") },
             { assertEquals(emptyList(), shownWithoutMeta, "kim never showed the poll before its open") },
             { assertEquals(listOf(POLL), kim.state.value.openSurfaces(), "kim shows the poll once its open arrives") },
