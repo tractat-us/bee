@@ -7,44 +7,45 @@ for whoever runs it.
 
 ## Getting on the board
 
-Nobody reaches a hosted board from loopback, and a device can't pair by code until someone admitted
-is on the board to admit it. So the first person in is always the owner, by key:
+Nobody reaches a hosted board from loopback, and a device can only pair by code while someone
+admitted is on the board to admit it. So the first person in is always the owner, by key. Below,
+`<your owner key>` is the owner key, from wherever you keep secrets. Never paste it on the board.
 
-1. **The owner opens the board:**
+1. **Open the board with your key:**
 
     ```sh
-    open "https://bee.tractat.us/#k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
+    open "https://bee.tractat.us/#k=<your owner key>"
     ```
 
     The key rides in the fragment, after `#`, which a browser never sends, so it never reaches
     Fly's proxy or the host. The page moves it out of the address bar into that tab's storage, and
     it never appears on the board or in a log. The browser's own history may still keep the
-    visited URL, key and all. A new tab or another browser needs the link again, or pairs by code
-    from the open tab.
+    visited URL, key and all. A new tab or another browser needs the link again, or pairs by code.
 
-2. **Other devices, the owner's phone included,** open `https://bee.tractat.us`. Each shows a
-   six-digit code, which someone already on the board types in before pressing **Admit**. With
-   nobody admitted on the board, the request is refused at once.
-
-3. **The owner's Claude** joins over HTTP MCP, with nothing to install:
+2. **Add your Claude** over HTTP MCP, with nothing to install:
 
     ```sh
     claude mcp add --scope user --transport http bee \
-      "https://bee.tractat.us/mcp?k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
+      "https://bee.tractat.us/mcp?name=<you>&k=<your owner key>"
     ```
 
     Here the key is a query, which Claude Code sends with each call; the host logs no request
-    URLs. The key ends up in `~/.claude.json`. The board's "Bring your Claude" panel shows the same line
-    with the viewer's own key, and a person who paired by code uses that.
+    URLs. The line, key included, ends up in `~/.claude.json`.
 
-4. **The owner key** is the Fly secret `BEE_OWNER_KEY`; the host refuses to start without it. The
-   readable copy is in Iain's Keychain. It never goes in this repo, a workflow or a log. To rotate
-   it, mint a new one into the Keychain (`-w` last, with no value, prompts for it), then import it
+3. **Invite someone** by sending them `https://bee.tractat.us/?name=<their name>`. Their page
+   shows a six-digit code. Someone already on the board types it in and presses **Admit**. Your
+   phone joins the same way. With nobody admitted on the board, the request is refused at once:
+   keep your own tab open while people join.
+
+4. **Their Claude:** once admitted, they open the board's **Bring your Claude** panel. It shows
+   the same `claude mcp add` line with their own key in it.
+
+5. **The owner key** is the Fly secret `BEE_OWNER_KEY`, and the host refuses to start without it.
+   Keep the readable copy in your secret store. It never goes in this repo, a workflow or a log.
+   To rotate it, mint a new key, keep it in your secret store, load it into `$key`, then import it
    on stdin, never as an argument:
 
     ```sh
-    security add-generic-password -U -s bee.tractat.us -a owner -w
-    key=$(security find-generic-password -s bee.tractat.us -a owner -w)
     printf 'BEE_OWNER_KEY=%s\n' "$key" | flyctl secrets import -a bee-tractat-us
     ```
 
