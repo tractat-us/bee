@@ -1,6 +1,7 @@
 package us.tractat.bee.spike
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
@@ -36,7 +37,10 @@ class MainActivity : Activity() {
                 val running = runBlocking { BeeHost.start(scope, config) }
                 host = running
                 Log.i(TAG, "host on ${running.port} after ${(System.nanoTime() - started) / 1_000_000} ms")
-                runOnUiThread { web.loadUrl("http://127.0.0.1:${running.port}/") }
+                runOnUiThread {
+                    startForegroundService(Intent(this, KeepHosting::class.java))
+                    web.loadUrl("http://127.0.0.1:${running.port}/")
+                }
             } catch (failure: Throwable) {
                 Log.e(TAG, "host failed to start", failure)
                 val trace = Log.getStackTraceString(failure).replace("<", "&lt;")
