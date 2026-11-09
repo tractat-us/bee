@@ -1,18 +1,30 @@
 package us.tractat.bee.host
 
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.http.HttpRequestLifecycle
+import io.ktor.server.request.contentLength
+import io.ktor.server.request.receiveChannel
+import io.ktor.server.response.header
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.sse.sse
+import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -20,10 +32,15 @@ import kotlin.time.Instant
 /** The longest room-screen name a join request shows. */
 private const val MAX_SCREEN_NAME = 40
 
+/** The longest body a poll may carry: a token is 43 bytes. A longer one is refused, unread. */
+private const val MAX_TOKEN_BYTES = 64
+
 /**
  * The pairing channel at [PairingWire.PATH] (spec §5.7, step 1): a keyless device opens it, gets a
  * code to show, and waits for a key. It is a stream of server-sent events, each one
- * [PairingMessage], and nothing else; [desk] serves each device.
+ * [PairingMessage], and nothing else; [desk] serves each device. A device whose proxy holds a
+ * stream back pairs by poll instead, through [polls]: `POST` [PairingWire.PATH] opens a pairing and
+ * `POST` [PairingWire.POLL_PATH] asks after it (bee#209).
  *
  * Not a WebSocket: the host reads nothing from a keyless device, so it gives one no inbound frame
  * parser to feed. When the device hangs up, Netty cancels its call ([HttpRequestLifecycle]), and
@@ -31,14 +48,43 @@ private const val MAX_SCREEN_NAME = 40
  *
  * Needs Ktor's `SSE` plugin installed on the application.
  */
-fun Route.pairingEndpoint(desk: PairingDesk, peers: PeerAddress) {
+fun Route.pairingEndpoint(desk: PairingDesk, polls: PairingPolls, peers: PeerAddress) {
     route(PairingWire.PATH) {
         install(HttpRequestLifecycle) { cancelCallOnClose = true }
-        sse {
-            val device = Device(peers.of(call), screenName(call.request.queryParameters[PairingWire.SCREEN_PARAM]))
-            desk.serve(device) { send(data = Json.encodeToString(PairingMessage.serializer(), it)) }
+        sse { desk.serve(device(call, peers)) { send(data = Json.encodeToString(PairingMessage.serializer(), it)) } }
+        // Pairing by poll (bee#209): the same pairing, for a device whose proxy holds the stream back.
+        post {
+            val opened = polls.open(device(call, peers))
+            call.respondJson(Json.encodeToString(PairingPoll.serializer(), opened))
         }
     }
+    post(PairingWire.POLL_PATH) {
+        val token = call.receiveAtMost(MAX_TOKEN_BYTES)
+            ?: return@post call.respondText("A poll carries its token and nothing more.", status = HttpStatusCode.PayloadTooLarge)
+        when (val message = polls.poll(token)) {
+            null -> call.respondText("This pairing is over: ask for a new code.", status = HttpStatusCode.NotFound)
+            else -> call.respondJson(Json.encodeToString(PairingMessage.serializer(), message))
+        }
+    }
+}
+
+private fun device(call: ApplicationCall, peers: PeerAddress) =
+    Device(peers.of(call), screenName(call.request.queryParameters[PairingWire.SCREEN_PARAM]))
+
+/**
+ * This call's body as text, or null if it is longer than [max] bytes. Anyone may call a pairing
+ * route, so the host reads at most [max] + 1 bytes of a body, whatever its length says.
+ */
+private suspend fun ApplicationCall.receiveAtMost(max: Int): String? {
+    if ((request.contentLength() ?: 0) > max) return null
+    val body = receiveChannel().readRemaining(max + 1L).readByteArray()
+    return body.takeIf { it.size <= max }?.decodeToString()
+}
+
+/** Answers [json], which may carry a key, past every cache. */
+private suspend fun ApplicationCall.respondJson(json: String) {
+    response.header(HttpHeaders.CacheControl, "no-store")
+    respondText(json, ContentType.Application.Json)
 }
 
 /**
@@ -64,7 +110,7 @@ class PairingDesk(
     private val pairing: Pairing,
     private val joinRequests: Deferred<JoinRequestSurface>,
     private val dwell: Duration,
-    private val clock: () -> Instant,
+    internal val clock: () -> Instant,
     private val admitters: Admitters,
     private val checkEvery: Duration = Admitters.CHECK_EVERY,
 ) {

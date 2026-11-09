@@ -2,6 +2,8 @@ package us.tractat.bee.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -27,6 +29,29 @@ sealed interface PairingMessage {
     data class Ended(val reason: PairingEnd) : PairingMessage
 }
 
+/**
+ * What `POST` [PairingWire.PATH] answers (bee#209). Pairing by poll is plain requests and complete
+ * responses, so a proxy that holds back a stream until it ends can't stall it.
+ */
+@Serializable
+sealed interface PairingPoll {
+    /**
+     * A pairing opened: [code] to show, and the [token] that fetches what follows from
+     * [PairingWire.POLL_PATH]. [token] is the poll's only capability, and a secret: unlike the
+     * pairing id, it never goes on the board. Whoever holds it can fetch the pairing's key.
+     */
+    @Serializable
+    @SerialName("opened")
+    data class Opened(val token: String, val code: PairingMessage.Code) : PairingPoll {
+        override fun toString(): String = "Opened(token=…, code=…, expiresAt=${code.expiresAt})"
+    }
+
+    /** No pairing opened, for [ended]'s reason. The host holds nothing for this device. */
+    @Serializable
+    @SerialName("refused")
+    data class Refused(val ended: PairingMessage.Ended) : PairingPoll
+}
+
 /** Why a pairing ended without a key. */
 enum class PairingEnd {
     /** Nobody typed the code within its two minutes. */
@@ -50,8 +75,31 @@ enum class PairingEnd {
 
 /** The pairing wire's coordinates, shared by the host and the page. */
 object PairingWire {
-    /** The pairing channel's route: a server-sent event stream, not a WebSocket. */
+    /**
+     * The pairing channel's route. `GET` is a server-sent event stream, not a WebSocket. `POST`
+     * opens a pairing by poll instead, and answers a [PairingPoll].
+     */
     const val PATH: String = "/pair"
+
+    /**
+     * Where a device pairing by poll asks what its pairing has come to: `POST` its
+     * [PairingPoll.Opened.token] as the body, and get the newest [PairingMessage], or a 404 once
+     * the host holds no pairing for that token.
+     */
+    const val POLL_PATH: String = "/pair/poll"
+
+    /** How often a device pairing by poll asks, counted from the last answer, so asks never overlap. */
+    val POLL_EVERY: Duration = 1.seconds
+
+    /** How long a device waits for a pairing request's answer before it counts the request lost. */
+    val REQUEST_TIMEOUT: Duration = 4.seconds
+
+    /**
+     * How long a pairing by poll lasts with no poll reaching the host, and how long a device keeps
+     * asking with no answer reaching it. Past it the host ends the pairing, as a hang-up would, and
+     * the device stops. Room for two polls in a row to time out and a third to arrive in time.
+     */
+    val IDLE: Duration = (POLL_EVERY + REQUEST_TIMEOUT) * 3
 
     /** The query parameter carrying a device key, on the page's URL and on every socket it dials. */
     const val KEY_PARAM: String = "k"

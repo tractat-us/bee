@@ -52,7 +52,7 @@ async function openRemote(browser, screen) {
   const sockets = [];
   const requests = [];
   page.on('websocket', (ws) => sockets.push(new URL(ws.url())));
-  page.on('request', (r) => requests.push({ url: new URL(r.url()), accept: r.headers()['accept'] }));
+  page.on('request', (r) => requests.push({ url: new URL(r.url()), method: r.method(), accept: r.headers()['accept'] }));
   await page.goto(`http://${LAN_NAME}:${host.port}/?screen=${screen}`);
   return { page, sockets, requests };
 }
@@ -119,14 +119,51 @@ test('keyless remote page shows a code and no board', async ({ browser }) => {
   expect(await laptop.locator('body').innerText()).not.toContain(shown);
 
   // Nothing of the board reached the remote page: no surface, no record, no status, and no
-  // socket at all. Pairing is an event stream, which sends the host nothing.
+  // socket at all. Pairing is plain requests by poll (bee#209), never a stream.
   await expect(remote.page.locator('a2ui-surface')).toHaveCount(0);
   await expect(remote.page.locator('#status')).toHaveCount(0);
   await expect(remote.page.locator('#records')).toHaveCount(0);
   expect(remote.sockets).toEqual([]);
   const pairing = remote.requests.filter((r) => r.url.pathname === '/pair');
-  expect(pairing.length, 'one pairing channel, never reopened').toBe(1);
-  for (const r of pairing) expect(r.accept).toBe('text/event-stream');
+  expect(pairing.map((r) => r.method), 'one pairing opened, never reopened').toEqual(['POST']);
+  await expect.poll(() => remote.requests.filter((r) => r.url.pathname === '/pair/poll').length, { timeout: 10_000 }).toBeGreaterThan(1);
+  for (const r of remote.requests) expect(r.accept ?? '').not.toContain('text/event-stream');
+});
+
+// bee#209: a TLS-inspecting proxy at work held the pairing stream back until it ended, so the page
+// waited for ever. Here every event stream the page might open is held the same way, sent nothing:
+// the page still shows its code and is admitted, since it pairs by plain requests.
+test('a page whose event streams are held back still pairs', async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const context = await browser.newContext();
+  contexts.push(context);
+  await context.route('**/*', (route) =>
+    route.request().headers()['accept']?.includes('text/event-stream') ? new Promise(() => {}) : route.continue(),
+  );
+  const page = await context.newPage();
+  await page.goto(`http://${LAN_NAME}:${host.port}/?screen=room-held`);
+
+  await admit(laptop, { page }, 'room-held');
+});
+
+// A TLS-inspecting proxy may answer with a page of its own, a 200 that isn't the host's. The page
+// says it couldn't get a code, rather than freeze. Then, polls answered that way are asked again,
+// and the pairing still completes once the host's own answers get through.
+test('a proxy page in place of the host answer is a failed request, not a frozen page', async ({ browser }) => {
+  const laptop = await openLaptop(browser);
+  const context = await browser.newContext();
+  contexts.push(context);
+  const proxyPage = { status: 200, contentType: 'text/html', body: '<html><body>Acceptable use policy</body></html>' };
+  await context.route(/\/pair(\?|$)/, (route) => route.fulfill(proxyPage), { times: 1 });
+  let interstitials = 2;
+  await context.route(/\/pair\/poll$/, (route) => (interstitials-- > 0 ? route.fulfill(proxyPage) : route.continue()));
+  const page = await context.newPage();
+  await page.goto(`http://${LAN_NAME}:${host.port}/?screen=room-proxy`);
+
+  await expect(page.locator('#pairing-prompt')).toHaveText("Couldn't get a code from the host.", { timeout: 15_000 });
+  await page.locator('#pairing-again').click();
+  await admit(laptop, { page }, 'room-proxy');
+  expect(interstitials, 'rig: polls met the proxy page first').toBeLessThan(0);
 });
 
 test('typing the code on the laptop admits the remote page', async ({ browser }) => {

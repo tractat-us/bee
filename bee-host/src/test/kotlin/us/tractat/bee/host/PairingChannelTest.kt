@@ -4,6 +4,14 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.plugins.sse.sse
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeFully
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
@@ -14,6 +22,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.test.assertAll
 import java.net.InetSocketAddress
@@ -21,6 +30,7 @@ import java.net.Socket
 import java.security.SecureRandom
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -73,6 +83,52 @@ class PairingChannelTest {
         assertAll(
             { assertTrue(pendingWhileOn, "rig: the pairing waits while the device is on") },
             { assertTrue(endedAfterHangUp) },
+        )
+    }
+
+    /**
+     * The poll path on the real server (bee#209): plain requests and complete responses, no stream,
+     * so a proxy that holds a stream back passes them. Only the token `POST /pair` gave answers.
+     */
+    @Test
+    fun aDevicePairsByPollAndOnlyItsTokenAnswers() = runBlocking {
+        val base = "http://127.0.0.1:$port"
+        val opening = client.post(base + PairingWire.PATH)
+        val opened = assertIs<PairingPoll.Opened>(Json.decodeFromString(PairingPoll.serializer(), opening.bodyAsText()))
+        val code = opened.code
+        val polled = client.post(base + PairingWire.POLL_PATH) { setBody(opened.token) }
+        val polledMessage = Json.decodeFromString(PairingMessage.serializer(), polled.bodyAsText())
+        val byPairingId = client.post(base + PairingWire.POLL_PATH) { setBody(code.pairing) }
+        assertAll(
+            { assertEquals(HttpStatusCode.OK, opening.status) },
+            { assertEquals("no-store", opening.headers[HttpHeaders.CacheControl]) },
+            { assertTrue(pairing.isPending(PairingId(code.pairing)), "the pairing waits on its polls") },
+            { assertEquals(code, polledMessage) },
+            { assertEquals("no-store", polled.headers[HttpHeaders.CacheControl]) },
+            { assertEquals(HttpStatusCode.NotFound, byPairingId.status, "the pairing id, on the board for all, is no token") },
+        )
+    }
+
+    /**
+     * Anyone may poll, so a poll's body is bounded before it is read: one that says it is too long,
+     * or turns out too long with no length given, is refused with a 413, never cut down to a token.
+     */
+    @Test
+    fun aPollBodyPastATokensLengthIsRefused() = runBlocking {
+        val url = "http://127.0.0.1:$port${PairingWire.POLL_PATH}"
+        val declared = client.post(url) { setBody("x".repeat(1_000_000)) }
+        val chunked = client.post(url) {
+            setBody(
+                object : OutgoingContent.WriteChannelContent() {
+                    override suspend fun writeTo(channel: ByteWriteChannel) = channel.writeFully(ByteArray(200) { 'x'.code.toByte() })
+                },
+            )
+        }
+        val token = client.post(url) { setBody("x".repeat(43)) }
+        assertAll(
+            { assertEquals(HttpStatusCode.PayloadTooLarge, declared.status, "a Content-Length past the bound") },
+            { assertEquals(HttpStatusCode.PayloadTooLarge, chunked.status, "a chunked body past the bound") },
+            { assertEquals(HttpStatusCode.NotFound, token.status, "the positive control: a token's length is read, and isn't one") },
         )
     }
 

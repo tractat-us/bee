@@ -26,6 +26,7 @@ import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
 import us.tractat.kuilt.websocket.KtorServerLoom
 import java.net.InetAddress
+import java.security.SecureRandom
 
 /**
  * Who made a call: the [address] it came from, and whether it is [local], this machine's own,
@@ -138,8 +139,8 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * - MCP over Streamable HTTP at [BeeHost.MCP_PATH] (served by [us.tractat.bee.mcp.HttpBridges]),
  *   behind the key half of the same gate: from a local caller, or with a key [Pairing] minted in its
  *   `?k=`. It names no board, since the bridge the host runs for it dials the board itself.
- * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and the page at
- *   `/`, open to all: they are what a keyless device needs, and none carries board state, presence
+ * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and its poll at
+ *   [PairingWire.POLL_PATH], and the page at `/`, open to all: they are what a keyless device needs, and none carries board state, presence
  *   or claims. The page's files, and only they, carry [BeeHost.PAGE_CSP].
  * - the join link at [us.tractat.bee.core.InviteLinks.PATH], to a local caller alone, and only
  *   when [invitation] is open ([inviteEndpoint]).
@@ -191,7 +192,7 @@ fun Application.mountEndpoints(
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respondText(board.value)
         }
-        pairingEndpoint(desk, peers)
+        pairingEndpoint(desk, PairingPolls(desk, this@mountEndpoints, SecureRandom()), peers)
         inviteEndpoint(invitation, pairing, peers, arrivals)
         staticResources("/", "web") { modify { _, call -> call.response.header(BeeHost.CSP_HEADER, BeeHost.PAGE_CSP) } }
     }
