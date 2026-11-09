@@ -1309,6 +1309,38 @@ class BridgeClaimsTest {
     }
 
     /**
+     * An agent's `bee_release` of its own hold, through a link that is published but still behind the
+     * claim (a rebuilt link is published after one entry, bee#195), is a holder's release, not an
+     * orphan's. The link's commits are held, the claim is made as ada by another client, and
+     * ada's release waits for the table to fold it; once the link catches up the release frees it.
+     */
+    @Test
+    fun aReleaseOfYourOwnHoldWaitsForALinkStillBehindIt() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada", retryDelay = { 1.hours })
+        val target = rig.clickOn(ada)
+        val link = ada.link()
+        val down = rig.claims.host.holdFor(link.node)
+        down.hold()
+        val own = rig.claims.client(NodeId("stray")).claim(target, ada.bridge.self)
+        val token = checkNotNull((own as? ClaimOutcome.Won)?.token)
+
+        val releasing = async { ada.bridge.release(target, token) }
+        delay(1.seconds)
+        val earlyAnswer = releasing.isCompleted
+        val behind = link.client.table.value.appliedIndex
+        down.releaseAll()
+        val released = withTimeoutOrNull(30.seconds) { releasing.await() }
+        assertAll(
+            { assertTrue(behind < token.index, "rig: a published link behind the claim: $behind") },
+            { assertEquals(false, earlyAnswer, "the release waits rather than answering as an orphan's") },
+            { assertEquals(true, released, "and once the link has caught up it is a holder's release, which frees it") },
+            { assertEquals(ClaimStatus.Free, rig.voter.table.value.status(target)) },
+        )
+        rig.close()
+    }
+
+    /**
      * An agent's `bee_release` of an orphan decides the orphaning it read on the board, not a later
      * one (bee#83). zed's hold is orphaned in round 1; a person reassigns it to cy, who departs too,
      * so it is orphaned again in round 2. Ada's release naming round 1's token frees nothing, and
