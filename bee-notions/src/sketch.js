@@ -262,14 +262,21 @@ export class SketchElement extends A2uiLitElement {
       // Send was. A keyboard activation (detail 0) dates from its keydown, since Space activates
       // on keyup. Tab out of a sketch lands on its Send, so that keydown also counts only once
       // Send has had focus for SEND_ARM_MS: a key pressed for the sketch, even held past then,
-      // doesn't send.
-      const fresh = event.detail === 0
-        ? keyPressedAt >= this.enabledAt && keyPressedAt - this.focusedAt >= SEND_ARM_MS
-        : this.pressedAt >= this.enabledAt;
+      // doesn't send. A detail-0 click with no keydown at all is assistive tech pressing the button
+      // through the accessibility API (screen reader browse mode, Voice Control, Dragon); it
+      // sends once armed, which `send()` checks. That reading assumes no page code stops a keydown
+      // before it reaches Send: true today, the only `stopPropagation` calls are in `board.js` and
+      // `renderer-host.js`.
+      const fresh = event.detail !== 0
+        ? this.pressedAt >= this.enabledAt
+        : keyPressedAt === -Infinity
+          || (keyPressedAt >= this.enabledAt && keyPressedAt - this.focusedAt >= SEND_ARM_MS);
       if (!(fresh && this.send())) this.refuse();
     });
     send.addEventListener('pointerdown', (event) => { if (event.isTrusted) this.pressedAt = performance.now(); });
     send.addEventListener('focus', () => { this.focusedAt = performance.now(); });
+    // A key pressed on Send and never released there (focus moved on) isn't a press for the next one.
+    send.addEventListener('blur', () => { this.keyPressedAt = -Infinity; });
     // A pointer moved onto Send gets its `pointerover` and a `pointermove` from one input event,
     // at the same point. One that Send was moved under gets a `pointerover` alone, and its next
     // move, a hand's tremor, is somewhere else (see `arm`).
