@@ -24,13 +24,17 @@ else echo "bee-dogfood: no bee-up beside this script or on PATH." >&2; exit 1
 fi
 
 # In a checkout, a host built before the latest edit is stale: bee-env rebuilds it with BEE_BUILD=1.
-# Never under a running host, whose jars a rebuild would replace; bee-up only reprints its links.
+# Never under a running host, whose jars a rebuild would replace: not this board's, nor an everyday
+# bee-up host running from the same checkout. Any process holding the jar open counts.
 root=$(cd "$here/.." && pwd)
 jar=$root/bee-host/build/install/bee-host/lib/bee-host.jar
 pidfile=$BEE_HOME/host.pid
-running() { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
-if [ "$bee_up" = "$here/bee-up" ] && [ -f "$jar" ] && ! running && [[ " $* " != *" --stop "* ]]; then
-    newer=$(find "$root"/bee-{a2ui,core,host,mcp,web,notions}/src "$root"/bee-{host,mcp,web}/build.gradle.kts \
+running() {
+    { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; } || lsof -t -- "$jar" >/dev/null 2>&1
+}
+if [ "$bee_up" = "$here/bee-up" ] && [ -f "$jar" ] && [[ " $* " != *" --stop "* ]] && ! running; then
+    newer=$(find "$root"/bee-{a2ui,core,host,mcp,web,notions}/src "$root"/bee-{a2ui,core,host,mcp,web}/build.gradle.kts \
+        "$root/bee-notions/package.json" "$root/build.gradle.kts" "$root/settings.gradle.kts" \
         "$root/gradle/libs.versions.toml" -newer "$jar" -type f -print -quit 2>/dev/null || true)
     [ -n "$newer" ] && export BEE_BUILD=1
 fi

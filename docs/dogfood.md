@@ -7,7 +7,8 @@ its own folder, so the two never mix.
 
 ## Start it, draw it, open it
 
-From the root of a bee checkout:
+From the root of your main bee checkout, not a worktree: the seeder draws the `plan.yaml` of the
+checkout it runs from, so a worktree would put its branch's plan on the shared board.
 
 ```sh
 bin/bee-dogfood --no-open      # starts the board, or reprints its links if it's running

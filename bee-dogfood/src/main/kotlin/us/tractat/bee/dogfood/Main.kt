@@ -2,6 +2,7 @@ package us.tractat.bee.dogfood
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.runBlocking
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.Path
@@ -66,16 +67,24 @@ private fun github(repo: Path): SeedSurface = try {
     Decisions.surface(emptyList(), "Couldn't ask GitHub: ${failed.message}")
 }
 
+/** Runs `gh` in [repo] and returns its stdout. Its output goes to a file, so a hung `gh` can't block the wait. */
 private fun gh(repo: Path, vararg args: String): String {
-    val process = ProcessBuilder(listOf("gh", *args)).directory(repo.toFile()).redirectError(ProcessBuilder.Redirect.INHERIT).start()
-    val out = process.inputStream.bufferedReader().readText()
-    if (!process.waitFor(60, TimeUnit.SECONDS)) {
-        process.destroy()
-        throw java.io.IOException("gh ${args.joinToString(" ")} took over 60 s")
+    val out = Files.createTempFile("bee-dogfood-gh-", ".json")
+    try {
+        val process = ProcessBuilder(listOf("gh", *args)).directory(repo.toFile())
+            .redirectOutput(out.toFile()).redirectError(ProcessBuilder.Redirect.INHERIT).start()
+        if (!process.waitFor(GH_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            throw java.io.IOException("gh ${args.joinToString(" ")} took over $GH_TIMEOUT_SECONDS s")
+        }
+        if (process.exitValue() != 0) throw java.io.IOException("gh ${args.joinToString(" ")} exited ${process.exitValue()}")
+        return out.readText()
+    } finally {
+        Files.deleteIfExists(out)
     }
-    if (process.exitValue() != 0) throw java.io.IOException("gh ${args.joinToString(" ")} exited ${process.exitValue()}")
-    return out
 }
+
+private const val GH_TIMEOUT_SECONDS = 60L
 
 /**
  * Joins the board as an agent, draws the Plan, Morning report and Decisions surfaces whole, and
@@ -88,10 +97,12 @@ fun main(argv: Array<String>) {
         System.err.println(bad.message)
         exitProcess(2)
     }
+    // The files and gh first, so a bad plan.yaml or a slow gh costs no join and departure.
+    val drawn = surfaces(args)
     val outcomes = runBlocking {
         val tools = McpBoardTools.join(args.host, args.name)
         try {
-            Seeder(tools).seed(surfaces(args))
+            Seeder(tools).seed(drawn)
         } finally {
             tools.leave()
         }
