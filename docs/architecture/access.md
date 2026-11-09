@@ -106,7 +106,7 @@ link has no case in `host`'s.
     save that fails is answered as an error: the eviction holds until the host stops, and the
     host says so.
 2.  **Close live sockets.** The gate keeps each live gated call under its key's hash and ends
-    them. kuilt can't close one principal's links (tractat-us/kuilt#3157), so until it can, bee
+    them. kuilt can't close one principal's links (tractat-us/kuilt#3158), so until it can, bee
     cancels the Ktor call behind a comment naming that issue. The slice proves which handle closes
     a WebSocket.
 3.  **End HTTP MCP sessions.** `HttpBridges` closes every session on that key.
