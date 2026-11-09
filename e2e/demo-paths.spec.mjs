@@ -92,6 +92,7 @@ const surface = (page, id) => page.locator(`a2ui-surface[data-surface-id="${id}"
 const button = (page, id, name) => surface(page, id).getByRole('button', { name });
 const card = (page, id) => page.locator(`#board article.bee-card[data-surface-id="${id}"]`);
 const peer = (page, who) => page.locator(`#peers li.bee-peer[data-peer="${who}"]`);
+const records = (page, id) => page.locator(`#records li[data-surface-id="${id}"]`);
 const pollOption = (page, id, label) => surface(page, id).locator('bee-poll li', { hasText: label });
 const boardCard = (page, id, column, cardId) => surface(page, id).locator(`bee-board [data-column="${column}"] [data-card="${cardId}"]`);
 
@@ -190,9 +191,13 @@ test('the demo, beat by beat', async ({ browser }) => {
     for (const page of [rig.ownerPage, rig.teammatePage]) await expect(surface(page, MAIN)).toContainText(STEP_TEXT, { timeout: 15_000 });
 
     const waited = await ownerListens(rig.teammatePage, MAIN);
+    const before = await records(rig.ownerPage, MAIN).count();
     await button(rig.teammatePage, MAIN, 'Automated checks').click();
-    const { record } = await waited;
-    expect(record, "the owner's wait returned the teammate's click").toMatchObject({ surfaceId: MAIN, name: 'answer' });
+    // The click is on the board, so a wait that misses it is the agent's side, not the page's.
+    await expect(records(rig.ownerPage, MAIN)).toHaveCount(before + 1, { timeout: 15_000 });
+    const result = await waited;
+    expect(result.record, `the owner's wait returned the teammate's click: ${JSON.stringify(result)}`).toMatchObject({ surfaceId: MAIN, name: 'answer' });
+    const { record } = result;
     expect(await rig.owner.call('bee_action_done', { recordId: record.recordId, token: record.token })).toEqual({ done: record.recordId });
   });
 
