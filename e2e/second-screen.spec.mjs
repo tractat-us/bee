@@ -7,8 +7,8 @@
 // needs no key, so whether the host refuses a keyless LAN socket is LanKeyGateTest's to prove,
 // not this suite's. What this suite proves is the page: it shows a code and nothing of the board
 // until a person on the laptop types that code, and then joins with the key it was given.
-import { test, expect } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { test, expect, devices, webkit } from '@playwright/test';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Host, freePort } from './host.mjs';
@@ -189,6 +189,41 @@ test('one click selects the code, and a copy is its six digits alone', async ({ 
   expect(await pasted).toBe(shown);
   await joining.getByRole('button', { name: 'Admit' }).click();
   await expect(remote.page.locator('#status')).toHaveText('online as human:room-copy', { timeout: 15_000 });
+});
+
+// A phone's WebKit sends no mouse events for a tap on an element nothing listens to, so
+// `user-select: all` alone selects nothing there (bee#212). Chromium selects either way, and the
+// host-resolver flag above is Chromium's, so this test drives WebKit itself and reaches the LAN
+// name through a route. CI installs Chromium only, so it runs wherever WebKit is installed.
+test('one tap on a phone selects the code', async ({ browser }) => {
+  test.skip(!existsSync(webkit.executablePath()), 'WebKit is not installed');
+  const laptop = await openLaptop(browser);
+  const phone = await webkit.launch();
+  try {
+    const context = await phone.newContext({ ...devices['iPhone 15'] });
+    await context.route(`http://${LAN_NAME}:${host.port}/**`, async (route) => {
+      // The host still sees the name the page used, as it would from a LAN device.
+      const url = new URL(route.request().url());
+      const headers = { ...route.request().headers(), host: url.host };
+      url.hostname = '127.0.0.1';
+      await route.fulfill({ response: await route.fetch({ url: url.toString(), headers }) });
+    });
+    const page = await context.newPage();
+    await page.goto(`http://${LAN_NAME}:${host.port}/?screen=room-tap`);
+    await expect(code(page)).toHaveText(/^[0-9]{6}$/, { timeout: 15_000 });
+    const shown = await code(page).textContent();
+
+    await code(page).tap();
+    await expect.poll(() => page.evaluate(() => window.getSelection().toString())).toBe(shown);
+
+    // Admitted, so its pairing holds no place a later test needs.
+    const joining = request(laptop, 'room-tap');
+    await joining.locator('a2ui-basic-textfield input').fill(shown);
+    await joining.getByRole('button', { name: 'Admit' }).click();
+    await expect(joining).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    await phone.close();
+  }
 });
 
 // A code typed or pasted with spaces in and around it still admits (bee#212).
