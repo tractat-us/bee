@@ -145,7 +145,7 @@ private val logger = KotlinLogging.logger {}
  *   admits. The host logs a warning when the budget runs out.
  * - A [Caller.local] caller is never limited: it reaches the board without a key, so it has
  *   nothing to pair for. One a proxy forwards is limited by the address the proxy names, whatever
- *   that address is ([PeerAddress.FORWARDED]).
+ *   that address is ([ForwardedPeer]).
  *
  * Every method is synchronous and thread-safe; [clock], [secrets] and [keys] are its only inputs.
  */

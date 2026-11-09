@@ -125,3 +125,7 @@ bee-tractat-us` reports it.
 runtime and `bee-host`'s distribution, with the page it serves. It builds nothing, so no build
 credential reaches Fly. The host runs as the unprivileged user `bee`, on a `shared-cpu-1x` machine
 with 512 MB of memory and a 256 MB heap.
+
+The host starts with `--client-ip-header Fly-Client-IP` because Fly's proxy puts the app's own
+address rightmost in `X-Forwarded-For`: read from there, every caller shares one address, and one
+device's pairing limits lock out everyone.
