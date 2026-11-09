@@ -57,6 +57,41 @@ class SiteRuleTest {
         )
     }
 
+    /**
+     * bee#145: behind a TLS-terminating proxy, a browser names the public host with no port and
+     * sends its `https://` origin, whatever port the proxy dialled the host on.
+     */
+    @Test
+    fun thePublicUrlPassesOnAnyArrivalPortWithItsOwnOrigin() {
+        val public = SiteRule(emptySet(), setOf(PublicUrl.parse("https://bee.tractat.us/")))
+        val proxied = Arrival("172.19.0.2", 8233)
+        assertAll(
+            { assertNull(public.refusal("bee.tractat.us", "https://bee.tractat.us", proxied)) },
+            { assertNull(public.refusal("bee.tractat.us", "https://bee.tractat.us", Arrival("172.19.0.2", 9999)), "any port the proxy dials") },
+            { assertNull(public.refusal("bee.tractat.us", null, proxied), "no Origin: the bridge") },
+            { assertNull(public.refusal("172.19.0.2:8233", null, proxied), "the address it arrived on: Fly's health check") },
+            { assertNull(public.refusal("localhost:8233", "http://localhost:8233", loopback), "localhost, as before") },
+            { assertNotNull(public.refusal("bee.tractat.us", "http://bee.tractat.us", proxied), "http:// for an https:// URL") },
+            { assertNotNull(public.refusal("bee.tractat.us", "https://evil.example", proxied), "another site") },
+            { assertNotNull(public.refusal("bee.tractat.us", "https://bee.tractat.us:8233", proxied), "another port in the origin") },
+            { assertNotNull(public.refusal("bee.tractat.us:8233", "https://bee.tractat.us", proxied), "the public name at the bound port") },
+            { assertNotNull(public.refusal("bee.tractat.us:80", null, proxied), "the public name at http's port") },
+            { assertNotNull(public.refusal("evil.example", "https://evil.example", proxied)) },
+            { assertNotNull(rule.refusal("bee.tractat.us", "https://bee.tractat.us", proxied), "no public URL given") },
+        )
+    }
+
+    /** `http://` behind a test proxy: the public URL names its port, and the origin is `http://`. */
+    @Test
+    fun aTestProxysHttpUrlKeepsItsPort() {
+        val public = SiteRule(emptySet(), setOf(PublicUrl.parse("http://localhost:9000/")))
+        assertAll(
+            { assertNull(public.refusal("localhost:9000", "http://localhost:9000", loopback)) },
+            { assertNotNull(public.refusal("localhost:9000", "https://localhost:9000", loopback)) },
+            { assertNotNull(public.refusal("localhost", "http://localhost", loopback), "port 80, not 9000") },
+        )
+    }
+
     /** bee#54: a subresource or a frame from another site carries no `Origin`, only Fetch Metadata. */
     @Test
     fun aCallFromAnotherSiteIsRefusedUnlessItNavigatesToThePage() {

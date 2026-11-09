@@ -225,7 +225,7 @@ class McpHttpTest {
      */
     @Test
     fun offTheLaptopMcpNeedsAKeyTheHostMinted() = runBlocking {
-        val host = startHost(peers = { call -> if (call.request.path().startsWith(BeeHost.MCP_PATH)) ANOTHER_MACHINE else "127.0.0.1" })
+        val host = startHost(peers = { call -> Caller.byPeer(if (call.request.path().startsWith(BeeHost.MCP_PATH)) ANOTHER_MACHINE else "127.0.0.1") })
         try {
             val keyless = initialize(url(host, "?name=eve"))
             val strangerKey = initialize(url(host, "?name=eve&k=not-a-key"))

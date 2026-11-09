@@ -44,7 +44,7 @@ class PairingDeskTest {
 
         fun dial(address: String): Session {
             val session = Session(mutableListOf()).also { dialled += it }
-            session.serving = test.backgroundScope.launch { desk.serve(Device(address, screen = null)) { session.sent += it } }
+            session.serving = test.backgroundScope.launch { desk.serve(Device(Caller.byPeer(address), screen = null)) { session.sent += it } }
             test.runCurrent()
             return session
         }
@@ -164,7 +164,7 @@ class PairingDeskTest {
         val request = requests.single()
         // Up to the expiry instant: the timer for it is due, and hasn't run.
         test.advanceTimeBy(Pairing.TTL - Pairing.DWELL - 1.milliseconds)
-        assertIs<Opened.Ticket>(pairing.open(OTHER_LAN))
+        assertIs<Opened.Ticket>(pairing.open(Caller.byPeer(OTHER_LAN)))
         test.runCurrent()
         assertAll(
             { assertEquals(PairingMessage.Ended(PairingEnd.Expired), device.sent.last()) },

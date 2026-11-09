@@ -26,16 +26,58 @@ import us.tractat.kuilt.websocket.KtorRoomHost
 import us.tractat.kuilt.websocket.KtorServerLoom
 import java.net.InetAddress
 
-/** The address a call came from, as an IP literal. */
-fun interface PeerAddress {
-    fun of(call: ApplicationCall): String
+/**
+ * Who made a call: the [address] it came from, and whether it is [local], this machine's own,
+ * which reaches the board with no key ([mountEndpoints]). Only [byPeer] and [forwarded] make one,
+ * so a caller is local only when the TCP peer itself is a loopback address and no proxy stood
+ * between: a forwarded address is whatever the proxy, or a dialler posing as one, says.
+ */
+class Caller private constructor(val address: String, val local: Boolean) {
+    override fun equals(other: Any?): Boolean = other is Caller && other.address == address && other.local == local
+
+    override fun hashCode(): Int = 31 * address.hashCode() + local.hashCode()
+
+    override fun toString(): String = if (local) "Caller($address, local)" else "Caller($address)"
 
     companion object {
+        /** A caller known by its TCP peer's [address]: local when that is a loopback address ([isLoopback]). */
+        fun byPeer(address: String): Caller = Caller(address, isLoopback(address))
+
+        /** A caller a proxy names: never local, whatever [address] says. */
+        fun forwarded(address: String): Caller = Caller(address, local = false)
+    }
+}
+
+/** Who each call came from ([Caller]). */
+fun interface PeerAddress {
+    fun of(call: ApplicationCall): Caller
+
+    companion object {
+        private const val FORWARDED_FOR = "X-Forwarded-For"
+        private const val FORWARDED_HEADER = "Forwarded"
+
         /**
          * The TCP peer, never a forwarded header: no proxy stands in front of the host, and a
          * header is whatever the dialler says it is.
          */
-        val DIRECT: PeerAddress = PeerAddress { it.request.local.remoteAddress }
+        val DIRECT: PeerAddress = PeerAddress { Caller.byPeer(it.request.local.remoteAddress) }
+
+        /**
+         * Behind one trusted proxy ([Reach.Public]): the rightmost `X-Forwarded-For` entry, the one
+         * the proxy appended, since every entry left of it is whatever the client sent. A call
+         * with no such entry is its TCP peer's. A call carrying `X-Forwarded-For` or `Forwarded`
+         * is never [Caller.local], whatever its TCP peer: the proxy dials from wherever it runs,
+         * and a header claiming loopback came from someone who isn't.
+         */
+        val FORWARDED: PeerAddress = PeerAddress { call ->
+            val headers = call.request.headers
+            val forwardedFor = headers.getAll(FORWARDED_FOR).orEmpty().flatMap { it.split(',') }.map(String::trim).lastOrNull { it.isNotEmpty() }
+            when {
+                forwardedFor != null -> Caller.forwarded(forwardedFor)
+                headers.contains(FORWARDED_FOR) || headers.contains(FORWARDED_HEADER) -> Caller.forwarded(call.request.local.remoteAddress)
+                else -> Caller.byPeer(call.request.local.remoteAddress)
+            }
+        }
     }
 }
 
@@ -57,16 +99,16 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  *
  * - the board relay at [BoardRelay.PATH] and the claims voter at [BeeHost.CLAIMS_PATH], **behind
  *   the socket gate**. A socket must name [board] in its `?board=` ([BoardId], bee#46), and come
- *   from a loopback address or hold a key [Pairing] minted in its `?k=`. Anything else gets a 403
+ *   from a [Caller.local] caller or hold a key [Pairing] minted in its `?k=`. Anything else gets a 403
  *   before the WebSocket upgrade, so it never reaches the hub or the voter, and a replica of
  *   another board never pushes its state.
  * - MCP over Streamable HTTP at [BeeHost.MCP_PATH] (served by [us.tractat.bee.mcp.HttpBridges]),
- *   behind the key half of the same gate: from loopback, or with a key [Pairing] minted in its
+ *   behind the key half of the same gate: from a local caller, or with a key [Pairing] minted in its
  *   `?k=`. It names no board, since the bridge the host runs for it dials the board itself.
  * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and the page at
  *   `/`, open to all: they are what a keyless device needs, and none carries board state, presence
  *   or claims. The page's files, and only they, carry [BeeHost.PAGE_CSP].
- * - the join link at [us.tractat.bee.core.InviteLinks.PATH], to a loopback caller alone, and only
+ * - the join link at [us.tractat.bee.core.InviteLinks.PATH], to a local caller alone, and only
  *   when [invitation] is open ([inviteEndpoint]).
  *
  * The gate is installed on the route nodes kuilt's own `webSocket(path)` created, so it applies to
@@ -78,7 +120,7 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * the laptop reach the board.
  *
  * @param board the board this host keeps: the only one a socket may name
- * @param peers where each call came from; production passes [PeerAddress.DIRECT]
+ * @param peers who each call came from; production passes its [Reach.peers]
  * @param arrivals where each call arrived; production passes [ArrivalAddress.DIRECT]
  * @param desk serves the pairing channel, over [pairing]
  * @param invitation whether the host has a join link to give its owner's page
@@ -99,7 +141,7 @@ fun Application.mountEndpoints(
     val relay = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
     val keyRefusal = { call: ApplicationCall ->
-        val keyed = isLoopback(peers.of(call)) || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
+        val keyed = peers.of(call).local || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
         "This device needs a key: open the page to pair it.".takeUnless { keyed }
     }
     val refusal = { call: ApplicationCall ->

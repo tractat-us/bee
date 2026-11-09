@@ -96,7 +96,7 @@ class LanKeyGateTest {
 
     @Test
     fun urlKeyAdmits() = gated { client ->
-        val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
+        val ticket = assertIs<Opened.Ticket>(pairing.open(Caller.byPeer(LAN)))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val joinKey = pairing.joinKey
         val boardKeyed = client.dial("$BOARD&k=${key.value}", LAN)
@@ -111,7 +111,7 @@ class LanKeyGateTest {
 
     @Test
     fun wrongUrlKeyIsRefused() = gated { client ->
-        val ticket = assertIs<Opened.Ticket>(pairing.open(LAN))
+        val ticket = assertIs<Opened.Ticket>(pairing.open(Caller.byPeer(LAN)))
         val key = assertIs<Attempt.Admitted>(pairing.attempt(ticket.id, PeerIdentity.human("iain"), ticket.code)).key
         val boardRight = client.dial("$BOARD&k=${key.value}", LAN)
         // The right key with its last character changed: a near miss, never the key itself.
@@ -271,11 +271,11 @@ class LanKeyGateTest {
         val BOARD = "${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$BOARD_ID"
         val CLAIMS = "${BeeHost.CLAIMS_PATH}?peer=probe&${BoardId.PARAM}=$BOARD_ID"
 
-        val TEST_PEERS = PeerAddress { call -> requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" } }
+        val TEST_PEERS = PeerAddress { call -> Caller.byPeer(requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" }) }
 
         /** A loopback peer reaches the laptop at loopback; any other, at its LAN address. */
         fun arrivalOf(peer: String) = Arrival(if (isLoopback(peer)) "127.0.0.1" else LAPTOP, PORT)
 
-        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call)) }
+        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call).address) }
     }
 }

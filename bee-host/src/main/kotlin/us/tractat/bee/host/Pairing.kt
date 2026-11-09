@@ -143,8 +143,9 @@ private val logger = KotlinLogging.logger {}
  *   join requests to the board in that time. No one address may spend more than a fifth of it
  *   (at least one), so a device can't hold off everyone else's pairing; the join link still
  *   admits. The host logs a warning when the budget runs out.
- * - A loopback address is never limited: it reaches the board without a key, so it has nothing to
- *   pair for.
+ * - A [Caller.local] caller is never limited: it reaches the board without a key, so it has
+ *   nothing to pair for. One a proxy forwards is limited by the address the proxy names, whatever
+ *   that address is ([PeerAddress.FORWARDED]).
  *
  * Every method is synchronous and thread-safe; [clock], [secrets] and [keys] are its only inputs.
  */
@@ -177,15 +178,16 @@ class Pairing(
     /** Whether this window's running out of budget has been logged. */
     private var exhaustionLogged = false
 
-    /** Opens a pairing for a keyless device at address [from], or says why not ([Opened.Refused]). */
-    fun open(from: String): Opened = synchronized(lock) {
+    /** Opens a pairing for a keyless device, [caller], or says why not ([Opened.Refused]). */
+    fun open(caller: Caller): Opened = synchronized(lock) {
+        val from = caller.address
         val now = clock()
         lastOpened.values.removeIf { now >= it + cooldown }
         while (budgetSpent.firstOrNull()?.let { now >= it.first + budget.per } == true) budgetSpent.removeFirst()
         // An expired pairing holds no place, though it stays pending until its timer ends it.
         val live = pending.values.filter { now < it.expiresAt }
         if (budgetSpent.isEmpty()) exhaustionLogged = false
-        val limited = !isLoopback(from)
+        val limited = !caller.local
         val overBudget = limited &&
             (budgetSpent.size >= budget.requests || budgetSpent.count { it.second == from } >= max(1, budget.requests / 5))
         if (overBudget && !exhaustionLogged) {

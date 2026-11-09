@@ -134,7 +134,7 @@ class BeeHost private constructor(
          *
          * @throws DataDirInUse if another host holds the data dir: this one touches nothing in it
          */
-        suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost = start(scope, config, PeerAddress.DIRECT)
+        suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost = start(scope, config, config.reach.peers())
 
         /**
          * [start], with the socket gate reading each call's peer from [peers]: a test's way to

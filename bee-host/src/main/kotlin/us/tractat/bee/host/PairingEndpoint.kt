@@ -60,7 +60,7 @@ class PairingDesk(
 ) {
     /** Serves [device] until its pairing ends; [send] writes to its channel. Cancel it when the device leaves. */
     suspend fun serve(device: Device, send: suspend (PairingMessage) -> Unit) {
-        val ticket = when (val opened = pairing.open(device.address)) {
+        val ticket = when (val opened = pairing.open(device.caller)) {
             is Opened.Refused -> return send(PairingMessage.Ended(opened.wire))
             is Opened.Ticket -> opened
         }
