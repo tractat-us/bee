@@ -14,7 +14,9 @@ Then start `claude` and type `/bee:draw <topic>`, or `/bee:checkin` for a status
 session works. Plain words work too: "draw this on the board", "check in on the board".
 
 `board_url` is the host's address plus `/mcp?name=<you>`, and `&k=<key>` from the join link for a
-board on another machine. The plugin needs a host that serves `/mcp`
+board on another machine. On the hosted board it's `https://bee.tractat.us/mcp?name=<you>&k=<key>`,
+with the key from that board's **Bring your Claude** panel ([Running hosted bee](../../docs/deploy.md)).
+The plugin needs a host that serves `/mcp`
 ([#122](https://github.com/tractat-us/bee/pull/122)). It ships no `/clear` hook, because the bridge
 runs on the host.
 

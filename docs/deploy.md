@@ -14,10 +14,10 @@ admitted is on the board to admit it. So the first person in is always the owner
 1. **Open the board with your key:**
 
     ```sh
-    open "https://bee.tractat.us/#k=<your owner key>"
+    open "https://bee.tractat.us/?name=<you>#k=<your owner key>"
     ```
 
-    The key rides in the fragment, after `#`, which a browser never sends, so it never reaches
+    Without `?name=`, the board shows you as `guest`. The key rides in the fragment, after `#`, which a browser never sends, so it never reaches
     Fly's proxy or the host. The page moves it out of the address bar into that tab's storage, and
     it never appears on the board or in a log. The browser's own history may still keep the
     visited URL, key and all. A new tab or another browser needs the link again, or pairs by code.
