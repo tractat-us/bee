@@ -43,5 +43,7 @@ Run your own board:
 macOS may refuse to run files from a downloaded zip. If it does:
     xattr -dr com.apple.quarantine .
 EOF
+# jlink leaves runtime/legal read-only, so the README's xattr line would print permission errors.
+chmod -R u+w "$kit"
 (cd "$out" && zip -qr "$name.zip" "$name")
 echo "$out/$name.zip ($(du -h "$out/$name.zip" | cut -f1))"
