@@ -174,8 +174,9 @@ jobs:
           FORMULA=Formula/bee.rb
           sed -i -E "s|releases/download/v[^/]+/bee-[^/]+\.tar\.gz|releases/download/v${VERSION}/bee-${VERSION}.tar.gz|" "$FORMULA"
           sed -i -E "s|sha256 \"[0-9a-f]{64}\"|sha256 \"${SHA256}\"|" "$FORMULA"
-          grep -q "bee-${VERSION}.tar.gz" "$FORMULA" && grep -q "$SHA256" "$FORMULA" \
-            || { echo "::error::$FORMULA didn't take the new url and sha256"; cat "$FORMULA"; exit 1; }
+          if ! grep -q "bee-${VERSION}.tar.gz" "$FORMULA" || ! grep -q "$SHA256" "$FORMULA"; then
+            echo "::error::$FORMULA didn't take the new url and sha256"; cat "$FORMULA"; exit 1
+          fi
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           BRANCH="bump/bee-v${VERSION}"
