@@ -367,11 +367,11 @@ test('7. a teammate without the key, or with a wrong one, is refused', async () 
   expect(statuses).toEqual({ mcpNoKey: 403, mcpWrongKey: 403, socketNoKey: 403, socketWrongKey: 403, mcpKey: 200, socketKey: 101 });
 });
 
-// #126: an HTTP-joined Claude comes back from a host restart as a new identity, so its cards from
-// before read as muted. This pins today's behaviour. Whoever lands #126 sees this test "pass
-// unexpectedly" and fails the run: delete the `test.fail` line then.
-test('an HTTP-joined agent keeps its identity across a host restart (#126)', async () => {
-  test.fail(true, '#126: today the HTTP agent comes back as a new identity');
+// #126: an HTTP session comes back from a host restart as itself only on a paired device's own key,
+// or with no key on the host's machine. The teammate joined by the link, whose key everyone holding
+// it shares, so by Iain's ruling on #159 its agent comes back as a new identity, and its cards from
+// before read as left. bee-host's McpHttpRestartTest pins the device-key case.
+test('an agent on the join link comes back from a host restart as a new identity (#126)', async () => {
   test.skip(!rig.httpIdentity.after, 'the demo test did not get as far as the restart');
-  expect(rig.httpIdentity.after).toBe(rig.httpIdentity.before);
+  expect(rig.httpIdentity.after).not.toBe(rig.httpIdentity.before);
 });

@@ -15,14 +15,19 @@ import kotlin.random.Random
  * The bridge process survives `/clear`, but the agent behind it has lost its context, so its
  * identity retires and a fresh one takes its place. [onRetire] reports the old identity, and
  * Task 7 wires it to a `Depart` through Raft.
+ *
+ * It starts as [start], having held [before] too: a fresh identity for a new bridge, or the ones
+ * an HTTP session held before its host restarted ([KeptIdentities], bee#126).
  */
 class BridgeIdentity(
     private val name: String,
     private val random: Random,
+    start: PeerIdentity = PeerIdentity.agent(name, random),
+    before: Set<PeerIdentity> = emptySet(),
     private val onRetire: suspend (PeerIdentity, DepartReason) -> Unit,
 ) {
     private val mutex = Mutex()
-    private val identity = MutableStateFlow(PeerIdentity.agent(name, random))
+    private val identity = MutableStateFlow(start)
 
     /** The identity the bridge acts as now. */
     val current: StateFlow<PeerIdentity> = identity.asStateFlow()
@@ -31,7 +36,7 @@ class BridgeIdentity(
      * Every identity this bridge process has acted as, [current] among them: the surfaces any of
      * them opened are still this process's (spec §5.2, a board-wide wait).
      */
-    @Volatile var held: Set<PeerIdentity> = setOf(identity.value)
+    @Volatile var held: Set<PeerIdentity> = before + start
         private set
 
     /**

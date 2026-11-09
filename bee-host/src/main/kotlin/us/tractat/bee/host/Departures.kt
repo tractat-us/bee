@@ -47,6 +47,15 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.Departures")
  *   [us.tractat.bee.core.Presence.EVERY], so its slot advances within that of first being seen.
  *   An entry's presence alone would count a dead agent as seen once a peer pushed it back.
  * - **Never humans.** A person's tabs come and go without retiring them.
+ * - **Not an agent kept for its client.** An HTTP session's identity the last host kept, which no
+ *   session has picked up yet ([waitingForClient], bee#126), is left to the host's own deadline for
+ *   it (`retireUnclaimed`): its only entry is the one a surviving peer pushed back, so its node's
+ *   loss and its silence are the last host's, and Claude Code may not come back for minutes. Its
+ *   claims stay held meanwhile.
+ * - **One agent, its newest entry.** The first two rules read each agent's newest entry, by
+ *   `lastActedAt`, across every slot it posted from (bee#126). An HTTP session that comes back from a
+ *   host restart as itself posts from a new replica on a new claims node, while a surviving peer
+ *   pushes its old slot back; that slot's node and silence are the old session's, not this one's.
  *
  * Each identity is proposed at most once per [Departures]: the claim table already ignores a
  * second `Depart`, and a lingering presence entry would otherwise re-propose it on every check. A
@@ -69,8 +78,9 @@ class Departures(
     private val postings: Flow<EphemeralMap<PresenceEntry>>,
     private val holders: suspend () -> Set<PeerIdentity>,
     private val depart: suspend (PeerIdentity, DepartReason) -> Unit,
-    private val quietAfter: Duration = 20.minutes,
+    private val quietAfter: Duration = QUIET_AFTER,
     private val clock: () -> Instant,
+    private val waitingForClient: () -> Set<PeerIdentity> = { emptySet() },
 ) {
     init {
         require(quietAfter.isPositive()) { "quietAfter must be positive, was $quietAfter" }
@@ -124,18 +134,25 @@ class Departures(
 
     private suspend fun unseenHolders(): Set<PeerIdentity> {
         val seen = mutex.withLock { posted.identities() }
-        return holders().filter { it.kind == PeerKind.Agent && it !in seen }.toSet()
+        val waiting = waitingForClient()
+        return holders().filter { it.kind == PeerKind.Agent && it !in seen && it !in waiting }.toSet()
     }
 
     private suspend fun lostLink(node: NodeId) {
-        presence().filter { it.identity.kind == PeerKind.Agent && it.claimsNode == node }
-            .forEach { propose(it.identity, DepartReason.Crashed) }
+        newestAgentEntries().filter { it.claimsNode == node }.forEach { propose(it.identity, DepartReason.Crashed) }
     }
 
     private suspend fun departQuiet() {
         val now = clock()
-        presence().filter { it.identity.kind == PeerKind.Agent && !it.waiting && now - it.lastActedAt >= quietAfter }
+        newestAgentEntries().filter { !it.waiting && now - it.lastActedAt >= quietAfter }
             .forEach { propose(it.identity, DepartReason.Quiet) }
+    }
+
+    /** Each agent's newest entry by `lastActedAt`, whichever slot it posted from, but those kept for their clients. */
+    private suspend fun newestAgentEntries(): List<PresenceEntry> {
+        val waiting = waitingForClient()
+        return presence().filter { it.identity.kind == PeerKind.Agent && it.identity !in waiting }
+            .groupBy { it.identity }.values.map { entries -> entries.maxBy { it.lastActedAt } }
     }
 
     /** Proposes [identity]'s departure, unless it already was. False only if the proposal failed. */
@@ -177,6 +194,9 @@ class Departures(
     companion object {
         /** How often the quiet clock is read: a quiet agent departs within this of [quietAfter]. */
         val CHECK_EVERY: Duration = 30.seconds
+
+        /** How long an agent may go without acting, and not waiting, before it departs `Quiet`. */
+        val QUIET_AFTER: Duration = 20.minutes
 
         /**
          * How long after boot a claim holder has to post before it is departed (bee#44).

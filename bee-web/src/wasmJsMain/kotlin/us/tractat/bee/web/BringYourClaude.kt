@@ -42,8 +42,9 @@ internal sealed interface McpCommand {
 
     /**
      * The board's owner, on the host's own machine, where the page needs no key. Their session
-     * starts on the kit's stdio bridge, with the [line] `bee-up` printed: that bridge keeps its
-     * identity across a host restart, and an HTTP session doesn't (#126). The page can't know
+     * starts on the kit's stdio bridge, with the [line] `bee-up` printed: each session there keeps
+     * its identity across a host restart, where HTTP sessions at one keyless URL look alike, so
+     * with two live neither keeps its own (#126). The page can't know
      * `BEE_HOME`, so the line names its default.
      *
      * [folderLine] is the by-URL way, for one folder only. Never `--scope user` here: every

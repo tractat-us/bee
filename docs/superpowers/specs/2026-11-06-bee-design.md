@@ -189,13 +189,26 @@ Claude session ── bee-mcp                                           ┘     
   runs one bridge per MCP session in its own JVM. That bridge is still a peer replica: it dials
   the host's own board and claims sockets over loopback, posts presence, holds claims and departs
   like a stdio bridge, and it offers the same tools, prompts and instructions. It reaches the board
-  only once the session initializes. It departs `Left` on a DELETE, a closed transport or a host
-  stop, and `Quiet` once the session has had no request in flight and no GET stream open for two
-  minutes. Claude Code holds its GET stream for the whole session and exits without a DELETE, so
-  a live session never idles and one that exited departs two minutes later. **The trade-off:** the
-  host now holds those sessions' liveness, which on the stdio path the session's own process
-  holds. A host restart ends them, nothing on the session's machine can say it crashed, and
-  `/clear` has no hook to reach them.
+  only once the session initializes. It departs `Left` on a DELETE or a closed transport, and
+  `Quiet` once the session has had no request in flight and no GET stream open for two minutes.
+  Claude Code holds its GET stream for the whole session and exits without a DELETE, so a live
+  session never idles and one that exited departs two minutes later. **The trade-off:** the host
+  now holds those sessions' liveness, which on the stdio path the session's own process holds.
+  Nothing on the session's machine can say it crashed, and `/clear` has no hook to reach them.
+- **An HTTP session on a device's own key comes back from a host restart as itself (design call,
+  bee#126).** A host stop departs no HTTP session. The host keeps each live session's identities
+  in its data dir, under its name and a hash of its key, and the first session that presents that
+  name and key to the next host acts as them again, so its surfaces are still its own. Only a
+  paired device's own key resumes, or no key on the host's own machine. The join link's key never
+  does, whatever the name, since everyone holding the link holds it: a session that joined by
+  the link comes back as a new identity. A resumed session never takes an identity another live
+  session holds, never matches another key, and never matches a name nobody chose (none, or the
+  page's `you`). Two kept sessions under one name and key match neither. Until a session picks it
+  up, the host's departure rules (§6.4) leave a kept identity alone, and its claims stay held: its
+  only presence entry is the one a surviving peer pushed back, and Claude Code may take minutes to
+  re-initialize. One that no session picks up within the quiet timeout the host departs `Quiet`.
+  A session that can't resume (the join link's key, or a name nobody chose) isn't kept: a host
+  stop departs it `Left`, as before.
 - **The bridge pings the host (design call, bee#77).** Its sockets only read, so a half-open link
   after a host reboot or a dropped Wi-Fi link would otherwise wait out TCP's retransmits. They
   ping every 5 s and close after 10 s with no pong, well inside the host's 60 s boot grace (§6.4),
@@ -589,6 +602,13 @@ table over the committed log:
   this boot **(Iain, bee#44)**. Posting means one of its presence slots advanced while the host was
   watching it. An entry a surviving peer pushes back on reconnect doesn't count, because a dead
   agent's last entry never advances.
+- **Kept for its client: the one exception to both rules above (design call, bee#126).** An HTTP
+  session's identity that the last host kept, and that no session has picked up yet (§5.2), is
+  neither departed `Crashed` for its old node nor caught by the boot check: its only entry is one
+  a surviving peer pushed back, and Claude Code may take minutes to re-initialize. Its claims stay
+  held while it waits. If no session picks it up within 20 minutes of the first boot it waited
+  through (restarts don't extend that), bee departs it `Quiet`, not `Crashed` at 60 s. A boot
+  with `--forget-devices` departs those kept under a device's key at once.
 - **Quiet** means the agent hasn't acted for a while (for example, a long build). It shows as
   "quiet since …" until a timeout, then **the session is declared dead, exactly as if it had
   crashed (Iain).** Telling dead from slow can't be done exactly, so bee picks a reasonable
