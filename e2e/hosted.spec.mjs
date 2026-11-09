@@ -76,11 +76,11 @@ async function admit(admitter, joiner) {
 
 // First, while no page has been on this board: nobody's presence can linger from an earlier test.
 test('with nobody on the board, a device asking to join is refused at once', async ({ browser }) => {
-  const andrew = await device(browser, '203.0.113.20');
-  await andrew.goto(`${origin}/?name=andrew`);
-  await expect(andrew.locator('#pairing-prompt')).toHaveText('Nobody is here to let you in. Try again when someone is on the board.', { timeout: 15_000 });
-  await expect(andrew.locator('#pairing-code')).toHaveText('');
-  await expect(andrew.locator('#status')).toHaveCount(0);
+  const alex = await device(browser, '203.0.113.20');
+  await alex.goto(`${origin}/?name=alex`);
+  await expect(alex.locator('#pairing-prompt')).toHaveText('Nobody is here to let you in. Try again when someone is on the board.', { timeout: 15_000 });
+  await expect(alex.locator('#pairing-code')).toHaveText('');
+  await expect(alex.locator('#status')).toHaveCount(0);
 });
 
 test('the owner opens the board by the key in the fragment, which never leaves the browser', async ({ browser }) => {
@@ -116,24 +116,24 @@ test('the owner admits a teammate by code, and the teammate brings their Claude 
   await expect(owner.locator('#invite')).toContainText('Scan to join on a phone or laptop.');
   await expect(owner.locator('#invite')).not.toContainText('on this network');
 
-  const andrew = await device(browser, '203.0.113.21');
-  await andrew.goto(`${origin}/?name=andrew`);
-  await admit(owner, andrew);
-  await expect(andrew.locator('#status')).toHaveText('online as human:andrew');
+  const alex = await device(browser, '203.0.113.21');
+  await alex.goto(`${origin}/?name=alex`);
+  await admit(owner, alex);
+  await expect(alex.locator('#status')).toHaveText('online as human:alex');
 
-  const line = await lineOf(andrew);
+  const line = await lineOf(alex);
   expect(line.text).toContain('claude mcp add --scope user --transport http bee');
   expect(line.url.origin + line.url.pathname).toBe(`${origin}/mcp`);
-  expect(line.name).toBe('andrew');
+  expect(line.name).toBe('alex');
   expect(line.key).toMatch(/^[A-Za-z0-9_-]{43}$/);
   expect(line.key).not.toBe(OWNER_KEY);
   expect(line.key).not.toBe(joinKey());
-  await expect(andrew.locator('#bring-claude')).toContainText("This line holds your key: don't share it.");
-  await expect(andrew.locator('#bring-claude-unnamed')).toHaveCount(0);
+  await expect(alex.locator('#bring-claude')).toContainText("This line holds your key: don't share it.");
+  await expect(alex.locator('#bring-claude-unnamed')).toHaveCount(0);
 
-  // Any admitted person can admit anyone: Andrew gets Invite too.
-  await andrew.locator('#bar #invite-toggle').click();
-  await expect(andrew.locator('#invite-link')).toHaveText(`${origin}/`);
+  // Any admitted person can admit anyone: Alex gets Invite too.
+  await alex.locator('#bar #invite-toggle').click();
+  await expect(alex.locator('#invite-link')).toHaveText(`${origin}/`);
 });
 
 test('a teammate opened with no name gets the placeholder in their line', async ({ browser }) => {

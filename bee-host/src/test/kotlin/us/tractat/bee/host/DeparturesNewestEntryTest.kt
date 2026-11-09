@@ -32,7 +32,7 @@ import kotlin.time.Instant
  * the live session.
  */
 class DeparturesNewestEntryTest {
-    private val andrew = PeerIdentity.agent("andrew-claude", Random(1))
+    private val alex = PeerIdentity.agent("alex-claude", Random(1))
     private val slots = MutableStateFlow(EphemeralMap.empty<PresenceEntry>())
     private val events = MutableSharedFlow<PartitionEvent>(extraBufferCapacity = 16)
     private val proposed = mutableListOf<Pair<PeerIdentity, DepartReason>>()
@@ -54,7 +54,7 @@ class DeparturesNewestEntryTest {
         runCurrent()
         events.emit(PartitionEvent.PeerLost(PeerId("claims-new"), Instant.fromEpochMilliseconds(0)))
         runCurrent()
-        assertEquals(listOf(andrew to DepartReason.Crashed), proposed, "control: losing the node it posts from now is a crash")
+        assertEquals(listOf(alex to DepartReason.Crashed), proposed, "control: losing the node it posts from now is a crash")
     }
 
     @Test
@@ -74,16 +74,16 @@ class DeparturesNewestEntryTest {
         post(NEW, NodeId("claims-new"), now(), clock = 1)
         advanceTimeBy(21.minutes)
         runCurrent()
-        assertEquals(listOf(andrew to DepartReason.Quiet), proposed, "control: quiet on its newest slot too")
+        assertEquals(listOf(alex to DepartReason.Quiet), proposed, "control: quiet on its newest slot too")
     }
 
     /**
-     * Before its client comes back, the pushed-back slot is andrew's only entry: its node's loss,
+     * Before its client comes back, the pushed-back slot is alex's only entry: its node's loss,
      * its silence and its unseen claim are the last host's. Kept for its client, it is left alone.
      */
     @Test
     fun anAgentKeptForItsClientIsLeftAloneByEveryRule() = runTest {
-        start(waiting = setOf(andrew), holders = setOf(andrew))
+        start(waiting = setOf(alex), holders = setOf(alex))
         events.emit(PartitionEvent.PeerLost(PeerId("claims-old"), Instant.fromEpochMilliseconds(0)))
         advanceTimeBy(21.minutes)
         runCurrent()
@@ -92,13 +92,13 @@ class DeparturesNewestEntryTest {
 
     @Test
     fun theSameAgentNotKeptIsDepartedAsBefore() = runTest {
-        start(waiting = emptySet(), holders = setOf(andrew))
+        start(waiting = emptySet(), holders = setOf(alex))
         events.emit(PartitionEvent.PeerLost(PeerId("claims-old"), Instant.fromEpochMilliseconds(0)))
         runCurrent()
-        assertEquals(listOf(andrew to DepartReason.Crashed), proposed, "control: a slot that is its only entry, whose node is lost, is a crash")
+        assertEquals(listOf(alex to DepartReason.Crashed), proposed, "control: a slot that is its only entry, whose node is lost, is a crash")
     }
 
-    /** The old host's slot for [andrew], as a surviving peer pushes it back: old node, last act at 0. */
+    /** The old host's slot for [alex], as a surviving peer pushes it back: old node, last act at 0. */
     private fun TestScope.start(waiting: Set<PeerIdentity> = emptySet(), holders: Set<PeerIdentity> = emptySet()) {
         post(OLD, NodeId("claims-old"), Instant.fromEpochMilliseconds(0), clock = 1)
         val clock = { now() }
@@ -113,7 +113,7 @@ class DeparturesNewestEntryTest {
     private fun TestScope.now() = Instant.fromEpochMilliseconds(testScheduler.currentTime)
 
     private fun post(replica: ReplicaId, node: NodeId, actedAt: Instant, clock: Long) {
-        slots.update { it.put(replica, PresenceEntry(andrew, node, null, actedAt, false), clock) }
+        slots.update { it.put(replica, PresenceEntry(alex, node, null, actedAt, false), clock) }
     }
 
     private companion object {
