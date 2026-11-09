@@ -53,6 +53,22 @@ object OrphanDecision {
         }
     }
 
+    /**
+     * The orphaning an answer decides: the one [seen] names, the decision's data as the person saw
+     * it when they acted, which must be the one [current] names, the data the answer is recorded
+     * against. Both reads name one orphaning, so the answer is recorded in that orphaning's round
+     * and its proposal is fenced by it; an answer the board moved past is never recorded in the
+     * next round, a vote nobody cast there (bee#83).
+     *
+     * @throws IllegalArgumentException if [seen] is null or names no orphaning, or names another
+     *   than [current]
+     */
+    fun answered(seen: JsonObject?, current: JsonObject): ClaimToken {
+        val orphan = requireNotNull(seen?.let(::orphaning)) { "the decision wasn't on screen when you answered, so answer it again." }
+        require(orphaning(current) == orphan) { "the claim was orphaned again before your answer was recorded, so answer the new question." }
+        return orphan
+    }
+
     /** The option id for reassigning the orphan [to] a peer. */
     fun reassignOption(to: PeerIdentity): String = REASSIGN + to
 

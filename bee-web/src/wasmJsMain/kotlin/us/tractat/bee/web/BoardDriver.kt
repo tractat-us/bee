@@ -68,15 +68,17 @@ class BoardDriver(
     private val placeholders = mutableMapOf<String, Element>()
 
     /** Renders the board as it changes, and records every action, until [scope] ends. */
-    fun start(scope: CoroutineScope): Job = scope.launch {
-        launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
-        launch {
-            renderer.actions.collect { action ->
-                // The surface as the person saw it when they acted: an answer decides the orphaning
-                // it shows (bee#83), even if the board moves on while the record is written.
-                val seen = rendered[action.surfaceId]?.data
-                // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
-                if (record(action) && seen != null) launch { answer(action, seen) }
+    fun start(scope: CoroutineScope): Job {
+        // Asked before anything renders, so no action is missed. Each carries the surface as the
+        // person saw it when they acted: an answer decides the orphaning it shows (bee#83).
+        val acted = renderer.actions { action -> rendered[action.surfaceId] }
+        return scope.launch {
+            launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
+            launch {
+                acted.collect { (action, seen) ->
+                    // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
+                    if (record(action, seen) && action.answersAnOrphan()) launch { answer(action, checkNotNull(seen).data) }
+                }
             }
         }
     }
@@ -142,8 +144,13 @@ class BoardDriver(
      * board doesn't hold is refused by `Basis.capture`, and an answer or drop naming nothing the
      * surface holds by [NotionActions.edit], and a screen's answer to an orphan decision by this page;
      * the person is told, and it's never dropped quietly. True if it appended.
+     *
+     * An answer to an orphan decision is recorded only if [seen], the surface as the person saw it
+     * when they acted, names the orphaning the transform reads ([OrphanDecision.answered]). So the
+     * answer lands in the round they answered, and [answer]'s proposal, fenced by [seen], decides
+     * that same one; a round that landed in between refuses it (bee#83).
      */
-    private suspend fun record(action: A2uiAction): Boolean {
+    private suspend fun record(action: A2uiAction, seen: SurfaceView?): Boolean {
         if (answering == OrphanAnswering.Refused && action.answersAnOrphan()) {
             onProblem("A room screen can't answer ${action.surfaceId}: answer it from your own page.")
             return false
@@ -160,6 +167,7 @@ class BoardDriver(
                     at = clock(),
                 )
                 val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
+                if (action.answersAnOrphan()) OrphanDecision.answered(seen?.data, view.data)
                 val written = NotionActions.edit(view, action, actor.toString())
                     ?.let { state.updateData(author, action.surfaceId, it.path, it.value) }
                     ?: return@mutate state.appendRecord(author, record)
