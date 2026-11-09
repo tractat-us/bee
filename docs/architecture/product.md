@@ -48,7 +48,7 @@ and building the tool instead of the work is an anti-goal
 ## Settled — don't reopen
 
 - **Simplicity is an invariant, not one goal weighed against others feature by feature.**
-  Rejected: keeping it a spec goal traded off case by case. Iain made it fundamental. (2026-11-08)
+  Rejected: keeping it a spec goal traded off case by case. Iain made it fundamental. ([#152](https://github.com/tractat-us/bee/pull/152), 2026-11-08)
 - **bee is a medium, not an app with screens.** Rejected: a fixed layout with a screen per task.
   (Iain, [spec §1](../superpowers/specs/2026-11-06-bee-design.md#1-the-idea), 2026-11-06)
 
