@@ -138,6 +138,12 @@ class BeeBridge(
 
     @Volatile private var statusLine: String? = null
 
+    /** How many waits ([waiting]) are in progress: an HTTP session's calls can overlap. */
+    private val waits = MutableStateFlow(0)
+
+    /** Whether any wait is in progress, which every presence post carries. */
+    private val waitingNow: Boolean get() = waits.value > 0
+
     /** The board as this bridge holds it. */
     val board: StateFlow<BoardState> get() = client.state
 
@@ -157,7 +163,7 @@ class BeeBridge(
     suspend fun roster(): Map<PeerIdentity, PresenceEntry> = presence.roster.peers()
 
     /** Puts this session on the board's presence from the start, not only from its first tool call. */
-    suspend fun announce() = presence.update(self, statusLine, clock(), waiting = false)
+    suspend fun announce() = presence.update(self, statusLine, clock(), waiting = waitingNow)
 
     /** Counts a read-only call as acting, so a session that only reads is never quiet. */
     fun touch() = presence.touch(clock())
@@ -441,13 +447,18 @@ class BeeBridge(
     /** Sets the "working on…" line beside this session on the board. */
     suspend fun status(line: String?) {
         val by = beforeWrite()
-        presence.update(by, line, clock(), waiting = false)
+        presence.update(by, line, clock(), waiting = waitingNow)
         statusLine = line
     }
 
-    /** Marks this session as waiting on a surface, or no longer waiting; waiting is never quiet. */
+    /**
+     * Marks one wait of this session as begun, or as ended; waiting is never quiet. The session
+     * shows waiting while any wait is in progress, through every post meanwhile: a wait claims
+     * the records it meets, and each claim's write posts presence too (bee#165).
+     */
     suspend fun waiting(on: Boolean) {
-        presence.update(self, statusLine, clock(), waiting = on)
+        waits.update { if (on) it + 1 else it - 1 }
+        presence.update(self, statusLine, clock(), waiting = waitingNow)
     }
 
     /**
@@ -460,12 +471,12 @@ class BeeBridge(
         val mirrored = board.value
         val reason = table?.departReason(who) ?: mirrored.departures().firstOrNull { it.identity == who }?.reason
         if (reason == null) {
-            presence.update(who, statusLine, clock(), waiting = false)
+            presence.update(who, statusLine, clock(), waiting = waitingNow)
             return@withLock who
         }
         val orphaned = orphanedBy(who, table, mirrored)
         identity.retire(reason)
-        presence.update(self, statusLine, clock(), waiting = false)
+        presence.update(self, statusLine, clock(), waiting = waitingNow)
         throw BridgeRefusal(
             "This session was retired as $who ($reason), so the write was not made. " +
                 "Claims it left orphaned: ${orphaned.ifEmpty { listOf("none") }.joinToString()}. " +
