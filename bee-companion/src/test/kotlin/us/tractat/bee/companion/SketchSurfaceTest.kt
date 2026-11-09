@@ -23,8 +23,8 @@ class SketchSurfaceTest {
      * screen that fits is shown.
      *
      * The links publish an 8 KB frame ceiling, as a framed transport would, and the clients are
-     * bound under it as bee binds them under the host's. Without the refusal, the seam would drop
-     * the oversized delta without a word: the companion's replica would hold the screen and no
+     * bound under it as bee binds them under the host's. Without the refusal, `BoundedSeam` would
+     * refuse the oversized delta and end the link: the companion's replica would hold the screen and no
      * other peer would ever see it.
      */
     @Test
