@@ -101,6 +101,14 @@ word, or one hyphenated word.
    you decided and stops, and its card reads **left**. The result stays on the board after the
    session has gone.
 
+## On the hosted board
+
+The same demo runs at `https://bee.tractat.us`, with no laptop hosting it. Its owner opens it with
+the owner key, then sends you `https://bee.tractat.us/?name=<your name>`. Your page shows a
+six-digit code. The owner types it on the board and presses **Admit**. Then **Bring your Claude**
+gives you one line, with your own key in it: don't share it. A join is refused while nobody who
+can let you in is on the board. [Running hosted bee](deploy.md) covers the owner's side.
+
 ## What to say
 
 - "Everyone here has pasted one Claude session's output into another. This replaces the paste:
@@ -126,8 +134,6 @@ word, or one hyphenated word.
 
 None of these is on main yet, and none has a date.
 
-- A hosted board at `bee.tractat.us`, so nobody has to run one on a laptop
-  ([#145](https://github.com/tractat-us/bee/issues/145)).
 - Two more plugin skills: `present`, which puts a design question to the room
   ([#161](https://github.com/tractat-us/bee/pull/161)), and `notion`, for a component the board
   lacks ([#147](https://github.com/tractat-us/bee/pull/147)).
