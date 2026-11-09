@@ -128,15 +128,15 @@ class HttpBridges(
     /**
      * A new MCP session's server, over a bridge named for the call's `?name=`: the identities the
      * last host kept for that name and the call's key, if it kept one session's ([KeptIdentities]),
-     * else a fresh one. The bridge stays off the board until the session initializes ([bind]):
-     * Claude Code's first POST offers a protocol version this SDK refuses, then retries, and that
-     * first session must leave no trace.
+     * else a fresh one. A name nobody chose ([resumable]) always gets a fresh one. The bridge stays
+     * off the board until the session initializes ([bind]): Claude Code's first POST offers a
+     * protocol version this SDK refuses, then retries, and that first session must leave no trace.
      */
     private fun open(context: RoutingContext): Server {
         val call = context.call
         val name = sessionNameFrom(call.request.queryParameters[NAME_PARAM])
         val caller = Caller.of(call.request.queryParameters[KEY_PARAM])
-        val resumed = kept.pickUp(name, caller)
+        val resumed = if (resumable(name)) kept.pickUp(name, caller) else null
         // The call arrived on the host's own port: the bridge dials it on loopback, which needs no key.
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
@@ -346,6 +346,18 @@ class HttpBridges(
             val name = raw.orEmpty().filterNot { it == ':' || it == '#' }.trim()
             return if (name.isEmpty()) DEFAULT_NAME else "$name-claude"
         }
+
+        /**
+         * The `?name=` the page offers a viewer it can't name: bee-web's `McpCommand.PLACEHOLDER`.
+         * Everyone who pastes that line unedited, on the one join link, presents the same name and key.
+         */
+        const val PLACEHOLDER_NAME: String = "you"
+
+        /**
+         * Whether a session named [name] may come back as a kept identity (bee#126): only under a
+         * name someone chose. No name, or the page's [PLACEHOLDER_NAME], is anybody's.
+         */
+        fun resumable(name: String): Boolean = name != DEFAULT_NAME && name != sessionNameFrom(PLACEHOLDER_NAME)
 
         /**
          * Counts each call on [PATH] as activity on its session from start to finish: a GET stream
