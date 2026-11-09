@@ -187,7 +187,7 @@ class ClaimsLinkLossTest {
         // The bridge posted once, then died with its link: nothing posts again.
         val board = MutableStateFlow(BoardState.EMPTY.piece(BoardState.EMPTY.postPresence(ReplicaId("mcp-ada"), entry(ada, node), clock = 1)))
         val roster = LivePresence(board, rig.clock, backgroundScope) { throw it }
-        hostDepartures(voter, board, rig.clock).start(backgroundScope)
+        hostDepartures(voter, board, rig.clock) { emptySet() }.start(backgroundScope)
         val liveAtDrop = async {
             withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2) {
                 voter.membership.first { node !in it.allMembers }
@@ -223,7 +223,7 @@ class ClaimsLinkLossTest {
         val board = MutableStateFlow(
             BoardState.EMPTY.piece(posted).let { it.piece(it.mirrorClaims(ReplicaId("host-1"), retired)) },
         )
-        hostDepartures(voter, board, rig.clock).start(backgroundScope)
+        hostDepartures(voter, board, rig.clock) { emptySet() }.start(backgroundScope)
 
         delay(Departures.CHECK_EVERY * 50)
         assertAll(

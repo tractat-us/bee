@@ -178,7 +178,17 @@ class BeeHost private constructor(
             try {
                 val bound = server.engine.resolvedConnectors().first().port
                 val intake = AutoCloseable { server.stop(gracePeriodMillis = 100, timeoutMillis = 2_000) }
-                val core = HostCore.start(scope, endpoints.board, endpoints.claims, stores, intake, Dispatchers.Default, RaftConfig(), clock)
+                val core = HostCore.start(
+                    scope,
+                    endpoints.board,
+                    endpoints.claims,
+                    stores,
+                    intake,
+                    Dispatchers.Default,
+                    RaftConfig(),
+                    clock,
+                    waitingForClient = kept::waitingIdentities,
+                )
                 board.set(core.board.relay.state)
                 val requests = JoinRequestSurface(core.board.relay, pairing, clock)
                 val pairingJob = requests.start(scope)
@@ -253,14 +263,23 @@ fun boardMirror(relay: BoardRelay): ClaimMirror = ClaimMirror { table -> relay.m
  * [voter]'s table. A slot on [board] says nothing on its own: a surviving peer's first-contact push
  * brings back entries made before the host went down, a dead agent's among them. Only a slot that
  * advances while this boot watches it shows its poster is alive.
+ *
+ * [waitingForClient] are the HTTP sessions' identities the last host kept that no session has
+ * picked up yet ([KeptIdentities.waitingIdentities]): [retireUnclaimed] judges those, not this.
  */
-internal fun hostDepartures(voter: ClaimsVoter, board: StateFlow<BoardState>, clock: () -> Instant): Departures = Departures(
+internal fun hostDepartures(
+    voter: ClaimsVoter,
+    board: StateFlow<BoardState>,
+    clock: () -> Instant,
+    waitingForClient: () -> Set<PeerIdentity>,
+): Departures = Departures(
     claimsLinkLoss(voter.membership, clock),
     presence = { board.value.undeparted() },
     postings = board.map { it.presence },
     holders = { voter.table.value.holders() },
     depart = voter::depart,
     clock = clock,
+    waitingForClient = waitingForClient,
 )
 
 private fun BoardState.undeparted(): List<PresenceEntry> {

@@ -14,6 +14,7 @@ import kotlinx.coroutines.plus
 import us.tractat.bee.core.BEE_QUILTER_CONFIG
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.persist.QuiltedPersistence
 import us.tractat.kuilt.core.fabric.ConnectionSource
 import us.tractat.kuilt.crdt.ReplicaId
@@ -63,7 +64,8 @@ class HostCore private constructor(
         /**
          * Opens the board from [stores], relays it to [boardSource], and starts the voter on
          * [claimsHost]. Background work runs on [scope]. [intake] is what brings writes in from
-         * outside, the server: [close] stops it before the board's last save.
+         * outside, the server: [close] stops it before the board's last save. [Departures] leaves
+         * the identities in [waitingForClient] alone: HTTP sessions kept for clients yet to return.
          */
         @Suppress("LongParameterList")
         suspend fun start(
@@ -77,10 +79,11 @@ class HostCore private constructor(
             clock: () -> Instant,
             random: Random = Random.Default,
             quilterConfig: QuilterConfig = BEE_QUILTER_CONFIG,
+            waitingForClient: () -> Set<PeerIdentity> = { emptySet() },
         ): HostCore {
             val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, stores.boardId, clock, random, quilterConfig)
             val voter = ClaimsVoter.start(scope, claimsHost, stores.claims, raftConfig, boardMirror(board.relay), clock)
-            val departures = hostDepartures(voter, board.relay.state, clock).start(scope)
+            val departures = hostDepartures(voter, board.relay.state, clock, waitingForClient).start(scope)
             return HostCore(board, voter, departures, intake)
         }
     }

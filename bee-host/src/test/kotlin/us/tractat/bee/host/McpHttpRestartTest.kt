@@ -263,6 +263,43 @@ class McpHttpRestartTest {
         }
     }
 
+    /**
+     * As above, but Claude Code is slow to come back: it re-initializes only once the voter has
+     * dropped the old claims node, as it does after a `/mcp` or a relaunch. Until then the pushed-back
+     * slot is andrew's only entry; kept for its client, andrew is still never departed.
+     */
+    @Test
+    fun aClientThatComesBackAfterTheLearnerGraceIsStillItself() = runBlocking {
+        val port = ServerSocket(0).use { it.localPort }
+        val first = startHost(port)
+        val presenter = BridgePeer.join(HostAddress.parse("ws://127.0.0.1:$port"), "presenter", peerHttpClient(), scope, Random(11), { Clock.System.now() })
+        presenter.start()
+        val before = drawAndLearnWho(connect(url(first, "?name=andrew")), first, "andrew-plan")
+        withTimeout(TIMEOUT) { presenter.board.state.first { s -> s.latestPresence().any { it.identity == before && it.claimsNode != null } } }
+        first.close()
+        val host = startHost(port)
+        try {
+            // The rig: the presenter pushed andrew's old slot back, and nothing else speaks for andrew.
+            withTimeout(TIMEOUT) { host.state.first { s -> s.latestPresence().any { it.identity == before } } }
+            delay(ClaimsVoter.LEARNER_GRACE + 5.seconds)
+            val whileAway = host.state.value.departures().filter { it.identity == before }
+            val claude = connect(url(host, "?name=andrew"))
+            val after = drawAndLearnWho(claude, host, "andrew-after")
+            val departed = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE + 10.seconds) {
+                host.state.first { s -> s.departures().any { it.identity == before } }
+            }
+            assertAll(
+                { assertEquals(emptyList(), whileAway, "not departed while its client was away") },
+                { assertEquals(before, after, "andrew came back as itself, late") },
+                { assertEquals(null, departed?.departures()?.filter { it.identity == before }, "and was never departed") },
+            )
+            claude.close()
+        } finally {
+            presenter.board.close()
+            host.close()
+        }
+    }
+
     /** Starts a host, opens [surface] as a Claude at [query], stops the host, and returns who opened it. */
     private suspend fun openThenRestart(query: String, surface: String): PeerIdentity {
         val host = startHost()

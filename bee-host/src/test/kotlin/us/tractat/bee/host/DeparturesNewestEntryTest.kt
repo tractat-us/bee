@@ -77,11 +77,32 @@ class DeparturesNewestEntryTest {
         assertEquals(listOf(andrew to DepartReason.Quiet), proposed, "control: quiet on its newest slot too")
     }
 
+    /**
+     * Before its client comes back, the pushed-back slot is andrew's only entry: its node's loss,
+     * its silence and its unseen claim are the last host's. Kept for its client, it is left alone.
+     */
+    @Test
+    fun anAgentKeptForItsClientIsLeftAloneByEveryRule() = runTest {
+        start(waiting = setOf(andrew), holders = setOf(andrew))
+        events.emit(PartitionEvent.PeerLost(PeerId("claims-old"), Instant.fromEpochMilliseconds(0)))
+        advanceTimeBy(21.minutes)
+        runCurrent()
+        assertEquals(emptyList(), proposed, "lost link, boot check and quiet rule all leave it to its own deadline")
+    }
+
+    @Test
+    fun theSameAgentNotKeptIsDepartedAsBefore() = runTest {
+        start(waiting = emptySet(), holders = setOf(andrew))
+        events.emit(PartitionEvent.PeerLost(PeerId("claims-old"), Instant.fromEpochMilliseconds(0)))
+        runCurrent()
+        assertEquals(listOf(andrew to DepartReason.Crashed), proposed, "control: a slot that is its only entry, whose node is lost, is a crash")
+    }
+
     /** The old host's slot for [andrew], as a surviving peer pushes it back: old node, last act at 0. */
-    private fun TestScope.start() {
+    private fun TestScope.start(waiting: Set<PeerIdentity> = emptySet(), holders: Set<PeerIdentity> = emptySet()) {
         post(OLD, NodeId("claims-old"), Instant.fromEpochMilliseconds(0), clock = 1)
         val clock = { now() }
-        Departures(events, { slots.value.entries.values.mapNotNull { it.value } }, slots, { emptySet() }, { who, why -> proposed += who to why }, 20.minutes, clock)
+        Departures(events, { slots.value.entries.values.mapNotNull { it.value } }, slots, { holders }, { who, why -> proposed += who to why }, 20.minutes, clock) { waiting }
             .start(backgroundScope)
         runCurrent()
         // The resumed session posts after the old one last acted, never in the same millisecond.

@@ -85,8 +85,13 @@ interface KeptSessionStore {
  *   neither is picked up: a session taking the other's surfaces would be worse than a new identity.
  * - **A retired identity is never offered.** One the board lists as departed ([retired]) is dropped.
  * - **A pick-up is held until the session starts.** A session that never initializes puts its
- *   pick-up back ([putBack]) unsaved, so a host that dies between leaves the store as it was; and
- *   it waits afresh from then, so its client has the whole window again.
+ *   pick-up back ([putBack]) unsaved, and it waits afresh from then, so its client has the whole
+ *   window again. A host that dies between pick-up and start usually leaves the store as it was;
+ *   if another session saved in that window, the pick-up is gone from it, and its client comes
+ *   back as a new identity, as before bee#126.
+ * - **A waiting identity is nobody else's to judge.** Until it is picked up or [unclaimed], the
+ *   host's own departures leave it be ([waitingIdentities]): its only presence entry is the one a
+ *   surviving peer pushed back, whose node and silence are the last host's.
  *
  * A save that fails is logged: the sessions still work, and come back new after a restart.
  */
@@ -107,6 +112,9 @@ class KeptIdentities(private val store: KeptSessionStore, private val retired: (
 
     /** A [pickUp] whose session never started: it waits again, from now. */
     fun putBack(session: KeptSession): Unit = synchronized(lock) { waiting[session] = clock() }
+
+    /** The current identity of each kept session no session has picked up: its client may yet return. */
+    fun waitingIdentities(): Set<PeerIdentity> = synchronized(lock) { waiting.keys.map { it.current }.toSet() }
 
     /** The kept sessions nobody has picked up since [before]: their clients aren't coming back. */
     fun unclaimed(before: Instant): List<KeptSession> = synchronized(lock) { waiting.filterValues { it <= before }.keys.toList() }
