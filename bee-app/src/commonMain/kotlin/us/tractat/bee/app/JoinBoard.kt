@@ -5,7 +5,10 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.pingInterval
 import kotlinx.coroutines.CoroutineScope
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.HostAddress
@@ -47,8 +50,15 @@ fun joinBoard(
         rendezvous = Rendezvous.Existing(WebSocketAdvertisement(host.socket(BOARD_SOCKET), PeerId("bee-host"), "board")),
         scope = scope,
         clock = clock,
-    ).also { it.connect() }
+    ).also { client ->
+        client.connect()
+        scope.launch { client.online.collect { logger.info { if (it) "Online on $host." else "Offline from $host." } } }
+        // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
+        scope.launch { client.lastFailure.filterNotNull().collect { logger.warn { "The board link failed. ${host.describe(it)}" } } }
+    }
 }
+
+private val logger = KotlinLogging.logger {}
 
 /** The host's board relay socket: bee-host's `BoardRelay.PATH`. */
 private const val BOARD_SOCKET = "/ws/board"

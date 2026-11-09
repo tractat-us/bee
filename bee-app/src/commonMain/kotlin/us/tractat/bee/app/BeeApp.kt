@@ -21,6 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -49,16 +54,17 @@ fun BeeApp(start: AppScreen, join: (HostAddress) -> BoardClient) {
     var screen by remember { mutableStateOf(start) }
     Box(Modifier.fillMaxSize().background(Palette.bg).safeDrawingPadding().padding(24.dp)) {
         when (val now = screen) {
-            is AppScreen.AskForBoard -> AskForBoard(now.problem) { link ->
-                screen = try {
-                    AppScreen.OnBoard(join(HostAddress.parse(link)))
-                } catch (unusable: IllegalArgumentException) {
-                    AppScreen.AskForBoard(unusable.message)
-                }
-            }
+            is AppScreen.AskForBoard -> AskForBoard(now.problem) { link -> screen = screenFor(link, join) }
             is AppScreen.OnBoard -> Board(now.board)
         }
     }
+}
+
+/** The screen [link] leads to: its board, [join]ed, or the field again with why it names no host. */
+fun screenFor(link: String, join: (HostAddress) -> BoardClient): AppScreen = try {
+    AppScreen.OnBoard(join(HostAddress.parse(link)))
+} catch (unusable: IllegalArgumentException) {
+    AppScreen.AskForBoard(unusable.message)
 }
 
 /** The board as [board] holds it: for now, its open surfaces' titles as plain text (#156). */
@@ -89,7 +95,15 @@ private fun AskForBoard(problem: String?, onLink: (String) -> Unit) {
         BasicTextField(
             value = link,
             onValueChange = { link = it },
-            modifier = Modifier.fillMaxWidth().border(1.dp, Palette.line).background(Palette.card).padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                // A desktop keyboard's Enter is Go. Consumed here, so the IME action can't join twice.
+                .onPreviewKeyEvent { event ->
+                    (event.key == Key.Enter && event.type == KeyEventType.KeyDown).also { if (it) onLink(link) }
+                }
+                .border(1.dp, Palette.line)
+                .background(Palette.card)
+                .padding(12.dp),
             textStyle = Palette.body,
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
