@@ -103,9 +103,14 @@ test('on a host without --lan the owner gets no Invite', async ({ page }) => {
   await expect(toggle(page)).toHaveCount(0);
 });
 
-test('the host reads who calls off the socket, not a header', async () => {
-  // From loopback, a header claiming another machine changes nothing: the host reads the TCP
-  // peer. Its 403 to a real other machine is bee-host's InviteEndpointTest.
-  const response = await fetch(`${host.url}/invite`, { headers: { 'X-Forwarded-For': '192.168.1.20' } });
-  expect(response.status).toBe(200);
+test('a caller off loopback is refused the link, whatever header it sends', async ({ request }) => {
+  const links = await (await request.get(`${host.url}/invite`)).json();
+  const lan = links.numeric[0];
+  test.skip(lan === undefined, 'This runner has no IPv4 address on a network, so no call can reach the host off loopback.');
+  // Dialled at the machine's own LAN address, the TCP peer is that address, not loopback: a
+  // header claiming loopback must not stand in for it.
+  const key = new URL(lan).searchParams.get('k');
+  const response = await fetch(new URL('/invite', lan), { headers: { 'X-Forwarded-For': '127.0.0.1' } });
+  expect(response.status).toBe(403);
+  expect(await response.text()).not.toContain(key);
 });

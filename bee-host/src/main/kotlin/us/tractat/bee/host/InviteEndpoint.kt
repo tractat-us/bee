@@ -70,4 +70,4 @@ internal fun lanOrder(addresses: List<InetAddress>): List<String> =
     addresses.filterIsInstance<Inet4Address>()
         .filterNot { it.isLoopbackAddress || it.isLinkLocalAddress }
         .sortedBy { !it.isSiteLocalAddress }
-        .mapNotNull { it.hostAddress }
+        .map { it.hostAddress }
