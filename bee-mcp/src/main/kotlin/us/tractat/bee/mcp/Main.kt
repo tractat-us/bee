@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.asSink
 import kotlinx.io.asSource
 import kotlinx.io.buffered
@@ -22,6 +23,7 @@ import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
 import kotlin.system.exitProcess
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 // Lazy, so the logger (whose start-up prints a line to stdout) starts only after main() has
@@ -135,10 +137,25 @@ private fun leave(bridge: BeeBridge) {
     }
 }
 
-/** Takes an ending bridge's replica off the board for good. */
-internal suspend fun endBoard(board: BoardClient) {
+/**
+ * Takes an ending bridge's replica off the board for good, once the host has acknowledged its
+ * writes, waiting at most [within] (bee#116). Closing parts the connection, which cancels any
+ * write the seam hasn't sent yet (kuilt's `Quilter.close`); just after a redial, the first-contact
+ * sync can hold one back for longer than a session takes to end. An offline write is lost either
+ * way: it would ride the next connection's FullState.
+ */
+internal suspend fun endBoard(board: BoardClient, within: Duration = FLUSH_BOUND) {
+    if (withTimeoutOrNull(within) { board.awaitAcknowledged() } != true) {
+        logger.warn { "The host didn't acknowledge this bridge's last writes within $within; any not yet sent are lost." }
+    }
     board.close()
 }
+
+/**
+ * How long an ending bridge waits for the host to acknowledge its writes: a host on the LAN
+ * answers within milliseconds, so this only bounds a host that's gone, as [LEAVE_BOUND] does.
+ */
+private val FLUSH_BOUND = 1.seconds
 
 /** The exit status of a bridge that ended because its host keeps another board. */
 private const val EXIT_ANOTHER_BOARD = 2
