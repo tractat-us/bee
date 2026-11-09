@@ -175,7 +175,7 @@ test('the demo, beat by beat', async ({ browser }) => {
 
     rig.teammate = await startHttpAgent(mcpUrl);
     rig.httpIdentity.before = rig.teammate.identity;
-    expect(rig.teammate.identity).toMatch(/^agent:andrew#/);
+    expect(rig.teammate.identity).toMatch(/^agent:andrew-claude#/);
     await expect(peer(rig.ownerPage, rig.teammate.identity)).toBeVisible({ timeout: 15_000 });
   });
 
