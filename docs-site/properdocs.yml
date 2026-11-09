@@ -162,6 +162,7 @@ nav:
       - Setup: setup.md
       - Tools and prompts: tools.md
       - Claude Code plugin: plugin.md
+      - bee with Codex: codex.md
       - Hosted bee: deploy.md
       - bee's own board: dogfood.md
       - Design: superpowers/specs/2026-11-06-bee-design.md

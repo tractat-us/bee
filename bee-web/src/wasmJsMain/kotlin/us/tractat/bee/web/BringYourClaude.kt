@@ -63,8 +63,9 @@ internal sealed interface McpCommand {
      * it as a ghost for two minutes after it exits.
      *
      * [codexLine] starts one Codex session with bee and writes nothing: each `-c` sets config for
-     * that run only, as `--mcp-config` does. `codex mcp add` would be user-wide, the ghost case
-     * again. The second `-c` runs bee's tools without asking each time, as `--allowedTools` does.
+     * that run only, as `--mcp-config` does. `codex mcp add` would be user-wide: every Codex on
+     * this machine, `codex exec` runs too, would join the board. The second `-c` runs bee's tools
+     * without asking each time, as `--allowedTools` does.
      */
     class Owner(origin: String, override val viewer: Viewer) : McpCommand {
         override val line = KIT_LINE

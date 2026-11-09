@@ -14,6 +14,7 @@ Both arguments are optional. Keep each to one word: Claude Code may pass only th
 follows the command. Say anything longer in your next message.
 [Whiteboard with a session](setup.md#whiteboard-with-a-session) and
 [A status card for every session](setup.md#a-status-card-for-every-session) say what to expect.
+Codex doesn't offer MCP prompts; [bee with Codex](codex.md#the-skills) says what to type there.
 
 ## Tools the session calls
 

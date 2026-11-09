@@ -8,6 +8,7 @@ Each Claude session reaches the board through the **bridge** (`bee-mcp`), a smal
 gives the session its board tools. [Tools and prompts](tools.md) lists them.
 
 New to bee? [Try bee](try-bee.md) walks through the same paths in a few minutes, from a Mac.
+Using Codex? [bee with Codex](codex.md) puts a Codex session on the same board.
 
 ## Run a board
 
@@ -404,7 +405,8 @@ page, with `claude mcp remove --scope user bee` ahead of it so it can be run aga
 On the host's own machine the panel offers the owner's lines instead: first the kit's
 `claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'`, as `bee-up` prints it (with
 your own path if you set `BEE_HOME`), then the one-folder URL line below. It never offers the
-owner `--scope user`.
+owner `--scope user`. Last, under "Using Codex?", it offers the line for a Codex session
+([bee with Codex](codex.md)).
 
 On the host's own machine, a URL needs no key. Register it for one folder only, never with
 `--scope user`: every `claude` started anywhere on the machine, dispatched workers included,

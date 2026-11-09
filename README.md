@@ -39,7 +39,8 @@ and asks you for decisions with buttons.
 a session can do on the board.
 
 [The Claude Code plugin](docs/plugin.md) joins your sessions to a board with one install, and
-shortens the prompts to `/bee:draw` and `/bee:checkin`.
+shortens the prompts to `/bee:draw` and `/bee:checkin`. [bee with Codex](docs/codex.md) does the
+same for Codex.
 
 ## Where it stands
 
