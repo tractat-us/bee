@@ -11,6 +11,7 @@ import org.w3c.dom.Element
 import us.tractat.bee.a2ui.A2uiAction
 import us.tractat.bee.a2ui.A2uiMessage
 import us.tractat.bee.a2ui.NotionActions
+import us.tractat.bee.a2ui.NotionEdit
 import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.SurfaceValidator
 import us.tractat.bee.a2ui.SurfaceView
@@ -171,6 +172,7 @@ class BoardDriver(
         var written: Written? = null
         try {
             client.mutate { state ->
+                val at = clock()
                 val record = ActionRecord(
                     surfaceId = action.surfaceId,
                     componentId = action.sourceComponentId,
@@ -178,13 +180,13 @@ class BoardDriver(
                     name = action.name,
                     context = action.context,
                     basis = Basis.capture(state, action.surfaceId),
-                    at = clock(),
+                    at = at,
                 )
                 val view = requireNotNull(state.surfaceDoc(action.surfaceId)).toSurfaceView(action.surfaceId)
                 if (action.answersAnOrphan()) OrphanDecision.answered(seen?.data, view.data)
-                val edited = NotionActions.edit(view, action, actor.toString())
-                    ?.let { state.updateData(author, action.surfaceId, it.path, it.value) }
-                val recorded = (edited?.let { state.piece(it) } ?: state).appendRecord(author, record)
+                val edited = NotionActions.edit(view, action, actor.toString(), at)
+                    ?.let { state.write(action.surfaceId, it) }
+                val recorded = (edited?.let { state.piece(it.delta) } ?: state).appendRecord(author, record)
                 // Read in the transform, so it names the record of whichever run lands.
                 written = Written(recorded.delta.records().single().first, view)
                 edited?.let { Patch(it.delta.piece(recorded.delta)) } ?: recorded
@@ -194,6 +196,12 @@ class BoardDriver(
             onProblem("Couldn't record ${action.name} on ${action.surfaceId}: ${refused.message}")
             return null
         }
+    }
+
+    /** [edit] made as this page's author: a write from the register just read (A13), or an append (A12). */
+    private fun BoardState.write(surfaceId: String, edit: NotionEdit): Patch<BoardState> = when (edit) {
+        is NotionEdit.Write -> updateData(author, surfaceId, edit.path, edit.value)
+        is NotionEdit.Append -> appendEntry(author, surfaceId, edit.path, edit.value)
     }
 
     /** Record [record], appended while the board held its surface as [against]. */

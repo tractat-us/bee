@@ -14,6 +14,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import us.tractat.bee.a2ui.NotionActions
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
@@ -69,8 +70,10 @@ object BeeTools {
                 "keyed by peer, which each answer writes. It also adds " +
                 "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +
                 "owner?} and a card {label, column, href?, detail?}: href, an http: or https: URL, makes the label " +
-                "a link, and detail is one short line under it; an empty href or detail clears it. A drop moves a card to another column. Each answer or drop is " +
-                "also an action record.",
+                "a link, and detail is one short line under it; an empty href or detail clears it. A drop moves a card to another column. " +
+                "Chat binds messages, appended {id, author, text, at}: post one with append {\"/messages\": " +
+                "[{\"text\": \"…\"}]}, text only (plain, at most ${NotionActions.MAX_MESSAGE_LENGTH} characters), and " +
+                "the bridge stamps your identity, id and time. Each answer, drop or message is also an action record.",
             inputSchema = schema(required = listOf("surfaceId", "title", "components")) {
                 putJsonObject("surfaceId") { put("type", "string") }
                 putJsonObject("title") { put("type", "string") }

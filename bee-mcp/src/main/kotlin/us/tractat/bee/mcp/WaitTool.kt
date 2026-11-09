@@ -50,6 +50,7 @@ object WaitTool {
                 "Pass the returned cursor to the next call to keep reading from where this one stopped, with or without surfaceId. " +
                 "A record is returned with the claim token this session holds it under; one whose claim a person " +
                 "reassigned to this session, from another that left, arrives here too, under the reassign's token. " +
+                "A record this session wrote itself, such as its own Chat message, never arrives: you never hear yourself. " +
                 "A pairing surface the host opened, such as a join request, is refused: the host handles its records.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
@@ -75,7 +76,8 @@ object WaitTool {
             description = "Lists the action records on the shared board, without waiting. " +
                 "Omit surfaceId to list the records on all of your own surfaces, the ones this session opened; pass it to list that one surface's. " +
                 "Returns {records, cursor}; each record names its surfaceId. Pass a cursor a previous call returned as since " +
-                "to list only the records after it. A pairing surface the host opened is refused, as bee_wait_action does.",
+                "to list only the records after it. Records this session wrote itself are left out, and a pairing surface " +
+                "the host opened is refused, as bee_wait_action does both.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") {

@@ -166,6 +166,91 @@ class SurfaceValidatorTest {
         )
     }
 
+    /** A Chat binds its messages, and they're appended, never written as data (bee#214). */
+    @Test
+    fun aChatBindsMessagesThatAreAppended() {
+        val chat = component("root", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/messages") } }
+        val asData = view(chat).copy(data = buildJsonObject { put("messages", JsonArray(listOf(message("m1", "hi")))) })
+        assertAll(
+            { assertEquals(emptyList(), SurfaceValidator.errors(view(chat))) },
+            {
+                assertEquals(
+                    listOf("Component \"root\" is a Chat whose messages isn't a data binding ({\"path\": \"/…\"})."),
+                    SurfaceValidator.errors(view(component("root", SurfaceValidator.CHAT))),
+                )
+            },
+            {
+                assertEquals(
+                    listOf(
+                        "Component \"root\" is a Chat whose messages at /messages isn't appended: put it in append, not data, " +
+                            "so a vote's basis can name each entry.",
+                    ),
+                    SurfaceValidator.appendErrors(asData),
+                )
+            },
+            { assertEquals(emptyList(), SurfaceValidator.appendErrors(asData.copy(appended = setOf("/messages")))) },
+        )
+    }
+
+    /**
+     * A writer may append only a whole message: `{id, author, text, at}`, each a string, its text
+     * neither blank nor past the cap, its id held by no earlier message. Rendering doesn't check it,
+     * so one bad message never hides a whole Chat; the page shows what it can.
+     */
+    @Test
+    fun appendErrorsNameAMalformedChatMessage() {
+        val chat = component("root", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/messages") } }
+        val messages = listOf(
+            message("m1", "fine"),
+            message("m2", " "),
+            message("m3", "x".repeat(NotionActions.MAX_MESSAGE_LENGTH + 1)),
+            buildJsonObject { put("id", "m4"); put("text", "who?"); put("at", "2026-11-09T12:00:00Z") },
+            JsonPrimitive("just text"),
+            message("m6", "x".repeat(NotionActions.MAX_MESSAGE_LENGTH)),
+            message("m1", "again"),
+        )
+        val withMessages = view(chat).copy(data = buildJsonObject { put("messages", JsonArray(messages)) }, appended = setOf("/messages"))
+        assertAll(
+            {
+                assertEquals(
+                    listOf(
+                        "Component \"root\" is a Chat whose message at /messages/1 is empty.",
+                        "Component \"root\" is a Chat whose message at /messages/2 is ${NotionActions.MAX_MESSAGE_LENGTH + 1} characters, " +
+                            "past the ${NotionActions.MAX_MESSAGE_LENGTH} a message holds.",
+                        "Component \"root\" is a Chat whose message at /messages/3 isn't {id, author, text, at}, each a string.",
+                        "Component \"root\" is a Chat whose message at /messages/4 isn't {id, author, text, at}, each a string.",
+                        "Component \"root\" is a Chat whose message at /messages/6 has id \"m1\", which /messages/0 holds.",
+                    ),
+                    SurfaceValidator.appendErrors(withMessages),
+                )
+            },
+            { assertEquals(emptyList(), SurfaceValidator.errors(withMessages), "rendering still passes it") },
+        )
+    }
+
+    /** What every Chat on a surface shows, whatever its shape, and nothing a Chat doesn't bind. */
+    @Test
+    fun chatEntriesAreWhatEveryChatShows() {
+        val one = component("one", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/a") } }
+        val two = component("two", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/b") } }
+        val data = buildJsonObject {
+            put("a", JsonArray(listOf(message("m1", "hi"))))
+            put("b", JsonArray(listOf(JsonPrimitive("raw"))))
+            put("c", JsonArray(listOf(message("m3", "unbound"))))
+        }
+        assertEquals(
+            setOf(message("m1", "hi"), JsonPrimitive("raw")),
+            SurfaceValidator.chatEntries(view(one, two).copy(data = data)),
+        )
+    }
+
+    private fun message(id: String, text: String) = buildJsonObject {
+        put("id", id)
+        put("author", "human:alex")
+        put("text", text)
+        put("at", "2026-11-09T12:00:00Z")
+    }
+
     private fun view(vararg components: JsonObject) = SurfaceView(
         id = "s",
         catalogId = NOTIONS_CATALOG_ID,

@@ -227,6 +227,9 @@ class BoardActionSource internal constructor(
      * A record left out isn't passed, so it isn't lost: a one-surface wait still takes it. A
      * surface whose meta hasn't reached this replica is left out until it does, so a pairing
      * surface is never taken in before its opener is known.
+     *
+     * Either scope leaves out the session's own records, such as a Chat message it posted
+     * ([BeeBridge.wrote]): a session never hears, or answers, itself.
      */
     private fun recordsIn(state: BoardState, scope: ActionScope, granted: Set<ClaimTarget>): List<Pair<RecordId, ActionRecord>> =
         when (scope) {
@@ -234,7 +237,7 @@ class BoardActionSource internal constructor(
             ActionScope.Board -> state.records().filter { (id, record) ->
                 HANDLED_ELSEWHERE.none(record.surfaceId::startsWith) && (bridge.opened(state, record.surfaceId) || target(id) in granted)
             }
-        }
+        }.filterNot { (_, record) -> bridge.wrote(record) }
 
     /**
      * Refuses a one-surface wait or list on a pairing surface the host opened, such as a join

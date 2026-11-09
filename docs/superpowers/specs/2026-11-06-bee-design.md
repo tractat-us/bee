@@ -264,7 +264,9 @@ Claude session ── bee-mcp                                           ┘     
   clicks. The cursor is the set of record ids the caller has passed, not a position, and a record
   id is a CRDT dot, unique across authors and stable across a host restart. So a board-wide cursor
   never skips or repeats a record, and any cursor resumes a wait in either scope. It grows with
-  the session's own records, which v1 accepts.
+  the session's own records, which v1 accepts. **In either scope, a session never receives a
+  record its own identities wrote (design call, bee#214),** now or before a `/clear`: today that
+  is only its own Chat posts, so it never hears, or answers, itself.
 - **Records are addressed to a surface, never to a session instance (design call).** Session
   identities are fresh each time, so a record addressed to one would wait forever once that session
   ended. Instead, any attached session may pick up a record on a surface it handles, and **handling
@@ -406,6 +408,15 @@ components plus these:
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
   appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
+- **`Chat`** (bee#214): people and agents talking on the board, one surface like any other, never a
+  sidebar. Its messages are appended entries `{id, author, text, at}`, shown oldest first in
+  append order, and never edited. A person's Send is appended by their own page, in the same
+  transform as its `send` record, so a session waiting on the Chat hears it. An agent appends
+  only its text, and its bridge stamps the session's own identity, a fresh id and the time, and
+  records a `send` the same way, so another session hears it too, while a session's own wait
+  never returns its own record. A message naming another author, or a reused id, is refused.
+  The author is declared, as every actor is (§5.7), and a message's text is plain, at most 2000
+  characters.
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
   captures in the browser and returns a transcript as an action. Before it ships it needs a consent
   rule, because it records everyone in the room, not just the person who asked.

@@ -14,13 +14,13 @@ import kotlinx.serialization.json.JsonPrimitive
 object SurfaceValidator {
     /**
      * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog plus
-     * `Sketch`, `Poll` and `Board` (`bee-notions/src/catalog.js`), so it always matches what the
+     * `Sketch`, `Poll`, `Board` and `Chat` (`bee-notions/src/catalog.js`), so it always matches what the
      * renderer can draw.
      */
     val NOTIONS_COMPONENT_TYPES: Set<String> = setOf(
         "Text", "Image", "Icon", "Video", "AudioPlayer", "Row", "Column", "List", "Card", "Tabs",
         "Modal", "Divider", "Button", "TextField", "CheckBox", "ChoicePicker", "Slider", "DateTimeInput",
-        SKETCH, POLL, BOARD,
+        SKETCH, POLL, BOARD, CHAT,
     )
 
     /** A question, options and per-peer answers ([NotionActions]): binds `question`, `options` and `answers`. */
@@ -33,6 +33,9 @@ object SurfaceValidator {
      */
     const val BOARD = "Board"
 
+    /** People and agents talking: binds `messages`, appended `{id, author, text, at}` ([NotionActions]). */
+    const val CHAT = "Chat"
+
     /** The URL schemes a Board card's `href` may use. The page opens it, so never `javascript:`. */
     private val CARD_HREF_SCHEMES = listOf("http://", "https://")
 
@@ -40,14 +43,17 @@ object SurfaceValidator {
     private val BINDINGS: Map<String, List<String>> = mapOf(
         POLL to listOf("answers", "options", "question"),
         BOARD to listOf("cards", "columns"),
+        CHAT to listOf("messages"),
     )
 
     /**
      * The bindings of each Notions type whose data a basis must name, so each holds appended
-     * entries, never data (spec §5.6, §6.1): a Poll's options and question revisions.
+     * entries, never data (spec §5.6, §6.1): a Poll's options and question revisions, and a Chat's
+     * messages.
      */
     private val APPENDED_BINDINGS: Map<String, List<String>> = mapOf(
         POLL to listOf("options", "question"),
+        CHAT to listOf("messages"),
     )
 
     /** Agent-written HTML in a sandboxed frame (spec §5.6): properties `html` and `title?`. */
@@ -76,12 +82,19 @@ object SurfaceValidator {
      * question or options written as data, as a whole array or a scalar (bee#81). A bound path
      * that holds nothing yet is fine, since entries can be appended later.
      *
+     * It names a malformed Chat message too ([messageErrors]).
+     *
      * Writers check this; [errors] doesn't, so a Poll written before the bridge could append still
-     * renders, without its options basis.
+     * renders, without its options basis, and one bad message, which nobody can edit, never hides
+     * a whole Chat.
      */
     fun appendErrors(view: SurfaceView): List<String> = view.components.keys.sorted().flatMap { id ->
         val component = view.components.getValue(id)
         val type = component["component"]?.stringOrNull()
+        unappendedErrors(id, type, component, view) + messageErrors(id, component, view.data)
+    }
+
+    private fun unappendedErrors(id: String, type: String?, component: JsonObject, view: SurfaceView): List<String> =
         APPENDED_BINDINGS[type].orEmpty().mapNotNull { binding ->
             val path = (component[binding] as? JsonObject)?.get("path")?.stringOrNull() ?: return@mapNotNull null
             val pointer = heldAt(view.data, path) ?: return@mapNotNull null
@@ -92,7 +105,45 @@ object SurfaceValidator {
                     "so a vote's basis can name each entry."
             }
         }
+
+    /**
+     * The problems with the messages a Chat [component] binds in [data]: each must be
+     * `{id, author, text, at}`, every one a string, its text pass [NotionActions.textProblem], and
+     * its id be held by no earlier message, so a reused id fails loudly rather than hiding a
+     * message. Messages not written yet are fine.
+     */
+    private fun messageErrors(id: String, component: JsonObject, data: JsonObject): List<String> {
+        if (component["component"]?.stringOrNull() != CHAT) return emptyList()
+        val path = (component["messages"] as? JsonObject)?.get("path")?.stringOrNull() ?: return emptyList()
+        val messages = valueAt(data, path) as? JsonArray ?: return emptyList()
+        val at = SurfaceFormat.pointer(SurfaceFormat.segments(path))
+        val firstHeld = mutableMapOf<String, Int>()
+        return messages.mapIndexedNotNull { index, entry ->
+            val fields = (entry as? JsonObject)?.let { message -> MESSAGE_FIELDS.associateWith { message[it]?.stringOrNull() } }
+            val text = fields?.get("text")
+            val messageId = fields?.get("id")
+            val problem = if (fields == null || null in fields.values || text == null || messageId == null) {
+                "isn't {${MESSAGE_FIELDS.joinToString()}}, each a string"
+            } else {
+                val first = firstHeld.getOrPut(messageId) { index }
+                NotionActions.textProblem(text) ?: "has id \"$messageId\", which $at/$first holds".takeIf { first != index }
+            }
+            problem?.let { "Component \"$id\" is a Chat whose message at $at/$index $it." }
+        }
     }
+
+    /**
+     * Every entry any Chat on [view] shows, whatever its shape. A writer compares it before and
+     * after a write, so binding a Chat to entries appended raw can't show a message nobody posted.
+     */
+    fun chatEntries(view: SurfaceView): Set<JsonElement> = view.components.values
+        .filter { it["component"]?.stringOrNull() == CHAT }
+        .mapNotNull { chat -> (chat["messages"] as? JsonObject)?.get("path")?.stringOrNull() }
+        .flatMap { path -> (valueAt(view.data, path) as? JsonArray).orEmpty() }
+        .toSet()
+
+    /** What a Chat message holds, each a string. */
+    private val MESSAGE_FIELDS = listOf("id", "author", "text", "at")
 
     /**
      * The problems with the cards a Board [component] binds in [data]: an `href` that isn't an
