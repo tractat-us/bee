@@ -91,6 +91,10 @@ export async function startAgent(name, { port = process.env.BEE_E2E_PORT } = {})
   send({ jsonrpc: '2.0', method: 'notifications/initialized' });
   return {
     identity: await identity,
+    /** A tool's whole MCP result, `{content, structuredContent?, isError?}`, for content beyond its JSON text. */
+    async result(tool, args = {}) {
+      return request('tools/call', { name: tool, arguments: args });
+    },
     async call(tool, args = {}) {
       const result = await request('tools/call', { name: tool, arguments: args });
       const text = result.content?.[0]?.text ?? '';
