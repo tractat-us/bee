@@ -5,19 +5,21 @@ get onto it. A rule here binds every subsystem that puts something in front of a
 
 ## Invariants
 
-1. **bee acts like a physical, infinite whiteboard: simplicity first, no clutter (Iain,
-   2026-11-08).** In his words: "The point is to have something that really really acts like a
-   physical, infinite whiteboard. We don't want to have any clutter." And: "We should always value
-   simplicity." Enforcer: `review`. For every change a person can see or has to do, the reviewer
-   checks:
-   - Each new UI element, prompt, setup step, install path or required choice names the need it
-     meets, and why nothing already there meets it. One that can't doesn't merge.
-   - The least visible way to meet a need wins. Something an agent draws on the board when asked
-     beats a permanent control, a default beats a setting, and one path beats two.
-   - The board, not chrome, is the screen. Chrome stays small and quiet, and nothing joins it
-     without the justification above.
+1.  **bee acts like a physical, infinite whiteboard: simplicity first, no clutter (Iain,
+    2026-11-08).** In his words, quoted as said: <!-- vale House.Filler = NO -->"The point is to
+    have something that really really acts like a physical, infinite whiteboard. We don't want to
+    have any clutter."<!-- vale House.Filler = YES --> And: "We should always value simplicity."
+    Enforcer: `review`. For every change a person can see or has to do, the reviewer
+    checks:
 
-   It's `review` because no compiler, Konsist rule or text scan can tell clutter from a need.
+    - Each new UI element, prompt, setup step, install path or required choice names the need it
+      meets, and why nothing already there meets it. One that can't doesn't merge.
+    - The least visible way to meet a need wins. Something an agent draws on the board when asked
+      beats a permanent control, a default beats a setting, and one path beats two.
+    - The board, not chrome, is the screen. Chrome stays small and quiet, and nothing joins it
+      without the justification above.
+
+    It's `review` because no compiler, Konsist rule or text scan can tell clutter from a need.
 
 ## Current design
 
