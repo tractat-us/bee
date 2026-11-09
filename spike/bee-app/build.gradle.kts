@@ -42,7 +42,7 @@ android {
                 "META-INF/native/**",
                 "META-INF/native-image/**",
             )
-            pickFirsts += setOf("META-INF/*.kotlin_module", "**/module-info.class")
+            pickFirsts += setOf("META-INF/*.kotlin_module", "**/module-info.class", "logback.xml")
         }
     }
 }
