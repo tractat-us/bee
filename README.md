@@ -21,9 +21,10 @@ gives you into a terminal, start `claude`, and type `/mcp__bee__whiteboard`. Not
 installed.
 
 **Run your own.** From a checkout, `bin/bee-up --name <you>` starts a board on your network, opens
-it in your browser, and prints a join link to send. Your coworker needs no checkout and no JDK:
-`bin/bee-bundle` builds a zip with everything they need. Building from a checkout needs
-credentials for [kuilt's packages](docs/bee-and-kuilt.md#how-bee-gets-kuilt); a zip needs none.
+it in your browser, and prints a join link to send. For someone with no checkout and no JDK,
+`bin/bee-bundle` builds a zip that runs a board with nothing else installed. Building from a
+checkout needs credentials for [kuilt's packages](docs/bee-and-kuilt.md#how-bee-gets-kuilt); the
+zip needs none.
 
 **Watch all your sessions at once.** Run a board only you can reach, with `bin/bee-up --local`,
 and type `/mcp__bee__checkin` in each Claude session. Each one keeps a status card on the board,

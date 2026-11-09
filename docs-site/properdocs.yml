@@ -114,7 +114,7 @@ plugins:
         Docs:
           - index.md: What bee is, and the three ways onto a board
           - try-bee.md: Joining a board, or running your own, in a few minutes, from a Mac
-          - setup.md: Running a board with bee-up, joining one with bee-join, and adding bee to Claude Code
+          - setup.md: Running a board with bee-up, joining one from its link, and adding bee to Claude Code
           - tools.md: Every tool and prompt a Claude session gets from bee, one line each
           # plugin page: docs/plugin.md
           - superpowers/specs/2026-11-06-bee-design.md: The design spec, with its goals, architecture and the board's state

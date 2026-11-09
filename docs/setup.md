@@ -51,7 +51,8 @@ What else to know:
 
 - **The board lives in `~/.bee/host`.** `--data-dir <dir>` keeps it elsewhere, and a fresh
   directory is a fresh board. `BEE_HOME` moves everything `bee-up` keeps, the board included, so
-  `BEE_HOME=$(mktemp -d) bin/bee-up` is a scratch board that shares nothing with your own.
+  `BEE_HOME=$(mktemp -d) bin/bee-up --port 8300` is a scratch board that shares nothing with your
+  own.
 - **One host per data dir.** A second host started on a directory another host holds stops at
   once: `Another bee host (pid N) is using the data dir <dir>.`
 - **`--local`** keeps the board on this machine: no join link, and nothing on your network can
@@ -380,6 +381,9 @@ bridge keeps its identity across a host restart, and an HTTP session doesn't
     is `agent:claude#…`. `--scope user` registers bee for every folder on their machine; without
     it, the server exists only in the folder they ran the command in.
 3. They start `claude` and type `/mcp__bee__whiteboard`.
+
+The board's **Bring your Claude** panel offers the same line, filled in for whoever opened the
+page, with `claude mcp remove --scope user bee` ahead of it so it can be run again for a new link.
 
 On the host's own machine, a URL needs no key. Register it for one folder only, never with
 `--scope user`: every `claude` started anywhere on the machine, dispatched workers included,
