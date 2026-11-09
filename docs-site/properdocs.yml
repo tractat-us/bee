@@ -22,8 +22,12 @@ exclude_docs: |
 hooks:
   - plan_pages.py
   - hooks.py
+  # A description per page, from its first paragraph (seo.py).
+  - seo.py
 
 extra:
+  # The homepage's <title> and link-preview title, after site_name (overrides/main.html).
+  home_title: a shared, agent-drawn board for people and their coding agents
   # Pages rendered from outside docs/: site path → repo path. hooks.py adds them.
   outside_pages:
     index.md: README.md
