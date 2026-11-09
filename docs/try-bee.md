@@ -14,19 +14,18 @@ needs a zip and an Apple-silicon Mac.
 
 You need the link the board's owner sent you. It looks like `http://192.168.1.5:8233/?k=…`.
 
-1. Open the link in your browser. The board opens, and shows who else is on it.
-   <!-- verify: does the page ask for your name, or must the link carry &name=<you>? -->
+1. Add your name to the end of the link, `&name=<you>`, and open it in your browser. The board
+   opens, and shows who else is on it. Without a name, you appear as `you`.
 
-2. Bring your Claude. Press **Bring your Claude** in the board's header. It shows one command;
-   copy it. It looks like this:
-   <!-- verify: the button label "Bring your Claude" and the exact command it shows -->
+2. Bring your Claude. Press **Bring your Claude** in the board's header, then **Copy**, and
+   paste the line into a terminal. It looks like this:
 
     ```sh
-    claude mcp add --transport http bee 'http://192.168.1.5:8233/mcp?k=…&name=<you>'
+    claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee 'http://192.168.1.5:8233/mcp?k=…&name=<you>'
     ```
 
-    Run it in a terminal, in the folder you'll start Claude from. As shown, it adds bee for that
-    folder only. To have bee in every folder, put `--scope user` after `add`.
+    It adds bee to Claude Code for every folder, replacing any bee you added before, so it's safe
+    to run again with a new link. Nothing else gets installed.
 
 3. Start Claude and give it something to draw:
 
@@ -44,8 +43,9 @@ You need the link the board's owner sent you. It looks like `http://192.168.1.5:
     the first word.
 
 The link admits whoever holds it, across the owner's restarts, until they make a new one. If the
-board goes offline for a moment, the owner probably restarted it; the page and your session
-reconnect on their own.
+board goes offline for a moment, the owner probably restarted it. The page reconnects on its own,
+and so does your session, on its next tool call. Cards your session drew before the restart then
+read as muted, because it comes back as a new participant ([#126](https://github.com/tractat-us/bee/issues/126)).
 
 ## Your own board
 
@@ -72,16 +72,24 @@ on Apple-silicon Macs only and carries its own Java, so there is nothing else to
     The first time, macOS asks whether `java` may accept incoming connections. Press **Allow**,
     or nobody else can reach you.
 
-3. Add bee to your own Claude Code. `bee-up` prints a `claude mcp add` line for that. Run it with
-   `--scope user`, so every session in every repo has bee:
-   <!-- verify: the exact `claude mcp add` line bee-up prints, and whether it already carries --scope user -->
+3. Start a Claude session on your board. `bee-up` prints the line; it looks like this:
 
     ```sh
-    claude mcp add --scope user bee …
+    claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'
     ```
 
-4. Start `claude` anywhere and type `/mcp__bee__whiteboard <topic>`, as in
-   [Join someone's board](#join-someones-board).
+    Then type `/mcp__bee__whiteboard <topic>`, as in [Join someone's board](#join-someones-board).
+    A session started this way keeps its place on the board through a restart.
+
+4. Optional: to have bee in **every** Claude session you start, in any folder, add it once:
+
+    ```sh
+    claude mcp add --scope user --transport http bee 'http://127.0.0.1:8233/mcp?name=<you>'
+    ```
+
+    Every `claude` you start then joins your board, including one-off `claude -p` runs and any
+    sessions your tools start for you, and each stays listed for two minutes after it exits.
+    That suits a dashboard (next section); leave it out if you run many sessions at once.
 
 The board is a folder, `~/.bee/host`. Stop it with `./bee-up --stop`; `./bee-up` brings it back,
 with the same link, and everyone on it reconnects by themselves.
@@ -97,8 +105,9 @@ each repo's Claude session, type:
 
 Each session keeps one card on the board: what it's working on, how far it has got, and any
 decision it needs from you, as buttons. Click an answer and that session acts on it. Press
-**Done** on a card and that session stops checking in.
-<!-- verify: the card's contents and the "Done" label, once feat/checkin-prompt lands -->
+**Done** or **Pause** on a card and that session stops checking in. Each card also says whether
+its session is **listening** for your click, **working**, or has left; a card whose session has
+left is greyed out.
 
 For a design conversation, `/mcp__bee__whiteboard <topic>` draws a diagram and questions you
 work through together.
@@ -123,10 +132,9 @@ Network → Firewall → Options and allow `java` incoming connections.
 
 **The page says it's offline and stays that way.** Reload it.
 
-**Claude's bee tools fail with "another board".** The board was wiped or moved, and your session
-still remembers the old one. Type `/mcp` in the session, pick `bee` and restart it, or restart
-Claude.
-<!-- verify: the exact wording of the "another board" error -->
+**Claude's bee tools stop working, and `/mcp` shows bee as failed.** The board was wiped or
+moved, and your session still remembers the old one. Type `/mcp` in the session, pick `bee` and
+reconnect it, or restart Claude.
 
 **You want to start again from nothing.** On the board's laptop:
 
@@ -154,19 +162,19 @@ one.
     | Cut off every device and session | `./bee-up --forget-devices` |
 
     Either one prints a new link, and the board survives it. Send the new link to the people you
-    still want on the board. To bring their Claude back, they run `claude mcp remove bee`, then
-    the new command from **Bring your Claude**.
+    still want on the board. To bring their Claude back, they open the new link and paste
+    its **Bring your Claude** line, which replaces the old one.
 
 ## Stop or uninstall
 
 ```sh
 ./bee-up --stop                   # stop your board; it is kept for next time
-claude mcp remove bee             # take bee out of Claude Code; add --scope user if you added it that way
+claude mcp remove --scope user bee   # take bee out of Claude Code
 rm -rf ~/.bee                     # delete your board, its keys and its logs
 ```
 
 Then delete the `bee-kit-darwin-arm64` folder. If you only joined someone else's board, the
-`claude mcp remove bee` line is all you need.
+`claude mcp remove` line is all you need.
 
 ## Going further
 
