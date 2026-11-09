@@ -26,16 +26,58 @@ import us.tractat.kuilt.websocket.KtorRoomHost
 import us.tractat.kuilt.websocket.KtorServerLoom
 import java.net.InetAddress
 
-/** The address a call came from, as an IP literal. */
-fun interface PeerAddress {
-    fun of(call: ApplicationCall): String
+/**
+ * Who made a call: the [address] it came from, and whether it is [local], this machine's own,
+ * which reaches the board with no key ([mountEndpoints]). Only [byPeer] and [forwarded] make one,
+ * so a caller is local only when the TCP peer itself is a loopback address and no proxy stood
+ * between: a forwarded address is whatever the proxy, or a dialler posing as one, says.
+ */
+class Caller private constructor(val address: String, val local: Boolean) {
+    override fun equals(other: Any?): Boolean = other is Caller && other.address == address && other.local == local
+
+    override fun hashCode(): Int = 31 * address.hashCode() + local.hashCode()
+
+    override fun toString(): String = if (local) "Caller($address, local)" else "Caller($address)"
 
     companion object {
+        /** A caller known by its TCP peer's [address]: local when that is a loopback address ([isLoopback]). */
+        fun byPeer(address: String): Caller = Caller(address, isLoopback(address))
+
+        /** A caller a proxy names: never local, whatever [address] says. */
+        fun forwarded(address: String): Caller = Caller(address, local = false)
+    }
+}
+
+/** Who each call came from ([Caller]). */
+fun interface PeerAddress {
+    fun of(call: ApplicationCall): Caller
+
+    companion object {
+        private const val FORWARDED_FOR = "X-Forwarded-For"
+        private const val FORWARDED = "Forwarded"
+
         /**
          * The TCP peer, never a forwarded header: no proxy stands in front of the host, and a
          * header is whatever the dialler says it is.
          */
-        val DIRECT: PeerAddress = PeerAddress { it.request.local.remoteAddress }
+        val DIRECT: PeerAddress = PeerAddress { Caller.byPeer(it.request.local.remoteAddress) }
+
+        /**
+         * Behind one trusted proxy ([Reach.Public]): the rightmost `X-Forwarded-For` entry, the one
+         * the proxy appended, since every entry left of it is whatever the client sent. A call
+         * with no such entry is its TCP peer's. A call carrying `X-Forwarded-For` or `Forwarded`
+         * is never [Caller.local], whatever its TCP peer: the proxy dials from wherever it runs,
+         * and a header claiming loopback came from someone who isn't.
+         */
+        val FORWARDED: PeerAddress = PeerAddress { call ->
+            val headers = call.request.headers
+            val forwardedFor = headers.getAll(FORWARDED_FOR).orEmpty().flatMap { it.split(',') }.map(String::trim).lastOrNull { it.isNotEmpty() }
+            when {
+                forwardedFor != null -> Caller.forwarded(forwardedFor)
+                headers.contains(FORWARDED_FOR) || headers.contains(FORWARDED) -> Caller.forwarded(call.request.local.remoteAddress)
+                else -> Caller.byPeer(call.request.local.remoteAddress)
+            }
+        }
     }
 }
 
