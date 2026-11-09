@@ -26,6 +26,7 @@ import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.bee.mcp.Caller
 import us.tractat.bee.mcp.HttpBridges
 import us.tractat.bee.mcp.KeptIdentities
 import us.tractat.bee.mcp.KeptSessionFile
@@ -168,6 +169,10 @@ class BeeHost private constructor(
                 retired = { board.get()?.value?.departures().orEmpty().map { it.identity }.toSet() },
                 clock = clock,
             )
+            // Every key stopped admitting, so only a session kept with no key, on this machine, can
+            // come back: the rest are retired at the first check, not held for the whole window. A
+            // new link alone changes nothing here, since no session on the join link's key is kept.
+            if (config.keyReset == KeyReset.ForgetDevices) kept.endWaits { it.caller != Caller.Loopback }
             val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, keys::kindOf, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {

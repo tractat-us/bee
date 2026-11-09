@@ -214,6 +214,38 @@ class McpHttpRestartTest {
     }
 
     /**
+     * `--forget-devices` revokes every device's key, so a session kept under one can never come
+     * back: the host retires it at its first check, not after the whole window. A session kept with
+     * no key, on the host's own machine, still waits for its client.
+     */
+    @Test
+    fun forgettingDevicesRetiresTheSessionsKeptUnderTheirKeys() = runBlocking {
+        val first = startHost()
+        val ticket = assertIs<Opened.Ticket>(first.pairing.open(ANOTHER_MACHINE))
+        val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("andrew"), ticket.code)).key.value
+        val (andrew, iain) = try {
+            drawAndLearnWho(connect(url(first, "?name=andrew&k=$device")), first, "andrew-plan") to
+                drawAndLearnWho(connect(url(first, "?name=iain")), first, "iain-plan")
+        } finally {
+            first.close()
+        }
+        val host = BeeHost.start(scope, HostConfig(port = 0, dataDir = dir, keyReset = KeyReset.ForgetDevices))
+        try {
+            val departed = withTimeout(Departures.CHECK_EVERY + TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == andrew } } }
+                .departures()
+            val kept = KeptSessionFile(dir.resolve(KeptSessionFile.NAME))
+            withTimeout(TIMEOUT) { while (kept.load().any { it.session.current == andrew }) delay(50) }
+            assertAll(
+                { assertEquals(DepartReason.Quiet, departed.single { it.identity == andrew }.reason, "its key is gone, so its client can't come back") },
+                { assertTrue(departed.none { it.identity == iain }, "control: the keyless session on this machine still waits") },
+                { assertEquals(listOf(iain), kept.load().map { it.session.current }, "only iain is still kept") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
      * Everyone who pastes the page's line unedited is `name=you` on the one join link, and a URL
      * with no name is anybody's: neither name comes back as the identity it had.
      */

@@ -142,6 +142,17 @@ class KeptIdentities(private val store: KeptSessionStore, private val retired: (
         if (waiting.remove(session) != null) save()
     }
 
+    /**
+     * Ends the wait of every waiting session [which] picks, so the next check finds it [unclaimed]:
+     * its client can't come back, as when its key no longer admits (`--forget-devices`).
+     */
+    fun endWaits(which: (KeptSession) -> Boolean): Unit = synchronized(lock) {
+        val ended = waiting.keys.filter(which)
+        if (ended.isEmpty()) return
+        ended.forEach { waiting[it] = Instant.DISTANT_PAST }
+        save()
+    }
+
     /** [owner]'s session is on the board as [session]: kept from now on, replacing what it was. */
     fun live(owner: Any, session: KeptSession): Unit = synchronized(lock) {
         live[owner] = session
