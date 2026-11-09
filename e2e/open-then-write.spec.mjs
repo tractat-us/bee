@@ -1,5 +1,7 @@
-// Scratch repro: an agent opens a surface and writes data to it at once, while two pages are
-// already open. Does either page stop?
+// A surface written to just after an agent opens it, while two pages are already open, shows on
+// both, and neither page stops. bee#171: the page that didn't answer a fresh Poll received the
+// answer before the Poll's open and stopped on a surface without meta.
+// The agent is a real bee-mcp bridge (`:bee-mcp:installDist`), driven over stdio (agent.mjs).
 import { test, expect } from '@playwright/test';
 import { startAgent } from './agent.mjs';
 
