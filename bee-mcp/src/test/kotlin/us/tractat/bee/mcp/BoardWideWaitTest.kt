@@ -1,6 +1,7 @@
 package us.tractat.bee.mcp
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
+import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
@@ -24,6 +26,7 @@ import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.bee.host.JoinRequestSurface
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import kotlin.random.Random
@@ -68,6 +71,40 @@ class BoardWideWaitTest {
             { assertEquals("kanban", record.string("surfaceId")) },
             { assertEquals(true, record.getValue("basisComplete").jsonPrimitive.boolean) },
             { assertEquals(ClaimStatus.Held(ada.bridge.self, token), rig.voter.table.value.status(target), "returned claimed, as a one-surface wait returns it") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A wait that passes over a record it can't take still shows the session waiting (bee#165).
+     * Without a cursor, as the whiteboard prompt loops after a host restart, a board-wide wait
+     * first claims the click it already marked done, loses, and passes it over. That claim is a
+     * write; its presence post must keep `waiting`, or the card reads `working` for the rest of
+     * the wait. The wait returning the next click proves it passed the done one and held.
+     */
+    @Test
+    fun aWaitThatPassesOverADoneRecordStillShowsWaiting() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        ada.call(BeeTools.OPEN, openArgs("poll"))
+        browser.state.first { "poll" in it.openSurfaces() }
+        browser.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
+        val first = ada.waitBoard().record()
+        ada.call(BeeTools.DONE, mapOf("recordId" to first.string("recordId"), "token" to first.string("token")))
+        val doneTarget = BoardActionSource.target(BoardActionSource.parseRecordId(first.string("recordId")))
+        rig.voter.table.first { it.status(doneTarget) is ClaimStatus.Done }
+
+        val waited = async { ada.waitBoard(timeoutSeconds = 30) }
+        delay(1.seconds)
+        val entry = ada.client.state.value.latestPresence().single { it.identity == ada.bridge.self }
+        val claimsOfDone = rig.claimsOf(doneTarget)
+        browser.mutate { it.appendRecord(iain, click(it, "poll", "go")) }
+        val next = waited.await().record()
+        assertAll(
+            { assertEquals(2, claimsOfDone, "rig: the wait claimed the done click again, so its write happened mid-wait") },
+            { assertTrue(entry.waiting, "a session still waiting after passing over a done record reads waiting: $entry") },
+            { assertTrue(next.string("recordId") != first.string("recordId"), "the wait passed the done click and returned the next") },
         )
         rig.close()
     }
@@ -399,6 +436,12 @@ class BoardWideWaitTest {
         check(session.client.state.value.meta("theirs")?.openedBy == zed) { "rig: zed, not the session, opened the surface" }
         return orphan to free
     }
+
+    /** How many claims of [target] the voter's log holds, committed or rejected. */
+    private suspend fun JoinRig.claimsOf(target: ClaimTarget): Int =
+        DurableStoreRaftStorage.open(claims.store).entries(1).count { entry ->
+            (runCatching { ClaimCommand.decode(entry.command) }.getOrNull() as? ClaimCommand.Claim)?.target == target
+        }
 
     /** The reserved surface-id prefixes a board-wide scope leaves out by name, as `BoardActionSource` lists them. */
     private val HANDLED_ELSEWHERE_PREFIXES = listOf(PairingSurfaces.PREFIX, OrphanDecision.PREFIX, CompanionSurfaces.PREFIX)
