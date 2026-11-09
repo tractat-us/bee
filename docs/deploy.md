@@ -1,9 +1,52 @@
-# Deploying hosted bee
+# Running hosted bee
 
 Hosted bee is one board on the public internet, at `https://bee.tractat.us`. It runs on a single
 Fly.io machine, app `bee-tractat-us`, and stays on around the clock: the host there is the board's
 always-on copy and its one voter, so the board outlives every laptop that joins it. This page is
-for whoever deploys it.
+for whoever runs it.
+
+## Getting on the board
+
+Nobody reaches a hosted board from loopback, and a device can't pair by code until someone admitted
+is on the board to admit it. So the first person in is always the owner, by key:
+
+1. **The owner opens the board:**
+
+    ```sh
+    open "https://bee.tractat.us/?k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
+    ```
+
+    The page moves the key out of the address bar into that tab's storage. The key never appears
+    on the board or in a log. A new tab or another browser needs the link again, or pairs by code
+    from the open tab.
+
+2. **Other devices, the owner's phone included,** open `https://bee.tractat.us`. Each shows a
+   six-digit code, which someone already on the board types in before pressing **Admit**. With
+   nobody admitted on the board, the request is refused at once.
+
+3. **The owner's Claude** joins over HTTP MCP, with nothing to install:
+
+    ```sh
+    claude mcp add --scope user --transport http bee \
+      "https://bee.tractat.us/mcp?k=$(security find-generic-password -s bee.tractat.us -a owner -w)"
+    ```
+
+    The key ends up in `~/.claude.json`. The board's "Bring your Claude" panel shows the same line
+    with the viewer's own key, and a person who paired by code uses that.
+
+4. **The owner key** is the Fly secret `BEE_OWNER_KEY`; the host refuses to start without it. The
+   readable copy is in Iain's Keychain. It never goes in this repo, a workflow or a log. To rotate
+   it, mint a new one into the Keychain (`-w` last, with no value, prompts for it), then import it
+   on stdin, never as an argument:
+
+    ```sh
+    security add-generic-password -U -s bee.tractat.us -a owner -w
+    key=$(security find-generic-password -s bee.tractat.us -a owner -w)
+    printf 'BEE_OWNER_KEY=%s\n' "$key" | flyctl secrets import -a bee-tractat-us
+    ```
+
+    The app restarts with the new key. The old one then stops admitting, in any `claude mcp`
+    config too.
 
 ## Deploy
 
@@ -32,25 +75,6 @@ machine, and the host locks its data directory, so the app runs exactly one mach
 
 A deploy restarts the one machine, so every peer's socket drops for a few seconds and redials.
 
-## The owner key
-
-The hosted host refuses to start without `BEE_OWNER_KEY` in its environment. Two copies exist:
-
-- Iain's Keychain: `security find-generic-password -s bee.tractat.us -a owner -w`.
-- the Fly secret `BEE_OWNER_KEY` on `bee-tractat-us`, which Fly hands to the machine.
-
-It never goes in this repo, a workflow, a log, or a command's arguments. To rotate it, store the
-new key in the Keychain (`-w` last, with no value, prompts for it), then import it on stdin.
-`printf` is a shell builtin, so the key never appears in a process's arguments:
-
-```sh
-security add-generic-password -U -s bee.tractat.us -a owner -w
-printf 'BEE_OWNER_KEY=%s\n' "$(security find-generic-password -s bee.tractat.us -a owner -w)" \
-  | flyctl secrets import -a bee-tractat-us
-```
-
-Importing restarts the machine with the new key. Add `--stage` to wait for the next deploy instead.
-
 ## When the deploy fails its health check
 
 Fly checks `GET /board-id` on the machine over its private network. Like every path, it passes
@@ -74,9 +98,10 @@ flyctl certs create bee.tractat.us -a bee-tractat-us
 ```
 
 That gave the shared IPv4 `66.241.125.173` and the IPv6 `2a09:8280:1::1f2:99b7:0`. The owner key
-went to the app as a staged secret, imported on stdin as above. The repo secret `FLY_API_TOKEN` is
-a deploy token scoped to this one app (`flyctl tokens create deploy -a bee-tractat-us`), so the
-workflow can deploy `bee-tractat-us` and nothing else.
+went to the app as a staged secret, imported on stdin as above with `--stage`, so the first deploy
+releases it. The repo secret `FLY_API_TOKEN` is a deploy token scoped to this one app
+(`flyctl tokens create deploy -a bee-tractat-us`), so the workflow can deploy `bee-tractat-us`
+and nothing else.
 
 DNS for `tractat.us` is at Pair Networks:
 
@@ -92,7 +117,7 @@ bee-tractat-us` reports it.
 ## What ships
 
 [`Dockerfile`](../Dockerfile), [`fly.toml`](../fly.toml) and
-[`deploy.yml`](../.github/workflows/deploy.yml) are the whole of it. The image holds a
-Java 25 runtime and `bee-host`'s distribution, with the page it serves. It builds nothing, so no
-build credential reaches Fly. The host runs as the unprivileged user `bee`, on a `shared-cpu-1x`
-machine with 512 MB of memory and a 256 MB heap.
+[`deploy.yml`](../.github/workflows/deploy.yml) are the whole of it. The image holds a Java 25
+runtime and `bee-host`'s distribution, with the page it serves. It builds nothing, so no build
+credential reaches Fly. The host runs as the unprivileged user `bee`, on a `shared-cpu-1x` machine
+with 512 MB of memory and a 256 MB heap.
