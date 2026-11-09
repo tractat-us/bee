@@ -18,11 +18,14 @@ import us.tractat.bee.core.ClaimTable
 import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PresenceEntry
+import us.tractat.bee.telemetry.Attr
+import us.tractat.bee.telemetry.ProcessTelemetry
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.bee.mcp.HttpBridges
 import us.tractat.kuilt.raft.RaftConfig
+import java.nio.file.Path
 import java.security.SecureRandom
 import kotlin.random.asKotlinRandom
 import kotlin.time.Clock
@@ -54,6 +57,10 @@ class BeeHost private constructor(
     private val orphanDecisions: Job,
     /** The bridges this host runs for MCP clients over HTTP, at [MCP_PATH]. */
     val bridges: HttpBridges,
+    /** Records the board's changes into [telemetry] ([watchBoard]). */
+    private val watch: Job,
+    /** What the host records, in its data dir: closed after the board's last save, before the data dir goes. */
+    private val telemetry: ProcessTelemetry,
     /** The host's hold on [HostConfig.dataDir], let go once [close] has saved the board. */
     private val dataDir: DataDirLock,
 ) : AutoCloseable {
@@ -81,11 +88,17 @@ class BeeHost private constructor(
      */
     override fun close() {
         dataDir.use {
-            runBlocking {
-                bridges.close()
-                joinRequests.cancelAndJoin()
-                orphanDecisions.cancelAndJoin()
-                core.close()
+            try {
+                runBlocking {
+                    bridges.close()
+                    joinRequests.cancelAndJoin()
+                    orphanDecisions.cancelAndJoin()
+                    core.close()
+                    // Last, so the departures and leaves the close itself causes are recorded.
+                    watch.cancelAndJoin()
+                }
+            } finally {
+                telemetry.close()
             }
         }
     }
@@ -100,6 +113,9 @@ class BeeHost private constructor(
         const val MCP_PATH: String = HttpBridges.PATH
 
         internal const val CSP_HEADER = "Content-Security-Policy"
+
+        /** The host's CRDT author for this boot, on its records: `bee.peer` is the steady "host". */
+        const val REPLICA_ATTRIBUTE: String = "bee.replica"
 
         /**
          * The page's policy, sent with the page's files ([mountEndpoints]): no frame may load a
@@ -117,37 +133,51 @@ class BeeHost private constructor(
          * [HostConfig.dataDir]. Background work runs on [scope]. [Departures] reads a crash off
          * the claims voter: a node it drops after the learner grace ([claimsLinkLoss], bee#28).
          *
+         * The host records into what [telemetry] opens in its data dir, once it holds the dir: each
+         * socket dialled, each call refused, each change to its board ([recordCalls],
+         * [watchBoard]), stamped with the board and the host's replica.
+         *
          * @throws DataDirInUse if another host holds the data dir: this one touches nothing in it
          */
-        suspend fun start(scope: CoroutineScope, config: HostConfig): BeeHost = start(scope, config, PeerAddress.DIRECT)
+        suspend fun start(scope: CoroutineScope, config: HostConfig, telemetry: (Path) -> ProcessTelemetry = { ProcessTelemetry.off() }): BeeHost =
+            start(scope, config, PeerAddress.DIRECT, telemetry)
 
         /**
          * [start], with the socket gate reading each call's peer from [peers]: a test's way to
          * have a dial on a loopback socket count as one from another machine, which a key must admit.
          */
-        internal suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress): BeeHost {
+        internal suspend fun start(
+            scope: CoroutineScope,
+            config: HostConfig,
+            peers: PeerAddress,
+            telemetry: (Path) -> ProcessTelemetry = { ProcessTelemetry.off() },
+        ): BeeHost {
             val lock = DataDirLock.take(config.dataDir)
+            val recording = telemetry(config.dataDir)
             return try {
-                start(scope, config, peers, lock)
+                start(scope, config, peers, lock, recording)
             } catch (failure: Throwable) {
+                recording.close()
                 lock.close()
                 throw failure
             }
         }
 
         /** [start], on the data dir [lock] holds: nothing opens [HostConfig.dataDir] without one. */
-        private suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress, lock: DataDirLock): BeeHost {
+        private suspend fun start(scope: CoroutineScope, config: HostConfig, peers: PeerAddress, lock: DataDirLock, telemetry: ProcessTelemetry): BeeHost {
             val clock = { Clock.System.now() }
             val stores = HostStores.onDisk(config.dataDir)
+            telemetry.resource.set(Attr.BOARD, stores.boardId.value)
             val secrets = SecureSecrets(SecureRandom())
             // bee#106: every key outlives a restart; config.keyReset is how one stops admitting.
             val keys = HostKeys.boot(KeyFile(config.dataDir.resolve(KeyFile.NAME)), secrets, config.keyReset)
             val pairing = Pairing(clock, secrets, keys, budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
-            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
+            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), config.mcpIdleAfter, maxSessions = config.mcpMaxSessions, telemetry = telemetry.telemetry)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
+                recordCalls(telemetry.telemetry, stores.boardId, peers)
                 endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())
                 bridges.mount(this)
             }
@@ -160,7 +190,10 @@ class BeeHost private constructor(
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
-                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, lock)
+                val relay = core.board.relay
+                telemetry.resource.set(REPLICA_ATTRIBUTE, relay.replica.value)
+                val watch = scope.watchBoard(relay.state, relay.spokes, PeerId(relay.replica.value), telemetry.telemetry)
+                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, watch, telemetry, lock)
             } catch (failure: Throwable) {
                 bridges.close()
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)

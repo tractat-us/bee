@@ -8,6 +8,9 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.PairingWire
+import us.tractat.bee.telemetry.Attr
+import us.tractat.bee.telemetry.ProcessTelemetry
+import us.tractat.bee.telemetry.Role
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
@@ -18,7 +21,7 @@ fun main(args: Array<String>) {
     val config = HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val host = try {
-        runBlocking { BeeHost.start(scope, config) }
+        runBlocking { BeeHost.start(scope, config, ::hostTelemetry) }
     } catch (busy: DataDirInUse) {
         logger.error { busy.message }
         exitProcess(1)
@@ -38,3 +41,18 @@ fun main(args: Array<String>) {
     }
     runBlocking { awaitCancellation() }
 }
+
+/**
+ * The host's telemetry, under its data dir's `telemetry/`: every log line and every board change,
+ * each stamped as the host's. `bee.peer` is the steady `host`; `BeeHost` adds the board and its
+ * replica for this boot. Off under `BEE_TELEMETRY=off`.
+ */
+private fun hostTelemetry(dataDir: Path): ProcessTelemetry = ProcessTelemetry.open(
+    dirs = listOf(dataDir.resolve("telemetry")),
+    resource = mapOf(
+        Attr.SERVICE to "bee-host",
+        Attr.ROLE to Role.HOST,
+        Attr.PEER to Role.HOST,
+        Attr.PID to ProcessHandle.current().pid().toString(),
+    ),
+)

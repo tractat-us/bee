@@ -264,6 +264,18 @@ it was on and which the host keeps now, and exits with status 2, so `/mcp` shows
 failed. Restart it from `/mcp` to join the new board. An open browser tab reloads onto the new
 board by itself.
 
+## What bee records about itself
+
+The host and each bridge keep a record of what they do: every log line, each change to the board,
+each socket that dials or is refused, and each tool call with how long it took. The host keeps its
+record in its data dir's `telemetry/` folder, and a bridge keeps its own in
+`$BEE_HOME/telemetry/bridge-<session>/`. Each record holds ids, names and counts. It never holds a
+key, a surface's content or a tool call's arguments. Each folder is capped at 10,000 log lines and
+1,000 tool calls, and the oldest go first.
+
+To turn it off, start the host or the bridge with `BEE_TELEMETRY=off`. `bee-up` and `bee-join`
+pass that setting to the bridges they configure.
+
 ## Run the host by hand
 
 `bee-up` wraps the host. To run it in a terminal of your own instead:
