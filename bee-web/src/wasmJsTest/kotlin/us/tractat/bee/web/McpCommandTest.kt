@@ -35,8 +35,21 @@ class McpCommandTest {
     @Test
     fun aNameCanNotBreakTheQuoteOrTheQuery() {
         assertEquals(
-            "claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee 'http://192.168.1.20:8233/mcp?k=a%2Bb&name=o%27brien%20%26%20co'",
+            "claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee 'http://192.168.1.20:8233/mcp?k=a%2Bb&name=o'\\''brien%20%26%20co'",
             McpCommand.of(origin, Access.Keyed("a+b"), Viewer.Named("o'brien & co")).line,
+        )
+    }
+
+    /**
+     * A browser keeps `'`, `;` and `$(` in a host name (`new URL("http://a'b.example/").origin`), so
+     * the origin is quoted with the rest: each `'` closes the quote, adds an escaped `'`, and reopens
+     * it, and the `;` and `$(` stay inside quotes, one inert word.
+     */
+    @Test
+    fun anOriginCanNotBreakTheQuote() {
+        assertEquals(
+            "claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee 'http://a'\\'';$(touch x).example:8233/mcp?name=alex'",
+            McpCommand.of("http://a';\$(touch x).example:8233", Access.Loopback, Viewer.Named("alex")).line,
         )
     }
 }

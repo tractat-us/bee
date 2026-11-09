@@ -21,8 +21,8 @@ internal sealed interface Viewer {
  * `--scope user` because the session it brings may start in any folder: `claude mcp add`'s own
  * default scope is the folder it runs in. The line first removes any earlier `bee` entry, quietly,
  * since `claude mcp add` refuses a name it already has: one line still works with a new key or
- * for another board. The URL is single-quoted for the shell, and every part of its query
- * percent-encoded, a `'` too, so no name can end the quote.
+ * for another board. The whole URL is one single-quoted shell word, every `'` in it escaped: a
+ * browser keeps `'`, `;` and `$(` in a host name, so neither the origin nor a name can end the quote.
  */
 internal class McpCommand private constructor(val line: String, val viewer: Viewer) {
     companion object {
@@ -44,11 +44,12 @@ internal class McpCommand private constructor(val line: String, val viewer: View
                 is Access.Keyed -> listOf("k" to access.key)
                 Access.Loopback -> emptyList()
             }
-            val query = (key + ("name" to name)).joinToString("&") { (param, value) -> "$param=${shellSafe(value)}" }
-            return McpCommand("$REMOVE_EARLIER claude mcp add --scope user --transport http bee '$origin$PATH?$query'", viewer)
+            val query = (key + ("name" to name)).joinToString("&") { (param, value) -> "$param=${encodeURIComponent(value)}" }
+            return McpCommand("$REMOVE_EARLIER claude mcp add --scope user --transport http bee ${singleQuoted("$origin$PATH?$query")}", viewer)
         }
 
-        private fun shellSafe(value: String): String = encodeURIComponent(value).replace("'", "%27")
+        /** [text] as one inert POSIX shell word: single quotes, each `'` in it closed, escaped and reopened. */
+        private fun singleQuoted(text: String): String = "'" + text.replace("'", "'\\''") + "'"
     }
 }
 
@@ -80,7 +81,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
     private val panel: HTMLElement = (element("section", PANEL_ID) as HTMLElement).also {
         it.setAttribute("aria-label", "Bring your Claude")
         it.hidden = true
-        shell.problem.parentElement?.insertBefore(it, shell.problem.nextSibling)
+        requireNotNull(shell.problem.parentElement) { "#problem isn't on the page." }.insertBefore(it, shell.problem.nextSibling)
     }
     private val line: Element = element("code", "bring-claude-command").also { it.textContent = command.line }
     private val copied: Element = element("p", "bring-claude-copied").also { it.setAttribute("aria-live", "polite") }
