@@ -84,6 +84,9 @@ class DeparturesNewestEntryTest {
         Departures(events, { slots.value.entries.values.mapNotNull { it.value } }, slots, { emptySet() }, { who, why -> proposed += who to why }, 20.minutes, clock)
             .start(backgroundScope)
         runCurrent()
+        // The resumed session posts after the old one last acted, never in the same millisecond.
+        advanceTimeBy(1.seconds)
+        runCurrent()
     }
 
     private fun TestScope.now() = Instant.fromEpochMilliseconds(testScheduler.currentTime)
