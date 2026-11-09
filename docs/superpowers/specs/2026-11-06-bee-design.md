@@ -409,9 +409,12 @@ components plus these:
 - **`Chat`** (bee#214): people and agents talking on the board, one surface like any other, never a
   sidebar. Its messages are appended entries `{id, author, text, at}`, shown oldest first in
   append order, and never edited. A person's Send is appended by their own page, in the same
-  transform as its `send` record, so a session waiting on the Chat hears it. An agent posts by
-  appending the same entry. The author is declared, as every actor is (§5.7), and a message's
-  text is plain, at most 2000 characters.
+  transform as its `send` record, so a session waiting on the Chat hears it. An agent appends
+  only its text, and its bridge stamps the session's own identity, a fresh id and the time, and
+  records a `send` the same way, so another session hears it too, while a session's own wait
+  never returns its own record. A message naming another author, or a reused id, is refused.
+  The author is declared, as every actor is (§5.7), and a message's text is plain, at most 2000
+  characters.
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
   captures in the browser and returns a transcript as an action. Before it ships it needs a consent
   rule, because it records everyone in the room, not just the person who asked.

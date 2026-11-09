@@ -34,8 +34,8 @@ sealed interface NotionEdit {
  *   an array of ids. The action [DROP], with context `{card, column}`, writes the card's `column` leaf.
  * - **`Chat`** binds `messages`, an append-only array of `{id, author, text, at}`. The action
  *   [SEND], with context `{id, text}`, appends the message as the actor's, stamped with the
- *   record's time, so two people sending at once both land, each once (bee#214). An agent
- *   posts the same entry through the bridge's `append`.
+ *   record's time, so two people sending at once both land, each once (bee#214). A session
+ *   posts only its text through the bridge's `append`, which stamps it the same way ([post]).
  *
  * Every other action only records.
  */
@@ -64,7 +64,7 @@ object NotionActions {
         return when (component.type() to action.name) {
             SurfaceValidator.POLL to ANSWER -> answer(view, component, action, actor)
             SurfaceValidator.BOARD to DROP -> drop(view, component, action)
-            SurfaceValidator.CHAT to SEND -> send(component, action, actor, at)
+            SurfaceValidator.CHAT to SEND -> send(view, component, action, actor, at)
             else -> null
         }
     }
@@ -80,26 +80,66 @@ object NotionActions {
     }
 
     /** The id of the Chat in [view] whose `messages` binds [pointer], or null if no Chat binds it. */
-    @Suppress("UNUSED_PARAMETER")
-    fun chatAt(view: SurfaceView, pointer: String): String? = null
+    fun chatAt(view: SurfaceView, pointer: String): String? {
+        val at = normalized(pointer) ?: return null
+        return view.components.entries.firstOrNull { (_, component) ->
+            component.type() == SurfaceValidator.CHAT && component.boundPath("messages")?.let(::normalized) == at
+        }?.key
+    }
 
-    /** The message [actor] posts to Chat [chat] with [entry]: not built yet. */
-    @Suppress("UNUSED_PARAMETER")
-    fun post(chat: String, entry: JsonElement, actor: String, id: String, at: Instant): JsonObject = TODO("bee#214 review")
+    /**
+     * The message [actor], a session, posts to Chat [chat] with [entry], `{"text": …}`: stamped
+     * with [id], [actor] as its author, and [at], as a page's [SEND] stamps one. A session names
+     * nothing but its text, so it can't post as anyone else (bee#214).
+     *
+     * @throws IllegalArgumentException for an entry with no text, one naming another author, one
+     *   bringing its own id or time, or a [textProblem]
+     */
+    fun post(chat: String, entry: JsonElement, actor: String, id: String, at: Instant): JsonObject {
+        val fields = entry as? JsonObject
+        val text = fields?.get("text")?.stringOrNull()
+        require(fields != null && text != null) { "A message on Chat \"$chat\" is {\"text\": \"…\"}; got $entry." }
+        require(fields.keys.all { it in POSTED_FIELDS }) {
+            "A message on Chat \"$chat\" carries only text: its id, author and at are stamped for it."
+        }
+        fields["author"]?.let { named ->
+            require(named == JsonPrimitive(actor)) { "A message on Chat \"$chat\" can't name author $named: it posts as $actor." }
+        }
+        textProblem(text)?.let { throw IllegalArgumentException("A message on Chat \"$chat\" $it.") }
+        return message(id, actor, text, at)
+    }
+
+    /** What a session may put in a message it posts: its text, and its own identity as author. */
+    private val POSTED_FIELDS = setOf("text", "author")
 
     /** A message from [actor], stamped [at], appended to the Chat's messages: `{id, author, text, at}`. */
-    private fun send(chat: JsonObject, action: A2uiAction, actor: String, at: Instant): NotionEdit {
+    private fun send(view: SurfaceView, chat: JsonObject, action: A2uiAction, actor: String, at: Instant): NotionEdit {
         val id = action.string("id")
         val text = action.string("text")
+        val messages = chat.path("messages")
         require(id.isNotBlank()) { "A message on Chat \"${action.sourceComponentId}\" has no id." }
-        textProblem(text)?.let { throw IllegalArgumentException("A message on Chat \"${action.sourceComponentId}\" $it.") }
-        val message = buildJsonObject {
-            put("id", id)
-            put("author", actor)
-            put("text", text)
-            put("at", at.toString())
+        require(id !in messageIds(view.at(messages))) {
+            "A message on Chat \"${action.sourceComponentId}\" reuses id \"$id\", which an earlier message holds."
         }
-        return NotionEdit.Append(chat.path("messages"), message)
+        textProblem(text)?.let { throw IllegalArgumentException("A message on Chat \"${action.sourceComponentId}\" $it.") }
+        return NotionEdit.Append(messages, message(id, actor, text, at))
+    }
+
+    private fun message(id: String, author: String, text: String, at: Instant) = buildJsonObject {
+        put("id", id)
+        put("author", author)
+        put("text", text)
+        put("at", at.toString())
+    }
+
+    private fun messageIds(messages: JsonElement?): Set<String> =
+        (messages as? JsonArray).orEmpty().mapNotNull { ((it as? JsonObject)?.get("id"))?.stringOrNull() }.toSet()
+
+    /** [pointer] in its one written form, or null if it isn't a JSON Pointer. */
+    private fun normalized(pointer: String): String? = try {
+        SurfaceFormat.pointer(SurfaceFormat.segments(pointer))
+    } catch (_: IllegalArgumentException) {
+        null
     }
 
     /** Each option's id, in order: a string entry is its own id, an object entry names its `id`. */
@@ -132,9 +172,12 @@ object NotionActions {
 
     /** The data path a property binds; the validator has checked it's a binding. */
     private fun JsonObject.path(property: String): String =
-        requireNotNull(((this[property] as? JsonObject)?.get("path") as? JsonPrimitive)?.content) {
-            "Component \"${this["id"]}\" binds no $property."
-        }
+        requireNotNull(boundPath(property)) { "Component \"${this["id"]}\" binds no $property." }
+
+    /** The data path [property] binds, or null if it binds none. */
+    private fun JsonObject.boundPath(property: String): String? = ((this[property] as? JsonObject)?.get("path"))?.stringOrNull()
+
+    private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     private fun SurfaceView.at(pointer: String): JsonElement? =
         SurfaceFormat.segments(pointer).fold(data as JsonElement?) { node, key -> (node as? JsonObject)?.get(key) }

@@ -71,9 +71,9 @@ object BeeTools {
                 "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +
                 "owner?} and a card {label, column, href?, detail?}: href, an http: or https: URL, makes the label " +
                 "a link, and detail is one short line under it; an empty href or detail clears it. A drop moves a card to another column. " +
-                "Chat binds messages, appended {id, author, text, at} (text plain, at most " +
-                "${NotionActions.MAX_MESSAGE_LENGTH} characters): a person's Send appends one, and you post one with append. " +
-                "Each answer, drop or send is also an action record.",
+                "Chat binds messages, appended {id, author, text, at}: post one with append {\"/messages\": " +
+                "[{\"text\": \"…\"}]}, text only (plain, at most ${NotionActions.MAX_MESSAGE_LENGTH} characters), and " +
+                "the bridge stamps your identity, id and time. Each answer, drop or message is also an action record.",
             inputSchema = schema(required = listOf("surfaceId", "title", "components")) {
                 putJsonObject("surfaceId") { put("type", "string") }
                 putJsonObject("title") { put("type", "string") }

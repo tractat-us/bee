@@ -21,8 +21,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.NotionActions
 import us.tractat.bee.a2ui.SurfaceValidator
 import us.tractat.bee.a2ui.toSurfaceView
+import us.tractat.bee.core.ActionRecord
+import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
@@ -41,6 +44,7 @@ import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -232,7 +236,39 @@ class BeeBridge(
     }
 
     private fun appendsTo(surfaceId: String, appends: List<Pair<String, JsonElement>>): List<(BoardState) -> Patch<BoardState>> =
-        appends.map { (path, entry) -> { s: BoardState -> s.appendEntry(author, surfaceId, path, entry) } }
+        appends.map { (path, entry) -> { s: BoardState -> append(s, surfaceId, path, entry) } }
+
+    /**
+     * Appends [entry] at [path] in surface [surfaceId] (A12). An append to a path a Chat binds is
+     * this session's post (bee#214): the session sends only text, and the bridge stamps the message
+     * with this identity, a fresh id and the time ([NotionActions.post]), then records a `send`
+     * with `{id, text}`, as a page's Send does, so another session waiting on the Chat hears it.
+     */
+    private fun append(state: BoardState, surfaceId: String, path: String, entry: JsonElement): Patch<BoardState> {
+        val view = state.surfaceDoc(surfaceId)?.toSurfaceView(surfaceId)
+        val chat = view?.let { NotionActions.chatAt(it, path) } ?: return state.appendEntry(author, surfaceId, path, entry)
+        val by = self
+        val at = clock()
+        val message = NotionActions.post(chat, entry, by.toString(), "${author.value}.${posts.incrementAndGet()}", at)
+        val appended = state.appendEntry(author, surfaceId, path, message).delta
+        val record = ActionRecord(
+            surfaceId = surfaceId,
+            componentId = chat,
+            actor = by,
+            name = NotionActions.SEND,
+            context = JsonObject(mapOf("id" to message.getValue("id"), "text" to message.getValue("text"))),
+            basis = Basis.capture(state, surfaceId),
+            at = at,
+        )
+        val recorded = state.piece(appended).appendRecord(author, record).delta
+        return Patch(appended.piece(recorded))
+    }
+
+    /** How many Chat messages this bridge has posted: with [author], each one's id, unique to this process. */
+    private val posts = AtomicLong()
+
+    /** Whether this session wrote [record], under its identity now or one it held before a `/clear`. */
+    fun wrote(record: ActionRecord): Boolean = record.actor in identity.held
 
     /** Each of [writes] reads the state the previous ones left (A13); the patch is their deltas joined. */
     private fun joined(state: BoardState, writes: List<(BoardState) -> Patch<BoardState>>): Patch<BoardState> {

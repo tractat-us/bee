@@ -128,11 +128,11 @@ object WhiteboardGuide {
             components = """[{"id":"root","component":"Chat","messages":{"path":"/messages"}}]""",
             data = null,
             append = null,
-            note = "People type a message and Send; it lands in /messages as {id, author, text, at} and records " +
-                "\"send\" with {id, text}, which your wait hears. Reply, or speak first, with bee_surface_update " +
-                "append {\"/messages\": [{\"id\": \"<fresh>\", \"author\": \"<you, from bee_board>\", \"text\": \"…\", " +
-                "\"at\": \"<now, ISO 8601>\"}]}. Text is plain, never markup, up to ${NotionActions.MAX_MESSAGE_LENGTH} " +
-                "characters, and a message is never edited.",
+            note = "Each message, a person's Send or another session's post, lands in /messages as {id, author, text, at} " +
+                "and records \"send\" with {id, text}, which your wait hears; your own posts never come back to you. " +
+                "Reply, or speak first, with bee_surface_update append {\"/messages\": [{\"text\": \"…\"}]}: send only " +
+                "text, and the bridge stamps your identity, a fresh id and the time. Text is plain, never markup, up " +
+                "to ${NotionActions.MAX_MESSAGE_LENGTH} characters, and a message is never edited.",
         ),
     )
 

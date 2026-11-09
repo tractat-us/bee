@@ -6,7 +6,7 @@
 // Sending dispatches the A2UI action `send` with context `{id, text}`. The page's driver
 // (bee-a2ui's NotionActions) appends the message as the page's actor, stamped with the record's
 // time, in the same transform as the record, so a session waiting on the surface hears it. An
-// agent posts by appending the same entry through the bridge's `append`.
+// agent appends only `{text}` through its bridge, which stamps and records it the same way.
 //
 // The field is this element's own `<input>`, not a bound TextField: what a person is typing stays
 // on their page until they send it.
@@ -37,26 +37,30 @@ export const ChatApi = {
 };
 
 /**
- * The messages a bound array holds, as `{id, author, text, at}`, in the order they were appended,
- * each id once at its first occurrence. An entry with no text is left out and a text past the cap
- * is cut, so one bad message never hides the rest.
+ * The messages a bound array holds, as `{id, author, text, at}`, every entry in the order it was
+ * appended. An entry with no text is left out and a text past the cap is cut, so one bad message
+ * never hides the rest. A reused id isn't hidden: writers refuse one (SurfaceValidator), so two
+ * entries with one id would be a fault to see, not to tidy away.
  */
 export function chatMessages(messages) {
-  const seen = new Set();
-  const shown = [];
-  for (const entry of Array.isArray(messages) ? messages : []) {
-    if (!entry || typeof entry !== 'object' || typeof entry.text !== 'string') continue;
-    const id = String(entry.id ?? shown.length);
-    if (seen.has(id)) continue;
-    seen.add(id);
-    shown.push({
-      id,
+  return (Array.isArray(messages) ? messages : [])
+    .filter((entry) => entry && typeof entry === 'object' && typeof entry.text === 'string')
+    .map((entry) => ({
+      id: String(entry.id ?? ''),
       author: String(entry.author ?? ''),
       text: entry.text.slice(0, MAX_MESSAGE_LENGTH),
       at: typeof entry.at === 'string' ? entry.at : '',
-    });
-  }
-  return shown;
+    }));
+}
+
+/**
+ * An agent author's instance, as the presence strip shows it after the name: `#1a2b` for
+ * `agent:scout#1a2b3c4d`. Empty for a person, so a session named `alex` and the person alex read
+ * apart.
+ */
+export function agentInstance(author) {
+  const match = /^agent:[^:#]+#([0-9a-f]{8})$/.exec(String(author));
+  return match ? `#${match[1].slice(0, 4)}` : '';
 }
 
 /**
@@ -85,6 +89,7 @@ const LIST = 'list-style:none;margin:0;padding:0;display:flex;flex-direction:col
   + 'max-height:min(50vh,22rem);overflow-y:auto;overscroll-behavior:contain';
 const MESSAGE = 'line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere';
 const AUTHOR = `font-weight:600;color:${MUTED};margin-right:0.4rem`;
+const INSTANCE = 'font-weight:400;font-size:0.85em';
 const COMPOSE = 'display:flex;gap:0.5rem;margin:0.75rem 0 0';
 const FIELD = `flex:1;min-width:0;min-height:2.75rem;padding:0.5rem 0.75rem;border:1px solid ${LINE};border-radius:8px;`
   + `background:${CARD};color:${INK};font:inherit;font-size:1rem`;
@@ -123,7 +128,8 @@ export class ChatElement extends A2uiLitElement {
     return html`<div class="bee-chat" style="color:${INK}">
       <ol class="messages" style=${LIST} @scroll=${this.scrolled}>
         ${messages.map((message) => html`<li data-message=${message.id} title=${shownAt(message.at)} style=${MESSAGE}><span
-            class="author" title=${message.author} style=${AUTHOR}>${peerName(message.author)}</span><span class="text">${message.text}</span></li>`)}
+            class="author" title=${message.author} style=${AUTHOR}>${peerName(message.author)}${this.instance(message.author)}</span><span
+            class="text">${message.text}</span></li>`)}
       </ol>
       <form class="compose" style=${COMPOSE} @submit=${this.send}>
         <input type="text" name="text" aria-label="Message" placeholder="Message" autocomplete="off"
@@ -131,6 +137,12 @@ export class ChatElement extends A2uiLitElement {
         <button type="submit" style=${SEND} ?disabled=${this.blank}>Send</button>
       </form>
     </div>`;
+  }
+
+  /** An agent author's quiet `#1a2b` after its name, as the presence strip marks agents; nothing for a person. */
+  instance(author) {
+    const instance = agentInstance(author);
+    return instance ? html`<span class="instance" style=${INSTANCE}>${instance}</span>` : nothing;
   }
 
   /** Whether the reader is at the bottom, kept as they scroll so a re-render knows. */

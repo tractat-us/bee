@@ -80,6 +80,22 @@ const authors = (page) => chat(page).locator('li .author');
 const field = (page) => chat(page).locator('input[name="text"]');
 const send = (page) => chat(page).locator('button[type="submit"]');
 
+/**
+ * The messages the board itself holds at `/messages`, as the agent reads them through `bee_board`:
+ * the data, not the rendered rows, so a message appended twice would count twice.
+ */
+async function boardMessages() {
+  const board = await agent.call('bee_board', {});
+  return board.open.find((surface) => surface.surfaceId === SURFACE)?.data?.messages ?? [];
+}
+
+/** Waits until the board holds `count` messages, then checks each id is held once. */
+async function expectBoardMessages(count) {
+  await expect.poll(async () => (await boardMessages()).length, SEEN).toBe(count);
+  const ids = (await boardMessages()).map((message) => message.id);
+  expect(new Set(ids).size, `each message once: ${ids}`).toBe(count);
+}
+
 /** Types `text` into the page's Chat and presses Enter. */
 async function say(page, text) {
   await field(page).fill(text);
@@ -118,6 +134,7 @@ test('two people chat, a simultaneous send keeps both, and an agent hears a mess
   await alex.restore();
   await sam.restore();
   const both = ['hello from alex', '<b>alex, offline</b>', 'sam, offline'];
+  await expectBoardMessages(3);
   for (const page of pages) {
     await expect(texts(page)).toHaveCount(3, SEEN);
     await expect(texts(page)).toContainText(['hello from alex']);
@@ -135,15 +152,18 @@ test('two people chat, a simultaneous send keeps both, and an agent hears a mess
   expect(record.context.text).toBe('scout, what next?');
   expect(record.actor).toBe('human:sam');
 
-  // Its reply, appended through the bridge, shows on both pages.
-  await agent.call('bee_surface_update', {
-    surfaceId: SURFACE,
-    append: { '/messages': [{ id: 'reply-1', author: agent.identity, text: 'Ship the chat.', at: new Date().toISOString() }] },
-  });
+  // Its reply is only text; the bridge stamps it as the agent's. It shows on both pages with the
+  // agent's quiet instance mark, which a person's name never carries.
+  await agent.call('bee_surface_update', { surfaceId: SURFACE, append: { '/messages': [{ text: 'Ship the chat.' }] } });
   await agent.call('bee_action_done', { recordId: record.recordId, token: record.token });
+  await expectBoardMessages(5);
+  expect((await boardMessages()).at(-1).author).toBe(agent.identity);
+  const instance = `#${agent.identity.split('#')[1].slice(0, 4)}`;
   for (const page of pages) {
     await expect(texts(page).last()).toHaveText('Ship the chat.', SEEN);
-    await expect(authors(page).last()).toHaveText('chat-scout');
+    await expect(authors(page).last()).toHaveText(`chat-scout${instance}`);
+    await expect(authors(page).last().locator('.instance')).toHaveText(instance);
+    await expect(authors(page).first().locator('.instance')).toHaveCount(0);
     await expect(texts(page)).toHaveCount(5);
   }
   await chat(sam.page).screenshot({ path: testInfo.outputPath('chat.png') });

@@ -108,21 +108,25 @@ object SurfaceValidator {
 
     /**
      * The problems with the messages a Chat [component] binds in [data]: each must be
-     * `{id, author, text, at}`, every one a string, and its text pass [NotionActions.textProblem].
-     * Messages not written yet are fine.
+     * `{id, author, text, at}`, every one a string, its text pass [NotionActions.textProblem], and
+     * its id be held by no earlier message, so a reused id fails loudly rather than hiding a
+     * message. Messages not written yet are fine.
      */
     private fun messageErrors(id: String, component: JsonObject, data: JsonObject): List<String> {
         if (component["component"]?.stringOrNull() != CHAT) return emptyList()
         val path = (component["messages"] as? JsonObject)?.get("path")?.stringOrNull() ?: return emptyList()
         val messages = valueAt(data, path) as? JsonArray ?: return emptyList()
         val at = SurfaceFormat.pointer(SurfaceFormat.segments(path))
+        val firstHeld = mutableMapOf<String, Int>()
         return messages.mapIndexedNotNull { index, entry ->
             val fields = (entry as? JsonObject)?.let { message -> MESSAGE_FIELDS.associateWith { message[it]?.stringOrNull() } }
             val text = fields?.get("text")
-            val problem = if (fields == null || null in fields.values || text == null) {
+            val messageId = fields?.get("id")
+            val problem = if (fields == null || null in fields.values || text == null || messageId == null) {
                 "isn't {${MESSAGE_FIELDS.joinToString()}}, each a string"
             } else {
-                NotionActions.textProblem(text)
+                val first = firstHeld.getOrPut(messageId) { index }
+                NotionActions.textProblem(text) ?: "has id \"$messageId\", which $at/$first holds".takeIf { first != index }
             }
             problem?.let { "Component \"$id\" is a Chat whose message at $at/$index $it." }
         }
