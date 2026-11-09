@@ -125,6 +125,7 @@ plugins:
           - tools.md: Every tool and prompt a Claude session gets from bee, one line each
           - plugin.md: The Claude Code plugin, which joins a session to a board with one install
           - deploy.md: Running hosted bee at bee.tractat.us, from getting on the board to deploying its one Fly.io machine
+          - dogfood.md: bee's own development board on your Mac, drawn from the plan, the morning report and the open decisions
           - superpowers/specs/2026-11-06-bee-design.md: The design spec, with its goals, architecture and the board's state
           - bee-and-kuilt.md: What bee builds and what it takes from kuilt
           - architecture/README.md: The living architecture docs, and how a design decision changes them
@@ -162,6 +163,7 @@ nav:
       - Tools and prompts: tools.md
       - Claude Code plugin: plugin.md
       - Hosted bee: deploy.md
+      - bee's own board: dogfood.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
       - bee and kuilt: bee-and-kuilt.md
       - Architecture:
