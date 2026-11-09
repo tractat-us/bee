@@ -70,6 +70,11 @@ class BoardChrome(private val root: Element, private val strip: Element) {
 
     private fun slot(surfaceId: String): Element = card(surfaceId).body
 
+    /** Ends the empty-board hint with [extra], on a line of its own. */
+    fun addToHint(extra: Element) {
+        hint.appendChild(extra)
+    }
+
     /**
      * Shows [board] and its live presence from [roster] as they change, until [scope] ends, and
      * the empty-board hint while the board is empty and [online].
@@ -205,7 +210,7 @@ class BoardChrome(private val root: Element, private val strip: Element) {
             hint.appendChild(element("strong", "bee-empty-title").also { it.textContent = "Nothing on the board yet." })
             hint.appendChild(element("span", "bee-empty-how").also { how ->
                 how.appendChild(document.createTextNode("The people here and their Claude sessions all share this board. Ask your session to draw on it: try "))
-                how.appendChild(element("code", "bee-empty-prompt").also { it.textContent = "/mcp__bee__whiteboard" })
+                how.appendChild(element("code", "bee-empty-prompt").also { it.textContent = "/mcp__bee__whiteboard <topic>" })
                 how.appendChild(document.createTextNode("."))
             })
         }
