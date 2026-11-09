@@ -98,7 +98,7 @@ device a secret out of band; it now hands over the host's identity on the same t
 | a teammate's Claude Code | through the stdio bridge; the HTTP MCP line is retired off loopback | none |
 | a browser on another laptop | the host CA in the OS store: macOS Keychain "Always Trust"; Windows Trusted Root; Chrome on Linux, its NSS store; Firefox, its own store | once per device, per host |
 | Safari on an iPhone | the CA as a profile: download, Settings → Profile Downloaded → Install, then General → About → Certificate Trust Settings → on ([Apple](https://support.apple.com/en-us/102390)) | once per device, per host |
-| Chrome on Android | Settings → Security → Encryption & credentials → Install a certificate → CA certificate. Chrome honours user CAs (Android apps don't by default) | once per device, per host |
+| Chrome on Android | Settings → Security → Encryption & credentials → Install a certificate → CA certificate. Chrome is reported to honour user CAs, though Android apps don't by default; slice 6 checks it on a phone | once per device, per host |
 
 The browser rows are the honest cost under [`product.md`](product.md) invariant 1, and the
 design keeps them as small as it can:
