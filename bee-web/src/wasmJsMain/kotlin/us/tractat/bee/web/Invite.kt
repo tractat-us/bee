@@ -6,8 +6,6 @@ import org.w3c.dom.HTMLElement
 import org.w3c.dom.events.KeyboardEvent
 import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.MintedInvite
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.hours
 
 /** Where the Invite panel's link comes from. */
 internal sealed interface InviteSource {
@@ -15,9 +13,9 @@ internal sealed interface InviteSource {
     class Fixed(val links: InviteLinks) : InviteSource
 
     /**
-     * A hosted board's (bee#215): [mint] asks the host for a new invite and calls back with it, or
-     * with why not. The panel mints one the first time it opens, and keeps it while it has more
-     * than [Invite.REMINT_BEFORE] left.
+     * A hosted board's (bee#215): [mint] asks the host for the tab's invite, which the host gives
+     * back while it still works or replaces with a new one, and calls back with it or with why
+     * not. The panel asks each time it opens, so it never shows a link that stopped working.
      */
     class Minted(val mint: (done: (Result<MintedInvite>) -> Unit) -> Unit) : InviteSource
 }
@@ -65,8 +63,6 @@ internal class Invite(shell: PageShell, private val source: InviteSource) {
     /** The link the panel shows, once it has one. */
     private var shown: String? = null
 
-    /** A hosted board's invite, once minted. */
-    private var minted: MintedInvite? = null
 
     init {
         panel.appendChild(heading())
@@ -108,18 +104,23 @@ internal class Invite(shell: PageShell, private val source: InviteSource) {
         panel.hidden = !open
         toggle.setAttribute("aria-expanded", open.toString())
         if (!open) copied.textContent = ""
-        if (open && source is InviteSource.Minted && minted.let { it == null || Clock.System.now() >= it.expiresAt - REMINT_BEFORE }) mint(source)
+        // A hosted board's link is asked for at each opening: the host gives the tab's back while it works.
+        if (open && source is InviteSource.Minted) mint(source)
     }
 
     private fun mint(source: InviteSource.Minted) {
-        line.textContent = "Making a link…"
+        if (shown == null) line.textContent = "Making a link…"
         source.mint { result ->
             result.fold(
                 onSuccess = { invite ->
-                    minted = invite
-                    show(InviteLinks(numeric = emptyList(), named = invite.link, joins = InviteLinks.Joins.Anywhere))
+                    if (invite.link != shown) show(InviteLinks(numeric = emptyList(), named = invite.link, joins = InviteLinks.Joins.Anywhere))
                 },
-                onFailure = { line.textContent = it.message ?: "Couldn't make a link. Close this and try again." },
+                onFailure = { failure ->
+                    // A link that may have stopped working is never left on show.
+                    shown = null
+                    while (code.firstChild != null) code.removeChild(code.firstChild!!)
+                    line.textContent = failure.message ?: "Couldn't make a link. Close this and try again."
+                },
             )
         }
     }
@@ -156,8 +157,6 @@ internal class Invite(shell: PageShell, private val source: InviteSource) {
         /** The standard's light margin around the symbol, in modules. */
         private const val QUIET_ZONE = 4
 
-        /** A minted invite with no more than this left is replaced when the panel opens, so a link handed on has hours to run. */
-        val REMINT_BEFORE = 1.hours
 
         /** Where a device that scans the code can join from, and for a hosted board's minted link, for how long (bee#145, bee#215). */
         private fun scanText(source: InviteSource): String = when (source) {

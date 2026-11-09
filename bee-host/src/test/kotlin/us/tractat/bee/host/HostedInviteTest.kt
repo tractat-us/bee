@@ -120,14 +120,38 @@ class HostedInviteTest {
         assertEquals("413", refused.first)
     }
 
-    /** A chunked body says no length up front, so the host stops reading at its bound, not at the length. */
+    /**
+     * A chunked body says no length up front, so the host stops reading at its bound, not at the
+     * body's end: with 1 KB sent and the body held open, the 413 arrives before the body ends. A
+     * host that read the whole body first would never answer, and the held request gets no status.
+     * Its control: the same held request under the bound gets no answer, since the host is still
+     * reading it.
+     */
     @Test
     fun aChunkedBodyWithNoLengthIsBoundedToo() {
-        val refused = calls.postChunked("/invite/redeem", PUBLIC_HOST, List(64) { "x".repeat(128) }, SAME_ORIGIN, *fly(JOINER_CLIENT))
+        val past = calls.postChunkedHeldOpen("/invite/redeem", PUBLIC_HOST, List(8) { "x".repeat(128) }, HELD_WAIT_MS, SAME_ORIGIN, *fly(JOINER_CLIENT))
+        val under = calls.postChunkedHeldOpen("/invite/redeem", PUBLIC_HOST, listOf("x".repeat(128)), HELD_WAIT_MS, SAME_ORIGIN, *fly(JOINER_CLIENT))
         val small = calls.postChunked("/invite/redeem", PUBLIC_HOST, listOf("""{"invite":"${"A".repeat(43)}",""", """"name":"sam"}"""), SAME_ORIGIN, *fly(JOINER_CLIENT))
         assertAll(
-            { assertEquals("413", refused.first) },
-            { assertEquals("404", small.first, "rig: a chunked body under the bound is read, and its secret is unknown") },
+            { assertEquals("413", past, "answered while the body was still open") },
+            { assertEquals(null, under, "control: under the bound, the host waits for the rest") },
+            { assertEquals("404", small.first, "rig: a whole chunked body under the bound is read, and its secret is unknown") },
+        )
+    }
+
+    /** A tab sends its invite's secret when it mints: it gets that invite back while it works, and a new one once it doesn't. */
+    @Test
+    fun aTabsInviteComesBackWhileItWorksAndIsReplacedAfterTheHostForgetsIt() {
+        val first = secretOf(mint())
+        val again = secretOf(calls.post("/invite?k=$FAKE_OWNER_KEY", PUBLIC_HOST, first, SAME_ORIGIN, *fly(OWNER_CLIENT)))
+        host.close()
+        host = runBlocking { BeeHost.start(scope, HostConfig.fromArgs(ARGS + dataDir.toString() + "--forget-devices", home = Path.of("/nonexistent"), environment = OWNER_ENV)) }
+        calls = Handshakes(host.port)
+        val replaced = secretOf(calls.post("/invite?k=$FAKE_OWNER_KEY", PUBLIC_HOST, first, SAME_ORIGIN, *fly(OWNER_CLIENT)))
+        assertAll(
+            { assertEquals(first, again, "the same link: nothing spent") },
+            { assertFalse(replaced == first, "the host forgot it, so the tab gets a new one") },
+            { assertEquals(OK, redeem(replaced).first, "and the new one admits") },
         )
     }
 
@@ -193,6 +217,9 @@ class HostedInviteTest {
         const val OWNER_CLIENT = "203.0.113.10"
         const val JOINER_CLIENT = "203.0.113.30"
         const val SAME_ORIGIN = "Sec-Fetch-Site: same-origin"
+
+        /** How long a held-open request waits for a status before it counts the host as still reading. */
+        const val HELD_WAIT_MS = 3_000
 
         /** The `Dockerfile`'s command line, up to the data dir. */
         val ARGS = listOf("--public-url", PUBLIC_URL, "--client-ip-header", "Fly-Client-IP", "--port", "0", "--data-dir")

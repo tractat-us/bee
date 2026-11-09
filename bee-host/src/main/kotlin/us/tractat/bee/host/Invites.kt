@@ -97,6 +97,22 @@ class Invites private constructor(
     /** When each redemption within the last [REDEMPTION_WINDOW] was, oldest first: at most [dailyRedemptions]. */
     private val redemptions = ArrayDeque<Instant>()
 
+    /**
+     * The invite [secret] again, if the key whose hash is [by] minted it and it still works: live
+     * for more than [KEEP_FOR] yet, with uses left. Otherwise a new invite from [mint]. A tab asks
+     * this each time its Invite opens, so it never hands on a link that stopped working (used up,
+     * lapsed, or forgotten by `--forget-devices`), and keeping one spends nothing.
+     */
+    fun keepOrMint(by: KeyHash, secret: InviteSecret): Mint = synchronized(lock) {
+        val now = clock()
+        val held = invites[KeyHash.of(secret.value)]
+        if (held != null && held.mintedBy == by && now + KEEP_FOR < held.expiresAt && held.redeemed < maxRedemptions) {
+            Mint.Minted(secret, held.expiresAt)
+        } else {
+            mint(by)
+        }
+    }
+
     /** A new invite minted by the key whose hash is [by], or why not. */
     fun mint(by: KeyHash): Mint = synchronized(lock) {
         val now = clock()
@@ -203,6 +219,9 @@ class Invites private constructor(
         const val DAILY_REDEMPTIONS: Int = 100
 
         val REDEMPTION_WINDOW: Duration = 24.hours
+
+        /** How long an invite must have left for [keepOrMint] to hand it out again, so a link passed on has hours to run. */
+        val KEEP_FOR: Duration = 1.hours
 
         /** How long a lapsed or used-up invite is remembered, so its page hears why. */
         val KEPT_LAPSED: Duration = 24.hours

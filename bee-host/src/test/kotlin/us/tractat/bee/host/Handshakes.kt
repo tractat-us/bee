@@ -55,6 +55,23 @@ internal class Handshakes(private val port: Int) {
     }
 
     /**
+     * The status of a chunked `POST` to [path] that sends [chunks] and then holds its body open,
+     * never sending the last chunk, with [host] and these other [headers]: a status arrives only if
+     * the host answers before the body ends. If none comes within [waitMs], the host was still
+     * reading, and this returns null.
+     */
+    fun postChunkedHeldOpen(path: String, host: String, chunks: List<String>, waitMs: Int, vararg headers: String): String? = Socket().use { socket ->
+        val body = chunks.joinToString("") { "${it.encodeToByteArray().size.toString(16)}\r\n$it\r\n" }
+        send(socket, "POST $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Transfer-Encoding: chunked\r\n\r\n$body")
+        socket.soTimeout = waitMs
+        try {
+            socket.getInputStream().statusCode()
+        } catch (_: java.net.SocketTimeoutException) {
+            null
+        }
+    }
+
+    /**
      * Opens a server-sent event stream at [path], with [host] and these other [headers], each
      * `name: value`, and stays on it until the returned stream is closed: a device on its pairing channel.
      */

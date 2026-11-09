@@ -93,7 +93,7 @@ class InvitesTest {
     fun aNameAPersonCantTakeIsRefusedAndSpendsNothing() {
         val invites = boot(maxRedemptions = 1)
         val secret = invites.minted()
-        val names = listOf("", "  ", "a:b", "a#b", "x".repeat(41), "line\nbreak", "ad‮min", "a‍b", "a b", "a b")
+        val names = listOf("", "  ", "a:b", "a#b", "x".repeat(41), "line\nbreak", "ad\u202Emin", "a\u200Db", "a\u2028b", "a\u2029b", "alex\uDB40\uDC41", "a\u3164b", "alex\uFE0F")
         val refusals = names.map { invites.join(secret, it) }
         assertAll(
             { assertEquals(List(names.size) { Redeemed.Refused(InviteEnd.BadName) }, refusals, "control, format (bidi, zero-width) and separator characters too") },
@@ -130,6 +130,28 @@ class InvitesTest {
             { assertEquals(Mint.MinterFull, pastShare) },
             { assertEquals(Mint.BoardFull, pastBoard) },
             { assertIs<Mint.Minted>(invites.mint(OWNER), "once they lapse, the owner mints again") },
+        )
+    }
+
+    /** A tab asks for its invite back each time Invite opens: it gets it while it works, and a new one once it doesn't. */
+    @Test
+    fun aTabsInviteComesBackWhileItWorksAndIsReplacedOnceItDoesnt() {
+        val invites = boot(maxRedemptions = 1)
+        val held = InviteSecret(invites.minted())
+        val kept = assertIs<Mint.Minted>(invites.keepOrMint(OWNER, held)).secret
+        val byAnother = assertIs<Mint.Minted>(invites.keepOrMint(KeyHash.of("another"), held)).secret
+        invites.join(held.value)
+        val usedUp = assertIs<Mint.Minted>(invites.keepOrMint(OWNER, held)).secret
+        now += Invites.TTL - Invites.KEEP_FOR
+        val nearItsEnd = assertIs<Mint.Minted>(invites.keepOrMint(OWNER, usedUp)).secret
+        val unknown = assertIs<Mint.Minted>(invites.keepOrMint(OWNER, InviteSecret("never-minted"))).secret
+        assertAll(
+            { assertEquals(held, kept, "the same invite, while it works") },
+            { assertFalse(byAnother == held, "another key's tab never gets this one") },
+            { assertFalse(usedUp == held, "used up: a new one") },
+            { assertFalse(nearItsEnd == usedUp, "an hour or less left: a new one") },
+            { assertFalse(unknown.value == "never-minted", "unknown, as after --forget-devices: a new one") },
+            { assertEquals(5, invites.holding(), "keeping spent nothing: five mints, five invites") },
         )
     }
 

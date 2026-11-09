@@ -36,8 +36,10 @@ get onto it. A rule here binds every subsystem that puts something in front of a
     the board may press Invite and share the link. Whoever opens it types a name and joins, with
     a key of their own, and nobody on the board has to let them in. The link is reusable until it
     lapses, 24 hours after it was made. Every count is bounded: 25 devices per link, 10 live
-    links per key, 100 live on the board, and 100 devices a day by invite. Without a link, a
-    device pairs by code, as in invariant 2. Enforcer: `InvitesTest` and `HostedInviteTest`, and
+    links per key, 100 live on the board, and 100 devices a day by invite. That last count is
+    kept in memory, so it starts again whenever the host restarts: each deploy, or a crash. A
+    tab's Invite never shows a link that stopped working. Without a link, a device pairs by
+    code, as in invariant 2. Enforcer: `InvitesTest` and `HostedInviteTest`, and
     `hosted.spec.mjs` in a browser.
 
 ## Current design

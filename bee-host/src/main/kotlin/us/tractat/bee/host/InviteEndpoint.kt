@@ -44,6 +44,9 @@ sealed interface Invitation {
 /** The longest redemption body: a 43-byte secret, a name of at most 40 characters in UTF-8, and JSON's keys. */
 private const val MAX_REDEMPTION_BYTES = 512
 
+/** The longest mint body: the tab's invite's 43-byte secret, or nothing. */
+private const val MAX_KEPT_BYTES = 64
+
 /**
  * The host's invites at [InviteLinks.PATH].
  *
@@ -62,7 +65,9 @@ private const val MAX_REDEMPTION_BYTES = 512
  *
  * - `POST` [InviteLinks.PATH], with an admitted `?k=`, mints an invite ([Invites.mint]) and answers
  *   its [MintedInvite]: the public URL with the secret in its fragment, `#i=<secret>`. That answer
- *   is the only place the secret ever appears. The invite records its minter by the key's hash;
+ *   is the only place the secret ever appears. A body holding the tab's invite's secret, the
+ *   only other place it travels, asks for that invite back if it still works ([Invites.keepOrMint]),
+ *   so a tab never shows a dead link. The invite records its minter by the key's hash;
  *   past [Invites.MAX_LIVE_PER_MINTER] live, or [Invites.MAX_LIVE] on the board, it answers 429.
  * - `POST` [InviteWire.REDEEM_PATH], with a [Redemption] as its body (at most [MAX_REDEMPTION_BYTES],
  *   read no further, with or without a length), needs no key: the secret is the capability. It
@@ -75,8 +80,12 @@ fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAd
         if (invitation !is Invitation.Public) return@post call.respond(HttpStatusCode.NotFound, "Only a hosted board mints invites: this one's join link is at GET.")
         val key = keyOf(call)?.takeIf(pairing::admits)
             ?: return@post call.respond(HttpStatusCode.Forbidden, "Only someone already on the board may invite.")
+        val kept = call.receiveAtMost(MAX_KEPT_BYTES)
+            ?: return@post call.respondText("A mint carries the tab's invite, or nothing.", status = HttpStatusCode.PayloadTooLarge)
         // The minter is kept as its key's hash, never the key.
-        when (val minted = invitation.invites.mint(by = KeyHash.of(key))) {
+        val by = KeyHash.of(key)
+        val outcome = if (kept.isEmpty()) invitation.invites.mint(by) else invitation.invites.keepOrMint(by, InviteSecret(kept))
+        when (val minted = outcome) {
             is Mint.Minted -> {
                 val link = "${invitation.url.page}#${InviteWire.SECRET_PARAM}=${minted.secret.value}"
                 call.respondText(Json.encodeToString(MintedInvite.serializer(), MintedInvite(link, minted.expiresAt)), ContentType.Application.Json)

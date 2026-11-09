@@ -423,17 +423,24 @@ private fun offerInvite(shell: PageShell, query: String) {
 }
 
 /**
- * This tab's invite, from its storage while it has more than [Invite.REMINT_BEFORE] left, so a
- * reload doesn't spend one of the minter's live invites; otherwise a new one from the host at
- * [path]. Calls [done] with it, or with why not in words for the panel: the host's own, when it
- * says too many are live.
+ * This tab's invite from the host at [path]. The page sends the secret of the one it holds, if
+ * any, in the body: the host gives that one back while it still works, so a reload doesn't spend
+ * one of the minter's live invites, and otherwise mints a new one. A link that stopped working
+ * (used up, lapsed, or forgotten by a host that forgot its devices) is so replaced, and never
+ * shown again. Calls [done] with it, or with why not in words for the panel: the host's own,
+ * when it says too many are live.
  */
 private fun mintInvite(path: String, done: (Result<MintedInvite>) -> Unit) {
-    val kept = sessionStorage.getItem(MINTED_STORAGE)?.let { decodeOrNull(MintedInvite.serializer(), it) }
-    if (kept != null && Clock.System.now() < kept.expiresAt - Invite.REMINT_BEFORE) return done(Result.success(kept))
-    postText(path, "", REQUEST_TIMEOUT_MS) { status, text ->
+    val held = sessionStorage.getItem(MINTED_STORAGE)?.let { decodeOrNull(MintedInvite.serializer(), it) }
+    val secret = held?.link?.substringAfter("#${InviteWire.SECRET_PARAM}=", missingDelimiterValue = "").orEmpty()
+    postText(path, secret, REQUEST_TIMEOUT_MS) { status, text ->
         val minted = text?.takeIf { status == HTTP_OK }?.let { decodeOrNull(MintedInvite.serializer(), it) }
-        minted?.let { sessionStorage.setItem(MINTED_STORAGE, Json.encodeToString(MintedInvite.serializer(), it)) }
+        // Once the host answers, the tab holds only what it gave now: a refusal means the old link
+        // didn't work either, or the host would have given it back. No answer (status 0) keeps it.
+        when {
+            minted != null -> sessionStorage.setItem(MINTED_STORAGE, Json.encodeToString(MintedInvite.serializer(), minted))
+            status != 0 -> sessionStorage.removeItem(MINTED_STORAGE)
+        }
         done(
             when {
                 minted != null -> Result.success(minted)

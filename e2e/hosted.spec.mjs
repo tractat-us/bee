@@ -177,6 +177,15 @@ test('an invite link admits whoever opens it, under the name they give, and is r
   await boarded(owner);
   const { link, secret } = await invited(owner);
 
+  // Closing and reopening Invite, or reloading, asks the host again and gets the same link back.
+  await owner.locator('#bar #invite-toggle').click();
+  await owner.locator('#bar #invite-toggle').click();
+  await expect(owner.locator('#invite-link')).toHaveText(link);
+  await owner.reload();
+  await boarded(owner);
+  await owner.locator('#bar #invite-toggle').click();
+  await expect(owner.locator('#invite-link')).toHaveText(link);
+
   // A fresh browser, with ?name= to fill the prompt in.
   const sam = await device(browser, '203.0.113.24');
   const requests = [];
