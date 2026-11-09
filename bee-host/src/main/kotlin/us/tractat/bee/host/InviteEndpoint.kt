@@ -3,6 +3,7 @@ package us.tractat.bee.host
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -25,32 +26,43 @@ sealed interface Invitation {
      * names when asked. They are read per call, since a laptop changes networks under a running host.
      */
     class Open(val name: String, val addresses: () -> List<String>) : Invitation
+
+    /** A host behind a proxy ([Reach.Public]): its join link is at its public [url], and nowhere else. */
+    data class Public(val url: PublicUrl) : Invitation
 }
 
 /**
  * The host's join link at [InviteLinks.PATH], for the board owner's page to show as a QR code.
- * It answers a call from loopback only, read off the TCP peer as the socket gate does ([peers],
- * never a header), with a 403 to any other: a device off this machine holds a key already, and
- * doesn't pass it on. A host that is [Invitation.Closed] answers 404, and the page offers no invite.
+ * It answers a [Caller.local] call only, read as the socket gate reads it ([peers]), with a 403 to
+ * any other: a device off this machine holds a key already, and doesn't pass it on. A host that
+ * is [Invitation.Closed] answers 404, and the page offers no invite.
  *
- * Each link names the port the call arrived on ([arrivals]): the port the host is bound to. The
- * key is [Pairing.joinKey]'s, and goes into the response only, never a log.
+ * An [Invitation.Open] link names the port the call arrived on ([arrivals]): the port the host is
+ * bound to. An [Invitation.Public] link is the public URL alone, whatever port the proxy dialled.
+ * The key is [Pairing.joinKey]'s, and goes into the response only, never a log.
  */
 fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAddress, arrivals: ArrivalAddress) {
     get(InviteLinks.PATH) {
         call.response.header(HttpHeaders.CacheControl, "no-store")
+        val keyed = { "?${PairingWire.KEY_PARAM}=${pairing.joinKey.value}" }
         when (invitation) {
             Invitation.Closed -> call.respond(HttpStatusCode.NotFound, "This host is on this machine alone: start it with --lan to invite others.")
-            is Invitation.Open -> if (isLoopback(peers.of(call))) {
+            is Invitation.Open -> call.respondLinks(peers) {
                 val port = arrivals.of(call).port
-                val key = pairing.joinKey.value
-                val link = { authority: String -> "http://$authority:$port/?${PairingWire.KEY_PARAM}=$key" }
-                val links = InviteLinks(numeric = invitation.addresses().map(link), named = link(invitation.name))
-                call.respondText(Json.encodeToString(InviteLinks.serializer(), links), ContentType.Application.Json)
-            } else {
-                call.respond(HttpStatusCode.Forbidden, "Only the board's owner, on the host's own machine, may ask for its join link.")
+                val link = { authority: String -> "http://$authority:$port/${keyed()}" }
+                InviteLinks(numeric = invitation.addresses().map(link), named = link(invitation.name))
             }
+            is Invitation.Public -> call.respondLinks(peers) { InviteLinks(numeric = emptyList(), named = "${invitation.url.page}${keyed()}") }
         }
+    }
+}
+
+/** Answers with [links], to a [Caller.local] caller alone ([peers]); any other gets a 403 and no key. */
+private suspend fun ApplicationCall.respondLinks(peers: PeerAddress, links: () -> InviteLinks) {
+    if (peers.of(this).local) {
+        respondText(Json.encodeToString(InviteLinks.serializer(), links()), ContentType.Application.Json)
+    } else {
+        respond(HttpStatusCode.Forbidden, "Only the board's owner, on the host's own machine, may ask for its join link.")
     }
 }
 
