@@ -265,7 +265,7 @@ value only the gate's role check can build, so a command with no proven host doe
 Root has no case in the commands' target type, so root can't be evicted or demoted, and the join
 link has no case in `host`'s.
 
-**Evict, in order:**
+An eviction takes five steps, in this order.
 
 1.  **Revoke.** `HostKeys.revoke` stops the key's hashes admitting at once, then saves the file. A
     save that fails is answered as an error: the eviction holds until the host stops, and the
@@ -365,7 +365,7 @@ host** takes the same slot on a host's bubble and clears the role.
   can mint a Claude token ([#287](https://github.com/tractat-us/bee/issues/287)),
   [`deploy.md`](../deploy.md) tells the owner to use one instead.
 - **Re-admission.** Any admitted person may admit, so an evicted person can pair again and be let
-  back in by anyone. Keep that (Iain's #145 ruling), or need a host to admit someone who was
+  back in by anyone. Keep that (Iain's ruling on [#145](https://github.com/tractat-us/bee/issues/145)), or need a host to admit someone who was
   evicted? [#164](https://github.com/tractat-us/bee/issues/164)
 - **A disguised writer.** Eviction finds a peer that stays itself. An admitted writer that declares
   one identity on its sockets and shows another on the board hides from the menu, since presence is
