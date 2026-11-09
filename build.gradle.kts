@@ -14,27 +14,34 @@ plugins {
 // input, and drop the integrity file before a rerun so Yarn copies them again. bee-web's
 // bundle and browser-test tasks track the copy (bee-web/build.gradle.kts), so the copy must
 // match the sources: fail the install if it doesn't, rather than bundle old code (bee#80).
-tasks.withType<KotlinNpmInstallTask>().configureEach {
-    val notionsSources = fileTree("bee-notions") { exclude("node_modules/**") }
-    inputs.files(notionsSources)
-        .withPropertyName("beeNotions")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-    val yarnIntegrity = nodeModules.file(".yarn-integrity")
-    doFirst { yarnIntegrity.get().asFile.delete() }
-    val notionsDir = file("bee-notions")
-    val installed = nodeModules.dir("@bee/notions")
-    doLast {
-        val copy = installed.get().asFile
-        // Only the wasm install takes bee-notions; the JS one has nothing to check.
-        if (!copy.isDirectory) return@doLast
-        // The modules webpack bundles: src/, and package.json for their entry point.
-        val stale = notionsSources.files
-            .map { it.relativeTo(notionsDir) }
-            .filter { it.startsWith("src") || it.path == "package.json" }
-            .filterNot { copy.resolve(it).isFile && copy.resolve(it).readBytes().contentEquals(notionsDir.resolve(it).readBytes()) }
-        check(stale.isEmpty()) {
-            "Yarn's copy of bee-notions in $copy doesn't match the sources (${stale.joinToString()}). " +
-                "Was a bee-notions file edited during the install? Run the build again (bee#80)."
+// Every target is wasmJs, so the wasm install is the only one, and it always takes bee-notions.
+plugins.withType<WasmYarnPlugin> {
+    tasks.named<KotlinNpmInstallTask>("kotlinWasmNpmInstall") {
+        val notionsSources = fileTree("bee-notions") { exclude("node_modules/**") }
+        inputs.files(notionsSources)
+            .withPropertyName("beeNotions")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+        val yarnIntegrity = nodeModules.file(".yarn-integrity")
+        doFirst { yarnIntegrity.get().asFile.delete() }
+        val notionsDir = file("bee-notions")
+        val installed = nodeModules.dir("@bee/notions")
+        doLast {
+            val copy = installed.get().asFile
+            check(copy.isDirectory) { "Yarn didn't install bee-notions at $copy (bee#93)." }
+            // The whole tree, not only what webpack reads today, so a styles/ or assets/ added
+            // later is checked too. If bee-notions gets a `files` field, compare the listed set
+            // instead, since Yarn then copies only that (yarnpkg/yarn#2822).
+            val sources = notionsSources.files.map { it.relativeTo(notionsDir) }
+            // An empty tree would pass the comparison below having compared nothing.
+            check(sources.isNotEmpty()) { "Found no bee-notions sources under $notionsDir (bee#93)." }
+            val stale = sources.filterNot {
+                copy.resolve(it).isFile && copy.resolve(it).readBytes().contentEquals(notionsDir.resolve(it).readBytes())
+            }
+            check(stale.isEmpty()) {
+                "Yarn's copy of bee-notions in $copy doesn't match the sources (${stale.joinToString()}). " +
+                    "Was a bee-notions file edited during the install? Run the build again; if it persists, " +
+                    "delete build/wasm/node_modules and rerun (bee#80)."
+            }
         }
     }
 }
