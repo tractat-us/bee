@@ -11,6 +11,18 @@ New to bee? [Try bee](try-bee.md) walks through the same paths in a few minutes,
 
 ## Run a board
 
+With [Homebrew](https://brew.sh), on a Mac or on Linux, install bee and start a board:
+
+```sh
+brew install tractat-us/tap/bee
+bee-up --name <you>
+```
+
+Type the whole name: plain `brew install bee` installs an unrelated tool. The formula brings its
+own JDK 25 and puts `bee-up`, `bee-join` and `bee-session-start-hook` on your path. Your board,
+keys and logs stay in `~/.bee`, so `brew upgrade` keeps them, and the `~/.bee/mcp.json` that
+`bee-up` writes keeps working after it.
+
 From the root of a bee checkout, with a JDK 25 installed:
 
 ```sh
@@ -20,7 +32,7 @@ bin/bee-up --name <you>
 The first run builds the host and the bridge, which takes a minute or two. The build fetches
 kuilt from a package store that needs credentials
 ([How bee gets kuilt](bee-and-kuilt.md#how-bee-gets-kuilt)); without them, ask someone who has
-them for a [kit](#hand-a-coworker-a-kit), which runs `bee-up` with nothing to build. Then
+them for a [kit](#hand-a-coworker-a-kit), or install with Homebrew, which has nothing to build. Then
 `bee-up`:
 
 - starts the **host**, the one always-on piece, in the background, logging to `~/.bee/host.log`;
@@ -90,7 +102,8 @@ host's restarts until its owner runs `bee-up --new-link` or `--forget-devices`.
 
 ## Hand a coworker a kit
 
-A coworker who has no checkout and no JDK can still run both scripts. From your checkout:
+A coworker with Homebrew needs no kit: `brew install tractat-us/tap/bee` gives them both scripts.
+Without Homebrew, a coworker who has no checkout and no JDK can still run them. From your checkout:
 
 ```sh
 bin/bee-bundle

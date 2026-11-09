@@ -24,11 +24,11 @@ To bring your Claude session too, press **Bring your Claude** on the board, past
 gives you into a terminal, start `claude`, and type `/mcp__bee__whiteboard`. Nothing gets
 installed.
 
-**Run your own.** From a checkout, `bin/bee-up --name <you>` starts a board on your network, opens
-it in your browser, and prints a join link to send. For someone with no checkout and no JDK,
-`bin/bee-bundle` builds a zip that runs a board with nothing else installed. Building from a
-checkout needs credentials for [kuilt's packages](docs/bee-and-kuilt.md#how-bee-gets-kuilt); the
-zip needs none.
+**Run your own.** `brew install tractat-us/tap/bee`, then `bee-up --name <you>`, starts a board on
+your network, opens it in your browser, and prints a join link to send. From a checkout, the same
+is `bin/bee-up --name <you>`; building it needs credentials for
+[kuilt's packages](docs/bee-and-kuilt.md#how-bee-gets-kuilt). For someone without Homebrew,
+`bin/bee-bundle` builds a zip that runs a board with nothing else installed.
 
 **Watch all your sessions at once.** Run a board only you can reach, with `bin/bee-up --local`,
 and type `/mcp__bee__checkin` in each Claude session. Each one keeps a status card on the board,
