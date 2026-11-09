@@ -2,6 +2,14 @@ rootProject.name = "bee"
 
 pluginManagement {
     repositories {
+        // The Android Gradle plugin, for bee-app (#156).
+        google {
+            mavenContent {
+                includeGroupAndSubgroups("androidx")
+                includeGroupAndSubgroups("com.android")
+                includeGroupAndSubgroups("com.google")
+            }
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -23,6 +31,14 @@ val tigrisSecretKey: String? = providers.gradleProperty("S3_BUILD_CACHE_SECRET_K
 
 dependencyResolutionManagement {
     repositories {
+        // AndroidX and the Android build's own artifacts, for bee-app (#156).
+        google {
+            mavenContent {
+                includeGroupAndSubgroups("androidx")
+                includeGroupAndSubgroups("com.android")
+                includeGroupAndSubgroups("com.google")
+            }
+        }
         mavenCentral()
         maven {
             name = "TigrisKuilt"
@@ -50,4 +66,5 @@ include(
     ":bee-host",
     ":bee-mcp",
     ":bee-companion",
+    ":bee-app",
 )

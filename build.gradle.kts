@@ -6,6 +6,10 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinSerialization) apply false
+    alias(libs.plugins.composeMultiplatform) apply false
+    alias(libs.plugins.composeCompiler) apply false
+    // On the classpath beside the Kotlin plugin, for bee-app's opt-in Android target (-Pbee.android=true).
+    alias(libs.plugins.androidApplication) apply false
 }
 
 // bee-web takes bee-notions as a `file:` npm dependency, which Yarn copies into
