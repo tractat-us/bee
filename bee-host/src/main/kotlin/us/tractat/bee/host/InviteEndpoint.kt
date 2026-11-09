@@ -59,7 +59,8 @@ fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAd
  * that is up: in [lanOrder].
  */
 fun lanAddresses(): List<String> =
-    lanOrder(NetworkInterface.networkInterfaces().toList().filter { it.isUp && !it.isLoopback }.flatMap { it.inetAddresses().toList() })
+    // SPIKE (docs/spikes/2026-11-bee-app.md): the Enumeration forms; Android lacks the Stream ones (Java 9).
+    lanOrder(NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && !it.isLoopback }.flatMap { it.inetAddresses.toList() })
 
 /**
  * [addresses] as a phone in the room could open them: IPv4 only, none on loopback (127.x) or
