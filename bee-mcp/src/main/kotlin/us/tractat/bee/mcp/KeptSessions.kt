@@ -117,7 +117,7 @@ class KeptIdentities(private val store: KeptSessionStore, private val retired: (
 
     private fun save() {
         try {
-            store.save(waiting.keys + live.values)
+            store.save(waiting.keys.toList() + live.values)
         } catch (failure: IOException) {
             logger.error(failure) { "Couldn't save the HTTP sessions' identities; a host restart gives them new ones." }
         }
