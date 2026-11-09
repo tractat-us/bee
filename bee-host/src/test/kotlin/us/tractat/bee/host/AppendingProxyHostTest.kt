@@ -5,7 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
@@ -61,9 +60,10 @@ class AppendingProxyHostTest {
      * hosted board passes `--client-ip-header Fly-Client-IP`.
      */
     @Test
-    fun pairingLimitsTheAddressTheProxyAppended() {
-        calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, 203.0.113.7").use { first ->
-            val opened = first.message()
+    fun pairingLimitsTheAddressTheProxyAppended() = runBlocking {
+        host.attachSomeone()
+        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, 203.0.113.7")
+        first.use {
             val sameClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7").use { it.message() }
             val anotherClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7, 198.51.100.9").use { it.message() }
             val flyShaped = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.5, 203.0.113.7", "Fly-Client-IP: 198.51.100.5").use { it.message() }
@@ -75,8 +75,6 @@ class AppendingProxyHostTest {
             )
         }
     }
-
-    private fun Handshakes.Events.message(): PairingMessage = Json.decodeFromString(PairingMessage.serializer(), next())
 
     private companion object {
         const val PUBLIC_URL = "https://bee.tractat.us/"

@@ -26,10 +26,6 @@ import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingSurfaces
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
-import us.tractat.bee.core.PresenceEntry
-import us.tractat.kuilt.crdt.ReplicaId
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import us.tractat.bee.host.Handshakes.Companion.FORBIDDEN
 import us.tractat.bee.host.Handshakes.Companion.OK
@@ -186,8 +182,8 @@ class PublicHostTest {
         val alone = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *CLIENT).use { it.message() }
         delay(Pairing.DWELL + 1.seconds)
         val postedAlone = host.state.value.pairingRequests()
-        attachSomeone()
-        val (device, withSomeone) = pairOnceSomeoneIsHere(*fly("203.0.113.51"))
+        host.attachSomeone()
+        val (device, withSomeone) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("203.0.113.51"))
         device.use {
             val posted = withTimeout(10.seconds) { host.state.first { it.pairingRequests().isNotEmpty() } }.pairingRequests()
             assertAll(
@@ -229,8 +225,8 @@ class PublicHostTest {
      */
     @Test
     fun pairingGivesEachClientBehindTheProxyItsOwnTurn() = runBlocking {
-        attachSomeone()
-        val (first, opened) = pairOnceSomeoneIsHere(*fly("198.51.100.1"))
+        host.attachSomeone()
+        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("198.51.100.1"))
         first.use {
             val anotherClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("198.51.100.9")).use { it.message() }
             val sameClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7, 198.51.100.1, $APP", "Fly-Client-IP: 198.51.100.1").use { it.message() }
@@ -248,8 +244,8 @@ class PublicHostTest {
      */
     @Test
     fun aClientHeaderThatNamesNoAddressFallsBackToTheTcpPeer() = runBlocking {
-        attachSomeone()
-        val (first, opened) = pairOnceSomeoneIsHere("X-Forwarded-For: 198.51.100.1, $APP", "Fly-Client-IP: unknown")
+        host.attachSomeone()
+        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, $APP", "Fly-Client-IP: unknown")
         first.use {
             val again = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.9, 192.0.2.2", "Fly-Client-IP: 198.51.100.9, 192.0.2.2").use { it.message() }
             assertAll(
@@ -262,8 +258,8 @@ class PublicHostTest {
     /** A forwarded loopback address is limited like any client: it is no local caller. */
     @Test
     fun pairingLimitsAForwardedLoopbackAddress() = runBlocking {
-        attachSomeone()
-        val (first, opened) = pairOnceSomeoneIsHere(*fly("127.0.0.1"))
+        host.attachSomeone()
+        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("127.0.0.1"))
         first.use {
             val again = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("127.0.0.1")).use { it.message() }
             assertAll(
@@ -271,29 +267,6 @@ class PublicHostTest {
                 { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), again) },
             )
         }
-    }
-
-    private fun Handshakes.Events.message(): PairingMessage = Json.decodeFromString(PairingMessage.serializer(), next())
-
-    /** A person's page attached, as its presence says: posted through the host's own replica. */
-    private suspend fun attachSomeone() {
-        host.mutate { it.postPresence(ReplicaId("web-iain"), PresenceEntry(PeerIdentity.human("iain"), null, null, Clock.System.now(), waiting = false), 1) }
-    }
-
-    /**
-     * Opens a pairing channel with these [headers] once the host's roster holds the person
-     * [attachSomeone] attached: it reads the board a moment later, and a refusal for nobody here
-     * opens no pairing, so asking again costs nothing.
-     */
-    private suspend fun pairOnceSomeoneIsHere(vararg headers: String): Pair<Handshakes.Events, PairingMessage> {
-        repeat(ROSTER_TRIES) {
-            val events = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *headers)
-            val message = events.message()
-            if (message != PairingMessage.Ended(PairingEnd.NobodyHere)) return events to message
-            events.close()
-            delay(100.milliseconds)
-        }
-        error("rig: the host's roster never saw the attached person")
     }
 
     private fun BoardState.pairingRequests(): List<String> = (openSurfaces() + closedSurfaces()).filter(PairingSurfaces::isPairing)
@@ -316,6 +289,5 @@ class PublicHostTest {
         const val CROSS_SITE = "Sec-Fetch-Site: cross-site"
         const val NAVIGATE = "Sec-Fetch-Mode: navigate"
         const val DOCUMENT = "Sec-Fetch-Dest: document"
-        const val ROSTER_TRIES = 50
     }
 }
