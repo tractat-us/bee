@@ -14,6 +14,9 @@ logback = "1.6.6"
 kuilt = "0.7.0-dev.1696"
 mcp = "0.16.0"
 kotlinx-browser = "0.5.0"
+# vanniktech maven-publish (base plugin): POM, sources and javadoc jars, signing, Central Portal.
+# The version kuilt's publish convention uses.
+vanniktechMavenPublish = "0.37.0"
 
 [libraries]
 kuilt-bom = { module = "us.tractat.kuilt:kuilt-bom", version.ref = "kuilt" }
@@ -50,6 +53,10 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref 
 mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp" }
 # Test-only: an in-process SDK client drives the bridge's tools (Task 5).
 mcp-kotlin-sdk-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp" }
+
+# build-logic only: the bee.publish convention plugin.
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+vanniktech-mavenPublish-gradlePlugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "vanniktechMavenPublish" }
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

@@ -1,0 +1,1239 @@
+// Klib ABI Dump
+// Targets: [wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <us.tractat.bee:bee-core>
+final enum class us.tractat.bee.core/DepartReason : kotlin/Enum<us.tractat.bee.core/DepartReason> { // us.tractat.bee.core/DepartReason|null[0]
+    enum entry Cleared // us.tractat.bee.core/DepartReason.Cleared|null[0]
+    enum entry Crashed // us.tractat.bee.core/DepartReason.Crashed|null[0]
+    enum entry Left // us.tractat.bee.core/DepartReason.Left|null[0]
+    enum entry Quiet // us.tractat.bee.core/DepartReason.Quiet|null[0]
+
+    final val entries // us.tractat.bee.core/DepartReason.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<us.tractat.bee.core/DepartReason> // us.tractat.bee.core/DepartReason.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): us.tractat.bee.core/DepartReason // us.tractat.bee.core/DepartReason.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<us.tractat.bee.core/DepartReason> // us.tractat.bee.core/DepartReason.values|values#static(){}[0]
+}
+
+final enum class us.tractat.bee.core/PairingEnd : kotlin/Enum<us.tractat.bee.core/PairingEnd> { // us.tractat.bee.core/PairingEnd|null[0]
+    enum entry Busy // us.tractat.bee.core/PairingEnd.Busy|null[0]
+    enum entry Expired // us.tractat.bee.core/PairingEnd.Expired|null[0]
+    enum entry TooSoon // us.tractat.bee.core/PairingEnd.TooSoon|null[0]
+    enum entry Voided // us.tractat.bee.core/PairingEnd.Voided|null[0]
+
+    final val entries // us.tractat.bee.core/PairingEnd.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<us.tractat.bee.core/PairingEnd> // us.tractat.bee.core/PairingEnd.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): us.tractat.bee.core/PairingEnd // us.tractat.bee.core/PairingEnd.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<us.tractat.bee.core/PairingEnd> // us.tractat.bee.core/PairingEnd.values|values#static(){}[0]
+}
+
+final enum class us.tractat.bee.core/PeerKind : kotlin/Enum<us.tractat.bee.core/PeerKind> { // us.tractat.bee.core/PeerKind|null[0]
+    enum entry Agent // us.tractat.bee.core/PeerKind.Agent|null[0]
+    enum entry Host // us.tractat.bee.core/PeerKind.Host|null[0]
+    enum entry Human // us.tractat.bee.core/PeerKind.Human|null[0]
+
+    final val entries // us.tractat.bee.core/PeerKind.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<us.tractat.bee.core/PeerKind> // us.tractat.bee.core/PeerKind.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): us.tractat.bee.core/PeerKind // us.tractat.bee.core/PeerKind.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<us.tractat.bee.core/PeerKind> // us.tractat.bee.core/PeerKind.values|values#static(){}[0]
+}
+
+sealed interface us.tractat.bee.core/ClaimCommand { // us.tractat.bee.core/ClaimCommand|null[0]
+    final class Claim : us.tractat.bee.core/ClaimCommand { // us.tractat.bee.core/ClaimCommand.Claim|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ProposalId) // us.tractat.bee.core/ClaimCommand.Claim.<init>|<init>(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ProposalId){}[0]
+
+        final val by // us.tractat.bee.core/ClaimCommand.Claim.by|{}by[0]
+            final fun <get-by>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Claim.by.<get-by>|<get-by>(){}[0]
+        final val proposal // us.tractat.bee.core/ClaimCommand.Claim.proposal|{}proposal[0]
+            final fun <get-proposal>(): us.tractat.bee.core/ProposalId // us.tractat.bee.core/ClaimCommand.Claim.proposal.<get-proposal>|<get-proposal>(){}[0]
+        final val target // us.tractat.bee.core/ClaimCommand.Claim.target|{}target[0]
+            final fun <get-target>(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Claim.target.<get-target>|<get-target>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Claim.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Claim.component2|component2(){}[0]
+        final fun component3(): us.tractat.bee.core/ProposalId // us.tractat.bee.core/ClaimCommand.Claim.component3|component3(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimTarget = ..., us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/ProposalId = ...): us.tractat.bee.core/ClaimCommand.Claim // us.tractat.bee.core/ClaimCommand.Claim.copy|copy(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ProposalId){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimCommand.Claim.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimCommand.Claim.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimCommand.Claim.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimCommand.Claim> { // us.tractat.bee.core/ClaimCommand.Claim.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimCommand.Claim.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimCommand.Claim.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimCommand.Claim.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimCommand.Claim // us.tractat.bee.core/ClaimCommand.Claim.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimCommand.Claim) // us.tractat.bee.core/ClaimCommand.Claim.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimCommand.Claim){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimCommand.Claim.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimCommand.Claim> // us.tractat.bee.core/ClaimCommand.Claim.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Complete : us.tractat.bee.core/ClaimCommand { // us.tractat.bee.core/ClaimCommand.Complete|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken) // us.tractat.bee.core/ClaimCommand.Complete.<init>|<init>(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+
+        final val by // us.tractat.bee.core/ClaimCommand.Complete.by|{}by[0]
+            final fun <get-by>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Complete.by.<get-by>|<get-by>(){}[0]
+        final val target // us.tractat.bee.core/ClaimCommand.Complete.target|{}target[0]
+            final fun <get-target>(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Complete.target.<get-target>|<get-target>(){}[0]
+        final val token // us.tractat.bee.core/ClaimCommand.Complete.token|{}token[0]
+            final fun <get-token>(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimCommand.Complete.token.<get-token>|<get-token>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Complete.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Complete.component2|component2(){}[0]
+        final fun component3(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimCommand.Complete.component3|component3(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimTarget = ..., us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/ClaimToken = ...): us.tractat.bee.core/ClaimCommand.Complete // us.tractat.bee.core/ClaimCommand.Complete.copy|copy(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimCommand.Complete.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimCommand.Complete.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimCommand.Complete.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimCommand.Complete> { // us.tractat.bee.core/ClaimCommand.Complete.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimCommand.Complete.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimCommand.Complete.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimCommand.Complete.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimCommand.Complete // us.tractat.bee.core/ClaimCommand.Complete.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimCommand.Complete) // us.tractat.bee.core/ClaimCommand.Complete.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimCommand.Complete){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimCommand.Complete.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimCommand.Complete> // us.tractat.bee.core/ClaimCommand.Complete.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Depart : us.tractat.bee.core/ClaimCommand { // us.tractat.bee.core/ClaimCommand.Depart|null[0]
+        constructor <init>(us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/DepartReason) // us.tractat.bee.core/ClaimCommand.Depart.<init>|<init>(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.DepartReason){}[0]
+
+        final val identity // us.tractat.bee.core/ClaimCommand.Depart.identity|{}identity[0]
+            final fun <get-identity>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Depart.identity.<get-identity>|<get-identity>(){}[0]
+        final val reason // us.tractat.bee.core/ClaimCommand.Depart.reason|{}reason[0]
+            final fun <get-reason>(): us.tractat.bee.core/DepartReason // us.tractat.bee.core/ClaimCommand.Depart.reason.<get-reason>|<get-reason>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Depart.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/DepartReason // us.tractat.bee.core/ClaimCommand.Depart.component2|component2(){}[0]
+        final fun copy(us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/DepartReason = ...): us.tractat.bee.core/ClaimCommand.Depart // us.tractat.bee.core/ClaimCommand.Depart.copy|copy(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.DepartReason){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimCommand.Depart.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimCommand.Depart.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimCommand.Depart.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimCommand.Depart> { // us.tractat.bee.core/ClaimCommand.Depart.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimCommand.Depart.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimCommand.Depart.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimCommand.Depart.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimCommand.Depart // us.tractat.bee.core/ClaimCommand.Depart.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimCommand.Depart) // us.tractat.bee.core/ClaimCommand.Depart.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimCommand.Depart){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimCommand.Depart.Companion|null[0]
+            final val $childSerializers // us.tractat.bee.core/ClaimCommand.Depart.Companion.$childSerializers|{}$childSerializers[0]
+
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimCommand.Depart> // us.tractat.bee.core/ClaimCommand.Depart.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Reassign : us.tractat.bee.core/ClaimCommand { // us.tractat.bee.core/ClaimCommand.Reassign|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/PeerIdentity) // us.tractat.bee.core/ClaimCommand.Reassign.<init>|<init>(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.PeerIdentity){}[0]
+
+        final val by // us.tractat.bee.core/ClaimCommand.Reassign.by|{}by[0]
+            final fun <get-by>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Reassign.by.<get-by>|<get-by>(){}[0]
+        final val target // us.tractat.bee.core/ClaimCommand.Reassign.target|{}target[0]
+            final fun <get-target>(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Reassign.target.<get-target>|<get-target>(){}[0]
+        final val to // us.tractat.bee.core/ClaimCommand.Reassign.to|{}to[0]
+            final fun <get-to>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Reassign.to.<get-to>|<get-to>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Reassign.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Reassign.component2|component2(){}[0]
+        final fun component3(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Reassign.component3|component3(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimTarget = ..., us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/PeerIdentity = ...): us.tractat.bee.core/ClaimCommand.Reassign // us.tractat.bee.core/ClaimCommand.Reassign.copy|copy(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.PeerIdentity){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimCommand.Reassign.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimCommand.Reassign.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimCommand.Reassign.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimCommand.Reassign> { // us.tractat.bee.core/ClaimCommand.Reassign.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimCommand.Reassign.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimCommand.Reassign.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimCommand.Reassign.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimCommand.Reassign // us.tractat.bee.core/ClaimCommand.Reassign.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimCommand.Reassign) // us.tractat.bee.core/ClaimCommand.Reassign.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimCommand.Reassign){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimCommand.Reassign.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimCommand.Reassign> // us.tractat.bee.core/ClaimCommand.Reassign.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Release : us.tractat.bee.core/ClaimCommand { // us.tractat.bee.core/ClaimCommand.Release|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken?) // us.tractat.bee.core/ClaimCommand.Release.<init>|<init>(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken?){}[0]
+
+        final val by // us.tractat.bee.core/ClaimCommand.Release.by|{}by[0]
+            final fun <get-by>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Release.by.<get-by>|<get-by>(){}[0]
+        final val target // us.tractat.bee.core/ClaimCommand.Release.target|{}target[0]
+            final fun <get-target>(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Release.target.<get-target>|<get-target>(){}[0]
+        final val token // us.tractat.bee.core/ClaimCommand.Release.token|{}token[0]
+            final fun <get-token>(): us.tractat.bee.core/ClaimToken? // us.tractat.bee.core/ClaimCommand.Release.token.<get-token>|<get-token>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimCommand.Release.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimCommand.Release.component2|component2(){}[0]
+        final fun component3(): us.tractat.bee.core/ClaimToken? // us.tractat.bee.core/ClaimCommand.Release.component3|component3(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimTarget = ..., us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/ClaimToken? = ...): us.tractat.bee.core/ClaimCommand.Release // us.tractat.bee.core/ClaimCommand.Release.copy|copy(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken?){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimCommand.Release.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimCommand.Release.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimCommand.Release.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimCommand.Release> { // us.tractat.bee.core/ClaimCommand.Release.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimCommand.Release.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimCommand.Release.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimCommand.Release.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimCommand.Release // us.tractat.bee.core/ClaimCommand.Release.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimCommand.Release) // us.tractat.bee.core/ClaimCommand.Release.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimCommand.Release){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimCommand.Release.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimCommand.Release> // us.tractat.bee.core/ClaimCommand.Release.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final object Companion : kotlinx.serialization.internal/SerializerFactory { // us.tractat.bee.core/ClaimCommand.Companion|null[0]
+        final fun decode(kotlin/ByteArray): us.tractat.bee.core/ClaimCommand // us.tractat.bee.core/ClaimCommand.Companion.decode|decode(kotlin.ByteArray){}[0]
+        final fun encode(us.tractat.bee.core/ClaimCommand): kotlin/ByteArray // us.tractat.bee.core/ClaimCommand.Companion.encode|encode(us.tractat.bee.core.ClaimCommand){}[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimCommand> // us.tractat.bee.core/ClaimCommand.Companion.serializer|serializer(){}[0]
+        final fun serializer(kotlin/Array<out kotlinx.serialization/KSerializer<*>>...): kotlinx.serialization/KSerializer<*> // us.tractat.bee.core/ClaimCommand.Companion.serializer|serializer(kotlin.Array<out|kotlinx.serialization.KSerializer<*>>...){}[0]
+    }
+}
+
+sealed interface us.tractat.bee.core/ClaimOutcome { // us.tractat.bee.core/ClaimOutcome|null[0]
+    final class Lost : us.tractat.bee.core/ClaimOutcome { // us.tractat.bee.core/ClaimOutcome.Lost|null[0]
+        constructor <init>(us.tractat.bee.core/PeerIdentity) // us.tractat.bee.core/ClaimOutcome.Lost.<init>|<init>(us.tractat.bee.core.PeerIdentity){}[0]
+
+        final val holder // us.tractat.bee.core/ClaimOutcome.Lost.holder|{}holder[0]
+            final fun <get-holder>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimOutcome.Lost.holder.<get-holder>|<get-holder>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimOutcome.Lost.component1|component1(){}[0]
+        final fun copy(us.tractat.bee.core/PeerIdentity = ...): us.tractat.bee.core/ClaimOutcome.Lost // us.tractat.bee.core/ClaimOutcome.Lost.copy|copy(us.tractat.bee.core.PeerIdentity){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimOutcome.Lost.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimOutcome.Lost.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimOutcome.Lost.toString|toString(){}[0]
+    }
+
+    final class Won : us.tractat.bee.core/ClaimOutcome { // us.tractat.bee.core/ClaimOutcome.Won|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimToken) // us.tractat.bee.core/ClaimOutcome.Won.<init>|<init>(us.tractat.bee.core.ClaimToken){}[0]
+
+        final val token // us.tractat.bee.core/ClaimOutcome.Won.token|{}token[0]
+            final fun <get-token>(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimOutcome.Won.token.<get-token>|<get-token>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimOutcome.Won.component1|component1(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimToken = ...): us.tractat.bee.core/ClaimOutcome.Won // us.tractat.bee.core/ClaimOutcome.Won.copy|copy(us.tractat.bee.core.ClaimToken){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimOutcome.Won.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimOutcome.Won.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimOutcome.Won.toString|toString(){}[0]
+    }
+
+    final object Retired : us.tractat.bee.core/ClaimOutcome { // us.tractat.bee.core/ClaimOutcome.Retired|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimOutcome.Retired.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimOutcome.Retired.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimOutcome.Retired.toString|toString(){}[0]
+    }
+
+    final object Unavailable : us.tractat.bee.core/ClaimOutcome { // us.tractat.bee.core/ClaimOutcome.Unavailable|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimOutcome.Unavailable.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimOutcome.Unavailable.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimOutcome.Unavailable.toString|toString(){}[0]
+    }
+}
+
+sealed interface us.tractat.bee.core/ClaimStatus { // us.tractat.bee.core/ClaimStatus|null[0]
+    final class Done : us.tractat.bee.core/ClaimStatus { // us.tractat.bee.core/ClaimStatus.Done|null[0]
+        constructor <init>(us.tractat.bee.core/PeerIdentity) // us.tractat.bee.core/ClaimStatus.Done.<init>|<init>(us.tractat.bee.core.PeerIdentity){}[0]
+
+        final val by // us.tractat.bee.core/ClaimStatus.Done.by|{}by[0]
+            final fun <get-by>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimStatus.Done.by.<get-by>|<get-by>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimStatus.Done.component1|component1(){}[0]
+        final fun copy(us.tractat.bee.core/PeerIdentity = ...): us.tractat.bee.core/ClaimStatus.Done // us.tractat.bee.core/ClaimStatus.Done.copy|copy(us.tractat.bee.core.PeerIdentity){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimStatus.Done.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimStatus.Done.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimStatus.Done.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimStatus.Done> { // us.tractat.bee.core/ClaimStatus.Done.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimStatus.Done.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimStatus.Done.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimStatus.Done.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimStatus.Done // us.tractat.bee.core/ClaimStatus.Done.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimStatus.Done) // us.tractat.bee.core/ClaimStatus.Done.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimStatus.Done){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimStatus.Done.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimStatus.Done> // us.tractat.bee.core/ClaimStatus.Done.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Held : us.tractat.bee.core/ClaimStatus { // us.tractat.bee.core/ClaimStatus.Held|null[0]
+        constructor <init>(us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken) // us.tractat.bee.core/ClaimStatus.Held.<init>|<init>(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+
+        final val holder // us.tractat.bee.core/ClaimStatus.Held.holder|{}holder[0]
+            final fun <get-holder>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimStatus.Held.holder.<get-holder>|<get-holder>(){}[0]
+        final val token // us.tractat.bee.core/ClaimStatus.Held.token|{}token[0]
+            final fun <get-token>(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimStatus.Held.token.<get-token>|<get-token>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimStatus.Held.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimStatus.Held.component2|component2(){}[0]
+        final fun copy(us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/ClaimToken = ...): us.tractat.bee.core/ClaimStatus.Held // us.tractat.bee.core/ClaimStatus.Held.copy|copy(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimStatus.Held.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimStatus.Held.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimStatus.Held.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimStatus.Held> { // us.tractat.bee.core/ClaimStatus.Held.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimStatus.Held.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimStatus.Held.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimStatus.Held.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimStatus.Held // us.tractat.bee.core/ClaimStatus.Held.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimStatus.Held) // us.tractat.bee.core/ClaimStatus.Held.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimStatus.Held){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimStatus.Held.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimStatus.Held> // us.tractat.bee.core/ClaimStatus.Held.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Orphaned : us.tractat.bee.core/ClaimStatus { // us.tractat.bee.core/ClaimStatus.Orphaned|null[0]
+        constructor <init>(us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken) // us.tractat.bee.core/ClaimStatus.Orphaned.<init>|<init>(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+
+        final val holder // us.tractat.bee.core/ClaimStatus.Orphaned.holder|{}holder[0]
+            final fun <get-holder>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimStatus.Orphaned.holder.<get-holder>|<get-holder>(){}[0]
+        final val token // us.tractat.bee.core/ClaimStatus.Orphaned.token|{}token[0]
+            final fun <get-token>(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimStatus.Orphaned.token.<get-token>|<get-token>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimStatus.Orphaned.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimStatus.Orphaned.component2|component2(){}[0]
+        final fun copy(us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/ClaimToken = ...): us.tractat.bee.core/ClaimStatus.Orphaned // us.tractat.bee.core/ClaimStatus.Orphaned.copy|copy(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimStatus.Orphaned.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimStatus.Orphaned.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimStatus.Orphaned.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimStatus.Orphaned> { // us.tractat.bee.core/ClaimStatus.Orphaned.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/ClaimStatus.Orphaned.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimStatus.Orphaned.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimStatus.Orphaned.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimStatus.Orphaned // us.tractat.bee.core/ClaimStatus.Orphaned.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimStatus.Orphaned) // us.tractat.bee.core/ClaimStatus.Orphaned.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimStatus.Orphaned){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/ClaimStatus.Orphaned.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimStatus.Orphaned> // us.tractat.bee.core/ClaimStatus.Orphaned.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final object Companion : kotlinx.serialization.internal/SerializerFactory { // us.tractat.bee.core/ClaimStatus.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimStatus> // us.tractat.bee.core/ClaimStatus.Companion.serializer|serializer(){}[0]
+        final fun serializer(kotlin/Array<out kotlinx.serialization/KSerializer<*>>...): kotlinx.serialization/KSerializer<*> // us.tractat.bee.core/ClaimStatus.Companion.serializer|serializer(kotlin.Array<out|kotlinx.serialization.KSerializer<*>>...){}[0]
+    }
+
+    final object Free : kotlinx.serialization.internal/SerializerFactory, us.tractat.bee.core/ClaimStatus { // us.tractat.bee.core/ClaimStatus.Free|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimStatus.Free.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimStatus.Free.hashCode|hashCode(){}[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimStatus.Free> // us.tractat.bee.core/ClaimStatus.Free.serializer|serializer(){}[0]
+        final fun serializer(kotlin/Array<out kotlinx.serialization/KSerializer<*>>...): kotlinx.serialization/KSerializer<*> // us.tractat.bee.core/ClaimStatus.Free.serializer|serializer(kotlin.Array<out|kotlinx.serialization.KSerializer<*>>...){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimStatus.Free.toString|toString(){}[0]
+    }
+}
+
+sealed interface us.tractat.bee.core/PairingMessage { // us.tractat.bee.core/PairingMessage|null[0]
+    final class Code : us.tractat.bee.core/PairingMessage { // us.tractat.bee.core/PairingMessage.Code|null[0]
+        constructor <init>(kotlin/String, kotlin/String, kotlin.time/Instant) // us.tractat.bee.core/PairingMessage.Code.<init>|<init>(kotlin.String;kotlin.String;kotlin.time.Instant){}[0]
+
+        final val code // us.tractat.bee.core/PairingMessage.Code.code|{}code[0]
+            final fun <get-code>(): kotlin/String // us.tractat.bee.core/PairingMessage.Code.code.<get-code>|<get-code>(){}[0]
+        final val expiresAt // us.tractat.bee.core/PairingMessage.Code.expiresAt|{}expiresAt[0]
+            final fun <get-expiresAt>(): kotlin.time/Instant // us.tractat.bee.core/PairingMessage.Code.expiresAt.<get-expiresAt>|<get-expiresAt>(){}[0]
+        final val pairing // us.tractat.bee.core/PairingMessage.Code.pairing|{}pairing[0]
+            final fun <get-pairing>(): kotlin/String // us.tractat.bee.core/PairingMessage.Code.pairing.<get-pairing>|<get-pairing>(){}[0]
+
+        final fun component1(): kotlin/String // us.tractat.bee.core/PairingMessage.Code.component1|component1(){}[0]
+        final fun component2(): kotlin/String // us.tractat.bee.core/PairingMessage.Code.component2|component2(){}[0]
+        final fun component3(): kotlin.time/Instant // us.tractat.bee.core/PairingMessage.Code.component3|component3(){}[0]
+        final fun copy(kotlin/String = ..., kotlin/String = ..., kotlin.time/Instant = ...): us.tractat.bee.core/PairingMessage.Code // us.tractat.bee.core/PairingMessage.Code.copy|copy(kotlin.String;kotlin.String;kotlin.time.Instant){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/PairingMessage.Code.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/PairingMessage.Code.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/PairingMessage.Code.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/PairingMessage.Code> { // us.tractat.bee.core/PairingMessage.Code.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/PairingMessage.Code.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/PairingMessage.Code.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/PairingMessage.Code.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/PairingMessage.Code // us.tractat.bee.core/PairingMessage.Code.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/PairingMessage.Code) // us.tractat.bee.core/PairingMessage.Code.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.PairingMessage.Code){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/PairingMessage.Code.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/PairingMessage.Code> // us.tractat.bee.core/PairingMessage.Code.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Ended : us.tractat.bee.core/PairingMessage { // us.tractat.bee.core/PairingMessage.Ended|null[0]
+        constructor <init>(us.tractat.bee.core/PairingEnd) // us.tractat.bee.core/PairingMessage.Ended.<init>|<init>(us.tractat.bee.core.PairingEnd){}[0]
+
+        final val reason // us.tractat.bee.core/PairingMessage.Ended.reason|{}reason[0]
+            final fun <get-reason>(): us.tractat.bee.core/PairingEnd // us.tractat.bee.core/PairingMessage.Ended.reason.<get-reason>|<get-reason>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/PairingEnd // us.tractat.bee.core/PairingMessage.Ended.component1|component1(){}[0]
+        final fun copy(us.tractat.bee.core/PairingEnd = ...): us.tractat.bee.core/PairingMessage.Ended // us.tractat.bee.core/PairingMessage.Ended.copy|copy(us.tractat.bee.core.PairingEnd){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/PairingMessage.Ended.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/PairingMessage.Ended.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/PairingMessage.Ended.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/PairingMessage.Ended> { // us.tractat.bee.core/PairingMessage.Ended.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/PairingMessage.Ended.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/PairingMessage.Ended.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/PairingMessage.Ended.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/PairingMessage.Ended // us.tractat.bee.core/PairingMessage.Ended.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/PairingMessage.Ended) // us.tractat.bee.core/PairingMessage.Ended.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.PairingMessage.Ended){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/PairingMessage.Ended.Companion|null[0]
+            final val $childSerializers // us.tractat.bee.core/PairingMessage.Ended.Companion.$childSerializers|{}$childSerializers[0]
+
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/PairingMessage.Ended> // us.tractat.bee.core/PairingMessage.Ended.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final class Key : us.tractat.bee.core/PairingMessage { // us.tractat.bee.core/PairingMessage.Key|null[0]
+        constructor <init>(kotlin/String) // us.tractat.bee.core/PairingMessage.Key.<init>|<init>(kotlin.String){}[0]
+
+        final val key // us.tractat.bee.core/PairingMessage.Key.key|{}key[0]
+            final fun <get-key>(): kotlin/String // us.tractat.bee.core/PairingMessage.Key.key.<get-key>|<get-key>(){}[0]
+
+        final fun component1(): kotlin/String // us.tractat.bee.core/PairingMessage.Key.component1|component1(){}[0]
+        final fun copy(kotlin/String = ...): us.tractat.bee.core/PairingMessage.Key // us.tractat.bee.core/PairingMessage.Key.copy|copy(kotlin.String){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/PairingMessage.Key.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/PairingMessage.Key.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/PairingMessage.Key.toString|toString(){}[0]
+
+        final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/PairingMessage.Key> { // us.tractat.bee.core/PairingMessage.Key.$serializer|null[0]
+            final val descriptor // us.tractat.bee.core/PairingMessage.Key.$serializer.descriptor|{}descriptor[0]
+                final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/PairingMessage.Key.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+            final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/PairingMessage.Key.$serializer.childSerializers|childSerializers(){}[0]
+            final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/PairingMessage.Key // us.tractat.bee.core/PairingMessage.Key.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+            final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/PairingMessage.Key) // us.tractat.bee.core/PairingMessage.Key.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.PairingMessage.Key){}[0]
+        }
+
+        final object Companion { // us.tractat.bee.core/PairingMessage.Key.Companion|null[0]
+            final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/PairingMessage.Key> // us.tractat.bee.core/PairingMessage.Key.Companion.serializer|serializer(){}[0]
+        }
+    }
+
+    final object Companion : kotlinx.serialization.internal/SerializerFactory { // us.tractat.bee.core/PairingMessage.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/PairingMessage> // us.tractat.bee.core/PairingMessage.Companion.serializer|serializer(){}[0]
+        final fun serializer(kotlin/Array<out kotlinx.serialization/KSerializer<*>>...): kotlinx.serialization/KSerializer<*> // us.tractat.bee.core/PairingMessage.Companion.serializer|serializer(kotlin.Array<out|kotlinx.serialization.KSerializer<*>>...){}[0]
+    }
+}
+
+final class <#A: us.tractat.kuilt.crdt/Quilted<#A>> us.tractat.bee.core.persist/QuiltedPersistence { // us.tractat.bee.core.persist/QuiltedPersistence|null[0]
+    constructor <init>(us.tractat.kuilt.store/DurableStore, us.tractat.kuilt.store/StoreKey, kotlinx.serialization/KSerializer<#A>, kotlin.time/Duration = ...) // us.tractat.bee.core.persist/QuiltedPersistence.<init>|<init>(us.tractat.kuilt.store.DurableStore;us.tractat.kuilt.store.StoreKey;kotlinx.serialization.KSerializer<1:0>;kotlin.time.Duration){}[0]
+
+    final fun saveOnChange(kotlinx.coroutines.flow/StateFlow<#A>, kotlinx.coroutines/CoroutineScope, kotlin/Function1<#A, #A> = ...): us.tractat.bee.core.persist/QuiltedPersistence.Saver<#A> // us.tractat.bee.core.persist/QuiltedPersistence.saveOnChange|saveOnChange(kotlinx.coroutines.flow.StateFlow<1:0>;kotlinx.coroutines.CoroutineScope;kotlin.Function1<1:0,1:0>){}[0]
+    final suspend fun load(kotlin/Function1<#A, #A>): #A? // us.tractat.bee.core.persist/QuiltedPersistence.load|load(kotlin.Function1<1:0,1:0>){}[0]
+
+    final inner class Saver { // us.tractat.bee.core.persist/QuiltedPersistence.Saver|null[0]
+        final val lastFailure // us.tractat.bee.core.persist/QuiltedPersistence.Saver.lastFailure|{}lastFailure[0]
+            final fun <get-lastFailure>(): kotlinx.coroutines.flow/StateFlow<kotlin/Exception?> // us.tractat.bee.core.persist/QuiltedPersistence.Saver.lastFailure.<get-lastFailure>|<get-lastFailure>(){}[0]
+
+        final suspend fun stop() // us.tractat.bee.core.persist/QuiltedPersistence.Saver.stop|stop(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/ActionRecord { // us.tractat.bee.core/ActionRecord|null[0]
+    constructor <init>(kotlin/String, kotlin/String, us.tractat.bee.core/PeerIdentity, kotlin/String, kotlinx.serialization.json/JsonObject, us.tractat.bee.core/Basis, kotlin.time/Instant) // us.tractat.bee.core/ActionRecord.<init>|<init>(kotlin.String;kotlin.String;us.tractat.bee.core.PeerIdentity;kotlin.String;kotlinx.serialization.json.JsonObject;us.tractat.bee.core.Basis;kotlin.time.Instant){}[0]
+
+    final val actor // us.tractat.bee.core/ActionRecord.actor|{}actor[0]
+        final fun <get-actor>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ActionRecord.actor.<get-actor>|<get-actor>(){}[0]
+    final val at // us.tractat.bee.core/ActionRecord.at|{}at[0]
+        final fun <get-at>(): kotlin.time/Instant // us.tractat.bee.core/ActionRecord.at.<get-at>|<get-at>(){}[0]
+    final val basis // us.tractat.bee.core/ActionRecord.basis|{}basis[0]
+        final fun <get-basis>(): us.tractat.bee.core/Basis // us.tractat.bee.core/ActionRecord.basis.<get-basis>|<get-basis>(){}[0]
+    final val componentId // us.tractat.bee.core/ActionRecord.componentId|{}componentId[0]
+        final fun <get-componentId>(): kotlin/String // us.tractat.bee.core/ActionRecord.componentId.<get-componentId>|<get-componentId>(){}[0]
+    final val context // us.tractat.bee.core/ActionRecord.context|{}context[0]
+        final fun <get-context>(): kotlinx.serialization.json/JsonObject // us.tractat.bee.core/ActionRecord.context.<get-context>|<get-context>(){}[0]
+    final val name // us.tractat.bee.core/ActionRecord.name|{}name[0]
+        final fun <get-name>(): kotlin/String // us.tractat.bee.core/ActionRecord.name.<get-name>|<get-name>(){}[0]
+    final val surfaceId // us.tractat.bee.core/ActionRecord.surfaceId|{}surfaceId[0]
+        final fun <get-surfaceId>(): kotlin/String // us.tractat.bee.core/ActionRecord.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.core/ActionRecord.component1|component1(){}[0]
+    final fun component2(): kotlin/String // us.tractat.bee.core/ActionRecord.component2|component2(){}[0]
+    final fun component3(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ActionRecord.component3|component3(){}[0]
+    final fun component4(): kotlin/String // us.tractat.bee.core/ActionRecord.component4|component4(){}[0]
+    final fun component5(): kotlinx.serialization.json/JsonObject // us.tractat.bee.core/ActionRecord.component5|component5(){}[0]
+    final fun component6(): us.tractat.bee.core/Basis // us.tractat.bee.core/ActionRecord.component6|component6(){}[0]
+    final fun component7(): kotlin.time/Instant // us.tractat.bee.core/ActionRecord.component7|component7(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String = ..., us.tractat.bee.core/PeerIdentity = ..., kotlin/String = ..., kotlinx.serialization.json/JsonObject = ..., us.tractat.bee.core/Basis = ..., kotlin.time/Instant = ...): us.tractat.bee.core/ActionRecord // us.tractat.bee.core/ActionRecord.copy|copy(kotlin.String;kotlin.String;us.tractat.bee.core.PeerIdentity;kotlin.String;kotlinx.serialization.json.JsonObject;us.tractat.bee.core.Basis;kotlin.time.Instant){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ActionRecord.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/ActionRecord.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/ActionRecord.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ActionRecord> { // us.tractat.bee.core/ActionRecord.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/ActionRecord.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ActionRecord.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ActionRecord.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ActionRecord // us.tractat.bee.core/ActionRecord.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ActionRecord) // us.tractat.bee.core/ActionRecord.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ActionRecord){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ActionRecord.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ActionRecord> // us.tractat.bee.core/ActionRecord.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/Basis { // us.tractat.bee.core/Basis|null[0]
+    constructor <init>(kotlin.collections/Map<kotlin/String, kotlin.collections/Set<us.tractat.kuilt.crdt/Dot>>, kotlin.collections/Map<kotlin/String, us.tractat.kuilt.crdt/VersionVector>, kotlin.collections/Set<us.tractat.kuilt.crdt/Dot>, us.tractat.kuilt.crdt/VersionVector) // us.tractat.bee.core/Basis.<init>|<init>(kotlin.collections.Map<kotlin.String,kotlin.collections.Set<us.tractat.kuilt.crdt.Dot>>;kotlin.collections.Map<kotlin.String,us.tractat.kuilt.crdt.VersionVector>;kotlin.collections.Set<us.tractat.kuilt.crdt.Dot>;us.tractat.kuilt.crdt.VersionVector){}[0]
+
+    final val recordDots // us.tractat.bee.core/Basis.recordDots|{}recordDots[0]
+        final fun <get-recordDots>(): kotlin.collections/Set<us.tractat.kuilt.crdt/Dot> // us.tractat.bee.core/Basis.recordDots.<get-recordDots>|<get-recordDots>(){}[0]
+    final val recordFloor // us.tractat.bee.core/Basis.recordFloor|{}recordFloor[0]
+        final fun <get-recordFloor>(): us.tractat.kuilt.crdt/VersionVector // us.tractat.bee.core/Basis.recordFloor.<get-recordFloor>|<get-recordFloor>(){}[0]
+    final val surfaceDots // us.tractat.bee.core/Basis.surfaceDots|{}surfaceDots[0]
+        final fun <get-surfaceDots>(): kotlin.collections/Map<kotlin/String, kotlin.collections/Set<us.tractat.kuilt.crdt/Dot>> // us.tractat.bee.core/Basis.surfaceDots.<get-surfaceDots>|<get-surfaceDots>(){}[0]
+    final val surfaceFloors // us.tractat.bee.core/Basis.surfaceFloors|{}surfaceFloors[0]
+        final fun <get-surfaceFloors>(): kotlin.collections/Map<kotlin/String, us.tractat.kuilt.crdt/VersionVector> // us.tractat.bee.core/Basis.surfaceFloors.<get-surfaceFloors>|<get-surfaceFloors>(){}[0]
+
+    final fun completeIn(us.tractat.bee.core/BoardState, kotlin/String): kotlin/Boolean // us.tractat.bee.core/Basis.completeIn|completeIn(us.tractat.bee.core.BoardState;kotlin.String){}[0]
+    final fun component1(): kotlin.collections/Map<kotlin/String, kotlin.collections/Set<us.tractat.kuilt.crdt/Dot>> // us.tractat.bee.core/Basis.component1|component1(){}[0]
+    final fun component2(): kotlin.collections/Map<kotlin/String, us.tractat.kuilt.crdt/VersionVector> // us.tractat.bee.core/Basis.component2|component2(){}[0]
+    final fun component3(): kotlin.collections/Set<us.tractat.kuilt.crdt/Dot> // us.tractat.bee.core/Basis.component3|component3(){}[0]
+    final fun component4(): us.tractat.kuilt.crdt/VersionVector // us.tractat.bee.core/Basis.component4|component4(){}[0]
+    final fun copy(kotlin.collections/Map<kotlin/String, kotlin.collections/Set<us.tractat.kuilt.crdt/Dot>> = ..., kotlin.collections/Map<kotlin/String, us.tractat.kuilt.crdt/VersionVector> = ..., kotlin.collections/Set<us.tractat.kuilt.crdt/Dot> = ..., us.tractat.kuilt.crdt/VersionVector = ...): us.tractat.bee.core/Basis // us.tractat.bee.core/Basis.copy|copy(kotlin.collections.Map<kotlin.String,kotlin.collections.Set<us.tractat.kuilt.crdt.Dot>>;kotlin.collections.Map<kotlin.String,us.tractat.kuilt.crdt.VersionVector>;kotlin.collections.Set<us.tractat.kuilt.crdt.Dot>;us.tractat.kuilt.crdt.VersionVector){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/Basis.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/Basis.hashCode|hashCode(){}[0]
+    final fun saw(kotlin/String, us.tractat.kuilt.crdt/Dot): kotlin/Boolean // us.tractat.bee.core/Basis.saw|saw(kotlin.String;us.tractat.kuilt.crdt.Dot){}[0]
+    final fun sawRecord(us.tractat.kuilt.crdt/Dot): kotlin/Boolean // us.tractat.bee.core/Basis.sawRecord|sawRecord(us.tractat.kuilt.crdt.Dot){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/Basis.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/Basis> { // us.tractat.bee.core/Basis.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/Basis.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/Basis.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/Basis.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/Basis // us.tractat.bee.core/Basis.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/Basis) // us.tractat.bee.core/Basis.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.Basis){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/Basis.Companion|null[0]
+        final val $childSerializers // us.tractat.bee.core/Basis.Companion.$childSerializers|{}$childSerializers[0]
+
+        final fun capture(us.tractat.bee.core/BoardState, kotlin/String): us.tractat.bee.core/Basis // us.tractat.bee.core/Basis.Companion.capture|capture(us.tractat.bee.core.BoardState;kotlin.String){}[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/Basis> // us.tractat.bee.core/Basis.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/BoardClient { // us.tractat.bee.core/BoardClient|null[0]
+    constructor <init>(us.tractat.kuilt.crdt/ReplicaId, us.tractat.kuilt.core/Loom, us.tractat.kuilt.core/Rendezvous, kotlinx.coroutines/CoroutineScope, kotlin/Function0<kotlin.time/Instant>, us.tractat.bee.core/BoardState = ..., us.tractat.kuilt.quilter/QuilterConfig = ..., kotlin.random/Random = ..., kotlin.time/Duration = ..., kotlin/Int = ..., kotlin.time/Duration = ...) // us.tractat.bee.core/BoardClient.<init>|<init>(us.tractat.kuilt.crdt.ReplicaId;us.tractat.kuilt.core.Loom;us.tractat.kuilt.core.Rendezvous;kotlinx.coroutines.CoroutineScope;kotlin.Function0<kotlin.time.Instant>;us.tractat.bee.core.BoardState;us.tractat.kuilt.quilter.QuilterConfig;kotlin.random.Random;kotlin.time.Duration;kotlin.Int;kotlin.time.Duration){}[0]
+
+    final val lastFailure // us.tractat.bee.core/BoardClient.lastFailure|{}lastFailure[0]
+        final fun <get-lastFailure>(): kotlinx.coroutines.flow/StateFlow<kotlin/Throwable?> // us.tractat.bee.core/BoardClient.lastFailure.<get-lastFailure>|<get-lastFailure>(){}[0]
+    final val link // us.tractat.bee.core/BoardClient.link|{}link[0]
+        final fun <get-link>(): kotlinx.coroutines.flow/StateFlow<kotlin/String?> // us.tractat.bee.core/BoardClient.link.<get-link>|<get-link>(){}[0]
+    final val maxPayloadBytes // us.tractat.bee.core/BoardClient.maxPayloadBytes|{}maxPayloadBytes[0]
+        final fun <get-maxPayloadBytes>(): kotlin/Int // us.tractat.bee.core/BoardClient.maxPayloadBytes.<get-maxPayloadBytes>|<get-maxPayloadBytes>(){}[0]
+    final val online // us.tractat.bee.core/BoardClient.online|{}online[0]
+        final fun <get-online>(): kotlinx.coroutines.flow/StateFlow<kotlin/Boolean> // us.tractat.bee.core/BoardClient.online.<get-online>|<get-online>(){}[0]
+    final val state // us.tractat.bee.core/BoardClient.state|{}state[0]
+        final fun <get-state>(): kotlinx.coroutines.flow/StateFlow<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardClient.state.<get-state>|<get-state>(){}[0]
+    final val tooLarge // us.tractat.bee.core/BoardClient.tooLarge|{}tooLarge[0]
+        final fun <get-tooLarge>(): kotlinx.coroutines.flow/StateFlow<us.tractat.bee.core/BoardSyncTooLarge?> // us.tractat.bee.core/BoardClient.tooLarge.<get-tooLarge>|<get-tooLarge>(){}[0]
+
+    final fun connect() // us.tractat.bee.core/BoardClient.connect|connect(){}[0]
+    final fun disconnect() // us.tractat.bee.core/BoardClient.disconnect|disconnect(){}[0]
+    final suspend fun awaitAcknowledged(): kotlin/Boolean // us.tractat.bee.core/BoardClient.awaitAcknowledged|awaitAcknowledged(){}[0]
+    final suspend fun close() // us.tractat.bee.core/BoardClient.close|close(){}[0]
+    final suspend fun mutate(kotlin/Function1<us.tractat.bee.core/BoardState, us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState>>) // us.tractat.bee.core/BoardClient.mutate|mutate(kotlin.Function1<us.tractat.bee.core.BoardState,us.tractat.kuilt.crdt.Patch<us.tractat.bee.core.BoardState>>){}[0]
+    final suspend fun mutateOrSkip(kotlin/Function1<us.tractat.bee.core/BoardState, us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState>?>): kotlin/Boolean // us.tractat.bee.core/BoardClient.mutateOrSkip|mutateOrSkip(kotlin.Function1<us.tractat.bee.core.BoardState,us.tractat.kuilt.crdt.Patch<us.tractat.bee.core.BoardState>?>){}[0]
+}
+
+final class us.tractat.bee.core/BoardPin { // us.tractat.bee.core/BoardPin|null[0]
+    final val board // us.tractat.bee.core/BoardPin.board|{}board[0]
+        final fun <get-board>(): kotlinx.coroutines.flow/StateFlow<us.tractat.bee.core/BoardId?> // us.tractat.bee.core/BoardPin.board.<get-board>|<get-board>(){}[0]
+
+    final suspend fun resolve(): us.tractat.bee.core/BoardId // us.tractat.bee.core/BoardPin.resolve|resolve(){}[0]
+
+    final object Companion { // us.tractat.bee.core/BoardPin.Companion|null[0]
+        final fun learnedFrom(kotlin.coroutines/SuspendFunction0<us.tractat.bee.core/BoardId>): us.tractat.bee.core/BoardPin // us.tractat.bee.core/BoardPin.Companion.learnedFrom|learnedFrom(kotlin.coroutines.SuspendFunction0<us.tractat.bee.core.BoardId>){}[0]
+        final fun to(us.tractat.bee.core/BoardId): us.tractat.bee.core/BoardPin // us.tractat.bee.core/BoardPin.Companion.to|to(us.tractat.bee.core.BoardId){}[0]
+    }
+}
+
+final class us.tractat.bee.core/BoardState : us.tractat.kuilt.crdt/Quilted<us.tractat.bee.core/BoardState> { // us.tractat.bee.core/BoardState|null[0]
+    final val claims // us.tractat.bee.core/BoardState.claims|{}claims[0]
+        final fun <get-claims>(): us.tractat.kuilt.crdt/LWWMap<kotlin/String, us.tractat.bee.core/ClaimView> // us.tractat.bee.core/BoardState.claims.<get-claims>|<get-claims>(){}[0]
+    final val departed // us.tractat.bee.core/BoardState.departed|{}departed[0]
+        final fun <get-departed>(): us.tractat.kuilt.crdt/GSet<us.tractat.bee.core/Departure> // us.tractat.bee.core/BoardState.departed.<get-departed>|<get-departed>(){}[0]
+    final val presence // us.tractat.bee.core/BoardState.presence|{}presence[0]
+        final fun <get-presence>(): us.tractat.kuilt.crdt/EphemeralMap<us.tractat.bee.core/PresenceEntry> // us.tractat.bee.core/BoardState.presence.<get-presence>|<get-presence>(){}[0]
+    final val records // us.tractat.bee.core/BoardState.records|{}records[0]
+        final fun <get-records>(): us.tractat.kuilt.crdt/Rga<us.tractat.bee.core/ActionRecord> // us.tractat.bee.core/BoardState.records.<get-records>|<get-records>(){}[0]
+    final val surfaces // us.tractat.bee.core/BoardState.surfaces|{}surfaces[0]
+        final fun <get-surfaces>(): us.tractat.kuilt.crdt/ORMap<kotlin/String, us.tractat.kuilt.crdt/JsonCrdt> // us.tractat.bee.core/BoardState.surfaces.<get-surfaces>|<get-surfaces>(){}[0]
+
+    final fun appendEntry(us.tractat.kuilt.crdt/ReplicaId, kotlin/String, kotlin/String, kotlinx.serialization.json/JsonElement): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.appendEntry|appendEntry(us.tractat.kuilt.crdt.ReplicaId;kotlin.String;kotlin.String;kotlinx.serialization.json.JsonElement){}[0]
+    final fun appendRecord(us.tractat.kuilt.crdt/ReplicaId, us.tractat.bee.core/ActionRecord): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.appendRecord|appendRecord(us.tractat.kuilt.crdt.ReplicaId;us.tractat.bee.core.ActionRecord){}[0]
+    final fun causalDots(): kotlin.collections/Set<us.tractat.kuilt.crdt/Dot> // us.tractat.bee.core/BoardState.causalDots|causalDots(){}[0]
+    final fun causalFloor(): us.tractat.kuilt.crdt/VersionVector // us.tractat.bee.core/BoardState.causalFloor|causalFloor(){}[0]
+    final fun claimView(us.tractat.bee.core/ClaimTarget): us.tractat.bee.core/ClaimView? // us.tractat.bee.core/BoardState.claimView|claimView(us.tractat.bee.core.ClaimTarget){}[0]
+    final fun closeSurface(us.tractat.kuilt.crdt/ReplicaId, kotlin/String, kotlin.time/Instant): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.closeSurface|closeSurface(us.tractat.kuilt.crdt.ReplicaId;kotlin.String;kotlin.time.Instant){}[0]
+    final fun closedSurfaces(): kotlin.collections/List<kotlin/String> // us.tractat.bee.core/BoardState.closedSurfaces|closedSurfaces(){}[0]
+    final fun departures(): kotlin.collections/Set<us.tractat.bee.core/Departure> // us.tractat.bee.core/BoardState.departures|departures(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/BoardState.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/BoardState.hashCode|hashCode(){}[0]
+    final fun latestPresence(): kotlin.collections/List<us.tractat.bee.core/PresenceEntry> // us.tractat.bee.core/BoardState.latestPresence|latestPresence(){}[0]
+    final fun meta(kotlin/String): us.tractat.bee.core/SurfaceMeta? // us.tractat.bee.core/BoardState.meta|meta(kotlin.String){}[0]
+    final fun mirrorClaims(us.tractat.kuilt.crdt/ReplicaId, us.tractat.bee.core/ClaimTable): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.mirrorClaims|mirrorClaims(us.tractat.kuilt.crdt.ReplicaId;us.tractat.bee.core.ClaimTable){}[0]
+    final fun openSurface(us.tractat.kuilt.crdt/ReplicaId, kotlin/String, us.tractat.bee.core/SurfaceMeta, kotlin.collections/List<kotlinx.serialization.json/JsonObject>, kotlinx.serialization.json/JsonObject): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.openSurface|openSurface(us.tractat.kuilt.crdt.ReplicaId;kotlin.String;us.tractat.bee.core.SurfaceMeta;kotlin.collections.List<kotlinx.serialization.json.JsonObject>;kotlinx.serialization.json.JsonObject){}[0]
+    final fun openSurfaces(): kotlin.collections/List<kotlin/String> // us.tractat.bee.core/BoardState.openSurfaces|openSurfaces(){}[0]
+    final fun piece(us.tractat.bee.core/BoardState): us.tractat.bee.core/BoardState // us.tractat.bee.core/BoardState.piece|piece(us.tractat.bee.core.BoardState){}[0]
+    final fun postPresence(us.tractat.kuilt.crdt/ReplicaId, us.tractat.bee.core/PresenceEntry, kotlin/Long): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.postPresence|postPresence(us.tractat.kuilt.crdt.ReplicaId;us.tractat.bee.core.PresenceEntry;kotlin.Long){}[0]
+    final fun records(): kotlin.collections/List<kotlin/Pair<us.tractat.bee.core/RecordId, us.tractat.bee.core/ActionRecord>> // us.tractat.bee.core/BoardState.records|records(){}[0]
+    final fun records(kotlin/String): kotlin.collections/List<kotlin/Pair<us.tractat.bee.core/RecordId, us.tractat.bee.core/ActionRecord>> // us.tractat.bee.core/BoardState.records|records(kotlin.String){}[0]
+    final fun reopenSurface(us.tractat.kuilt.crdt/ReplicaId, kotlin/String): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.reopenSurface|reopenSurface(us.tractat.kuilt.crdt.ReplicaId;kotlin.String){}[0]
+    final fun surfaceDoc(kotlin/String): us.tractat.kuilt.crdt/JsonCrdt? // us.tractat.bee.core/BoardState.surfaceDoc|surfaceDoc(kotlin.String){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/BoardState.toString|toString(){}[0]
+    final fun updateComponents(us.tractat.kuilt.crdt/ReplicaId, kotlin/String, kotlin.collections/List<kotlinx.serialization.json/JsonObject>): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.updateComponents|updateComponents(us.tractat.kuilt.crdt.ReplicaId;kotlin.String;kotlin.collections.List<kotlinx.serialization.json.JsonObject>){}[0]
+    final fun updateData(us.tractat.kuilt.crdt/ReplicaId, kotlin/String, kotlin/String, kotlinx.serialization.json/JsonElement): us.tractat.kuilt.crdt/Patch<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.updateData|updateData(us.tractat.kuilt.crdt.ReplicaId;kotlin.String;kotlin.String;kotlinx.serialization.json.JsonElement){}[0]
+    final fun withReplica(us.tractat.kuilt.crdt/ReplicaId): us.tractat.bee.core/BoardState // us.tractat.bee.core/BoardState.withReplica|withReplica(us.tractat.kuilt.crdt.ReplicaId){}[0]
+    final fun withoutPresence(): us.tractat.bee.core/BoardState // us.tractat.bee.core/BoardState.withoutPresence|withoutPresence(){}[0]
+
+    final object Companion { // us.tractat.bee.core/BoardState.Companion|null[0]
+        final val EMPTY // us.tractat.bee.core/BoardState.Companion.EMPTY|{}EMPTY[0]
+            final fun <get-EMPTY>(): us.tractat.bee.core/BoardState // us.tractat.bee.core/BoardState.Companion.EMPTY.<get-EMPTY>|<get-EMPTY>(){}[0]
+
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/BoardState> // us.tractat.bee.core/BoardState.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/BoardSyncTooLarge : kotlin/Exception { // us.tractat.bee.core/BoardSyncTooLarge|null[0]
+    constructor <init>(kotlin/Int, kotlin/Int) // us.tractat.bee.core/BoardSyncTooLarge.<init>|<init>(kotlin.Int;kotlin.Int){}[0]
+
+    final val bytes // us.tractat.bee.core/BoardSyncTooLarge.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/Int // us.tractat.bee.core/BoardSyncTooLarge.bytes.<get-bytes>|<get-bytes>(){}[0]
+    final val limit // us.tractat.bee.core/BoardSyncTooLarge.limit|{}limit[0]
+        final fun <get-limit>(): kotlin/Int // us.tractat.bee.core/BoardSyncTooLarge.limit.<get-limit>|<get-limit>(){}[0]
+}
+
+final class us.tractat.bee.core/BoardWriteTooLarge : kotlin/IllegalArgumentException { // us.tractat.bee.core/BoardWriteTooLarge|null[0]
+    constructor <init>(kotlin/Int, kotlin/Int) // us.tractat.bee.core/BoardWriteTooLarge.<init>|<init>(kotlin.Int;kotlin.Int){}[0]
+
+    final val bytes // us.tractat.bee.core/BoardWriteTooLarge.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/Int // us.tractat.bee.core/BoardWriteTooLarge.bytes.<get-bytes>|<get-bytes>(){}[0]
+    final val limit // us.tractat.bee.core/BoardWriteTooLarge.limit|{}limit[0]
+        final fun <get-limit>(): kotlin/Int // us.tractat.bee.core/BoardWriteTooLarge.limit.<get-limit>|<get-limit>(){}[0]
+}
+
+final class us.tractat.bee.core/ClaimTable { // us.tractat.bee.core/ClaimTable|null[0]
+    final val appliedIndex // us.tractat.bee.core/ClaimTable.appliedIndex|{}appliedIndex[0]
+        final fun <get-appliedIndex>(): kotlin/Long // us.tractat.bee.core/ClaimTable.appliedIndex.<get-appliedIndex>|<get-appliedIndex>(){}[0]
+    final val retiredIdentities // us.tractat.bee.core/ClaimTable.retiredIdentities|{}retiredIdentities[0]
+        final fun <get-retiredIdentities>(): kotlin.collections/Map<us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/DepartReason> // us.tractat.bee.core/ClaimTable.retiredIdentities.<get-retiredIdentities>|<get-retiredIdentities>(){}[0]
+    final val targets // us.tractat.bee.core/ClaimTable.targets|{}targets[0]
+        final fun <get-targets>(): kotlin.collections/Map<us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/ClaimStatus> // us.tractat.bee.core/ClaimTable.targets.<get-targets>|<get-targets>(){}[0]
+
+    final fun applied(us.tractat.kuilt.raft/Committed): us.tractat.bee.core/ClaimTable.Applied // us.tractat.bee.core/ClaimTable.applied|applied(us.tractat.kuilt.raft.Committed){}[0]
+    final fun departReason(us.tractat.bee.core/PeerIdentity): us.tractat.bee.core/DepartReason? // us.tractat.bee.core/ClaimTable.departReason|departReason(us.tractat.bee.core.PeerIdentity){}[0]
+    final fun encode(): kotlin/ByteArray // us.tractat.bee.core/ClaimTable.encode|encode(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimTable.equals|equals(kotlin.Any?){}[0]
+    final fun fold(us.tractat.kuilt.raft/Committed): us.tractat.bee.core/ClaimTable // us.tractat.bee.core/ClaimTable.fold|fold(us.tractat.kuilt.raft.Committed){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimTable.hashCode|hashCode(){}[0]
+    final fun heldBy(us.tractat.bee.core/PeerIdentity): kotlin.collections/Set<us.tractat.bee.core/ClaimTarget> // us.tractat.bee.core/ClaimTable.heldBy|heldBy(us.tractat.bee.core.PeerIdentity){}[0]
+    final fun reassigned(us.tractat.bee.core/ClaimTarget): kotlin/Boolean // us.tractat.bee.core/ClaimTable.reassigned|reassigned(us.tractat.bee.core.ClaimTarget){}[0]
+    final fun retired(us.tractat.bee.core/PeerIdentity): kotlin/Boolean // us.tractat.bee.core/ClaimTable.retired|retired(us.tractat.bee.core.PeerIdentity){}[0]
+    final fun status(us.tractat.bee.core/ClaimTarget): us.tractat.bee.core/ClaimStatus // us.tractat.bee.core/ClaimTable.status|status(us.tractat.bee.core.ClaimTarget){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/ClaimTable.toString|toString(){}[0]
+
+    final class Applied { // us.tractat.bee.core/ClaimTable.Applied|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimTable, us.tractat.bee.core/ClaimCommand?) // us.tractat.bee.core/ClaimTable.Applied.<init>|<init>(us.tractat.bee.core.ClaimTable;us.tractat.bee.core.ClaimCommand?){}[0]
+
+        final val command // us.tractat.bee.core/ClaimTable.Applied.command|{}command[0]
+            final fun <get-command>(): us.tractat.bee.core/ClaimCommand? // us.tractat.bee.core/ClaimTable.Applied.command.<get-command>|<get-command>(){}[0]
+        final val table // us.tractat.bee.core/ClaimTable.Applied.table|{}table[0]
+            final fun <get-table>(): us.tractat.bee.core/ClaimTable // us.tractat.bee.core/ClaimTable.Applied.table.<get-table>|<get-table>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimTable // us.tractat.bee.core/ClaimTable.Applied.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/ClaimCommand? // us.tractat.bee.core/ClaimTable.Applied.component2|component2(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimTable = ..., us.tractat.bee.core/ClaimCommand? = ...): us.tractat.bee.core/ClaimTable.Applied // us.tractat.bee.core/ClaimTable.Applied.copy|copy(us.tractat.bee.core.ClaimTable;us.tractat.bee.core.ClaimCommand?){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimTable.Applied.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimTable.Applied.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimTable.Applied.toString|toString(){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ClaimTable.Companion|null[0]
+        final val EMPTY // us.tractat.bee.core/ClaimTable.Companion.EMPTY|{}EMPTY[0]
+            final fun <get-EMPTY>(): us.tractat.bee.core/ClaimTable // us.tractat.bee.core/ClaimTable.Companion.EMPTY.<get-EMPTY>|<get-EMPTY>(){}[0]
+
+        final fun decode(kotlin/ByteArray): us.tractat.bee.core/ClaimTable // us.tractat.bee.core/ClaimTable.Companion.decode|decode(kotlin.ByteArray){}[0]
+    }
+}
+
+final class us.tractat.bee.core/ClaimToken { // us.tractat.bee.core/ClaimToken|null[0]
+    constructor <init>(kotlin/Long, kotlin/Long) // us.tractat.bee.core/ClaimToken.<init>|<init>(kotlin.Long;kotlin.Long){}[0]
+
+    final val index // us.tractat.bee.core/ClaimToken.index|{}index[0]
+        final fun <get-index>(): kotlin/Long // us.tractat.bee.core/ClaimToken.index.<get-index>|<get-index>(){}[0]
+    final val term // us.tractat.bee.core/ClaimToken.term|{}term[0]
+        final fun <get-term>(): kotlin/Long // us.tractat.bee.core/ClaimToken.term.<get-term>|<get-term>(){}[0]
+
+    final fun component1(): kotlin/Long // us.tractat.bee.core/ClaimToken.component1|component1(){}[0]
+    final fun component2(): kotlin/Long // us.tractat.bee.core/ClaimToken.component2|component2(){}[0]
+    final fun copy(kotlin/Long = ..., kotlin/Long = ...): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimToken.copy|copy(kotlin.Long;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimToken.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimToken.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/ClaimToken.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimToken> { // us.tractat.bee.core/ClaimToken.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/ClaimToken.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimToken.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimToken.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimToken.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimToken) // us.tractat.bee.core/ClaimToken.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimToken){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ClaimToken.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimToken> // us.tractat.bee.core/ClaimToken.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/ClaimView { // us.tractat.bee.core/ClaimView|null[0]
+    constructor <init>(kotlin/String, kotlin/String?, kotlin/String?, kotlin/Long) // us.tractat.bee.core/ClaimView.<init>|<init>(kotlin.String;kotlin.String?;kotlin.String?;kotlin.Long){}[0]
+
+    final val holder // us.tractat.bee.core/ClaimView.holder|{}holder[0]
+        final fun <get-holder>(): kotlin/String? // us.tractat.bee.core/ClaimView.holder.<get-holder>|<get-holder>(){}[0]
+    final val logIndex // us.tractat.bee.core/ClaimView.logIndex|{}logIndex[0]
+        final fun <get-logIndex>(): kotlin/Long // us.tractat.bee.core/ClaimView.logIndex.<get-logIndex>|<get-logIndex>(){}[0]
+    final val status // us.tractat.bee.core/ClaimView.status|{}status[0]
+        final fun <get-status>(): kotlin/String // us.tractat.bee.core/ClaimView.status.<get-status>|<get-status>(){}[0]
+    final val token // us.tractat.bee.core/ClaimView.token|{}token[0]
+        final fun <get-token>(): kotlin/String? // us.tractat.bee.core/ClaimView.token.<get-token>|<get-token>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.core/ClaimView.component1|component1(){}[0]
+    final fun component2(): kotlin/String? // us.tractat.bee.core/ClaimView.component2|component2(){}[0]
+    final fun component3(): kotlin/String? // us.tractat.bee.core/ClaimView.component3|component3(){}[0]
+    final fun component4(): kotlin/Long // us.tractat.bee.core/ClaimView.component4|component4(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String? = ..., kotlin/String? = ..., kotlin/Long = ...): us.tractat.bee.core/ClaimView // us.tractat.bee.core/ClaimView.copy|copy(kotlin.String;kotlin.String?;kotlin.String?;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimView.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimView.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/ClaimView.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimView> { // us.tractat.bee.core/ClaimView.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/ClaimView.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimView.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimView.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimView // us.tractat.bee.core/ClaimView.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimView) // us.tractat.bee.core/ClaimView.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimView){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ClaimView.Companion|null[0]
+        final const val DONE // us.tractat.bee.core/ClaimView.Companion.DONE|{}DONE[0]
+            final fun <get-DONE>(): kotlin/String // us.tractat.bee.core/ClaimView.Companion.DONE.<get-DONE>|<get-DONE>(){}[0]
+        final const val FREE // us.tractat.bee.core/ClaimView.Companion.FREE|{}FREE[0]
+            final fun <get-FREE>(): kotlin/String // us.tractat.bee.core/ClaimView.Companion.FREE.<get-FREE>|<get-FREE>(){}[0]
+        final const val HELD // us.tractat.bee.core/ClaimView.Companion.HELD|{}HELD[0]
+            final fun <get-HELD>(): kotlin/String // us.tractat.bee.core/ClaimView.Companion.HELD.<get-HELD>|<get-HELD>(){}[0]
+        final const val ORPHANED // us.tractat.bee.core/ClaimView.Companion.ORPHANED|{}ORPHANED[0]
+            final fun <get-ORPHANED>(): kotlin/String // us.tractat.bee.core/ClaimView.Companion.ORPHANED.<get-ORPHANED>|<get-ORPHANED>(){}[0]
+
+        final fun of(us.tractat.bee.core/ClaimStatus, kotlin/Long): us.tractat.bee.core/ClaimView // us.tractat.bee.core/ClaimView.Companion.of|of(us.tractat.bee.core.ClaimStatus;kotlin.Long){}[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimView> // us.tractat.bee.core/ClaimView.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/ClaimsClient { // us.tractat.bee.core/ClaimsClient|null[0]
+    constructor <init>(us.tractat.kuilt.cluster/ClusterClient, us.tractat.kuilt.raft/NodeId, kotlin/Function0<kotlin.time/Instant>, kotlinx.coroutines/CoroutineScope, kotlin.random/Random) // us.tractat.bee.core/ClaimsClient.<init>|<init>(us.tractat.kuilt.cluster.ClusterClient;us.tractat.kuilt.raft.NodeId;kotlin.Function0<kotlin.time.Instant>;kotlinx.coroutines.CoroutineScope;kotlin.random.Random){}[0]
+
+    final val latencies // us.tractat.bee.core/ClaimsClient.latencies|{}latencies[0]
+        final fun <get-latencies>(): kotlinx.coroutines.flow/StateFlow<kotlin.collections/List<kotlin.time/Duration>> // us.tractat.bee.core/ClaimsClient.latencies.<get-latencies>|<get-latencies>(){}[0]
+    final val table // us.tractat.bee.core/ClaimsClient.table|{}table[0]
+        final fun <get-table>(): kotlinx.coroutines.flow/StateFlow<us.tractat.bee.core/ClaimTable> // us.tractat.bee.core/ClaimsClient.table.<get-table>|<get-table>(){}[0]
+    final val unreleased // us.tractat.bee.core/ClaimsClient.unreleased|{}unreleased[0]
+        final fun <get-unreleased>(): kotlinx.coroutines.flow/StateFlow<kotlin.collections/Set<kotlin/Pair<us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/ClaimToken>>> // us.tractat.bee.core/ClaimsClient.unreleased.<get-unreleased>|<get-unreleased>(){}[0]
+
+    final suspend fun claim(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, kotlin.time/Duration = ...): us.tractat.bee.core/ClaimOutcome // us.tractat.bee.core/ClaimsClient.claim|claim(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;kotlin.time.Duration){}[0]
+    final suspend fun complete(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken, kotlin.time/Duration = ...): kotlin/Boolean // us.tractat.bee.core/ClaimsClient.complete|complete(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken;kotlin.time.Duration){}[0]
+    final suspend fun reassign(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/PeerIdentity, kotlin.time/Duration = ...): us.tractat.bee.core/ClaimToken? // us.tractat.bee.core/ClaimsClient.reassign|reassign(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.PeerIdentity;kotlin.time.Duration){}[0]
+    final suspend fun release(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken?, kotlin.time/Duration = ...): kotlin/Boolean // us.tractat.bee.core/ClaimsClient.release|release(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken?;kotlin.time.Duration){}[0]
+}
+
+final class us.tractat.bee.core/ClaimsConnection { // us.tractat.bee.core/ClaimsConnection|null[0]
+    constructor <init>(kotlinx.coroutines/CoroutineScope, kotlin/Function0<us.tractat.kuilt.raft/NodeId>, kotlin/Function2<us.tractat.kuilt.raft/NodeId, kotlinx.coroutines/CoroutineScope, us.tractat.bee.core/ClaimsLink>, kotlin/Function1<kotlin/Throwable, kotlin/Unit>, kotlin/Function1<kotlin/Int, kotlin.time/Duration>) // us.tractat.bee.core/ClaimsConnection.<init>|<init>(kotlinx.coroutines.CoroutineScope;kotlin.Function0<us.tractat.kuilt.raft.NodeId>;kotlin.Function2<us.tractat.kuilt.raft.NodeId,kotlinx.coroutines.CoroutineScope,us.tractat.bee.core.ClaimsLink>;kotlin.Function1<kotlin.Throwable,kotlin.Unit>;kotlin.Function1<kotlin.Int,kotlin.time.Duration>){}[0]
+
+    final val link // us.tractat.bee.core/ClaimsConnection.link|{}link[0]
+        final fun <get-link>(): kotlinx.coroutines.flow/StateFlow<us.tractat.bee.core/ClaimsLink?> // us.tractat.bee.core/ClaimsConnection.link.<get-link>|<get-link>(){}[0]
+    final val opened // us.tractat.bee.core/ClaimsConnection.opened|{}opened[0]
+        final fun <get-opened>(): kotlinx.coroutines.flow/StateFlow<kotlin/Int> // us.tractat.bee.core/ClaimsConnection.opened.<get-opened>|<get-opened>(){}[0]
+    final val pendingDeparts // us.tractat.bee.core/ClaimsConnection.pendingDeparts|{}pendingDeparts[0]
+        final fun <get-pendingDeparts>(): kotlinx.coroutines.flow/StateFlow<kotlin.collections/List<kotlin/Pair<us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/DepartReason>>> // us.tractat.bee.core/ClaimsConnection.pendingDeparts.<get-pendingDeparts>|<get-pendingDeparts>(){}[0]
+    final val pendingReleases // us.tractat.bee.core/ClaimsConnection.pendingReleases|{}pendingReleases[0]
+        final fun <get-pendingReleases>(): kotlinx.coroutines.flow/StateFlow<kotlin.collections/List<us.tractat.bee.core/ClaimsConnection.Unreceived>> // us.tractat.bee.core/ClaimsConnection.pendingReleases.<get-pendingReleases>|<get-pendingReleases>(){}[0]
+
+    final fun close() // us.tractat.bee.core/ClaimsConnection.close|close(){}[0]
+    final fun queue(us.tractat.bee.core/ClaimsConnection.Unreceived) // us.tractat.bee.core/ClaimsConnection.queue|queue(us.tractat.bee.core.ClaimsConnection.Unreceived){}[0]
+    final suspend fun depart(us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/DepartReason): kotlin/Boolean // us.tractat.bee.core/ClaimsConnection.depart|depart(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.DepartReason){}[0]
+    final suspend fun releaseUnreceived(us.tractat.bee.core/ClaimsConnection.Unreceived): kotlin/Boolean // us.tractat.bee.core/ClaimsConnection.releaseUnreceived|releaseUnreceived(us.tractat.bee.core.ClaimsConnection.Unreceived){}[0]
+
+    final class Unreceived { // us.tractat.bee.core/ClaimsConnection.Unreceived|null[0]
+        constructor <init>(us.tractat.bee.core/ClaimTarget, us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/ClaimToken) // us.tractat.bee.core/ClaimsConnection.Unreceived.<init>|<init>(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+
+        final val holder // us.tractat.bee.core/ClaimsConnection.Unreceived.holder|{}holder[0]
+            final fun <get-holder>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimsConnection.Unreceived.holder.<get-holder>|<get-holder>(){}[0]
+        final val target // us.tractat.bee.core/ClaimsConnection.Unreceived.target|{}target[0]
+            final fun <get-target>(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimsConnection.Unreceived.target.<get-target>|<get-target>(){}[0]
+        final val token // us.tractat.bee.core/ClaimsConnection.Unreceived.token|{}token[0]
+            final fun <get-token>(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimsConnection.Unreceived.token.<get-token>|<get-token>(){}[0]
+
+        final fun component1(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimsConnection.Unreceived.component1|component1(){}[0]
+        final fun component2(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/ClaimsConnection.Unreceived.component2|component2(){}[0]
+        final fun component3(): us.tractat.bee.core/ClaimToken // us.tractat.bee.core/ClaimsConnection.Unreceived.component3|component3(){}[0]
+        final fun copy(us.tractat.bee.core/ClaimTarget = ..., us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/ClaimToken = ...): us.tractat.bee.core/ClaimsConnection.Unreceived // us.tractat.bee.core/ClaimsConnection.Unreceived.copy|copy(us.tractat.bee.core.ClaimTarget;us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.ClaimToken){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimsConnection.Unreceived.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimsConnection.Unreceived.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.core/ClaimsConnection.Unreceived.toString|toString(){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ClaimsConnection.Companion|null[0]
+        final fun jitteredBackoff(kotlin.random/Random): kotlin/Function1<kotlin/Int, kotlin.time/Duration> // us.tractat.bee.core/ClaimsConnection.Companion.jitteredBackoff|jitteredBackoff(kotlin.random.Random){}[0]
+    }
+}
+
+final class us.tractat.bee.core/ClaimsLink { // us.tractat.bee.core/ClaimsLink|null[0]
+    final val client // us.tractat.bee.core/ClaimsLink.client|{}client[0]
+        final fun <get-client>(): us.tractat.bee.core/ClaimsClient // us.tractat.bee.core/ClaimsLink.client.<get-client>|<get-client>(){}[0]
+    final val node // us.tractat.bee.core/ClaimsLink.node|{}node[0]
+        final fun <get-node>(): us.tractat.kuilt.raft/NodeId // us.tractat.bee.core/ClaimsLink.node.<get-node>|<get-node>(){}[0]
+
+    final suspend fun depart(us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/DepartReason, kotlin.time/Duration = ...): kotlin/Boolean // us.tractat.bee.core/ClaimsLink.depart|depart(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.DepartReason;kotlin.time.Duration){}[0]
+
+    final object Companion { // us.tractat.bee.core/ClaimsLink.Companion|null[0]
+        final const val PATH // us.tractat.bee.core/ClaimsLink.Companion.PATH|{}PATH[0]
+            final fun <get-PATH>(): kotlin/String // us.tractat.bee.core/ClaimsLink.Companion.PATH.<get-PATH>|<get-PATH>(){}[0]
+        final const val SESSION // us.tractat.bee.core/ClaimsLink.Companion.SESSION|{}SESSION[0]
+            final fun <get-SESSION>(): kotlin/String // us.tractat.bee.core/ClaimsLink.Companion.SESSION.<get-SESSION>|<get-SESSION>(){}[0]
+
+        final val SERVER // us.tractat.bee.core/ClaimsLink.Companion.SERVER|{}SERVER[0]
+            final fun <get-SERVER>(): us.tractat.kuilt.core/PeerId // us.tractat.bee.core/ClaimsLink.Companion.SERVER.<get-SERVER>|<get-SERVER>(){}[0]
+        final val VOTER // us.tractat.bee.core/ClaimsLink.Companion.VOTER|{}VOTER[0]
+            final fun <get-VOTER>(): us.tractat.kuilt.raft/NodeId // us.tractat.bee.core/ClaimsLink.Companion.VOTER.<get-VOTER>|<get-VOTER>(){}[0]
+
+        final fun open(us.tractat.kuilt.raft/NodeId, kotlin/Function1<us.tractat.kuilt.core/PeerId, us.tractat.kuilt.core/Loom>, us.tractat.kuilt.cluster/ClusterEndpoints, kotlinx.coroutines/CoroutineScope, us.tractat.kuilt.raft/RaftConfig, kotlin/Function0<kotlin.time/Instant>, kotlin.random/Random): us.tractat.bee.core/ClaimsLink // us.tractat.bee.core/ClaimsLink.Companion.open|open(us.tractat.kuilt.raft.NodeId;kotlin.Function1<us.tractat.kuilt.core.PeerId,us.tractat.kuilt.core.Loom>;us.tractat.kuilt.cluster.ClusterEndpoints;kotlinx.coroutines.CoroutineScope;us.tractat.kuilt.raft.RaftConfig;kotlin.Function0<kotlin.time.Instant>;kotlin.random.Random){}[0]
+        final fun overWebSocket(us.tractat.kuilt.raft/NodeId, io.ktor.client/HttpClient, us.tractat.bee.core/HostAddress, us.tractat.bee.core/BoardPin, kotlinx.coroutines/CoroutineScope, kotlin/Function0<kotlin.time/Instant>, kotlin.random/Random): us.tractat.bee.core/ClaimsLink // us.tractat.bee.core/ClaimsLink.Companion.overWebSocket|overWebSocket(us.tractat.kuilt.raft.NodeId;io.ktor.client.HttpClient;us.tractat.bee.core.HostAddress;us.tractat.bee.core.BoardPin;kotlinx.coroutines.CoroutineScope;kotlin.Function0<kotlin.time.Instant>;kotlin.random.Random){}[0]
+    }
+}
+
+final class us.tractat.bee.core/Departure { // us.tractat.bee.core/Departure|null[0]
+    constructor <init>(us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/DepartReason, kotlin/Long) // us.tractat.bee.core/Departure.<init>|<init>(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.DepartReason;kotlin.Long){}[0]
+
+    final val identity // us.tractat.bee.core/Departure.identity|{}identity[0]
+        final fun <get-identity>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/Departure.identity.<get-identity>|<get-identity>(){}[0]
+    final val logIndex // us.tractat.bee.core/Departure.logIndex|{}logIndex[0]
+        final fun <get-logIndex>(): kotlin/Long // us.tractat.bee.core/Departure.logIndex.<get-logIndex>|<get-logIndex>(){}[0]
+    final val reason // us.tractat.bee.core/Departure.reason|{}reason[0]
+        final fun <get-reason>(): us.tractat.bee.core/DepartReason // us.tractat.bee.core/Departure.reason.<get-reason>|<get-reason>(){}[0]
+
+    final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/Departure.component1|component1(){}[0]
+    final fun component2(): us.tractat.bee.core/DepartReason // us.tractat.bee.core/Departure.component2|component2(){}[0]
+    final fun component3(): kotlin/Long // us.tractat.bee.core/Departure.component3|component3(){}[0]
+    final fun copy(us.tractat.bee.core/PeerIdentity = ..., us.tractat.bee.core/DepartReason = ..., kotlin/Long = ...): us.tractat.bee.core/Departure // us.tractat.bee.core/Departure.copy|copy(us.tractat.bee.core.PeerIdentity;us.tractat.bee.core.DepartReason;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/Departure.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/Departure.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/Departure.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/Departure> { // us.tractat.bee.core/Departure.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/Departure.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/Departure.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/Departure.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/Departure // us.tractat.bee.core/Departure.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/Departure) // us.tractat.bee.core/Departure.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.Departure){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/Departure.Companion|null[0]
+        final val $childSerializers // us.tractat.bee.core/Departure.Companion.$childSerializers|{}$childSerializers[0]
+
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/Departure> // us.tractat.bee.core/Departure.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/DialTimeoutException : kotlin/Exception { // us.tractat.bee.core/DialTimeoutException|null[0]
+    constructor <init>(kotlin.time/Duration) // us.tractat.bee.core/DialTimeoutException.<init>|<init>(kotlin.time.Duration){}[0]
+
+    final val timeout // us.tractat.bee.core/DialTimeoutException.timeout|{}timeout[0]
+        final fun <get-timeout>(): kotlin.time/Duration // us.tractat.bee.core/DialTimeoutException.timeout.<get-timeout>|<get-timeout>(){}[0]
+}
+
+final class us.tractat.bee.core/HostAddress { // us.tractat.bee.core/HostAddress|null[0]
+    final val http // us.tractat.bee.core/HostAddress.http|{}http[0]
+        final fun <get-http>(): kotlin/String // us.tractat.bee.core/HostAddress.http.<get-http>|<get-http>(){}[0]
+
+    final fun describe(kotlin/Throwable): kotlin/String // us.tractat.bee.core/HostAddress.describe|describe(kotlin.Throwable){}[0]
+    final fun redact(kotlin/String): kotlin/String // us.tractat.bee.core/HostAddress.redact|redact(kotlin.String){}[0]
+    final fun socket(kotlin/String): kotlin/String // us.tractat.bee.core/HostAddress.socket|socket(kotlin.String){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/HostAddress.toString|toString(){}[0]
+
+    final object Companion { // us.tractat.bee.core/HostAddress.Companion|null[0]
+        final fun parse(kotlin/String): us.tractat.bee.core/HostAddress // us.tractat.bee.core/HostAddress.Companion.parse|parse(kotlin.String){}[0]
+    }
+}
+
+final class us.tractat.bee.core/LivePresence { // us.tractat.bee.core/LivePresence|null[0]
+    constructor <init>(kotlinx.coroutines.flow/StateFlow<us.tractat.bee.core/BoardState>, kotlin/Function0<kotlin.time/Instant>, kotlinx.coroutines/CoroutineScope, kotlin/Function1<kotlin/Throwable, kotlin/Unit>) // us.tractat.bee.core/LivePresence.<init>|<init>(kotlinx.coroutines.flow.StateFlow<us.tractat.bee.core.BoardState>;kotlin.Function0<kotlin.time.Instant>;kotlinx.coroutines.CoroutineScope;kotlin.Function1<kotlin.Throwable,kotlin.Unit>){}[0]
+
+    final suspend fun live(): kotlin.collections/List<us.tractat.bee.core/PresenceEntry> // us.tractat.bee.core/LivePresence.live|live(){}[0]
+    final suspend fun peers(): kotlin.collections/Map<us.tractat.bee.core/PeerIdentity, us.tractat.bee.core/PresenceEntry> // us.tractat.bee.core/LivePresence.peers|peers(){}[0]
+
+    final object Companion { // us.tractat.bee.core/LivePresence.Companion|null[0]
+        final val TTL // us.tractat.bee.core/LivePresence.Companion.TTL|{}TTL[0]
+            final fun <get-TTL>(): kotlin.time/Duration // us.tractat.bee.core/LivePresence.Companion.TTL.<get-TTL>|<get-TTL>(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/OrphanAnswers { // us.tractat.bee.core/OrphanAnswers|null[0]
+    constructor <init>(kotlin/Function0<us.tractat.bee.core/ClaimsClient?>, us.tractat.bee.core/PeerIdentity) // us.tractat.bee.core/OrphanAnswers.<init>|<init>(kotlin.Function0<us.tractat.bee.core.ClaimsClient?>;us.tractat.bee.core.PeerIdentity){}[0]
+
+    final suspend fun answered(kotlin/String, kotlin/String, kotlinx.serialization.json/JsonObject): us.tractat.bee.core/OrphanAnswers.Outcome // us.tractat.bee.core/OrphanAnswers.answered|answered(kotlin.String;kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
+
+    sealed interface Outcome { // us.tractat.bee.core/OrphanAnswers.Outcome|null[0]
+        final class Proposed : us.tractat.bee.core/OrphanAnswers.Outcome { // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed|null[0]
+            constructor <init>(us.tractat.bee.core/OrphanDecision.Choice, kotlin/Boolean) // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.<init>|<init>(us.tractat.bee.core.OrphanDecision.Choice;kotlin.Boolean){}[0]
+
+            final val applied // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.applied|{}applied[0]
+                final fun <get-applied>(): kotlin/Boolean // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.applied.<get-applied>|<get-applied>(){}[0]
+            final val choice // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.choice|{}choice[0]
+                final fun <get-choice>(): us.tractat.bee.core/OrphanDecision.Choice // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.choice.<get-choice>|<get-choice>(){}[0]
+
+            final fun component1(): us.tractat.bee.core/OrphanDecision.Choice // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.component1|component1(){}[0]
+            final fun component2(): kotlin/Boolean // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.component2|component2(){}[0]
+            final fun copy(us.tractat.bee.core/OrphanDecision.Choice = ..., kotlin/Boolean = ...): us.tractat.bee.core/OrphanAnswers.Outcome.Proposed // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.copy|copy(us.tractat.bee.core.OrphanDecision.Choice;kotlin.Boolean){}[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanAnswers.Outcome.Proposed.toString|toString(){}[0]
+        }
+
+        final object NotADecision : us.tractat.bee.core/OrphanAnswers.Outcome { // us.tractat.bee.core/OrphanAnswers.Outcome.NotADecision|null[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanAnswers.Outcome.NotADecision.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanAnswers.Outcome.NotADecision.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanAnswers.Outcome.NotADecision.toString|toString(){}[0]
+        }
+
+        final object Offline : us.tractat.bee.core/OrphanAnswers.Outcome { // us.tractat.bee.core/OrphanAnswers.Outcome.Offline|null[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanAnswers.Outcome.Offline.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanAnswers.Outcome.Offline.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanAnswers.Outcome.Offline.toString|toString(){}[0]
+        }
+
+        final object Waited : us.tractat.bee.core/OrphanAnswers.Outcome { // us.tractat.bee.core/OrphanAnswers.Outcome.Waited|null[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanAnswers.Outcome.Waited.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanAnswers.Outcome.Waited.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanAnswers.Outcome.Waited.toString|toString(){}[0]
+        }
+    }
+}
+
+final class us.tractat.bee.core/PeerIdentity { // us.tractat.bee.core/PeerIdentity|null[0]
+    constructor <init>(us.tractat.bee.core/PeerKind, kotlin/String, kotlin/String) // us.tractat.bee.core/PeerIdentity.<init>|<init>(us.tractat.bee.core.PeerKind;kotlin.String;kotlin.String){}[0]
+
+    final val instance // us.tractat.bee.core/PeerIdentity.instance|{}instance[0]
+        final fun <get-instance>(): kotlin/String // us.tractat.bee.core/PeerIdentity.instance.<get-instance>|<get-instance>(){}[0]
+    final val kind // us.tractat.bee.core/PeerIdentity.kind|{}kind[0]
+        final fun <get-kind>(): us.tractat.bee.core/PeerKind // us.tractat.bee.core/PeerIdentity.kind.<get-kind>|<get-kind>(){}[0]
+    final val name // us.tractat.bee.core/PeerIdentity.name|{}name[0]
+        final fun <get-name>(): kotlin/String // us.tractat.bee.core/PeerIdentity.name.<get-name>|<get-name>(){}[0]
+
+    final fun component1(): us.tractat.bee.core/PeerKind // us.tractat.bee.core/PeerIdentity.component1|component1(){}[0]
+    final fun component2(): kotlin/String // us.tractat.bee.core/PeerIdentity.component2|component2(){}[0]
+    final fun component3(): kotlin/String // us.tractat.bee.core/PeerIdentity.component3|component3(){}[0]
+    final fun copy(us.tractat.bee.core/PeerKind = ..., kotlin/String = ..., kotlin/String = ...): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PeerIdentity.copy|copy(us.tractat.bee.core.PeerKind;kotlin.String;kotlin.String){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/PeerIdentity.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/PeerIdentity.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/PeerIdentity.toString|toString(){}[0]
+
+    final object Companion { // us.tractat.bee.core/PeerIdentity.Companion|null[0]
+        final fun agent(kotlin/String, kotlin.random/Random): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PeerIdentity.Companion.agent|agent(kotlin.String;kotlin.random.Random){}[0]
+        final fun host(kotlin/String): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PeerIdentity.Companion.host|host(kotlin.String){}[0]
+        final fun human(kotlin/String): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PeerIdentity.Companion.human|human(kotlin.String){}[0]
+        final fun parse(kotlin/String): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PeerIdentity.Companion.parse|parse(kotlin.String){}[0]
+    }
+}
+
+final class us.tractat.bee.core/Presence { // us.tractat.bee.core/Presence|null[0]
+    constructor <init>(us.tractat.bee.core/BoardClient, us.tractat.kuilt.crdt/ReplicaId, kotlinx.coroutines.flow/Flow<us.tractat.kuilt.raft/NodeId>, kotlin/Function0<kotlin.time/Instant>, kotlinx.coroutines/CoroutineScope, kotlin/Function1<kotlin/Throwable, kotlin/Unit>) // us.tractat.bee.core/Presence.<init>|<init>(us.tractat.bee.core.BoardClient;us.tractat.kuilt.crdt.ReplicaId;kotlinx.coroutines.flow.Flow<us.tractat.kuilt.raft.NodeId>;kotlin.Function0<kotlin.time.Instant>;kotlinx.coroutines.CoroutineScope;kotlin.Function1<kotlin.Throwable,kotlin.Unit>){}[0]
+
+    final val roster // us.tractat.bee.core/Presence.roster|{}roster[0]
+        final fun <get-roster>(): us.tractat.bee.core/LivePresence // us.tractat.bee.core/Presence.roster.<get-roster>|<get-roster>(){}[0]
+
+    final fun touch(kotlin.time/Instant) // us.tractat.bee.core/Presence.touch|touch(kotlin.time.Instant){}[0]
+    final suspend fun update(us.tractat.bee.core/PeerIdentity, kotlin/String?, kotlin.time/Instant, kotlin/Boolean) // us.tractat.bee.core/Presence.update|update(us.tractat.bee.core.PeerIdentity;kotlin.String?;kotlin.time.Instant;kotlin.Boolean){}[0]
+
+    final object Companion { // us.tractat.bee.core/Presence.Companion|null[0]
+        final val EVERY // us.tractat.bee.core/Presence.Companion.EVERY|{}EVERY[0]
+            final fun <get-EVERY>(): kotlin.time/Duration // us.tractat.bee.core/Presence.Companion.EVERY.<get-EVERY>|<get-EVERY>(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/PresenceEntry { // us.tractat.bee.core/PresenceEntry|null[0]
+    constructor <init>(us.tractat.bee.core/PeerIdentity, us.tractat.kuilt.raft/NodeId?, kotlin/String?, kotlin.time/Instant, kotlin/Boolean) // us.tractat.bee.core/PresenceEntry.<init>|<init>(us.tractat.bee.core.PeerIdentity;us.tractat.kuilt.raft.NodeId?;kotlin.String?;kotlin.time.Instant;kotlin.Boolean){}[0]
+
+    final val claimsNode // us.tractat.bee.core/PresenceEntry.claimsNode|{}claimsNode[0]
+        final fun <get-claimsNode>(): us.tractat.kuilt.raft/NodeId? // us.tractat.bee.core/PresenceEntry.claimsNode.<get-claimsNode>|<get-claimsNode>(){}[0]
+    final val identity // us.tractat.bee.core/PresenceEntry.identity|{}identity[0]
+        final fun <get-identity>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PresenceEntry.identity.<get-identity>|<get-identity>(){}[0]
+    final val lastActedAt // us.tractat.bee.core/PresenceEntry.lastActedAt|{}lastActedAt[0]
+        final fun <get-lastActedAt>(): kotlin.time/Instant // us.tractat.bee.core/PresenceEntry.lastActedAt.<get-lastActedAt>|<get-lastActedAt>(){}[0]
+    final val status // us.tractat.bee.core/PresenceEntry.status|{}status[0]
+        final fun <get-status>(): kotlin/String? // us.tractat.bee.core/PresenceEntry.status.<get-status>|<get-status>(){}[0]
+    final val waiting // us.tractat.bee.core/PresenceEntry.waiting|{}waiting[0]
+        final fun <get-waiting>(): kotlin/Boolean // us.tractat.bee.core/PresenceEntry.waiting.<get-waiting>|<get-waiting>(){}[0]
+
+    final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/PresenceEntry.component1|component1(){}[0]
+    final fun component2(): us.tractat.kuilt.raft/NodeId? // us.tractat.bee.core/PresenceEntry.component2|component2(){}[0]
+    final fun component3(): kotlin/String? // us.tractat.bee.core/PresenceEntry.component3|component3(){}[0]
+    final fun component4(): kotlin.time/Instant // us.tractat.bee.core/PresenceEntry.component4|component4(){}[0]
+    final fun component5(): kotlin/Boolean // us.tractat.bee.core/PresenceEntry.component5|component5(){}[0]
+    final fun copy(us.tractat.bee.core/PeerIdentity = ..., us.tractat.kuilt.raft/NodeId? = ..., kotlin/String? = ..., kotlin.time/Instant = ..., kotlin/Boolean = ...): us.tractat.bee.core/PresenceEntry // us.tractat.bee.core/PresenceEntry.copy|copy(us.tractat.bee.core.PeerIdentity;us.tractat.kuilt.raft.NodeId?;kotlin.String?;kotlin.time.Instant;kotlin.Boolean){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/PresenceEntry.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/PresenceEntry.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/PresenceEntry.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/PresenceEntry> { // us.tractat.bee.core/PresenceEntry.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/PresenceEntry.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/PresenceEntry.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/PresenceEntry.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/PresenceEntry // us.tractat.bee.core/PresenceEntry.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/PresenceEntry) // us.tractat.bee.core/PresenceEntry.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.PresenceEntry){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/PresenceEntry.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/PresenceEntry> // us.tractat.bee.core/PresenceEntry.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/ProposalId { // us.tractat.bee.core/ProposalId|null[0]
+    constructor <init>(kotlin/String, kotlin/Long, kotlin/Long) // us.tractat.bee.core/ProposalId.<init>|<init>(kotlin.String;kotlin.Long;kotlin.Long){}[0]
+
+    final val incarnation // us.tractat.bee.core/ProposalId.incarnation|{}incarnation[0]
+        final fun <get-incarnation>(): kotlin/Long // us.tractat.bee.core/ProposalId.incarnation.<get-incarnation>|<get-incarnation>(){}[0]
+    final val node // us.tractat.bee.core/ProposalId.node|{}node[0]
+        final fun <get-node>(): kotlin/String // us.tractat.bee.core/ProposalId.node.<get-node>|<get-node>(){}[0]
+    final val serial // us.tractat.bee.core/ProposalId.serial|{}serial[0]
+        final fun <get-serial>(): kotlin/Long // us.tractat.bee.core/ProposalId.serial.<get-serial>|<get-serial>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.core/ProposalId.component1|component1(){}[0]
+    final fun component2(): kotlin/Long // us.tractat.bee.core/ProposalId.component2|component2(){}[0]
+    final fun component3(): kotlin/Long // us.tractat.bee.core/ProposalId.component3|component3(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/Long = ..., kotlin/Long = ...): us.tractat.bee.core/ProposalId // us.tractat.bee.core/ProposalId.copy|copy(kotlin.String;kotlin.Long;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ProposalId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/ProposalId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/ProposalId.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ProposalId> { // us.tractat.bee.core/ProposalId.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/ProposalId.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ProposalId.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ProposalId.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ProposalId // us.tractat.bee.core/ProposalId.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ProposalId) // us.tractat.bee.core/ProposalId.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ProposalId){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ProposalId.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ProposalId> // us.tractat.bee.core/ProposalId.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.core/SpokeLoom : us.tractat.kuilt.core/Loom { // us.tractat.bee.core/SpokeLoom|null[0]
+    constructor <init>(io.ktor.client/HttpClient, kotlinx.coroutines/CoroutineDispatcher, kotlinx.coroutines/CoroutineScope, kotlin/String, kotlin.random/Random, kotlin/Function0<kotlin.time/Instant>) // us.tractat.bee.core/SpokeLoom.<init>|<init>(io.ktor.client.HttpClient;kotlinx.coroutines.CoroutineDispatcher;kotlinx.coroutines.CoroutineScope;kotlin.String;kotlin.random.Random;kotlin.Function0<kotlin.time.Instant>){}[0]
+    constructor <init>(kotlinx.coroutines/CoroutineScope, kotlin/String, kotlin.random/Random, kotlin/Function0<kotlin.time/Instant>, kotlin.coroutines/SuspendFunction2<us.tractat.kuilt.core/PeerId, us.tractat.kuilt.core/Rendezvous, us.tractat.kuilt.core/Seam>) // us.tractat.bee.core/SpokeLoom.<init>|<init>(kotlinx.coroutines.CoroutineScope;kotlin.String;kotlin.random.Random;kotlin.Function0<kotlin.time.Instant>;kotlin.coroutines.SuspendFunction2<us.tractat.kuilt.core.PeerId,us.tractat.kuilt.core.Rendezvous,us.tractat.kuilt.core.Seam>){}[0]
+
+    final suspend fun weave(us.tractat.kuilt.core/Rendezvous): us.tractat.kuilt.core/Seam // us.tractat.bee.core/SpokeLoom.weave|weave(us.tractat.kuilt.core.Rendezvous){}[0]
+}
+
+final class us.tractat.bee.core/SurfaceMeta { // us.tractat.bee.core/SurfaceMeta|null[0]
+    constructor <init>(kotlin/String, kotlin/String, us.tractat.bee.core/PeerIdentity, kotlin.time/Instant, kotlin.time/Instant? = ...) // us.tractat.bee.core/SurfaceMeta.<init>|<init>(kotlin.String;kotlin.String;us.tractat.bee.core.PeerIdentity;kotlin.time.Instant;kotlin.time.Instant?){}[0]
+
+    final val catalogId // us.tractat.bee.core/SurfaceMeta.catalogId|{}catalogId[0]
+        final fun <get-catalogId>(): kotlin/String // us.tractat.bee.core/SurfaceMeta.catalogId.<get-catalogId>|<get-catalogId>(){}[0]
+    final val closedAt // us.tractat.bee.core/SurfaceMeta.closedAt|{}closedAt[0]
+        final fun <get-closedAt>(): kotlin.time/Instant? // us.tractat.bee.core/SurfaceMeta.closedAt.<get-closedAt>|<get-closedAt>(){}[0]
+    final val openedAt // us.tractat.bee.core/SurfaceMeta.openedAt|{}openedAt[0]
+        final fun <get-openedAt>(): kotlin.time/Instant // us.tractat.bee.core/SurfaceMeta.openedAt.<get-openedAt>|<get-openedAt>(){}[0]
+    final val openedBy // us.tractat.bee.core/SurfaceMeta.openedBy|{}openedBy[0]
+        final fun <get-openedBy>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/SurfaceMeta.openedBy.<get-openedBy>|<get-openedBy>(){}[0]
+    final val title // us.tractat.bee.core/SurfaceMeta.title|{}title[0]
+        final fun <get-title>(): kotlin/String // us.tractat.bee.core/SurfaceMeta.title.<get-title>|<get-title>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.core/SurfaceMeta.component1|component1(){}[0]
+    final fun component2(): kotlin/String // us.tractat.bee.core/SurfaceMeta.component2|component2(){}[0]
+    final fun component3(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/SurfaceMeta.component3|component3(){}[0]
+    final fun component4(): kotlin.time/Instant // us.tractat.bee.core/SurfaceMeta.component4|component4(){}[0]
+    final fun component5(): kotlin.time/Instant? // us.tractat.bee.core/SurfaceMeta.component5|component5(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String = ..., us.tractat.bee.core/PeerIdentity = ..., kotlin.time/Instant = ..., kotlin.time/Instant? = ...): us.tractat.bee.core/SurfaceMeta // us.tractat.bee.core/SurfaceMeta.copy|copy(kotlin.String;kotlin.String;us.tractat.bee.core.PeerIdentity;kotlin.time.Instant;kotlin.time.Instant?){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/SurfaceMeta.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/SurfaceMeta.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/SurfaceMeta.toString|toString(){}[0]
+}
+
+final value class us.tractat.bee.core/BoardId { // us.tractat.bee.core/BoardId|null[0]
+    constructor <init>(kotlin/String) // us.tractat.bee.core/BoardId.<init>|<init>(kotlin.String){}[0]
+
+    final val snapshotKey // us.tractat.bee.core/BoardId.snapshotKey|{}snapshotKey[0]
+        final fun <get-snapshotKey>(): us.tractat.kuilt.store/StoreKey // us.tractat.bee.core/BoardId.snapshotKey.<get-snapshotKey>|<get-snapshotKey>(){}[0]
+    final val value // us.tractat.bee.core/BoardId.value|{}value[0]
+        final fun <get-value>(): kotlin/String // us.tractat.bee.core/BoardId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/BoardId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/BoardId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/BoardId.toString|toString(){}[0]
+
+    final object Companion { // us.tractat.bee.core/BoardId.Companion|null[0]
+        final const val PARAM // us.tractat.bee.core/BoardId.Companion.PARAM|{}PARAM[0]
+            final fun <get-PARAM>(): kotlin/String // us.tractat.bee.core/BoardId.Companion.PARAM.<get-PARAM>|<get-PARAM>(){}[0]
+        final const val PATH // us.tractat.bee.core/BoardId.Companion.PATH|{}PATH[0]
+            final fun <get-PATH>(): kotlin/String // us.tractat.bee.core/BoardId.Companion.PATH.<get-PATH>|<get-PATH>(){}[0]
+
+        final val KEY // us.tractat.bee.core/BoardId.Companion.KEY|{}KEY[0]
+            final fun <get-KEY>(): us.tractat.kuilt.store/StoreKey // us.tractat.bee.core/BoardId.Companion.KEY.<get-KEY>|<get-KEY>(){}[0]
+
+        final fun mint(): us.tractat.bee.core/BoardId // us.tractat.bee.core/BoardId.Companion.mint|mint(){}[0]
+        final suspend fun keptIn(us.tractat.kuilt.store/DurableStore): us.tractat.bee.core/BoardId? // us.tractat.bee.core/BoardId.Companion.keptIn|keptIn(us.tractat.kuilt.store.DurableStore){}[0]
+        final suspend fun recordIn(us.tractat.kuilt.store/DurableStore, us.tractat.bee.core/BoardId) // us.tractat.bee.core/BoardId.Companion.recordIn|recordIn(us.tractat.kuilt.store.DurableStore;us.tractat.bee.core.BoardId){}[0]
+    }
+}
+
+final value class us.tractat.bee.core/ClaimTarget { // us.tractat.bee.core/ClaimTarget|null[0]
+    constructor <init>(kotlin/String) // us.tractat.bee.core/ClaimTarget.<init>|<init>(kotlin.String){}[0]
+
+    final val value // us.tractat.bee.core/ClaimTarget.value|{}value[0]
+        final fun <get-value>(): kotlin/String // us.tractat.bee.core/ClaimTarget.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/ClaimTarget.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/ClaimTarget.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/ClaimTarget.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.core/ClaimTarget> { // us.tractat.bee.core/ClaimTarget.$serializer|null[0]
+        final val descriptor // us.tractat.bee.core/ClaimTarget.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.core/ClaimTarget.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.core/ClaimTarget.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/ClaimTarget.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.core/ClaimTarget) // us.tractat.bee.core/ClaimTarget.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.core.ClaimTarget){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.core/ClaimTarget.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.core/ClaimTarget> // us.tractat.bee.core/ClaimTarget.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final value class us.tractat.bee.core/RecordId { // us.tractat.bee.core/RecordId|null[0]
+    constructor <init>(us.tractat.kuilt.crdt/Dot) // us.tractat.bee.core/RecordId.<init>|<init>(us.tractat.kuilt.crdt.Dot){}[0]
+
+    final val claimTarget // us.tractat.bee.core/RecordId.claimTarget|{}claimTarget[0]
+        final fun <get-claimTarget>(): us.tractat.bee.core/ClaimTarget // us.tractat.bee.core/RecordId.claimTarget.<get-claimTarget>|<get-claimTarget>(){}[0]
+    final val dot // us.tractat.bee.core/RecordId.dot|{}dot[0]
+        final fun <get-dot>(): us.tractat.kuilt.crdt/Dot // us.tractat.bee.core/RecordId.dot.<get-dot>|<get-dot>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/RecordId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.core/RecordId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.core/RecordId.toString|toString(){}[0]
+}
+
+final object us.tractat.bee.core/CompanionSurfaces { // us.tractat.bee.core/CompanionSurfaces|null[0]
+    final const val PREFIX // us.tractat.bee.core/CompanionSurfaces.PREFIX|{}PREFIX[0]
+        final fun <get-PREFIX>(): kotlin/String // us.tractat.bee.core/CompanionSurfaces.PREFIX.<get-PREFIX>|<get-PREFIX>(){}[0]
+}
+
+final object us.tractat.bee.core/OrphanDecision { // us.tractat.bee.core/OrphanDecision|null[0]
+    final const val ANSWER_ACTION // us.tractat.bee.core/OrphanDecision.ANSWER_ACTION|{}ANSWER_ACTION[0]
+        final fun <get-ANSWER_ACTION>(): kotlin/String // us.tractat.bee.core/OrphanDecision.ANSWER_ACTION.<get-ANSWER_ACTION>|<get-ANSWER_ACTION>(){}[0]
+    final const val OPTION_KEY // us.tractat.bee.core/OrphanDecision.OPTION_KEY|{}OPTION_KEY[0]
+        final fun <get-OPTION_KEY>(): kotlin/String // us.tractat.bee.core/OrphanDecision.OPTION_KEY.<get-OPTION_KEY>|<get-OPTION_KEY>(){}[0]
+    final const val PREFIX // us.tractat.bee.core/OrphanDecision.PREFIX|{}PREFIX[0]
+        final fun <get-PREFIX>(): kotlin/String // us.tractat.bee.core/OrphanDecision.PREFIX.<get-PREFIX>|<get-PREFIX>(){}[0]
+    final const val RELEASE // us.tractat.bee.core/OrphanDecision.RELEASE|{}RELEASE[0]
+        final fun <get-RELEASE>(): kotlin/String // us.tractat.bee.core/OrphanDecision.RELEASE.<get-RELEASE>|<get-RELEASE>(){}[0]
+    final const val WAIT // us.tractat.bee.core/OrphanDecision.WAIT|{}WAIT[0]
+        final fun <get-WAIT>(): kotlin/String // us.tractat.bee.core/OrphanDecision.WAIT.<get-WAIT>|<get-WAIT>(){}[0]
+
+    final fun choice(kotlin/String): us.tractat.bee.core/OrphanDecision.Choice? // us.tractat.bee.core/OrphanDecision.choice|choice(kotlin.String){}[0]
+    final fun reassignOption(us.tractat.bee.core/PeerIdentity): kotlin/String // us.tractat.bee.core/OrphanDecision.reassignOption|reassignOption(us.tractat.bee.core.PeerIdentity){}[0]
+    final fun surfaceId(us.tractat.bee.core/ClaimTarget): kotlin/String // us.tractat.bee.core/OrphanDecision.surfaceId|surfaceId(us.tractat.bee.core.ClaimTarget){}[0]
+    final fun targetOf(kotlin/String): us.tractat.bee.core/ClaimTarget? // us.tractat.bee.core/OrphanDecision.targetOf|targetOf(kotlin.String){}[0]
+
+    sealed interface Choice { // us.tractat.bee.core/OrphanDecision.Choice|null[0]
+        final class Reassign : us.tractat.bee.core/OrphanDecision.Choice { // us.tractat.bee.core/OrphanDecision.Choice.Reassign|null[0]
+            constructor <init>(us.tractat.bee.core/PeerIdentity) // us.tractat.bee.core/OrphanDecision.Choice.Reassign.<init>|<init>(us.tractat.bee.core.PeerIdentity){}[0]
+
+            final val to // us.tractat.bee.core/OrphanDecision.Choice.Reassign.to|{}to[0]
+                final fun <get-to>(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/OrphanDecision.Choice.Reassign.to.<get-to>|<get-to>(){}[0]
+
+            final fun component1(): us.tractat.bee.core/PeerIdentity // us.tractat.bee.core/OrphanDecision.Choice.Reassign.component1|component1(){}[0]
+            final fun copy(us.tractat.bee.core/PeerIdentity = ...): us.tractat.bee.core/OrphanDecision.Choice.Reassign // us.tractat.bee.core/OrphanDecision.Choice.Reassign.copy|copy(us.tractat.bee.core.PeerIdentity){}[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanDecision.Choice.Reassign.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanDecision.Choice.Reassign.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanDecision.Choice.Reassign.toString|toString(){}[0]
+        }
+
+        final object Release : us.tractat.bee.core/OrphanDecision.Choice { // us.tractat.bee.core/OrphanDecision.Choice.Release|null[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanDecision.Choice.Release.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanDecision.Choice.Release.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanDecision.Choice.Release.toString|toString(){}[0]
+        }
+
+        final object Wait : us.tractat.bee.core/OrphanDecision.Choice { // us.tractat.bee.core/OrphanDecision.Choice.Wait|null[0]
+            final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.core/OrphanDecision.Choice.Wait.equals|equals(kotlin.Any?){}[0]
+            final fun hashCode(): kotlin/Int // us.tractat.bee.core/OrphanDecision.Choice.Wait.hashCode|hashCode(){}[0]
+            final fun toString(): kotlin/String // us.tractat.bee.core/OrphanDecision.Choice.Wait.toString|toString(){}[0]
+        }
+    }
+}
+
+final object us.tractat.bee.core/PairingSurfaces { // us.tractat.bee.core/PairingSurfaces|null[0]
+    final const val PREFIX // us.tractat.bee.core/PairingSurfaces.PREFIX|{}PREFIX[0]
+        final fun <get-PREFIX>(): kotlin/String // us.tractat.bee.core/PairingSurfaces.PREFIX.<get-PREFIX>|<get-PREFIX>(){}[0]
+
+    final fun isPairing(kotlin/String): kotlin/Boolean // us.tractat.bee.core/PairingSurfaces.isPairing|isPairing(kotlin.String){}[0]
+}
+
+final object us.tractat.bee.core/PairingWire { // us.tractat.bee.core/PairingWire|null[0]
+    final const val KEY_PARAM // us.tractat.bee.core/PairingWire.KEY_PARAM|{}KEY_PARAM[0]
+        final fun <get-KEY_PARAM>(): kotlin/String // us.tractat.bee.core/PairingWire.KEY_PARAM.<get-KEY_PARAM>|<get-KEY_PARAM>(){}[0]
+    final const val PATH // us.tractat.bee.core/PairingWire.PATH|{}PATH[0]
+        final fun <get-PATH>(): kotlin/String // us.tractat.bee.core/PairingWire.PATH.<get-PATH>|<get-PATH>(){}[0]
+    final const val SCREEN_PARAM // us.tractat.bee.core/PairingWire.SCREEN_PARAM|{}SCREEN_PARAM[0]
+        final fun <get-SCREEN_PARAM>(): kotlin/String // us.tractat.bee.core/PairingWire.SCREEN_PARAM.<get-SCREEN_PARAM>|<get-SCREEN_PARAM>(){}[0]
+}
+
+final const val us.tractat.bee.core/BOARD_PAYLOAD_BYTES // us.tractat.bee.core/BOARD_PAYLOAD_BYTES|{}BOARD_PAYLOAD_BYTES[0]
+    final fun <get-BOARD_PAYLOAD_BYTES>(): kotlin/Int // us.tractat.bee.core/BOARD_PAYLOAD_BYTES.<get-BOARD_PAYLOAD_BYTES>|<get-BOARD_PAYLOAD_BYTES>(){}[0]
+final const val us.tractat.bee.core/FRAME_ENVELOPE_BYTES // us.tractat.bee.core/FRAME_ENVELOPE_BYTES|{}FRAME_ENVELOPE_BYTES[0]
+    final fun <get-FRAME_ENVELOPE_BYTES>(): kotlin/Int // us.tractat.bee.core/FRAME_ENVELOPE_BYTES.<get-FRAME_ENVELOPE_BYTES>|<get-FRAME_ENVELOPE_BYTES>(){}[0]
+final const val us.tractat.bee.core/MAX_FRAME_BYTES // us.tractat.bee.core/MAX_FRAME_BYTES|{}MAX_FRAME_BYTES[0]
+    final fun <get-MAX_FRAME_BYTES>(): kotlin/Long // us.tractat.bee.core/MAX_FRAME_BYTES.<get-MAX_FRAME_BYTES>|<get-MAX_FRAME_BYTES>(){}[0]
+
+final val us.tractat.bee.core/BEE_QUILTER_CONFIG // us.tractat.bee.core/BEE_QUILTER_CONFIG|{}BEE_QUILTER_CONFIG[0]
+    final fun <get-BEE_QUILTER_CONFIG>(): us.tractat.kuilt.quilter/QuilterConfig // us.tractat.bee.core/BEE_QUILTER_CONFIG.<get-BEE_QUILTER_CONFIG>|<get-BEE_QUILTER_CONFIG>(){}[0]
+
+final fun (us.tractat.kuilt.core/Loom).us.tractat.bee.core/pinnedTo(us.tractat.bee.core/BoardPin): us.tractat.kuilt.core/Loom // us.tractat.bee.core/pinnedTo|pinnedTo@us.tractat.kuilt.core.Loom(us.tractat.bee.core.BoardPin){}[0]
+final suspend fun (io.ktor.client/HttpClient).us.tractat.bee.core/askBoardId(us.tractat.bee.core/HostAddress): us.tractat.bee.core/BoardId // us.tractat.bee.core/askBoardId|askBoardId@io.ktor.client.HttpClient(us.tractat.bee.core.HostAddress){}[0]

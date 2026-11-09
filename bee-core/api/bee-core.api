@@ -1,0 +1,1139 @@
+public final class us/tractat/bee/core/ActionRecord {
+	public static final field Companion Lus/tractat/bee/core/ActionRecord$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lus/tractat/bee/core/Basis;Lkotlin/time/Instant;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component6 ()Lus/tractat/bee/core/Basis;
+	public final fun component7 ()Lkotlin/time/Instant;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lus/tractat/bee/core/Basis;Lkotlin/time/Instant;)Lus/tractat/bee/core/ActionRecord;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ActionRecord;Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lus/tractat/bee/core/Basis;Lkotlin/time/Instant;ILjava/lang/Object;)Lus/tractat/bee/core/ActionRecord;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActor ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getAt ()Lkotlin/time/Instant;
+	public final fun getBasis ()Lus/tractat/bee/core/Basis;
+	public final fun getComponentId ()Ljava/lang/String;
+	public final fun getContext ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getSurfaceId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ActionRecord$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ActionRecord$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ActionRecord;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ActionRecord;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ActionRecord$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/Basis {
+	public static final field Companion Lus/tractat/bee/core/Basis$Companion;
+	public fun <init> (Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;Lus/tractat/kuilt/crdt/VersionVector;)V
+	public final fun completeIn (Lus/tractat/bee/core/BoardState;Ljava/lang/String;)Z
+	public final fun component1 ()Ljava/util/Map;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun component3 ()Ljava/util/Set;
+	public final fun component4 ()Lus/tractat/kuilt/crdt/VersionVector;
+	public final fun copy (Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;Lus/tractat/kuilt/crdt/VersionVector;)Lus/tractat/bee/core/Basis;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/Basis;Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;Lus/tractat/kuilt/crdt/VersionVector;ILjava/lang/Object;)Lus/tractat/bee/core/Basis;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRecordDots ()Ljava/util/Set;
+	public final fun getRecordFloor ()Lus/tractat/kuilt/crdt/VersionVector;
+	public final fun getSurfaceDots ()Ljava/util/Map;
+	public final fun getSurfaceFloors ()Ljava/util/Map;
+	public fun hashCode ()I
+	public final fun saw (Ljava/lang/String;Lus/tractat/kuilt/crdt/Dot;)Z
+	public final fun sawRecord (Lus/tractat/kuilt/crdt/Dot;)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/Basis$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/Basis$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/Basis;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/Basis;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/Basis$Companion {
+	public final fun capture (Lus/tractat/bee/core/BoardState;Ljava/lang/String;)Lus/tractat/bee/core/Basis;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/BoardClient {
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/kuilt/core/Loom;Lus/tractat/kuilt/core/Rendezvous;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function0;Lus/tractat/bee/core/BoardState;Lus/tractat/kuilt/quilter/QuilterConfig;Lkotlin/random/Random;JIJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/kuilt/core/Loom;Lus/tractat/kuilt/core/Rendezvous;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function0;Lus/tractat/bee/core/BoardState;Lus/tractat/kuilt/quilter/QuilterConfig;Lkotlin/random/Random;JIJLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun awaitAcknowledged (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun connect ()V
+	public final fun disconnect ()V
+	public final fun getLastFailure ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getLink ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getMaxPayloadBytes ()I
+	public final fun getOnline ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getTooLarge ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun mutate (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun mutateOrSkip (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/BoardClientKt {
+	public static final fun getBEE_QUILTER_CONFIG ()Lus/tractat/kuilt/quilter/QuilterConfig;
+}
+
+public final class us/tractat/bee/core/BoardId {
+	public static final field Companion Lus/tractat/bee/core/BoardId$Companion;
+	public static final field PARAM Ljava/lang/String;
+	public static final field PATH Ljava/lang/String;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Lus/tractat/bee/core/BoardId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public static final fun getSnapshotKey-V7ECK2g (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/BoardId$Companion {
+	public final fun getKEY-V7ECK2g ()Ljava/lang/String;
+	public final fun keptIn-ZdoZjfA (Lus/tractat/kuilt/store/DurableStore;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun mint-B1fb3ew ()Ljava/lang/String;
+	public final fun recordIn-cT2hTTA (Lus/tractat/kuilt/store/DurableStore;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/BoardPin {
+	public static final field Companion Lus/tractat/bee/core/BoardPin$Companion;
+	public final fun getBoard ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun resolve-o99MXo4 (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/BoardPin$Companion {
+	public final fun learnedFrom (Lkotlin/jvm/functions/Function1;)Lus/tractat/bee/core/BoardPin;
+	public final fun to-E0Rp278 (Ljava/lang/String;)Lus/tractat/bee/core/BoardPin;
+}
+
+public final class us/tractat/bee/core/BoardPinKt {
+	public static final fun askBoardId (Lio/ktor/client/HttpClient;Lus/tractat/bee/core/HostAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun pinnedTo (Lus/tractat/kuilt/core/Loom;Lus/tractat/bee/core/BoardPin;)Lus/tractat/kuilt/core/Loom;
+}
+
+public final class us/tractat/bee/core/BoardState : us/tractat/kuilt/crdt/Quilted {
+	public static final field Companion Lus/tractat/bee/core/BoardState$Companion;
+	public final fun appendEntry-fjENvQQ (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun appendRecord-V4bVmxY (Ljava/lang/String;Lus/tractat/bee/core/ActionRecord;)Lus/tractat/kuilt/crdt/Quilted;
+	public fun causalDots ()Ljava/util/Set;
+	public fun causalFloor ()Lus/tractat/kuilt/crdt/VersionVector;
+	public final fun claimView-Xn5B_As (Ljava/lang/String;)Lus/tractat/bee/core/ClaimView;
+	public final fun closeSurface-A2Ggm7A (Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun closedSurfaces ()Ljava/util/List;
+	public final fun departures ()Ljava/util/Set;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClaims ()Lus/tractat/kuilt/crdt/LWWMap;
+	public final fun getDeparted ()Lus/tractat/kuilt/crdt/GSet;
+	public final fun getPresence ()Lus/tractat/kuilt/crdt/EphemeralMap;
+	public final fun getRecords ()Lus/tractat/kuilt/crdt/Rga;
+	public final fun getSurfaces ()Lus/tractat/kuilt/crdt/ORMap;
+	public fun hashCode ()I
+	public final fun latestPresence ()Ljava/util/List;
+	public final fun meta (Ljava/lang/String;)Lus/tractat/bee/core/SurfaceMeta;
+	public final fun mirrorClaims-V4bVmxY (Ljava/lang/String;Lus/tractat/bee/core/ClaimTable;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun openSurface-ieKuFNo (Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/SurfaceMeta;Ljava/util/List;Lkotlinx/serialization/json/JsonObject;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun openSurfaces ()Ljava/util/List;
+	public fun piece (Lus/tractat/bee/core/BoardState;)Lus/tractat/bee/core/BoardState;
+	public synthetic fun piece (Lus/tractat/kuilt/crdt/Quilted;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun postPresence-A2Ggm7A (Ljava/lang/String;Lus/tractat/bee/core/PresenceEntry;J)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun records ()Ljava/util/List;
+	public final fun records (Ljava/lang/String;)Ljava/util/List;
+	public final fun reopenSurface-V4bVmxY (Ljava/lang/String;Ljava/lang/String;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun surfaceDoc (Ljava/lang/String;)Lus/tractat/kuilt/crdt/JsonCrdt;
+	public fun toString ()Ljava/lang/String;
+	public final fun updateComponents-A2Ggm7A (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun updateData-fjENvQQ (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lus/tractat/kuilt/crdt/Quilted;
+	public final fun withReplica-81S8jZI (Ljava/lang/String;)Lus/tractat/bee/core/BoardState;
+	public final fun withoutPresence ()Lus/tractat/bee/core/BoardState;
+}
+
+public final class us/tractat/bee/core/BoardState$Companion {
+	public final fun getEMPTY ()Lus/tractat/bee/core/BoardState;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/BoardSyncTooLarge : java/lang/Exception {
+	public fun <init> (II)V
+	public final fun getBytes ()I
+	public final fun getLimit ()I
+}
+
+public final class us/tractat/bee/core/BoardWriteTooLarge : java/lang/IllegalArgumentException {
+	public fun <init> (II)V
+	public final fun getBytes ()I
+	public final fun getLimit ()I
+}
+
+public abstract interface class us/tractat/bee/core/ClaimCommand {
+	public static final field Companion Lus/tractat/bee/core/ClaimCommand$Companion;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Claim : us/tractat/bee/core/ClaimCommand {
+	public static final field Companion Lus/tractat/bee/core/ClaimCommand$Claim$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ProposalId;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1--d5bd5A ()Ljava/lang/String;
+	public final fun component2 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component3 ()Lus/tractat/bee/core/ProposalId;
+	public final fun copy-HkA_5so (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ProposalId;)Lus/tractat/bee/core/ClaimCommand$Claim;
+	public static synthetic fun copy-HkA_5so$default (Lus/tractat/bee/core/ClaimCommand$Claim;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ProposalId;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimCommand$Claim;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBy ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getProposal ()Lus/tractat/bee/core/ProposalId;
+	public final fun getTarget--d5bd5A ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimCommand$Claim$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimCommand$Claim$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimCommand$Claim;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimCommand$Claim;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Claim$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Companion {
+	public final fun decode ([B)Lus/tractat/bee/core/ClaimCommand;
+	public final fun encode (Lus/tractat/bee/core/ClaimCommand;)[B
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Complete : us/tractat/bee/core/ClaimCommand {
+	public static final field Companion Lus/tractat/bee/core/ClaimCommand$Complete$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1--d5bd5A ()Ljava/lang/String;
+	public final fun component2 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component3 ()Lus/tractat/bee/core/ClaimToken;
+	public final fun copy-HkA_5so (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)Lus/tractat/bee/core/ClaimCommand$Complete;
+	public static synthetic fun copy-HkA_5so$default (Lus/tractat/bee/core/ClaimCommand$Complete;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimCommand$Complete;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBy ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getTarget--d5bd5A ()Ljava/lang/String;
+	public final fun getToken ()Lus/tractat/bee/core/ClaimToken;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimCommand$Complete$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimCommand$Complete$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimCommand$Complete;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimCommand$Complete;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Complete$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Depart : us/tractat/bee/core/ClaimCommand {
+	public static final field Companion Lus/tractat/bee/core/ClaimCommand$Depart$Companion;
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component2 ()Lus/tractat/bee/core/DepartReason;
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;)Lus/tractat/bee/core/ClaimCommand$Depart;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimCommand$Depart;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimCommand$Depart;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdentity ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getReason ()Lus/tractat/bee/core/DepartReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimCommand$Depart$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimCommand$Depart$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimCommand$Depart;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimCommand$Depart;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Depart$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Reassign : us/tractat/bee/core/ClaimCommand {
+	public static final field Companion Lus/tractat/bee/core/ClaimCommand$Reassign$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/PeerIdentity;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1--d5bd5A ()Ljava/lang/String;
+	public final fun component2 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component3 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun copy-HkA_5so (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/PeerIdentity;)Lus/tractat/bee/core/ClaimCommand$Reassign;
+	public static synthetic fun copy-HkA_5so$default (Lus/tractat/bee/core/ClaimCommand$Reassign;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/PeerIdentity;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimCommand$Reassign;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBy ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getTarget--d5bd5A ()Ljava/lang/String;
+	public final fun getTo ()Lus/tractat/bee/core/PeerIdentity;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimCommand$Reassign$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimCommand$Reassign$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimCommand$Reassign;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimCommand$Reassign;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Reassign$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Release : us/tractat/bee/core/ClaimCommand {
+	public static final field Companion Lus/tractat/bee/core/ClaimCommand$Release$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1--d5bd5A ()Ljava/lang/String;
+	public final fun component2 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component3 ()Lus/tractat/bee/core/ClaimToken;
+	public final fun copy-HkA_5so (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)Lus/tractat/bee/core/ClaimCommand$Release;
+	public static synthetic fun copy-HkA_5so$default (Lus/tractat/bee/core/ClaimCommand$Release;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimCommand$Release;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBy ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getTarget--d5bd5A ()Ljava/lang/String;
+	public final fun getToken ()Lus/tractat/bee/core/ClaimToken;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimCommand$Release$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimCommand$Release$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimCommand$Release;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimCommand$Release;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimCommand$Release$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class us/tractat/bee/core/ClaimOutcome {
+}
+
+public final class us/tractat/bee/core/ClaimOutcome$Lost : us/tractat/bee/core/ClaimOutcome {
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;)Lus/tractat/bee/core/ClaimOutcome$Lost;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimOutcome$Lost;Lus/tractat/bee/core/PeerIdentity;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimOutcome$Lost;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHolder ()Lus/tractat/bee/core/PeerIdentity;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimOutcome$Retired : us/tractat/bee/core/ClaimOutcome {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimOutcome$Retired;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimOutcome$Unavailable : us/tractat/bee/core/ClaimOutcome {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimOutcome$Unavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimOutcome$Won : us/tractat/bee/core/ClaimOutcome {
+	public fun <init> (Lus/tractat/bee/core/ClaimToken;)V
+	public final fun component1 ()Lus/tractat/bee/core/ClaimToken;
+	public final fun copy (Lus/tractat/bee/core/ClaimToken;)Lus/tractat/bee/core/ClaimOutcome$Won;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimOutcome$Won;Lus/tractat/bee/core/ClaimToken;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimOutcome$Won;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getToken ()Lus/tractat/bee/core/ClaimToken;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class us/tractat/bee/core/ClaimStatus {
+	public static final field Companion Lus/tractat/bee/core/ClaimStatus$Companion;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Done : us/tractat/bee/core/ClaimStatus {
+	public static final field Companion Lus/tractat/bee/core/ClaimStatus$Done$Companion;
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;)Lus/tractat/bee/core/ClaimStatus$Done;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimStatus$Done;Lus/tractat/bee/core/PeerIdentity;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimStatus$Done;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBy ()Lus/tractat/bee/core/PeerIdentity;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimStatus$Done$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimStatus$Done$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimStatus$Done;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimStatus$Done;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Done$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Free : us/tractat/bee/core/ClaimStatus {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimStatus$Free;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Held : us/tractat/bee/core/ClaimStatus {
+	public static final field Companion Lus/tractat/bee/core/ClaimStatus$Held$Companion;
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component2 ()Lus/tractat/bee/core/ClaimToken;
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)Lus/tractat/bee/core/ClaimStatus$Held;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimStatus$Held;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimStatus$Held;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHolder ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getToken ()Lus/tractat/bee/core/ClaimToken;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimStatus$Held$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimStatus$Held$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimStatus$Held;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimStatus$Held;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Held$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Orphaned : us/tractat/bee/core/ClaimStatus {
+	public static final field Companion Lus/tractat/bee/core/ClaimStatus$Orphaned$Companion;
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component2 ()Lus/tractat/bee/core/ClaimToken;
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)Lus/tractat/bee/core/ClaimStatus$Orphaned;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimStatus$Orphaned;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimStatus$Orphaned;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHolder ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getToken ()Lus/tractat/bee/core/ClaimToken;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimStatus$Orphaned$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimStatus$Orphaned$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimStatus$Orphaned;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimStatus$Orphaned;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimStatus$Orphaned$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimTable {
+	public static final field Companion Lus/tractat/bee/core/ClaimTable$Companion;
+	public final fun applied (Lus/tractat/kuilt/raft/Committed;)Lus/tractat/bee/core/ClaimTable$Applied;
+	public final fun departReason (Lus/tractat/bee/core/PeerIdentity;)Lus/tractat/bee/core/DepartReason;
+	public final fun encode ()[B
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun fold (Lus/tractat/kuilt/raft/Committed;)Lus/tractat/bee/core/ClaimTable;
+	public final fun getAppliedIndex ()J
+	public final fun getRetiredIdentities ()Ljava/util/Map;
+	public final fun getTargets ()Ljava/util/Map;
+	public fun hashCode ()I
+	public final fun heldBy (Lus/tractat/bee/core/PeerIdentity;)Ljava/util/Set;
+	public final fun reassigned-Xn5B_As (Ljava/lang/String;)Z
+	public final fun retired (Lus/tractat/bee/core/PeerIdentity;)Z
+	public final fun status-Xn5B_As (Ljava/lang/String;)Lus/tractat/bee/core/ClaimStatus;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimTable$Applied {
+	public fun <init> (Lus/tractat/bee/core/ClaimTable;Lus/tractat/bee/core/ClaimCommand;)V
+	public final fun component1 ()Lus/tractat/bee/core/ClaimTable;
+	public final fun component2 ()Lus/tractat/bee/core/ClaimCommand;
+	public final fun copy (Lus/tractat/bee/core/ClaimTable;Lus/tractat/bee/core/ClaimCommand;)Lus/tractat/bee/core/ClaimTable$Applied;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimTable$Applied;Lus/tractat/bee/core/ClaimTable;Lus/tractat/bee/core/ClaimCommand;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimTable$Applied;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCommand ()Lus/tractat/bee/core/ClaimCommand;
+	public final fun getTable ()Lus/tractat/bee/core/ClaimTable;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimTable$Companion {
+	public final fun decode ([B)Lus/tractat/bee/core/ClaimTable;
+	public final fun getEMPTY ()Lus/tractat/bee/core/ClaimTable;
+}
+
+public final class us/tractat/bee/core/ClaimTarget {
+	public static final field Companion Lus/tractat/bee/core/ClaimTarget$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Lus/tractat/bee/core/ClaimTarget;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimTarget$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimTarget$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-4Vaj9H0 (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-QzTAsto (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimTarget$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimToken {
+	public static final field Companion Lus/tractat/bee/core/ClaimToken$Companion;
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Lus/tractat/bee/core/ClaimToken;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimToken;JJILjava/lang/Object;)Lus/tractat/bee/core/ClaimToken;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndex ()J
+	public final fun getTerm ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimToken$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimToken$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimToken;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimToken;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimToken$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimView {
+	public static final field Companion Lus/tractat/bee/core/ClaimView$Companion;
+	public static final field DONE Ljava/lang/String;
+	public static final field FREE Ljava/lang/String;
+	public static final field HELD Ljava/lang/String;
+	public static final field ORPHANED Ljava/lang/String;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Lus/tractat/bee/core/ClaimView;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ClaimView;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lus/tractat/bee/core/ClaimView;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHolder ()Ljava/lang/String;
+	public final fun getLogIndex ()J
+	public final fun getStatus ()Ljava/lang/String;
+	public final fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ClaimView$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ClaimView$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ClaimView;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ClaimView;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimView$Companion {
+	public final fun of (Lus/tractat/bee/core/ClaimStatus;J)Lus/tractat/bee/core/ClaimView;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ClaimsClient {
+	public synthetic fun <init> (Lus/tractat/kuilt/cluster/ClusterClient;Ljava/lang/String;Lkotlin/jvm/functions/Function0;Lkotlinx/coroutines/CoroutineScope;Lkotlin/random/Random;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun claim-81Z4y9M (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun claim-81Z4y9M$default (Lus/tractat/bee/core/ClaimsClient;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun complete-iZ34Io8 (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun complete-iZ34Io8$default (Lus/tractat/bee/core/ClaimsClient;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getLatencies ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getTable ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getUnreleased ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun reassign-iZ34Io8 (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/PeerIdentity;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun reassign-iZ34Io8$default (Lus/tractat/bee/core/ClaimsClient;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/PeerIdentity;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun release-iZ34Io8 (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun release-iZ34Io8$default (Lus/tractat/bee/core/ClaimsClient;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/ClaimsConnection {
+	public static final field Companion Lus/tractat/bee/core/ClaimsConnection$Companion;
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;)V
+	public final fun close ()V
+	public final fun depart (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun getLink ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getOpened ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getPendingDeparts ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getPendingReleases ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun queue (Lus/tractat/bee/core/ClaimsConnection$Unreceived;)V
+	public final fun releaseUnreceived (Lus/tractat/bee/core/ClaimsConnection$Unreceived;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/ClaimsConnection$Companion {
+	public final fun jitteredBackoff (Lkotlin/random/Random;)Lkotlin/jvm/functions/Function1;
+}
+
+public final class us/tractat/bee/core/ClaimsConnection$Unreceived {
+	public synthetic fun <init> (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1--d5bd5A ()Ljava/lang/String;
+	public final fun component2 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component3 ()Lus/tractat/bee/core/ClaimToken;
+	public final fun copy-HkA_5so (Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;)Lus/tractat/bee/core/ClaimsConnection$Unreceived;
+	public static synthetic fun copy-HkA_5so$default (Lus/tractat/bee/core/ClaimsConnection$Unreceived;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/ClaimToken;ILjava/lang/Object;)Lus/tractat/bee/core/ClaimsConnection$Unreceived;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHolder ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getTarget--d5bd5A ()Ljava/lang/String;
+	public final fun getToken ()Lus/tractat/bee/core/ClaimToken;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimsLink {
+	public static final field Companion Lus/tractat/bee/core/ClaimsLink$Companion;
+	public static final field PATH Ljava/lang/String;
+	public static final field SESSION Ljava/lang/String;
+	public final fun depart-exY8QGI (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun depart-exY8QGI$default (Lus/tractat/bee/core/ClaimsLink;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getClient ()Lus/tractat/bee/core/ClaimsClient;
+	public final fun getNode-Kplb3d8 ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/ClaimsLink$Companion {
+	public final fun getSERVER-PaHlmAU ()Ljava/lang/String;
+	public final fun getVOTER-Kplb3d8 ()Ljava/lang/String;
+	public final fun open-rfIq3Hg (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lus/tractat/kuilt/cluster/ClusterEndpoints;Lkotlinx/coroutines/CoroutineScope;Lus/tractat/kuilt/raft/RaftConfig;Lkotlin/jvm/functions/Function0;Lkotlin/random/Random;)Lus/tractat/bee/core/ClaimsLink;
+	public final fun overWebSocket-rfIq3Hg (Ljava/lang/String;Lio/ktor/client/HttpClient;Lus/tractat/bee/core/HostAddress;Lus/tractat/bee/core/BoardPin;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function0;Lkotlin/random/Random;)Lus/tractat/bee/core/ClaimsLink;
+}
+
+public final class us/tractat/bee/core/CompanionSurfaces {
+	public static final field INSTANCE Lus/tractat/bee/core/CompanionSurfaces;
+	public static final field PREFIX Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/DepartReason : java/lang/Enum {
+	public static final field Cleared Lus/tractat/bee/core/DepartReason;
+	public static final field Crashed Lus/tractat/bee/core/DepartReason;
+	public static final field Left Lus/tractat/bee/core/DepartReason;
+	public static final field Quiet Lus/tractat/bee/core/DepartReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lus/tractat/bee/core/DepartReason;
+	public static fun values ()[Lus/tractat/bee/core/DepartReason;
+}
+
+public final class us/tractat/bee/core/Departure {
+	public static final field Companion Lus/tractat/bee/core/Departure$Companion;
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;J)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component2 ()Lus/tractat/bee/core/DepartReason;
+	public final fun component3 ()J
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;J)Lus/tractat/bee/core/Departure;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/Departure;Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/DepartReason;JILjava/lang/Object;)Lus/tractat/bee/core/Departure;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdentity ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getLogIndex ()J
+	public final fun getReason ()Lus/tractat/bee/core/DepartReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/Departure$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/Departure$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/Departure;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/Departure;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/Departure$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/DialTimeoutException : java/lang/Exception {
+	public synthetic fun <init> (JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getTimeout-UwyO8pc ()J
+}
+
+public final class us/tractat/bee/core/FrameBoundKt {
+	public static final field BOARD_PAYLOAD_BYTES I
+	public static final field FRAME_ENVELOPE_BYTES I
+	public static final field MAX_FRAME_BYTES J
+}
+
+public final class us/tractat/bee/core/HostAddress {
+	public static final field Companion Lus/tractat/bee/core/HostAddress$Companion;
+	public final fun describe (Ljava/lang/Throwable;)Ljava/lang/String;
+	public final fun getHttp ()Ljava/lang/String;
+	public final fun redact (Ljava/lang/String;)Ljava/lang/String;
+	public final fun socket (Ljava/lang/String;)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/HostAddress$Companion {
+	public final fun parse (Ljava/lang/String;)Lus/tractat/bee/core/HostAddress;
+}
+
+public final class us/tractat/bee/core/LivePresence {
+	public static final field Companion Lus/tractat/bee/core/LivePresence$Companion;
+	public fun <init> (Lkotlinx/coroutines/flow/StateFlow;Lkotlin/jvm/functions/Function0;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function1;)V
+	public final fun live (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun peers (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/LivePresence$Companion {
+	public final fun getTTL-UwyO8pc ()J
+}
+
+public final class us/tractat/bee/core/OrphanAnswers {
+	public fun <init> (Lkotlin/jvm/functions/Function0;Lus/tractat/bee/core/PeerIdentity;)V
+	public final fun answered (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class us/tractat/bee/core/OrphanAnswers$Outcome {
+}
+
+public final class us/tractat/bee/core/OrphanAnswers$Outcome$NotADecision : us/tractat/bee/core/OrphanAnswers$Outcome {
+	public static final field INSTANCE Lus/tractat/bee/core/OrphanAnswers$Outcome$NotADecision;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/OrphanAnswers$Outcome$Offline : us/tractat/bee/core/OrphanAnswers$Outcome {
+	public static final field INSTANCE Lus/tractat/bee/core/OrphanAnswers$Outcome$Offline;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/OrphanAnswers$Outcome$Proposed : us/tractat/bee/core/OrphanAnswers$Outcome {
+	public fun <init> (Lus/tractat/bee/core/OrphanDecision$Choice;Z)V
+	public final fun component1 ()Lus/tractat/bee/core/OrphanDecision$Choice;
+	public final fun component2 ()Z
+	public final fun copy (Lus/tractat/bee/core/OrphanDecision$Choice;Z)Lus/tractat/bee/core/OrphanAnswers$Outcome$Proposed;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/OrphanAnswers$Outcome$Proposed;Lus/tractat/bee/core/OrphanDecision$Choice;ZILjava/lang/Object;)Lus/tractat/bee/core/OrphanAnswers$Outcome$Proposed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApplied ()Z
+	public final fun getChoice ()Lus/tractat/bee/core/OrphanDecision$Choice;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/OrphanAnswers$Outcome$Waited : us/tractat/bee/core/OrphanAnswers$Outcome {
+	public static final field INSTANCE Lus/tractat/bee/core/OrphanAnswers$Outcome$Waited;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/OrphanDecision {
+	public static final field ANSWER_ACTION Ljava/lang/String;
+	public static final field INSTANCE Lus/tractat/bee/core/OrphanDecision;
+	public static final field OPTION_KEY Ljava/lang/String;
+	public static final field PREFIX Ljava/lang/String;
+	public static final field RELEASE Ljava/lang/String;
+	public static final field WAIT Ljava/lang/String;
+	public final fun choice (Ljava/lang/String;)Lus/tractat/bee/core/OrphanDecision$Choice;
+	public final fun reassignOption (Lus/tractat/bee/core/PeerIdentity;)Ljava/lang/String;
+	public final fun surfaceId-Xn5B_As (Ljava/lang/String;)Ljava/lang/String;
+	public final fun targetOf-yvnFs2E (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public abstract interface class us/tractat/bee/core/OrphanDecision$Choice {
+}
+
+public final class us/tractat/bee/core/OrphanDecision$Choice$Reassign : us/tractat/bee/core/OrphanDecision$Choice {
+	public fun <init> (Lus/tractat/bee/core/PeerIdentity;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun copy (Lus/tractat/bee/core/PeerIdentity;)Lus/tractat/bee/core/OrphanDecision$Choice$Reassign;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/OrphanDecision$Choice$Reassign;Lus/tractat/bee/core/PeerIdentity;ILjava/lang/Object;)Lus/tractat/bee/core/OrphanDecision$Choice$Reassign;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTo ()Lus/tractat/bee/core/PeerIdentity;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/OrphanDecision$Choice$Release : us/tractat/bee/core/OrphanDecision$Choice {
+	public static final field INSTANCE Lus/tractat/bee/core/OrphanDecision$Choice$Release;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/OrphanDecision$Choice$Wait : us/tractat/bee/core/OrphanDecision$Choice {
+	public static final field INSTANCE Lus/tractat/bee/core/OrphanDecision$Choice$Wait;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/PairingEnd : java/lang/Enum {
+	public static final field Busy Lus/tractat/bee/core/PairingEnd;
+	public static final field Expired Lus/tractat/bee/core/PairingEnd;
+	public static final field TooSoon Lus/tractat/bee/core/PairingEnd;
+	public static final field Voided Lus/tractat/bee/core/PairingEnd;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lus/tractat/bee/core/PairingEnd;
+	public static fun values ()[Lus/tractat/bee/core/PairingEnd;
+}
+
+public abstract interface class us/tractat/bee/core/PairingMessage {
+	public static final field Companion Lus/tractat/bee/core/PairingMessage$Companion;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Code : us/tractat/bee/core/PairingMessage {
+	public static final field Companion Lus/tractat/bee/core/PairingMessage$Code$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlin/time/Instant;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;)Lus/tractat/bee/core/PairingMessage$Code;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/PairingMessage$Code;Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;ILjava/lang/Object;)Lus/tractat/bee/core/PairingMessage$Code;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCode ()Ljava/lang/String;
+	public final fun getExpiresAt ()Lkotlin/time/Instant;
+	public final fun getPairing ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/PairingMessage$Code$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/PairingMessage$Code$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/PairingMessage$Code;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/PairingMessage$Code;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Code$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Ended : us/tractat/bee/core/PairingMessage {
+	public static final field Companion Lus/tractat/bee/core/PairingMessage$Ended$Companion;
+	public fun <init> (Lus/tractat/bee/core/PairingEnd;)V
+	public final fun component1 ()Lus/tractat/bee/core/PairingEnd;
+	public final fun copy (Lus/tractat/bee/core/PairingEnd;)Lus/tractat/bee/core/PairingMessage$Ended;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/PairingMessage$Ended;Lus/tractat/bee/core/PairingEnd;ILjava/lang/Object;)Lus/tractat/bee/core/PairingMessage$Ended;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Lus/tractat/bee/core/PairingEnd;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/PairingMessage$Ended$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/PairingMessage$Ended$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/PairingMessage$Ended;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/PairingMessage$Ended;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Ended$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Key : us/tractat/bee/core/PairingMessage {
+	public static final field Companion Lus/tractat/bee/core/PairingMessage$Key$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lus/tractat/bee/core/PairingMessage$Key;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/PairingMessage$Key;Ljava/lang/String;ILjava/lang/Object;)Lus/tractat/bee/core/PairingMessage$Key;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getKey ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/PairingMessage$Key$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/PairingMessage$Key$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/PairingMessage$Key;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/PairingMessage$Key;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingMessage$Key$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PairingSurfaces {
+	public static final field INSTANCE Lus/tractat/bee/core/PairingSurfaces;
+	public static final field PREFIX Ljava/lang/String;
+	public final fun isPairing (Ljava/lang/String;)Z
+}
+
+public final class us/tractat/bee/core/PairingWire {
+	public static final field INSTANCE Lus/tractat/bee/core/PairingWire;
+	public static final field KEY_PARAM Ljava/lang/String;
+	public static final field PATH Ljava/lang/String;
+	public static final field SCREEN_PARAM Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/PeerIdentity {
+	public static final field Companion Lus/tractat/bee/core/PeerIdentity$Companion;
+	public fun <init> (Lus/tractat/bee/core/PeerKind;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerKind;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Lus/tractat/bee/core/PeerKind;Ljava/lang/String;Ljava/lang/String;)Lus/tractat/bee/core/PeerIdentity;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/PeerIdentity;Lus/tractat/bee/core/PeerKind;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lus/tractat/bee/core/PeerIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInstance ()Ljava/lang/String;
+	public final fun getKind ()Lus/tractat/bee/core/PeerKind;
+	public final fun getName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/PeerIdentity$Companion {
+	public final fun agent (Ljava/lang/String;Lkotlin/random/Random;)Lus/tractat/bee/core/PeerIdentity;
+	public final fun host (Ljava/lang/String;)Lus/tractat/bee/core/PeerIdentity;
+	public final fun human (Ljava/lang/String;)Lus/tractat/bee/core/PeerIdentity;
+	public final fun parse (Ljava/lang/String;)Lus/tractat/bee/core/PeerIdentity;
+}
+
+public final class us/tractat/bee/core/PeerKind : java/lang/Enum {
+	public static final field Agent Lus/tractat/bee/core/PeerKind;
+	public static final field Host Lus/tractat/bee/core/PeerKind;
+	public static final field Human Lus/tractat/bee/core/PeerKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lus/tractat/bee/core/PeerKind;
+	public static fun values ()[Lus/tractat/bee/core/PeerKind;
+}
+
+public final class us/tractat/bee/core/Presence {
+	public static final field Companion Lus/tractat/bee/core/Presence$Companion;
+	public synthetic fun <init> (Lus/tractat/bee/core/BoardClient;Ljava/lang/String;Lkotlinx/coroutines/flow/Flow;Lkotlin/jvm/functions/Function0;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getRoster ()Lus/tractat/bee/core/LivePresence;
+	public final fun touch (Lkotlin/time/Instant;)V
+	public final fun update (Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Lkotlin/time/Instant;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/Presence$Companion {
+	public final fun getEVERY-UwyO8pc ()J
+}
+
+public final class us/tractat/bee/core/PresenceEntry {
+	public static final field Companion Lus/tractat/bee/core/PresenceEntry$Companion;
+	public synthetic fun <init> (Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component2-TH7vZZI ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Lkotlin/time/Instant;
+	public final fun component5 ()Z
+	public final fun copy-zrkmCRM (Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;Z)Lus/tractat/bee/core/PresenceEntry;
+	public static synthetic fun copy-zrkmCRM$default (Lus/tractat/bee/core/PresenceEntry;Lus/tractat/bee/core/PeerIdentity;Ljava/lang/String;Ljava/lang/String;Lkotlin/time/Instant;ZILjava/lang/Object;)Lus/tractat/bee/core/PresenceEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClaimsNode-TH7vZZI ()Ljava/lang/String;
+	public final fun getIdentity ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getLastActedAt ()Lkotlin/time/Instant;
+	public final fun getStatus ()Ljava/lang/String;
+	public final fun getWaiting ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/PresenceEntry$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/PresenceEntry$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/PresenceEntry;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/PresenceEntry;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/PresenceEntry$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ProposalId {
+	public static final field Companion Lus/tractat/bee/core/ProposalId$Companion;
+	public fun <init> (Ljava/lang/String;JJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;JJ)Lus/tractat/bee/core/ProposalId;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/ProposalId;Ljava/lang/String;JJILjava/lang/Object;)Lus/tractat/bee/core/ProposalId;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIncarnation ()J
+	public final fun getNode ()Ljava/lang/String;
+	public final fun getSerial ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/core/ProposalId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/core/ProposalId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/core/ProposalId;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/core/ProposalId;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/ProposalId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/core/RecordId {
+	public static final synthetic fun box-impl (Lus/tractat/kuilt/crdt/Dot;)Lus/tractat/bee/core/RecordId;
+	public static fun constructor-impl (Lus/tractat/kuilt/crdt/Dot;)Lus/tractat/kuilt/crdt/Dot;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Lus/tractat/kuilt/crdt/Dot;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Lus/tractat/kuilt/crdt/Dot;Lus/tractat/kuilt/crdt/Dot;)Z
+	public static final fun getClaimTarget--d5bd5A (Lus/tractat/kuilt/crdt/Dot;)Ljava/lang/String;
+	public final fun getDot ()Lus/tractat/kuilt/crdt/Dot;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Lus/tractat/kuilt/crdt/Dot;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Lus/tractat/kuilt/crdt/Dot;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Lus/tractat/kuilt/crdt/Dot;
+}
+
+public final class us/tractat/bee/core/SpokeLoom : us/tractat/kuilt/core/Loom {
+	public fun <init> (Lio/ktor/client/HttpClient;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlinx/coroutines/CoroutineScope;Ljava/lang/String;Lkotlin/random/Random;Lkotlin/jvm/functions/Function0;)V
+	public fun <init> (Lkotlinx/coroutines/CoroutineScope;Ljava/lang/String;Lkotlin/random/Random;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function3;)V
+	public fun availability ()Lus/tractat/kuilt/core/FabricAvailability;
+	public fun capability ()Lus/tractat/kuilt/core/TransportCapability;
+	public fun host (Lus/tractat/kuilt/core/Pattern;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun join (Lus/tractat/kuilt/core/Tag;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun weave (Lus/tractat/kuilt/core/Rendezvous;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class us/tractat/bee/core/SurfaceMeta {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lkotlin/time/Instant;Lkotlin/time/Instant;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lkotlin/time/Instant;Lkotlin/time/Instant;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun component4 ()Lkotlin/time/Instant;
+	public final fun component5 ()Lkotlin/time/Instant;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lkotlin/time/Instant;Lkotlin/time/Instant;)Lus/tractat/bee/core/SurfaceMeta;
+	public static synthetic fun copy$default (Lus/tractat/bee/core/SurfaceMeta;Ljava/lang/String;Ljava/lang/String;Lus/tractat/bee/core/PeerIdentity;Lkotlin/time/Instant;Lkotlin/time/Instant;ILjava/lang/Object;)Lus/tractat/bee/core/SurfaceMeta;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCatalogId ()Ljava/lang/String;
+	public final fun getClosedAt ()Lkotlin/time/Instant;
+	public final fun getOpenedAt ()Lkotlin/time/Instant;
+	public final fun getOpenedBy ()Lus/tractat/bee/core/PeerIdentity;
+	public final fun getTitle ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/core/persist/QuiltedPersistence {
+	public synthetic fun <init> (Lus/tractat/kuilt/store/DurableStore;Ljava/lang/String;Lkotlinx/serialization/KSerializer;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lus/tractat/kuilt/store/DurableStore;Ljava/lang/String;Lkotlinx/serialization/KSerializer;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun load (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun saveOnChange (Lkotlinx/coroutines/flow/StateFlow;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function1;)Lus/tractat/bee/core/persist/QuiltedPersistence$Saver;
+	public static synthetic fun saveOnChange$default (Lus/tractat/bee/core/persist/QuiltedPersistence;Lkotlinx/coroutines/flow/StateFlow;Lkotlinx/coroutines/CoroutineScope;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lus/tractat/bee/core/persist/QuiltedPersistence$Saver;
+}
+
+public final class us/tractat/bee/core/persist/QuiltedPersistence$Saver {
+	public final fun getLastFailure ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

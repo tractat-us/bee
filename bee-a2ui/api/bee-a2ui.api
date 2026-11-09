@@ -1,0 +1,189 @@
+public final class us/tractat/bee/a2ui/A2uiAction {
+	public static final field Companion Lus/tractat/bee/a2ui/A2uiAction$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Lus/tractat/bee/a2ui/A2uiAction;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/A2uiAction;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lus/tractat/bee/a2ui/A2uiAction;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContext ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getSourceComponentId ()Ljava/lang/String;
+	public final fun getSurfaceId ()Ljava/lang/String;
+	public final fun getTimestamp ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class us/tractat/bee/a2ui/A2uiAction$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lus/tractat/bee/a2ui/A2uiAction$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lus/tractat/bee/a2ui/A2uiAction;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lus/tractat/bee/a2ui/A2uiAction;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/a2ui/A2uiAction$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class us/tractat/bee/a2ui/A2uiJson {
+	public static final field INSTANCE Lus/tractat/bee/a2ui/A2uiJson;
+	public final fun decodeAction (Ljava/lang/String;)Lus/tractat/bee/a2ui/A2uiAction;
+	public final fun encode (Ljava/util/List;)Ljava/lang/String;
+}
+
+public abstract interface class us/tractat/bee/a2ui/A2uiMessage {
+	public abstract fun getSurfaceId ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/A2uiMessage$CreateSurface : us/tractat/bee/a2ui/A2uiMessage {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Z)Lus/tractat/bee/a2ui/A2uiMessage$CreateSurface;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/A2uiMessage$CreateSurface;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/Object;)Lus/tractat/bee/a2ui/A2uiMessage$CreateSurface;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCatalogId ()Ljava/lang/String;
+	public final fun getSendDataModel ()Z
+	public fun getSurfaceId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/A2uiMessage$DeleteSurface : us/tractat/bee/a2ui/A2uiMessage {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lus/tractat/bee/a2ui/A2uiMessage$DeleteSurface;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/A2uiMessage$DeleteSurface;Ljava/lang/String;ILjava/lang/Object;)Lus/tractat/bee/a2ui/A2uiMessage$DeleteSurface;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getSurfaceId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/A2uiMessage$UpdateComponents : us/tractat/bee/a2ui/A2uiMessage {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lus/tractat/bee/a2ui/A2uiMessage$UpdateComponents;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/A2uiMessage$UpdateComponents;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lus/tractat/bee/a2ui/A2uiMessage$UpdateComponents;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getComponents ()Ljava/util/List;
+	public fun getSurfaceId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/A2uiMessage$UpdateDataModel : us/tractat/bee/a2ui/A2uiMessage {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lus/tractat/bee/a2ui/A2uiMessage$UpdateDataModel;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/A2uiMessage$UpdateDataModel;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lus/tractat/bee/a2ui/A2uiMessage$UpdateDataModel;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public fun getSurfaceId ()Ljava/lang/String;
+	public final fun getValue ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/A2uiMessageKt {
+	public static final field NOTIONS_CATALOG_ID Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/MessageDiffKt {
+	public static final fun diff (Lus/tractat/bee/a2ui/SurfaceView;Lus/tractat/bee/a2ui/SurfaceView;)Ljava/util/List;
+}
+
+public final class us/tractat/bee/a2ui/NotionActions {
+	public static final field ANSWER Ljava/lang/String;
+	public static final field DROP Ljava/lang/String;
+	public static final field INSTANCE Lus/tractat/bee/a2ui/NotionActions;
+	public final fun edit (Lus/tractat/bee/a2ui/SurfaceView;Lus/tractat/bee/a2ui/A2uiAction;Ljava/lang/String;)Lus/tractat/bee/a2ui/NotionEdit;
+	public final fun optionIds (Lkotlinx/serialization/json/JsonElement;)Ljava/util/List;
+}
+
+public final class us/tractat/bee/a2ui/NotionEdit {
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonElement;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)Lus/tractat/bee/a2ui/NotionEdit;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/NotionEdit;Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;ILjava/lang/Object;)Lus/tractat/bee/a2ui/NotionEdit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getValue ()Lkotlinx/serialization/json/JsonElement;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class us/tractat/bee/a2ui/SurfaceFormat {
+	public static final field COMPONENTS Ljava/lang/String;
+	public static final field DATA Ljava/lang/String;
+	public static final field INSTANCE Lus/tractat/bee/a2ui/SurfaceFormat;
+	public static final field META Ljava/lang/String;
+	public static final field META_CATALOG_ID Ljava/lang/String;
+	public static final field META_CLOSED_AT Ljava/lang/String;
+	public static final field META_OPENED_AT Ljava/lang/String;
+	public static final field META_OPENED_BY Ljava/lang/String;
+	public static final field META_TITLE Ljava/lang/String;
+	public static final field RESERVED_DATA_KEY Ljava/lang/String;
+	public static final field STRUCTURED_PREFIX Ljava/lang/String;
+	public final fun canonical (Lkotlinx/serialization/json/JsonElement;)Ljava/lang/String;
+	public final fun decodeLeaf (Lus/tractat/kuilt/crdt/JsonValue;)Lkotlinx/serialization/json/JsonElement;
+	public final fun encodeLeaf (Lkotlinx/serialization/json/JsonElement;)Lus/tractat/kuilt/crdt/JsonValue;
+	public final fun escapeSegment (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getVALUE_ORDER ()Ljava/util/Comparator;
+	public final fun isStructured (Lus/tractat/kuilt/crdt/JsonValue;)Z
+	public final fun metaString (Lus/tractat/kuilt/crdt/JsonNode$Leaf;)Ljava/lang/String;
+	public final fun pointer (Ljava/util/List;)Ljava/lang/String;
+	public final fun segments (Ljava/lang/String;)Ljava/util/List;
+	public final fun winner (Lus/tractat/kuilt/crdt/JsonNode$Leaf;)Lkotlinx/serialization/json/JsonElement;
+}
+
+public final class us/tractat/bee/a2ui/SurfaceProjectionKt {
+	public static final fun toSurfaceView (Lus/tractat/kuilt/crdt/JsonCrdt;Ljava/lang/String;)Lus/tractat/bee/a2ui/SurfaceView;
+}
+
+public final class us/tractat/bee/a2ui/SurfaceValidator {
+	public static final field BOARD Ljava/lang/String;
+	public static final field INSTANCE Lus/tractat/bee/a2ui/SurfaceValidator;
+	public static final field POLL Ljava/lang/String;
+	public static final field SKETCH Ljava/lang/String;
+	public final fun appendErrors (Lus/tractat/bee/a2ui/SurfaceView;)Ljava/util/List;
+	public final fun errors (Lus/tractat/bee/a2ui/SurfaceView;)Ljava/util/List;
+	public final fun getNOTIONS_COMPONENT_TYPES ()Ljava/util/Set;
+}
+
+public final class us/tractat/bee/a2ui/SurfaceView {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonObject;Ljava/util/Map;Ljava/util/Set;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/Map;
+	public final fun component4 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component5 ()Ljava/util/Map;
+	public final fun component6 ()Ljava/util/Set;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonObject;Ljava/util/Map;Ljava/util/Set;)Lus/tractat/bee/a2ui/SurfaceView;
+	public static synthetic fun copy$default (Lus/tractat/bee/a2ui/SurfaceView;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlinx/serialization/json/JsonObject;Ljava/util/Map;Ljava/util/Set;ILjava/lang/Object;)Lus/tractat/bee/a2ui/SurfaceView;
+	public final fun dataModel ()Lkotlinx/serialization/json/JsonObject;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAppended ()Ljava/util/Set;
+	public final fun getCatalogId ()Ljava/lang/String;
+	public final fun getComponents ()Ljava/util/Map;
+	public final fun getConflicts ()Ljava/util/Map;
+	public final fun getData ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
