@@ -5,27 +5,71 @@ import java.net.InetAddress
 import java.nio.file.Path
 import kotlin.time.Duration
 
-/** Who can reach the host: this machine only, or the local network too (spec §5.4, §5.7). */
-enum class Reach(val bind: String) {
-    /** The default: only this machine's own browsers and sessions. */
-    Loopback("127.0.0.1"),
-
-    /** `--lan`: every interface. A device off this machine needs a key, from pairing or a join link. */
-    Lan("0.0.0.0"),
-    ;
+/**
+ * Who can reach the host: this machine only, the local network too (spec §5.4, §5.7), or anyone,
+ * through one trusted proxy (bee#145).
+ */
+sealed interface Reach {
+    /** The address the host binds. */
+    val bind: String
 
     /** The names a host with this reach answers to, beyond `localhost` and its addresses ([SiteRule]). */
-    fun names(): Set<String> = when (this) {
-        Loopback -> emptySet()
-        Lan -> setOf(lanName())
-    }
+    fun names(): Set<String>
+
+    /** The public URLs a host with this reach is served at, through its proxy ([SiteRule]). */
+    fun publicUrls(): Set<PublicUrl>
 
     /** Whether a host with this reach has a join link to give its owner's page ([inviteEndpoint]). */
-    fun invitation(): Invitation = when (this) {
-        Loopback -> Invitation.Closed
-        Lan -> Invitation.Open(lanName(), ::lanAddresses)
+    fun invitation(): Invitation
+
+    /** Where each call to a host with this reach came from ([mountEndpoints]). */
+    fun peers(): PeerAddress
+
+    /** The default: only this machine's own browsers and sessions. */
+    data object Loopback : Reach {
+        override val bind: String = "127.0.0.1"
+
+        override fun names(): Set<String> = emptySet()
+
+        override fun publicUrls(): Set<PublicUrl> = emptySet()
+
+        override fun invitation(): Invitation = Invitation.Closed
+
+        override fun peers(): PeerAddress = PeerAddress.DIRECT
+    }
+
+    /** `--lan`: every interface. A device off this machine needs a key, from pairing or a join link. */
+    data object Lan : Reach {
+        override val bind: String = ALL_INTERFACES
+
+        override fun names(): Set<String> = setOf(lanName())
+
+        override fun publicUrls(): Set<PublicUrl> = emptySet()
+
+        override fun invitation(): Invitation = Invitation.Open(lanName(), ::lanAddresses)
+
+        override fun peers(): PeerAddress = PeerAddress.DIRECT
+    }
+
+    /**
+     * `--public-url <url>`: every interface, behind one trusted TLS-terminating proxy that dials the
+     * machine's private address (Fly.io's). A browser names the host by [url], and each call's
+     * caller is the one the proxy names ([PeerAddress.FORWARDED]).
+     */
+    data class Public(val url: PublicUrl) : Reach {
+        override val bind: String = ALL_INTERFACES
+
+        override fun names(): Set<String> = emptySet()
+
+        override fun publicUrls(): Set<PublicUrl> = setOf(url)
+
+        override fun invitation(): Invitation = Invitation.Public(url)
+
+        override fun peers(): PeerAddress = PeerAddress.FORWARDED
     }
 }
+
+private const val ALL_INTERFACES = "0.0.0.0"
 
 /** This machine's name on the local network: its host name, as mDNS serves it (`<name>.local`). */
 fun lanName(): String = InetAddress.getLocalHost().hostName.let { if ('.' in it) it else "$it.local" }
