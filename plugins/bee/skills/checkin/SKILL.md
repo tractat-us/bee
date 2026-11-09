@@ -1,13 +1,14 @@
 ---
 name: checkin
-description: Use when the person wants this session's progress on the bee board, in plain words or as /bee:checkin [task]. Fires on "check in on the board", "check in on bee", "keep a status card on the board", "post your progress to bee", "ask me on the board". Keeps one status card for the session, current while it works.
+description: Use when the person wants this session's progress on the bee board, in plain words or as /bee:checkin [task] ($bee:checkin in Codex). Fires on "check in on the board", "check in on bee", "keep a status card on the board", "post your progress to bee", "ask me on the board". Keeps one status card for the session, current while it works.
 argument-hint: "[task]"
 ---
 
 The steps below are the bee server's `checkin` prompt (`/mcp__plugin_bee_bee__checkin`). The task
-in step 1 is what followed `/bee:checkin`. If nothing did, it is the task you are on in this
-conversation. With none yet, it is "waiting for a task": ask on the card what to work on, wait for
-the answer as in step 5, then do it.
+in step 1 is what followed `/bee:checkin`, or `$bee:checkin` in Codex. Codex fills nothing into
+step 1's quotes, so there, take the task from the person's message. If nothing followed, it is the
+task you are on in this conversation. With none yet, it is "waiting for a task": ask on the card
+what to work on, wait for the answer as in step 5, then do it.
 
 Check in on the bee board: one status card for this session, kept current while you work, so the person sees from one page what each of their sessions is doing and answers what you need from them. The bee server's instructions say how to take part; follow them.
 

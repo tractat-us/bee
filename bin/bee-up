@@ -9,8 +9,9 @@
 # --local, and keeps the board and its keys in ~/.bee/host unless --data-dir says otherwise, so a
 # restart brings back the board, the join link and every paired device. Opens the board in your
 # browser as <you>, writes ~/.bee/mcp.json for your own Claude sessions, and prints the join link
-# to send a coworker, copied to the clipboard on macOS, and the claude mcp add line that joins a
-# Claude over HTTP with nothing installed. Run it again to reprint the links.
+# to send a coworker, copied to the clipboard on macOS, and the claude mcp add and codex mcp add
+# lines that join a Claude or a Codex over HTTP with nothing installed. Run it again to reprint
+# the links.
 #
 # --new-link restarts the host with a new join link: the old link stops working, and paired
 # devices keep their keys. --forget-devices restarts it forgetting every device, paired or joined
@@ -36,7 +37,7 @@ while [ $# -gt 0 ]; do
         --new-link) [ "$reset" = --forget-devices ] || reset=--new-link; shift ;;
         --forget-devices) reset=--forget-devices; shift ;;
         --stop) stop=1; shift ;;
-        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "bee-up: unknown argument $1 (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -145,6 +146,7 @@ if [ -n "$join" ]; then
     echo "  Or their Claude joins with nothing installed (Java and the kit not needed):"
     echo "      claude mcp add --scope user --transport http bee '$origin/mcp?k=$key&name=<them>'"
     echo "  (If claude says bee already exists, they run  claude mcp remove --scope user bee  first.)"
+    echo "  Their Codex joins the same way:  codex mcp add bee --url '$origin/mcp?k=$key&name=<them>'"
     echo "  Plain HTTP on your network: don't put on the board what you wouldn't say in the room."
     if [ -n "$first" ] && command -v pbcopy >/dev/null 2>&1 && printf '%s' "http://$first:$port/?k=$key" | pbcopy; then
         echo "  Copied the first link to your clipboard."
@@ -158,6 +160,11 @@ echo "  Your Claude session:  claude --mcp-config $bee_home/mcp.json --allowedTo
 echo "                        then type  /mcp__bee__whiteboard"
 # Not --scope user here: every claude on this machine, dispatched workers too, would join the board.
 echo "  Or, by URL in one folder:  claude mcp add --transport http bee 'http://127.0.0.1:$port/mcp?name=$name'"
+# Codex's -c lasts one run, as --mcp-config does; codex mcp add would reach every codex here.
+# approve runs bee's tools unconfirmed, as --allowedTools does for Claude: anyone with the key can
+# put words on the board, and the session can post from its context in reply, call by call, with
+# no one confirming.
+echo "  Your Codex session:   codex -c 'mcp_servers.bee.url=\"http://127.0.0.1:$port/mcp?name=$name\"' -c 'mcp_servers.bee.default_tools_approval_mode=\"approve\"'"
 echo "  Stop the host:        bee-up --stop     (log: $log)"
 echo
 bee_open "$me"

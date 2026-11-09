@@ -1,13 +1,14 @@
 ---
 name: draw
-description: Draws on the bee board. Use BEFORE putting anything on the board, whenever the person asks for it in plain words or types /bee:draw <topic>. Fires on "put it on the board", "draw this on bee", "sketch the login flow on the board", "show it on the board", "whiteboard this", "let's whiteboard". Draws the topic, then keeps it current and reacts to clicks until someone says done.
+description: Draws on the bee board. Use BEFORE putting anything on the board, whenever the person asks for it in plain words or types /bee:draw <topic> ($bee:draw in Codex). Fires on "put it on the board", "draw this on bee", "sketch the login flow on the board", "show it on the board", "whiteboard this", "let's whiteboard". Draws the topic, then keeps it current and reacts to clicks until someone says done.
 argument-hint: "[topic]"
 ---
 
 The steps below are the bee server's `whiteboard` prompt (`/mcp__plugin_bee_bee__whiteboard`). The
-topic in step 2 is what followed `/bee:draw`. If nothing did, the topic is what the person asked to
-have drawn. If they named nothing, step 2 is instead: ask, on the board, what to work on, with a
-field and a Send button, wait for the answer, then draw it.
+topic in step 2 is what followed `/bee:draw`, or `$bee:draw` in Codex. Codex fills nothing into
+step 2's quotes, so there, take the topic from the person's message. If nothing followed, the topic
+is what the person asked to have drawn. If they named nothing, step 2 is instead: ask, on the
+board, what to work on, with a field and a Send button, wait for the answer, then draw it.
 
 Join the bee board as a whiteboarding partner for the people in the room. The bee server's instructions say how to take part; follow them.
 

@@ -17,6 +17,7 @@ internal sealed interface Viewer {
 /**
  * What points a viewer's own Claude session at this board, by who the viewer is to it: a
  * [Teammate] on a machine of their own, holding a key, or the board's [Owner] on its own machine.
+ * Each also has a [codexLine] that does the same for a Codex session.
  *
  * Every URL a line carries is one single-quoted shell word, every `'` in it escaped: a browser
  * keeps `'`, `;` and `$(` in a host name, so neither the origin nor a name can end the quote.
@@ -24,6 +25,9 @@ internal sealed interface Viewer {
 internal sealed interface McpCommand {
     /** The line the panel offers first. */
     val line: String
+
+    /** The line that brings a Codex session instead, offered last. */
+    val codexLine: String
 
     val viewer: Viewer
 
@@ -35,9 +39,16 @@ internal sealed interface McpCommand {
      * default scope is the folder it runs in. The line first removes any earlier `bee` entry,
      * quietly, since `claude mcp add` refuses a name it already has: one line still works with a
      * new key or for another board.
+     *
+     * [codexLine] is the same for Codex. `codex mcp add` writes Codex's one user-wide config, so
+     * bee reaches every folder, and it replaces an entry it already has, so it needs no removal.
      */
     class Teammate(origin: String, key: String, override val viewer: Viewer) : McpCommand {
-        override val line = "$REMOVE_EARLIER claude mcp add --scope user --transport http bee ${endpoint(origin, listOf("k" to key), viewer)}"
+        private val address = endpoint(origin, listOf("k" to key), viewer)
+
+        override val line = "$REMOVE_EARLIER claude mcp add --scope user --transport http bee $address"
+
+        override val codexLine = "codex mcp add bee --url $address"
     }
 
     /**
@@ -50,11 +61,19 @@ internal sealed interface McpCommand {
      * [folderLine] is the by-URL way, for one folder only. Never `--scope user` here: every
      * `claude` started on this machine, dispatched workers too, would join the board and stay on
      * it as a ghost for two minutes after it exits.
+     *
+     * [codexLine] starts one Codex session with bee and writes nothing: each `-c` sets config for
+     * that run only, as `--mcp-config` does. `codex mcp add` would be user-wide: every Codex on
+     * this machine, `codex exec` runs too, would join the board. The second `-c` runs bee's tools
+     * without asking each time, as `--allowedTools` does.
      */
     class Owner(origin: String, override val viewer: Viewer) : McpCommand {
         override val line = KIT_LINE
 
         val folderLine = "claude mcp add --transport http bee ${endpoint(origin, emptyList(), viewer)}"
+
+        override val codexLine =
+            "codex -c ${singleQuoted("mcp_servers.bee.url=${tomlString(url(origin, emptyList(), viewer))}")} -c '$CODEX_APPROVE'"
     }
 
     companion object {
@@ -70,20 +89,30 @@ internal sealed interface McpCommand {
         /** Drops an earlier `bee` entry, saying nothing whether or not there was one. */
         private const val REMOVE_EARLIER = "claude mcp remove --scope user bee >/dev/null 2>&1;"
 
+        /** A Codex config override that runs bee's tools without asking before each call. */
+        private const val CODEX_APPROVE = "mcp_servers.bee.default_tools_approval_mode=\"approve\""
+
         fun of(origin: String, access: Access.Admitted, viewer: Viewer): McpCommand = when (access) {
             is Access.Keyed -> Teammate(origin, access.key, viewer)
             Access.Loopback -> Owner(origin, viewer)
         }
 
         /** bee-host's endpoint on [origin], with [params] and the viewer's name, as one quoted shell word. */
-        private fun endpoint(origin: String, params: List<Pair<String, String>>, viewer: Viewer): String {
+        private fun endpoint(origin: String, params: List<Pair<String, String>>, viewer: Viewer): String =
+            singleQuoted(url(origin, params, viewer))
+
+        /** bee-host's endpoint on [origin], with [params] and the viewer's name. */
+        private fun url(origin: String, params: List<Pair<String, String>>, viewer: Viewer): String {
             val name = when (viewer) {
                 is Viewer.Named -> viewer.name
                 Viewer.Unnamed -> PLACEHOLDER
             }
             val query = (params + ("name" to name)).joinToString("&") { (param, value) -> "$param=${encodeURIComponent(value)}" }
-            return singleQuoted("$origin$PATH?$query")
+            return "$origin$PATH?$query"
         }
+
+        /** [text] as a TOML basic string, for a Codex `-c` value: each `\` and `"` in it escaped. */
+        private fun tomlString(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
         /** [text] as one inert POSIX shell word: single quotes, each `'` in it closed, escaped and reopened. */
         private fun singleQuoted(text: String): String = "'" + text.replace("'", "'\\''") + "'"
@@ -93,7 +122,7 @@ internal sealed interface McpCommand {
 /**
  * "Bring your Claude": a control in the page's bar that opens a panel with [command], to copy and
  * run in a terminal, then how to start the session it brings. A teammate gets one line; the owner
- * gets the kit's line, then the one-folder URL line.
+ * gets the kit's line, then the one-folder URL line. Last, either gets the line for Codex.
  *
  * - **The panel never covers the board.** It sits in the page's flow under the bar, as `#problem`
  *   does, and pushes the board down while open. Its close button, the control again, or Escape
@@ -106,7 +135,8 @@ internal sealed interface McpCommand {
  *
  * DOM hooks: `#bring-claude-toggle` (`aria-expanded`), `#bring-claude` (`hidden`), its
  * `#bring-claude-command`, `#bring-claude-copy`, `#bring-claude-copied`, for the owner
- * `#bring-claude-folder-command` and `#bring-claude-folder-copy`, and, for an unnamed viewer,
+ * `#bring-claude-folder-command` and `#bring-claude-folder-copy`, for everyone
+ * `#bring-claude-codex-command` and `#bring-claude-codex-copy`, and, for an unnamed viewer,
  * `#bring-claude-unnamed`; [opener] makes a `.bring-claude-open` button for elsewhere.
  */
 internal class BringYourClaude(shell: PageShell, private val command: McpCommand) {
@@ -130,6 +160,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
             is McpCommand.Teammate -> teammate(command)
             is McpCommand.Owner -> owner(command)
         }
+        codex(command)
         if (command.viewer == Viewer.Unnamed) {
             panel.appendChild(
                 element("p", "bring-claude-unnamed").also {
@@ -203,6 +234,16 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
         panel.appendChild(copied)
     }
 
+    /** Last, and quieter: the line for a viewer whose agent is Codex, not Claude. */
+    private fun codex(command: McpCommand) {
+        panel.appendChild(
+            element("p", "bring-claude-codex").also {
+                it.textContent = "Using Codex? Run this instead, then ask it to whiteboard your topic on the board."
+            },
+        )
+        panel.appendChild(lineRow(command.codexLine, CODEX))
+    }
+
     /** [text] in a `<code>` with its own Copy button, under the ids [ids] names. */
     private fun lineRow(text: String, ids: LineIds): Element = element("div", ids.row).also { row ->
         val code = element("code", ids.code).also { it.textContent = text }
@@ -246,6 +287,9 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
 
         /** The owner's by-URL line, for one folder. */
         val FOLDER = LineIds("bring-claude-folder-line", "bring-claude-folder-command", "bring-claude-folder-copy")
+
+        /** The line for a Codex session, offered to every viewer. */
+        val CODEX = LineIds("bring-claude-codex-line", "bring-claude-codex-command", "bring-claude-codex-copy")
 
         fun element(tag: String, id: String): Element = document.createElement(tag).also { if (id.isNotEmpty()) it.id = id }
     }

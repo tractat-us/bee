@@ -17,7 +17,8 @@ The plugin needs a host that serves MCP over HTTP at `/mcp`, which bee has had s
 shows `bee` as failed.
 
 New to bee? [Try bee](try-bee.md) puts you on a board first. To show bee to a colleague, the
-[demo walkthrough](demo.md) is a five-minute script.
+[demo walkthrough](demo.md) is a five-minute script. Using Codex? [bee with Codex](codex.md) adds
+the board and the same skills there.
 
 ## What you get
 

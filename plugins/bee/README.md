@@ -25,14 +25,21 @@ on, and how to remove it. New to bee? [Try bee](../../docs/try-bee.md) puts you 
 To show it to a colleague, the [demo walkthrough](../../docs/demo.md) is a five-minute script. All
 the docs are at <https://tractat-us.github.io/bee/>.
 
+Codex installs the same plugin, with `codex plugin marketplace add tractat-us/bee` and
+`codex plugin add bee@bee`, and gets the same skills. It takes no server from the plugin: Codex
+can't fill in `board_url`, so the board comes from `codex mcp add`
+([bee with Codex](../../docs/codex.md)).
+
 | File | What it is |
 |---|---|
 | `.claude-plugin/plugin.json` | Name, version and the `board_url` setting |
+| `.codex-plugin/plugin.json` | Codex's manifest: the same skills, and no server |
 | `.mcp.json` | The `bee` server: HTTP to `board_url` |
 | `skills/bee/SKILL.md` | Waiting for answers, card states, what never goes on the board |
 | `skills/draw/SKILL.md` | `/bee:draw`: the server's `whiteboard` prompt, copied |
 | `skills/checkin/SKILL.md` | `/bee:checkin`: the server's `checkin` prompt, copied |
 
-`PluginCommandsTest` in `bee-mcp` fails when a copied prompt no longer matches the server's.
+`PluginCommandsTest` in `bee-mcp` fails when a copied prompt no longer matches the server's, when
+the two manifests' names or versions differ, or when a skill wouldn't load in Codex.
 
-Bump `version` in `plugin.json` with each change, or installed copies won't update.
+Bump `version` in both `plugin.json` files with each change, or installed copies won't update.

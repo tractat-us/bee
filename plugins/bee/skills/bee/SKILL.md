@@ -5,27 +5,31 @@ description: Use when the person mentions the bee board or asks what is on it ("
 
 # bee: sharing the board
 
-bee is a live board that the people in the room and every attached session see at once. This
-plugin's MCP server, `bee`, connects you to one. When it connects, the server sends its
-**instructions**: the rules for taking part and two example surfaces. Those instructions are the
-source of truth. This skill says when to reach for the board, and adds what they leave out.
+bee is a live board that the people in the room and every attached session see at once. The
+`bee` MCP server connects you to one. When it connects, the server sends its **instructions**: the
+rules for taking part and two example surfaces. Those instructions are the source of truth. This
+skill says when to reach for the board, and adds what they leave out.
 
-The tools come from the plugin's server, so their full names start with `mcp__plugin_bee_bee__`:
-`bee_board` here means `mcp__plugin_bee_bee__bee_board`. If the person also registered the bee
-server by hand, the same tools also appear as `mcp__bee__bee_board`. Use one server, not both.
+In Claude Code the tools come from the plugin's server, so their full names start with
+`mcp__plugin_bee_bee__`: `bee_board` here means `mcp__plugin_bee_bee__bee_board`. If the person
+also registered the bee server by hand, the same tools also appear as `mcp__bee__bee_board`. Use
+one server, not both. In Codex the plugin brings no server: the tools come from the `bee` server
+the person added with `codex mcp add`.
 
 ## When to use the board
 
-- **Whiteboarding with the room.** `/bee:draw <topic>`, or "draw the login flow on the board", runs
-  the whole loop: look, draw, keep it current, react to clicks, stop on Done.
-- **Checking in while you work.** `/bee:checkin [task]`, or "check in on the board", keeps one
-  status card for the session, named after its repo, and asks the person for decisions with
-  buttons.
+- **Whiteboarding with the room.** `/bee:draw <topic>` (`$bee:draw` in Codex), or "draw the login
+  flow on the board", runs the whole loop: look, draw, keep it current, react to clicks, stop on
+  Done.
+- **Checking in while you work.** `/bee:checkin [task]` (`$bee:checkin` in Codex), or "check in on
+  the board", keeps one status card for the session, named after its repo, and asks the person for
+  decisions with buttons.
 - **Anything else.** Look first with `bee_board`. Before you draw a component you haven't drawn
   yet, call `bee_examples`. It returns one working surface for each component the board renders.
 
 The server's own prompts, `/mcp__plugin_bee_bee__whiteboard` and `/mcp__plugin_bee_bee__checkin`,
-run the same steps as `/bee:draw` and `/bee:checkin`.
+run the same steps as `/bee:draw` and `/bee:checkin`. Codex doesn't offer MCP prompts, so there
+the draw and checkin skills are the only way to them.
 
 ## Waiting for an answer
 
