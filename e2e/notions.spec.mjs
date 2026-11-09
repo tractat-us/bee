@@ -248,6 +248,9 @@ test('a card with an href links its label, and clicking it opens the link and mo
   await expect(records(alex.page, 'board-link')).toHaveCount(recordsBefore);
 });
 
+// Chromium follows no link after a drag even without the link's draggable="false" or its
+// click-after-drag guard (both mutated out, this still passes), so this pins the behaviour, not
+// those two guards, which are kept for other engines and touch drags that this doesn't run.
 test('a card with an href still drags by its label, and the drag follows no link', async ({ browser }) => {
   const alex = await openLinkPeer(browser, 'alex');
   peers = [alex];
