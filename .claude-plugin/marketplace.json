@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "bee",
+  "description": "bee, a shared board for a team and their coding agents.",
+  "owner": {
+    "name": "Iain Keddie"
+  },
+  "plugins": [
+    {
+      "name": "bee",
+      "description": "Join a bee board from Claude Code: the board's MCP server over HTTP, /bee:draw and /bee:checkin, and a skill on how to share the board.",
+      "author": {
+        "name": "Iain Keddie"
+      },
+      "category": "productivity",
+      "source": "./plugins/bee"
+    }
+  ]
+}

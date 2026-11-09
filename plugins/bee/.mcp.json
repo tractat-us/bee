@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bee": {
+      "type": "http",
+      "url": "${user_config.board_url}"
+    }
+  }
+}

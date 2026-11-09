@@ -37,7 +37,8 @@ and asks you for decisions with buttons.
 [Setup](docs/setup.md) walks through each of these. [Tools and prompts](docs/tools.md) lists what
 a session can do on the board.
 
-<!-- plugin page: docs/plugin.md -->
+[The Claude Code plugin](docs/plugin.md) joins your sessions to a board with one install, and
+shortens the prompts to `/bee:draw` and `/bee:checkin`.
 
 ## Where it stands
 
