@@ -76,7 +76,8 @@ class ClaimsVoter private constructor(
         relay.cancelAndJoin()
         // `cluster.close()` only cancels the cluster's scope; it doesn't wait for it. The node's
         // actor may be inside a store write then, which cancellation can't interrupt (a file write
-        // holds its thread). The cluster's scope is a child of [job], so joining [job] waits for it.
+        // holds its thread). The cluster's scope is a child of [job], so joining [job] waits for it
+        // (tractat-us/kuilt#3160 asks for a close that joins). Joining [job] also waits out the fold.
         cluster.close()
         job.cancelAndJoin()
     }
