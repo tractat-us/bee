@@ -24,6 +24,12 @@ stage="$out/$name"
 rm -rf "$stage" "$out/$name.tar.gz"
 mkdir -p "$stage"
 cp -R "$root/bee-mcp/build/install/bee-mcp" "$root/bee-host/build/install/bee-host" "$stage/"
+# The bridge's jars are all among the host's: hard-link each identical one, and tar stores it once
+# (about 80 MB down to 40).
+for jar in "$stage"/bee-mcp/lib/*.jar; do
+    twin="$stage/bee-host/lib/$(basename "$jar")"
+    if [ -f "$twin" ] && cmp -s "$jar" "$twin"; then ln -f "$twin" "$jar"; fi
+done
 cp "$root/bin/bee-env" "$root/bin/bee-up" "$root/bin/bee-join" "$root/bin/bee-session-start-hook" "$stage/"
 cp "$root/LICENSE" "$root/README.md" "$stage/"
 echo "$version" > "$stage/VERSION"
