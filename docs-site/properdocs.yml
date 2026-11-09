@@ -121,6 +121,8 @@ plugins:
           - plugin.md: The Claude Code plugin, which joins a session to a board with one install
           - superpowers/specs/2026-11-06-bee-design.md: The design spec, with its goals, architecture and the board's state
           - bee-and-kuilt.md: What bee builds and what it takes from kuilt
+          - architecture/README.md: The living architecture docs, and how a design decision changes them
+          - architecture/product.md: What a person meets in bee, and its first principle, a physical, infinite whiteboard with no clutter
           - spikes/2026-11-spike-1-renderer-glue.md: Spike 1, Kotlin/wasm driving the stock A2UI renderer
           - spikes/2026-11-spike-2-crdt-behind-a2ui.md: Spike 2, two browsers editing one surface through a CRDT
           - spikes/2026-11-spike-3-bridge-mechanics.md: Spike 3a, the bridge surviving /clear, the /clear hook, and bounded waits
@@ -154,6 +156,9 @@ nav:
       - Claude Code plugin: plugin.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
       - bee and kuilt: bee-and-kuilt.md
+      - Architecture:
+          - architecture/README.md
+          - Product: architecture/product.md
       - Spikes:
           - Renderer glue: spikes/2026-11-spike-1-renderer-glue.md
           - A CRDT behind A2UI: spikes/2026-11-spike-2-crdt-behind-a2ui.md
