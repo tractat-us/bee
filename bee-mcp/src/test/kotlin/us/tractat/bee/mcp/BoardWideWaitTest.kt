@@ -469,7 +469,6 @@ class BoardWideWaitTest {
         return orphan to free
     }
 
-    /** How many claims of [target] the voter's log holds, committed or rejected. */
     /** The reserved surface-id prefixes a board-wide scope leaves out by name, as `BoardActionSource` lists them. */
     private val HANDLED_ELSEWHERE_PREFIXES = listOf(PairingSurfaces.PREFIX, OrphanDecision.PREFIX, CompanionSurfaces.PREFIX)
 
