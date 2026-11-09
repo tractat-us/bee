@@ -116,12 +116,14 @@ async function claimsOnline(agent) {
 
 /**
  * Starts the owner's agent waiting on all its own surfaces, as the whiteboard prompt loops, and
- * resolves once the page shows it listening on [surfaceId]'s card. Returns the wait's promise.
+ * resolves once the page shows it listening on [surfaceId]'s card, to `{ waited }`: the wait's
+ * promise, boxed. Returned bare, an async function's caller would await the wait itself, and click
+ * only once it had timed out.
  */
 async function ownerListens(page, surfaceId) {
   const waited = rig.owner.call('bee_wait_action', { timeoutSeconds: 45 });
   await expect(card(page, surfaceId).locator('.bee-card-state')).toHaveText('listening', { timeout: 15_000 });
-  return waited;
+  return { waited };
 }
 
 const MAIN = 'code-review';
@@ -190,7 +192,7 @@ test('the demo, beat by beat', async ({ browser }) => {
     });
     for (const page of [rig.ownerPage, rig.teammatePage]) await expect(surface(page, MAIN)).toContainText(STEP_TEXT, { timeout: 15_000 });
 
-    const waited = await ownerListens(rig.teammatePage, MAIN);
+    const { waited } = await ownerListens(rig.teammatePage, MAIN);
     const before = await records(rig.ownerPage, MAIN).count();
     await button(rig.teammatePage, MAIN, 'Automated checks').click();
     // The click is on the board, so a wait that misses it is the agent's side, not the page's.
@@ -258,7 +260,7 @@ test('the demo, beat by beat', async ({ browser }) => {
     const before = rig.owner.identity;
     await claimsOnline(rig.owner);
     expect((await rig.owner.call('bee_presence', { status: 'back after the restart' })).as).toBe(before);
-    const waited = await ownerListens(rig.teammatePage, MAIN);
+    const { waited } = await ownerListens(rig.teammatePage, MAIN);
     await button(rig.teammatePage, MAIN, 'Automated checks').click();
     const { record } = await waited;
     expect(record, "the click after the restart reached the owner's agent").toMatchObject({ surfaceId: MAIN, name: 'answer' });
@@ -272,7 +274,7 @@ test('the demo, beat by beat', async ({ browser }) => {
   });
 
   await test.step("6. done: a click on Done reaches the owner's agent, which leaves a summary and shows left", async () => {
-    const waited = await ownerListens(rig.ownerPage, MAIN);
+    const { waited } = await ownerListens(rig.ownerPage, MAIN);
     await button(rig.ownerPage, MAIN, 'Done').click();
     const { record } = await waited;
     expect(record).toMatchObject({ surfaceId: MAIN, name: 'done' });
