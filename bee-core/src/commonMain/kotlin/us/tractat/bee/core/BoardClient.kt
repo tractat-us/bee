@@ -308,11 +308,11 @@ class BoardClient(
             withContext(NonCancellable) { end(connection) }
             throw cancelled
         }
-        val parted = withContext(NonCancellable) { end(connection) }
+        withContext(NonCancellable) { end(connection) }
         if (connection.settled) attempt = 0
         val refusal = connection.seam.refusal() ?: return
         report(refusal)
-        awaitRoom(parted, refusal.limit)
+        awaitRoom(refusal.limit)
     }
 
     /** Says why the board can't sync. */
@@ -323,14 +323,15 @@ class BoardClient(
     }
 
     /**
-     * Suspends until the held board's `FullState` could fit [limit], measured from [parted], the
-     * board as its connection parted, so an edit made while that connection closed is seen. Only
-     * a change a presence post can't make is measured: a post every [Presence.EVERY] swaps one
-     * small entry for another, so it can't bring a board under the bound, and measuring it would
-     * cost a full encode each time (bee#65).
+     * Suspends until the held board's `FullState` could fit [limit], measured from the board as it
+     * is when the wait starts, after the connection has ended, so an edit made while it closed is
+     * already in it. Only a change a presence post can't make is waited for: a post every
+     * [Presence.EVERY] swaps one small entry for another, so it can't bring a board under the
+     * bound, and measuring it would cost a full encode each time (bee#65). That saving is not
+     * pinned by a test; the filter changes no dial.
      */
-    private suspend fun awaitRoom(parted: BoardState, limit: Int) {
-        var board = parted
+    private suspend fun awaitRoom(limit: Int) {
+        var board = held.value
         while (WireBudget.fullStateBytes(author, board) > limit) {
             val measured = board.withoutPresence()
             board = held.first { it.withoutPresence() != measured }
@@ -431,19 +432,14 @@ class BoardClient(
     internal suspend fun liveConnection(): Connection? = mutex.withLock { live }
 
     /**
-     * Ends [connection]: parts it if it's still live, then stops its job and closes its seam.
-     * Returns the held board as it stood at the parting, before the close, which can take up to
-     * [SEAM_CLOSE_TIMEOUT].
+     * Ends [connection]: parts it if it's still live, then stops its job and closes its seam,
+     * which can take up to [SEAM_CLOSE_TIMEOUT].
      */
-    private suspend fun end(connection: Connection): BoardState {
-        val parted = mutex.withLock {
-            partLocked(connection)
-            held.value
-        }
+    private suspend fun end(connection: Connection) {
+        mutex.withLock { partLocked(connection) }
         connection.job.cancelAndJoin()
         connection.quilter.close()
         closeQuietly(connection.seam)
-        return parted
     }
 
     /**
