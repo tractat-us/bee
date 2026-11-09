@@ -99,16 +99,16 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  *
  * - the board relay at [BoardRelay.PATH] and the claims voter at [BeeHost.CLAIMS_PATH], **behind
  *   the socket gate**. A socket must name [board] in its `?board=` ([BoardId], bee#46), and come
- *   from a loopback address or hold a key [Pairing] minted in its `?k=`. Anything else gets a 403
+ *   from a [Caller.local] caller or hold a key [Pairing] minted in its `?k=`. Anything else gets a 403
  *   before the WebSocket upgrade, so it never reaches the hub or the voter, and a replica of
  *   another board never pushes its state.
  * - MCP over Streamable HTTP at [BeeHost.MCP_PATH] (served by [us.tractat.bee.mcp.HttpBridges]),
- *   behind the key half of the same gate: from loopback, or with a key [Pairing] minted in its
+ *   behind the key half of the same gate: from a local caller, or with a key [Pairing] minted in its
  *   `?k=`. It names no board, since the bridge the host runs for it dials the board itself.
  * - the board's id at [BoardId.PATH], the pairing channel at [PairingWire.PATH] and the page at
  *   `/`, open to all: they are what a keyless device needs, and none carries board state, presence
  *   or claims. The page's files, and only they, carry [BeeHost.PAGE_CSP].
- * - the join link at [us.tractat.bee.core.InviteLinks.PATH], to a loopback caller alone, and only
+ * - the join link at [us.tractat.bee.core.InviteLinks.PATH], to a local caller alone, and only
  *   when [invitation] is open ([inviteEndpoint]).
  *
  * The gate is installed on the route nodes kuilt's own `webSocket(path)` created, so it applies to
@@ -120,7 +120,7 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * the laptop reach the board.
  *
  * @param board the board this host keeps: the only one a socket may name
- * @param peers where each call came from; production passes [PeerAddress.DIRECT]
+ * @param peers who each call came from; production passes its [Reach.peers]
  * @param arrivals where each call arrived; production passes [ArrivalAddress.DIRECT]
  * @param desk serves the pairing channel, over [pairing]
  * @param invitation whether the host has a join link to give its owner's page
@@ -141,7 +141,7 @@ fun Application.mountEndpoints(
     val relay = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
     val keyRefusal = { call: ApplicationCall ->
-        val keyed = isLoopback(peers.of(call)) || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
+        val keyed = peers.of(call).local || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
         "This device needs a key: open the page to pair it.".takeUnless { keyed }
     }
     val refusal = { call: ApplicationCall ->
