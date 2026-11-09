@@ -28,11 +28,13 @@ fi
 [ -x "$JAVA_HOME/bin/java" ] || { echo "No Java 25 at $JAVA_HOME. Set JAVA_HOME to a JDK 25, or use a bee kit." >&2; exit 1; }
 
 # Writes an MCP config at $1 that runs the bridge against BEE_HOST $2, named $3.
-# BEE_TELEMETRY goes in only when set as the config is written; left out, the bridge reads the
-# environment Claude starts with, so BEE_TELEMETRY=off there still turns it off.
+# BEE_TELEMETRY, BEE_OTLP_ENDPOINT and BEE_OTLP_PROTOCOL go in only when set as the config is written; left out, the
+# bridge reads the environment Claude starts with, so BEE_TELEMETRY=off there still turns it off.
 bee_write_mcp_config() {
     local switch=""
     [ -n "${BEE_TELEMETRY:-}" ] && switch=", \"BEE_TELEMETRY\": \"$BEE_TELEMETRY\""
+    [ -n "${BEE_OTLP_ENDPOINT:-}" ] && switch="$switch, \"BEE_OTLP_ENDPOINT\": \"$BEE_OTLP_ENDPOINT\""
+    [ -n "${BEE_OTLP_PROTOCOL:-}" ] && switch="$switch, \"BEE_OTLP_PROTOCOL\": \"$BEE_OTLP_PROTOCOL\""
     mkdir -p "$(dirname "$1")"
     umask 077
     cat > "$1" <<EOF

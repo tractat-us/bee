@@ -28,6 +28,7 @@ kuilt-store = { module = "us.tractat.kuilt:kuilt-store" }
 kuilt-test = { module = "us.tractat.kuilt:kuilt-test" }
 kuilt-otel = { module = "us.tractat.kuilt:kuilt-otel" }
 kuilt-otel-logging = { module = "us.tractat.kuilt:kuilt-otel-logging" }
+kuilt-otel-otlp = { module = "us.tractat.kuilt:kuilt-otel-otlp" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }

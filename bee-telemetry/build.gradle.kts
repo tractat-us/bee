@@ -49,6 +49,8 @@ kotlin {
             kotlin.srcDir(writeBuildInfo)
             dependencies {
                 api(project.dependencies.platform(libs.kuilt.bom))
+                // Ktor's own BOM, so kuilt-otel-otlp's Ktor matches the version bee pins.
+                implementation(project.dependencies.platform(libs.ktor.bom))
                 api(libs.kuilt.otel)
                 api(libs.kuilt.store)
                 // api: RecordingTelemetry.captured takes its NormalizedLogEvent.
@@ -60,8 +62,15 @@ kotlin {
         jvmMain.dependencies {
             // The edge that captures every line logback writes ([LogbackEdge]).
             implementation(libs.logback)
+            // BEE_OTLP_ENDPOINT's export (OtlpExport): kuilt's OTLP/HTTP edge, over Ktor's CIO client.
+            implementation(libs.kuilt.otel.otlp)
+            implementation(libs.ktor.client.cio)
             // The reader's --json lines (TimelineMain).
             implementation(libs.kotlinx.serialization.json)
+        }
+        jvmTest.dependencies {
+            // OtlpExportTest's collector: a real OTLP/HTTP endpoint on loopback.
+            implementation(libs.ktor.server.netty)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
