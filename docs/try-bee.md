@@ -191,3 +191,4 @@ someone else's board, the `claude mcp remove` line is all you need.
 [Setting up bee in Claude Code](setup.md) covers running bee from a checkout, the `/clear` hook,
 showing the board on a phone or a room screen, and how pairing and keys work.
 [The design](superpowers/specs/2026-11-06-bee-design.md) says why bee is built the way it is.
+To show bee to a colleague, follow the five-minute [demo walkthrough](demo.md).

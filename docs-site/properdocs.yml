@@ -120,6 +120,7 @@ plugins:
         Docs:
           - index.md: What bee is, and the three ways onto a board
           - try-bee.md: Joining a board, or running your own, in a few minutes, from a Mac
+          - demo.md: A five-minute script for showing bee to a colleague, two laptops and a phone
           - setup.md: Running a board with bee-up, joining one from its link, and adding bee to Claude Code
           - tools.md: Every tool and prompt a Claude session gets from bee, one line each
           - plugin.md: The Claude Code plugin, which joins a session to a board with one install
@@ -155,6 +156,7 @@ nav:
   - Docs:
       - Home: index.md
       - Try bee: try-bee.md
+      - Demo walkthrough: demo.md
       - Setup: setup.md
       - Tools and prompts: tools.md
       - Claude Code plugin: plugin.md

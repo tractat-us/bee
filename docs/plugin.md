@@ -16,6 +16,9 @@ The plugin needs a host that serves MCP over HTTP at `/mcp`, which bee has had s
 [#122](https://github.com/tractat-us/bee/pull/122). Against an older host, `/mcp` in Claude Code
 shows `bee` as failed.
 
+New to bee? [Try bee](try-bee.md) puts you on a board first. To show bee to a colleague, the
+[demo walkthrough](demo.md) is a five-minute script.
+
 ## What you get
 
 - **The board's tools and prompts.** The plugin's MCP server, `bee`, connects over HTTP to the

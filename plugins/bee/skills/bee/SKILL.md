@@ -55,3 +55,8 @@ Each card names the session that opened it and its state:
 The board travels over plain HTTP, and everyone attached sees all of it. Never put a secret,
 token, key, password or environment value on it, or the board URL itself, which can carry the
 board's join key. Name a file; don't paste it. Write short summaries.
+
+## Setup questions
+
+When the person asks how to install bee, run a board, join one or demo it, point them to the docs
+at <https://tractat-us.github.io/bee/> rather than guessing.

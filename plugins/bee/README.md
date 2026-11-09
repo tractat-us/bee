@@ -19,7 +19,9 @@ board on another machine. The plugin needs a host that serves `/mcp`
 runs on the host.
 
 [The Claude Code plugin](../../docs/plugin.md) covers picking the board, where to turn the plugin
-on, and how to remove it.
+on, and how to remove it. New to bee? [Try bee](../../docs/try-bee.md) puts you on a board first.
+To show it to a colleague, the [demo walkthrough](../../docs/demo.md) is a five-minute script. All
+the docs are at <https://tractat-us.github.io/bee/>.
 
 | File | What it is |
 |---|---|
