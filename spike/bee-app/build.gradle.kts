@@ -56,7 +56,7 @@ dependencies {
             // The app's own Kotlin brings the stdlib.
             exclude("kotlin-stdlib-*.jar", "annotations-*.jar")
             // Desktop-only native transports and QUIC: nothing Android can load.
-            exclude("netty-codec-native-quic-*.jar", "netty-transport-native-*.jar", "netty-transport-classes-*.jar")
+            exclude("netty-codec-native-quic-*.jar", "netty-transport-native-*.jar")
         },
     )
 }
