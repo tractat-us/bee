@@ -116,9 +116,10 @@ class HttpBridges(
     }
 
     /**
-     * Ends every session without departing it, since its client hasn't gone: its identities stay
-     * [kept], for the session the client opens on the next host. Waits for any departure already
-     * under way, so call it before the host's sockets and voter stop.
+     * Ends every session. One that can come back as itself ([resumable]) departs nothing, since its
+     * client hasn't gone: its identities stay [kept], for the session the client opens on the next
+     * host. One that can't departs `Left`, as before bee#126. Waits for those departures, and any
+     * already under way, so call it before the host's sockets and voter stop.
      */
     suspend fun close() = withContext(NonCancellable) {
         stopping = true
