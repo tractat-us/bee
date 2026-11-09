@@ -15,7 +15,7 @@ const toggle = (page) => page.locator('#bar #bring-claude-toggle');
 const panel = (page) => page.locator('#bring-claude');
 const command = (page) => page.locator('#bring-claude-command');
 
-const line = (origin, query) => `claude mcp add --scope user --transport http bee '${origin}/mcp?${query}'`;
+const line = (origin, query) => `claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee '${origin}/mcp?${query}'`;
 
 async function openBoard(page, url) {
   await page.goto(url);

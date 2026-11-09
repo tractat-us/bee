@@ -19,8 +19,10 @@ internal sealed interface Viewer {
  * needs none) and the viewer's name.
  *
  * `--scope user` because the session it brings may start in any folder: `claude mcp add`'s own
- * default scope is the folder it runs in. The URL is single-quoted for the shell, and every part
- * of its query percent-encoded, a `'` too, so no name can end the quote.
+ * default scope is the folder it runs in. The line first removes any earlier `bee` entry, quietly,
+ * since `claude mcp add` refuses a name it already has: one line still works with a new key or
+ * for another board. The URL is single-quoted for the shell, and every part of its query
+ * percent-encoded, a `'` too, so no name can end the quote.
  */
 internal class McpCommand private constructor(val line: String, val viewer: Viewer) {
     companion object {
@@ -29,6 +31,9 @@ internal class McpCommand private constructor(val line: String, val viewer: View
 
         /** The name the line carries for a viewer the page can't name. */
         const val PLACEHOLDER = "you"
+
+        /** Drops an earlier `bee` entry, saying nothing whether or not there was one. */
+        private const val REMOVE_EARLIER = "claude mcp remove --scope user bee >/dev/null 2>&1;"
 
         fun of(origin: String, access: Access.Admitted, viewer: Viewer): McpCommand {
             val name = when (viewer) {
@@ -40,7 +45,7 @@ internal class McpCommand private constructor(val line: String, val viewer: View
                 Access.Loopback -> emptyList()
             }
             val query = (key + ("name" to name)).joinToString("&") { (param, value) -> "$param=${shellSafe(value)}" }
-            return McpCommand("claude mcp add --scope user --transport http bee '$origin$PATH?$query'", viewer)
+            return McpCommand("$REMOVE_EARLIER claude mcp add --scope user --transport http bee '$origin$PATH?$query'", viewer)
         }
 
         private fun shellSafe(value: String): String = encodeURIComponent(value).replace("'", "%27")
@@ -82,7 +87,7 @@ internal class BringYourClaude(shell: PageShell, private val command: McpCommand
 
     init {
         panel.appendChild(heading())
-        panel.appendChild(element("p", "").also { it.textContent = "In a terminal, run:" })
+        panel.appendChild(element("p", "").also { it.textContent = "In a terminal, run this. It replaces any earlier bee entry." })
         panel.appendChild(
             element("div", "bring-claude-line").also { row ->
                 row.appendChild(line)

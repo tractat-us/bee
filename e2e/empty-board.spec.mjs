@@ -46,7 +46,7 @@ test('an empty board shows how to start, and the first surface replaces the hint
   await expect(page.locator('#status')).toHaveText(/^online/, { timeout: 15_000 });
   await expect(hint(page)).toBeVisible();
   await expect(hint(page)).toContainText('Nothing on the board yet.');
-  await expect(hint(page).locator('code')).toHaveText('/mcp__bee__whiteboard');
+  await expect(hint(page).locator('code')).toHaveText('/mcp__bee__whiteboard <topic>');
   // The hint offers the bar's "Bring your Claude" panel too.
   await hint(page).locator('.bring-claude-open').click();
   await expect(page.locator('#bring-claude')).toBeVisible();
