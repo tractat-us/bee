@@ -175,3 +175,12 @@ test('the debug lines sit under a collapsed Details, off the board', async ({ pa
   await expect(page.locator('#details #store')).toBeHidden();
   await expect(page.locator('#bar #status')).toBeVisible();
 });
+
+test('the bar shows bee as a mark that reads as "bee", and the page has its icon', async ({ page }) => {
+  await open(page, 'alex');
+  await expect(page.locator('#bar').getByRole('img', { name: 'bee' })).toBeVisible();
+  // Fetched from the page, so the site gate sees the browser's own Fetch Metadata.
+  const status = (path) => page.evaluate(async (p) => (await fetch(p)).status, path);
+  expect(await status('/favicon.svg')).toBe(200);
+  expect(await status('/favicon.ico')).toBe(200);
+});

@@ -38,6 +38,8 @@ theme:
   name: material
   # main.html adds the "View as Markdown" and "Copy page as Markdown" buttons.
   custom_dir: overrides
+  logo: assets/bee.svg
+  favicon: assets/bee.svg
   features:
     - navigation.instant
     - navigation.tabs
