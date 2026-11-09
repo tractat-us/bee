@@ -50,7 +50,7 @@ object Decisions {
      * bold markers are dropped.
      */
     fun question(body: String): String? = body.lines()
-        .filterNot { it.trimStart().startsWith(">") }
+        .filterNot { line -> line.trimStart().let { it.startsWith(">") || it.startsWith("|") } }
         .map { it.trim().removePrefix("- ").removePrefix("* ").replace("**", "") }
         .firstNotNullOfOrNull { line -> QUESTION.find(line)?.value?.trim() }
         ?.let { if (it.length <= QUESTION_CHARS) it else "${it.take(QUESTION_CHARS - 1).trimEnd()}…" }
@@ -63,6 +63,9 @@ object Decisions {
         body = stringOrNull("body").orEmpty(),
     )
 
-    /** A sentence ending in `?`: from the line's start or just after another sentence's end. */
-    private val QUESTION = Regex("""(?:^|(?<=[.!:]\s))[^.!?:]*\?""")
+    /**
+     * A sentence ending in `?` at a word's end: it starts with a capital, at the line's start or
+     * just after another sentence's end. A `?` inside code (`/?name=`) or a table cell ends none.
+     */
+    private val QUESTION = Regex("""(?:^|(?<=[.!:]\s))[A-Z][^.!?:`|]*\?(?=\s|$)""")
 }
