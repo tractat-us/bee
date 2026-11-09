@@ -256,20 +256,23 @@ test('the demo, beat by beat', async ({ browser }) => {
       await expect(boardCard(page, NEXT, 'doing', 'checks')).toBeVisible({ timeout: 15_000 });
     }
 
+    // The HTTP agent reconnects on its next call: one new session, and it works.
+    const board = await rig.teammate.call('bee_board', {});
+    expect(board.open.map((s) => s.surfaceId)).toEqual(expect.arrayContaining([MAIN, POLL, NEXT]));
+    expect(rig.teammate.sessions).toBe(2);
+
     // The stdio bridge keeps its identity, and a click on its pre-restart surface still reaches it.
     const before = rig.owner.identity;
     await claimsOnline(rig.owner);
     expect((await rig.owner.call('bee_presence', { status: 'back after the restart' })).as).toBe(before);
-    const { waited } = await ownerListens(rig.teammatePage, MAIN);
+    const waited = rig.owner.call('bee_wait_action', { timeoutSeconds: 45 });
+    const waiting = () => rig.teammate.call('bee_board', {}).then((b) => b.attached.find((a) => a.identity === before)?.waiting);
+    await expect.poll(waiting, { message: 'the board shows the owner agent waiting', timeout: 15_000 }).toBe(true);
+    await expect(card(rig.teammatePage, MAIN).locator('.bee-card-state')).toHaveText('listening', { timeout: 15_000 });
     await button(rig.teammatePage, MAIN, 'Automated checks').click();
     const { record } = await waited;
     expect(record, "the click after the restart reached the owner's agent").toMatchObject({ surfaceId: MAIN, name: 'answer' });
     await rig.owner.call('bee_action_done', { recordId: record.recordId, token: record.token });
-
-    // The HTTP agent reconnects on its next call: one new session, and it works.
-    const board = await rig.teammate.call('bee_board', {});
-    expect(board.surfaces.map((s) => s.surfaceId)).toEqual(expect.arrayContaining([MAIN, POLL, NEXT]));
-    expect(rig.teammate.sessions).toBe(2);
     rig.httpIdentity.after = await rig.teammate.identityNow();
   });
 
