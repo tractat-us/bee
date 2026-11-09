@@ -36,6 +36,11 @@ shows `bee` as failed.
 
 - **A skill, `bee`.** It tells the session how to wait for an answer, what each card's state
   means, and what never goes on the board. It loads by itself when you mention the board.
+- **A skill, `notion`, for a piece the board lacks.** Ask "can the board show a timer?", or for a
+  chart, a QR code or a map. The session checks what the board can draw, builds the piece now as a
+  Sketch, and says what a Sketch can't do. Then it offers to ask bee for the piece as a new
+  component, in an issue on `tractat-us/bee`. It shows you the draft and files only when you say
+  yes, and keeps what's on your board out of it.
 
 ## Pick the board
 

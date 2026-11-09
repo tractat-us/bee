@@ -28,6 +28,7 @@ on, and how to remove it.
 | `skills/bee/SKILL.md` | Waiting for answers, card states, what never goes on the board |
 | `skills/draw/SKILL.md` | `/bee:draw`: the server's `whiteboard` prompt, copied |
 | `skills/checkin/SKILL.md` | `/bee:checkin`: the server's `checkin` prompt, copied |
+| `skills/notion/SKILL.md` | A component the board lacks: build it as a Sketch, offer to request it |
 
 `PluginCommandsTest` in `bee-mcp` fails when a copied prompt no longer matches the server's.
 
