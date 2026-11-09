@@ -1,0 +1,108 @@
+name: deploy
+
+# Manual only: deploys bee-host to Fly app bee-tractat-us (fly.toml), the board at
+# https://bee.tractat.us. Builds bee-host's application distribution here, where the Tigris
+# credentials that resolve us.tractat.kuilt are available, then hands it to Fly's remote builder,
+# which only copies it into the image (Dockerfile). Then polls the public URL until /board-id
+# answers 200. Setup, DNS, the owner key and rollback: docs/deploy.md.
+#
+# Without the FLY_API_TOKEN secret (a fork, say), the distribution still builds and is uploaded as
+# an artifact; nothing deploys.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Origin to smoke-check after the deploy. https://bee-tractat-us.fly.dev before DNS is in place."
+        required: false
+        default: "https://bee.tractat.us"
+
+permissions:
+  contents: read
+
+# One deploy at a time, never cancelled: a cancelled rolling deploy can leave the machine mid-update.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # The flyctl that deploys, pinned so two runs of one commit use the same tool. Matches
+      # tractat-us/fireworks-compose's deploy-server.yml.
+      # renovate: datasource=github-releases depName=superfly/flyctl extractVersion=^v(?<version>.+)$
+      FLYCTL_VERSION: "0.5.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25.0.5'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: wrapper
+          # A deploy reads main's cache and never writes one.
+          cache-read-only: true
+
+      - name: Build the distribution
+        env:
+          # Org secrets: Tigris credentials for the us.tractat.kuilt Maven repository.
+          S3_BUILD_CACHE_ACCESS_KEY_ID: ${{ secrets.S3_BUILD_CACHE_ACCESS_KEY_ID }}
+          S3_BUILD_CACHE_SECRET_KEY: ${{ secrets.S3_BUILD_CACHE_SECRET_KEY }}
+        run: |
+          [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
+          timeout 600 ./gradlew :bee-host:installDist --stacktrace --console=plain
+          # The page rides in its own jar; an image without it serves no board.
+          test -f bee-host/build/install/bee-host/lib/bee-host-web.jar
+
+      - name: Install flyctl
+        if: env.FLY_API_TOKEN != ''
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+        with:
+          version: ${{ env.FLYCTL_VERSION }}
+
+      # --ha=false: one machine, because one volume attaches to one machine (fly.toml).
+      - name: Deploy to Fly
+        if: env.FLY_API_TOKEN != ''
+        run: |
+          flyctl deploy \
+            --remote-only \
+            --ha=false \
+            --wait-timeout 300
+
+      - name: Smoke-check /board-id
+        if: env.FLY_API_TOKEN != ''
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          set -u
+          url="${BASE_URL%/}/board-id"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            status=$(curl -s -o /tmp/board-id -w '%{http_code}' --max-time 30 "$url" || true)
+            echo "Attempt $attempt: GET $url -> $status"
+            if [ "$status" = "200" ]; then
+              echo "Board $(cat /tmp/board-id) is up."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$url never answered 200."
+          exit 1
+
+      - name: Upload the distribution (no FLY_API_TOKEN)
+        if: env.FLY_API_TOKEN == ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bee-host-${{ github.sha }}
+          path: bee-host/build/install/bee-host
+          if-no-files-found: error
