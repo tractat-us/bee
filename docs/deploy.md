@@ -91,7 +91,8 @@ bee-tractat-us` reports it.
 
 ## What ships
 
-`Dockerfile`, `fly.toml` and `.github/workflows/deploy.yml` are the whole of it. The image holds a
+[`Dockerfile`](../Dockerfile), [`fly.toml`](../fly.toml) and
+[`deploy.yml`](../.github/workflows/deploy.yml) are the whole of it. The image holds a
 Java 25 runtime and `bee-host`'s distribution, with the page it serves. It builds nothing, so no
 build credential reaches Fly. The host runs as the unprivileged user `bee`, on a `shared-cpu-1x`
 machine with 512 MB of memory and a 256 MB heap.
