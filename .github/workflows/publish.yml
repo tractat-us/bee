@@ -1,0 +1,111 @@
+# Releases bee's library modules (those applying bee.publish) to Maven Central. PUBLISHING.md says
+# how to cut a release. Modelled on kuilt's publish.yml maven-central job, without its continuous
+# Tigris channel: nothing in-house consumes bee's libraries between releases.
+#
+# RELEASE-CONTROLLED. Runs only on a v<x.y.z> tag or a manual dispatch, never on a plain push. The
+# upload lands in the Central Portal as a PENDING deployment (automaticRelease = false in
+# bee.publish), which a person releases by hand at central.sonatype.com. ubuntu is enough: the
+# published targets are jvm and wasmJs, with no Apple klibs to build.
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, such as 0.1.0. Required: a Central release is permanent.'
+        required: true
+
+permissions:
+  contents: read
+
+# Keyed on the version, so a tag push and a dispatch for the same release can't upload twice.
+concurrency:
+  group: publish-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  maven-central:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write       # create the GitHub Release
+    env:
+      # vanniktech reads these as Gradle properties through the ORG_GRADLE_PROJECT_ prefix.
+      ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+      # No Tigris credentials, on purpose: a release must resolve every dependency from Maven
+      # Central, as its consumers will. A kuilt that only Tigris serves then fails the build here.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compute release version
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -eu
+          # A tag v0.1.0 releases 0.1.0. A dispatch names its version explicitly.
+          if [ "$EVENT" = "push" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="$INPUT_VERSION"; fi
+          # [[ =~ ]] matches the whole value. grep would pass a value with a newline in it, and the
+          # second line would then land in GITHUB_ENV as a variable of its own.
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a release version (x.y.z, optionally -suffix)." >&2
+            exit 1
+          fi
+          echo "Releasing $VERSION to Maven Central"
+          echo "PUBLISH_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Preflight
+        run: |
+          set -eu
+          : "${ORG_GRADLE_PROJECT_mavenCentralUsername:?MAVEN_CENTRAL_USERNAME is not available to this repository}"
+          : "${ORG_GRADLE_PROJECT_mavenCentralPassword:?MAVEN_CENTRAL_PASSWORD is not available to this repository}"
+          : "${ORG_GRADLE_PROJECT_signingInMemoryKey:?SIGNING_KEY is not available to this repository}"
+          : "${ORG_GRADLE_PROJECT_signingInMemoryKeyPassword:?SIGNING_PASSWORD is not available to this repository}"
+          # A released POM names bee's kuilt version, and a -dev kuilt lives only on Tigris. Say so
+          # now, before the build fails to resolve it.
+          KUILT=$(sed -n 's/^kuilt = "\(.*\)"/\1/p' gradle/libs.versions.toml)
+          case "$KUILT" in
+            ''|*-dev*) echo "::error::kuilt is '$KUILT' in gradle/libs.versions.toml. Move it to a kuilt release on Maven Central first." >&2; exit 1 ;;
+          esac
+          echo "Secrets present; kuilt $KUILT."
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25.0.5'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: wrapper
+          cache-read-only: true
+
+      # publishToMavenCentral, not ...AndRelease: the deployment is uploaded and validated, then
+      # waits for a person. No configuration cache, as in kuilt: signing credentials pass through
+      # Gradle properties, and the upload is a once-a-release task.
+      - name: Upload to Maven Central (pending; release it by hand in the Portal)
+        run: timeout 600 ./gradlew -Pversion="$PUBLISH_VERSION" --no-configuration-cache publishToMavenCentral --stacktrace --console=plain
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          PRE=""
+          case "$PUBLISH_VERSION" in *-*) PRE="--prerelease" ;; esac
+          # --target: a dispatch has no tag yet, and gh would otherwise tag main's head, which may
+          # not be the commit just built and uploaded.
+          # brew-release.yml runs on the same tag and may have created the release already. This
+          # job attaches nothing, so an existing release is fine, whichever job got there first.
+          if gh release view "v$PUBLISH_VERSION" >/dev/null 2>&1; then
+            echo "Release v$PUBLISH_VERSION already exists; leaving it as it is."
+          elif ! gh release create "v$PUBLISH_VERSION" --target "$GITHUB_SHA" --title "v$PUBLISH_VERSION" --generate-notes $PRE; then
+            # Lost a race with the other job between the view and the create.
+            gh release view "v$PUBLISH_VERSION" >/dev/null
+          fi
