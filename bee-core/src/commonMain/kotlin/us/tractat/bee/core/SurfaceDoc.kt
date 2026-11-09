@@ -116,11 +116,20 @@ internal object SurfaceDoc {
      * [doc]'s meta, or null while its open hasn't arrived: the doc holds no meta yet, or meta
      * without the fields an open writes.
      *
-     * Workaround for bee#171: a page can receive another peer's write to a surface (a Poll answer)
-     * before the open that made the surface, so it holds a doc with data and no meta. Why the open
-     * arrives second is unexplained, and the root cause stays open on bee#171. Until it's found,
-     * a surface without its open's meta is no surface yet: the board's reads leave it out, and it
-     * shows once the open arrives. Remove the null once a write can never arrive before its open.
+     * A surface without its open's meta is no surface yet: the board's reads leave it out, and it
+     * shows once the open arrives. This is permanent, not a stopgap (bee#171). The open and a later
+     * write are separate deltas, often from different peers, and kuilt's Quilter applies deltas in
+     * order per origin, never causally across origins. So a page can merge another peer's write to
+     * a surface (a Poll answer) before the open that write was based on.
+     *
+     * A page that joins a running board makes that routine, not rare. Its gossip seam holds the
+     * first frame of every origin it sights mid-stream, the host and each agent, for up to the
+     * reorder grace (tractat-us/kuilt#2916), and its Quilter can't apply an agent's own deltas at
+     * all, since its cursor for an origin that was mid-stream never heals (tractat-us/kuilt#3148).
+     * Another page's first write comes from an origin it sights from the start, and passes at once.
+     * Fixing those two shortens the window, but doesn't close it: nothing in the Quilter's delivery
+     * orders one origin's write after another origin's open. `OpenBeforeWriteTest` in bee-host
+     * reproduces the order over the relay.
      */
     fun meta(doc: JsonCrdt): SurfaceMeta? {
         val meta = doc[SurfaceFormat.META] as? JsonNode.Object ?: return null
