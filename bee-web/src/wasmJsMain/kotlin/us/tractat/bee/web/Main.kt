@@ -196,8 +196,12 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
         setAttribute("style", "position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)")
     }
     private val prompt = panel.appendElement("p", "pairing-prompt")
+    // One click or tap selects the whole code, so it copies whole: someone joining from elsewhere
+    // sends it by chat (bee#212). `user-select: all` does it for a click. A phone's WebKit sends no
+    // mouse events for a tap on an element nothing listens to, so the listener selects it there.
     private val code = panel.appendElement("p", "pairing-code").apply {
-        setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums")
+        setAttribute("style", "font-size:20vmin;letter-spacing:0.1em;margin:0;font-variant-numeric:tabular-nums;-webkit-user-select:all;user-select:all")
+        addEventListener("click", { selectText(this) })
     }
     private val again = panel.appendElement("button", "pairing-again").apply {
         textContent = "Show a new code"
@@ -263,6 +267,15 @@ private class PairingPanel(screen: String?, private val admitted: (String) -> Un
         again.removeAttribute("hidden")
     }
 }
+
+/** Selects all of [element]'s text. */
+@JsFun(
+    """(element) => {
+        const selection = window.getSelection();
+        if (selection) selection.selectAllChildren(element);
+    }""",
+)
+private external fun selectText(element: Element)
 
 private fun endedText(reason: PairingEnd): String = when (reason) {
     PairingEnd.Expired -> "Nobody typed the code in time."

@@ -82,6 +82,35 @@ class PairingTest {
         )
     }
 
+    /**
+     * A code that came by chat is pasted, with whatever came with it: spaces, a line break, a
+     * hyphen grouping the digits (bee#212). Each still admits.
+     */
+    @Test
+    fun pastedCodeWithSpacesLineBreaksOrHyphensAdmits() {
+        val pastes = listOf<(String) -> String>(
+            { "${it.take(3)} ${it.drop(3)}" },
+            { "${it.take(3)}-${it.drop(3)}" },
+            { "$it\n" },
+            { " \t$it\r\n" },
+        )
+        // Each pairing ends after its paste, so a wrong one can't hold a place the next one needs.
+        val attempts = pastes.map { paste -> ticket().let { pairing.attempt(it.id, iain, paste(it.code)).also { _ -> pairing.end(it.id) } } }
+        assertTrue(attempts.all { it is Attempt.Admitted }, "every paste admits: $attempts")
+    }
+
+    /**
+     * Only spaces, line breaks and hyphens are dropped from an entry: a code with anything else in
+     * it, or a digit short or over, is still wrong and spends a try.
+     */
+    @Test
+    fun entryWithOtherCharactersOrDigitsIsStillWrong() {
+        val ticket = ticket()
+        val entries = listOf("${ticket.code.take(3)}x${ticket.code.drop(3)}", ticket.code.drop(1), "${ticket.code}1")
+        val attempts = entries.map { pairing.attempt(ticket.id, iain, it) }
+        assertEquals(listOf(Attempt.Wrong(triesLeft = 2), Attempt.Wrong(triesLeft = 1), Attempt.Voided), attempts)
+    }
+
     @Test
     fun thirdWrongEntryVoidsPairing() {
         val ticket = ticket()

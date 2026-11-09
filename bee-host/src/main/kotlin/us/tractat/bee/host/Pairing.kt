@@ -213,7 +213,11 @@ class Pairing(
         }
     }
 
-    /** [actor] typed [code] for pairing [id]. An admitted key admits by the time this returns. */
+    /**
+     * [actor] typed [code] for pairing [id]. An admitted key admits by the time this returns. A code
+     * pasted from chat often carries spaces, a line break or a hyphen, so those are dropped before
+     * it is compared ([entered]); anything else in it still makes it wrong (bee#212).
+     */
     fun attempt(id: PairingId, actor: PeerIdentity, code: String): Attempt {
         val attempt = decide(id, actor, code)
         // Outside the lock: saving the key is file I/O, and no other pairing waits on it.
@@ -226,7 +230,7 @@ class Pairing(
         when {
             clock() >= live.expiresAt -> Attempt.Expired.also { pending.remove(id) }
             actor.kind != PeerKind.Human -> Attempt.NotHuman(actor)
-            constantTimeEquals(code, live.code) -> {
+            constantTimeEquals(entered(code), live.code) -> {
                 pending.remove(id)
                 Attempt.Admitted(secrets.key(), actor)
             }
@@ -270,6 +274,9 @@ class Pairing(
          * device that dials and drops writes nothing there, so a loop of them leaves no surfaces.
          */
         val DWELL: Duration = 3.seconds
+
+        /** [typed] without the spaces, line breaks and hyphens a paste brings along. */
+        private fun entered(typed: String): String = typed.filterNot { it.isWhitespace() || it == '-' }
 
         private fun constantTimeEquals(a: String, b: String): Boolean =
             MessageDigest.isEqual(a.encodeToByteArray(), b.encodeToByteArray())
