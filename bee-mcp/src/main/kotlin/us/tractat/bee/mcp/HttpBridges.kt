@@ -63,17 +63,32 @@ private val logger = KotlinLogging.logger {}
  * @param keyKind which of the host's keys a call's `?k=` is, by the host's own reckoning
  * @param checkEvery how often the idle check runs
  * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
+ * @param closeServer how a session's server closes: the SDK's own [Server.close]. A test's way to have it fail
  */
-class HttpBridges(
+@Suppress("LongParameterList")
+class HttpBridges internal constructor(
     scope: CoroutineScope,
     private val clock: () -> Instant,
     private val random: Random,
     private val kept: KeptIdentities,
     private val keyKind: (String?) -> PresentedKey,
-    private val idleAfter: Duration = IDLE_AFTER,
-    private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
-    private val maxSessions: Int = MAX_SESSIONS,
+    private val idleAfter: Duration,
+    private val checkEvery: Duration,
+    private val maxSessions: Int,
+    private val closeServer: suspend (Server) -> Unit,
 ) {
+    @Suppress("LongParameterList")
+    constructor(
+        scope: CoroutineScope,
+        clock: () -> Instant,
+        random: Random,
+        kept: KeptIdentities,
+        keyKind: (String?) -> PresentedKey,
+        idleAfter: Duration = IDLE_AFTER,
+        checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
+        maxSessions: Int = MAX_SESSIONS,
+    ) : this(scope, clock, random, kept, keyKind, idleAfter, checkEvery, maxSessions, Server::close)
+
     private val supervisor = SupervisorJob(scope.coroutineContext[Job])
     private val work = CoroutineScope(scope.coroutineContext + supervisor + Dispatchers.Default)
     private val http = peerHttpClient()
@@ -242,7 +257,7 @@ class HttpBridges(
          * connected departs all the same.
          */
         suspend fun end() {
-            server.close()
+            closeServer(server)
             depart()
         }
 
