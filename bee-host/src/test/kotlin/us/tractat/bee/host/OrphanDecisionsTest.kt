@@ -75,9 +75,11 @@ class OrphanDecisionsTest {
 
         /**
          * Answers [option] as the person: their answer at the `Poll`'s bound answers path and the
-         * record, as the page's driver writes them (Task 11a's `NotionActions`), then their client's proposal.
+         * record, as the page's driver writes them (Task 11a's `NotionActions`), then their client's
+         * proposal, for the orphaning the surface showed as they answered.
          */
         suspend fun answer(actor: PeerIdentity, option: String): OrphanAnswers.Outcome {
+            val seen = data()
             val context = buildJsonObject { put(OrphanDecision.OPTION_KEY, option) }
             val answered = "${answersPath()}/${SurfaceFormat.escapeSegment(actor.toString())}"
             star.relay.mutate { it.updateData(star.relay.replica, OrphanDecision.surfaceId(TARGET), answered, JsonPrimitive(option)) }
@@ -93,7 +95,7 @@ class OrphanDecisionsTest {
                 )
                 state.appendRecord(star.relay.replica, record)
             }
-            return answers.answered(OrphanDecision.surfaceId(TARGET), OrphanDecision.ANSWER_ACTION, context)
+            return answers.answered(OrphanDecision.surfaceId(TARGET), OrphanDecision.ANSWER_ACTION, context, seen)
         }
 
         /** Every command in the voter's log, in order. */
@@ -231,6 +233,42 @@ class OrphanDecisionsTest {
             { assertEquals(2, questions.size, "a second revision: $questions") },
             { assertTrue(bo.toString() in questions.last().jsonPrimitive.content, "naming the new holder") },
             { assertEquals("${orphaned.token.term}:${orphaned.token.index}", data().getValue("token").jsonPrimitive.content) },
+        )
+    }
+
+    /**
+     * A stale answer decides nothing (bee#83). Iain's page shows the first orphaning when he
+     * chooses "Release it"; before his click is proposed, the record is reassigned to bo and bo
+     * departs. His proposal names the first orphaning's token, so the table rejects it and the
+     * second orphaning stays open. The control is the same answer for the surface as it is now.
+     */
+    @Test
+    fun aStaleAnswerDecidesNothing() = rig {
+        val seen = data()
+        val release = buildJsonObject { put(OrphanDecision.OPTION_KEY, OrphanDecision.RELEASE) }
+        answer(iain, OrphanDecision.reassignOption(bo))
+        voter.depart(bo, DepartReason.Crashed)
+        star.relay.state.first { surfaceId in it.openSurfaces() && OrphanDecision.orphaning(data()) != OrphanDecision.orphaning(seen) }
+        val second = voter.table.value.status(target)
+        val stale = answers.answered(surfaceId, OrphanDecision.ANSWER_ACTION, release, seen)
+        val afterStale = voter.table.value.status(target)
+        val current = answers.answered(surfaceId, OrphanDecision.ANSWER_ACTION, release, data())
+        assertAll(
+            { assertEquals(OrphanAnswers.Outcome.Proposed(OrphanDecision.Choice.Release, applied = false), stale) },
+            { assertIs<ClaimStatus.Orphaned>(second, "rig: orphaned again") },
+            { assertEquals(second, afterStale, "the second orphaning stays open") },
+            { assertEquals(OrphanAnswers.Outcome.Proposed(OrphanDecision.Choice.Release, applied = true), current, "control") },
+        )
+    }
+
+    /** A surface naming no orphaning proposes nothing: it isn't a decision the host opened. */
+    @Test
+    fun aSurfaceNamingNoOrphaningProposesNothing() = rig {
+        val release = buildJsonObject { put(OrphanDecision.OPTION_KEY, OrphanDecision.RELEASE) }
+        val outcome = answers.answered(surfaceId, OrphanDecision.ANSWER_ACTION, release, JsonObject(data() - OrphanDecision.TOKEN))
+        assertAll(
+            { assertEquals(OrphanAnswers.Outcome.NotADecision, outcome) },
+            { assertIs<ClaimStatus.Orphaned>(voter.table.value.status(target)) },
         )
     }
 
