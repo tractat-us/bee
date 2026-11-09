@@ -4,6 +4,11 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.plugins.sse.sse
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
@@ -14,6 +19,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.test.assertAll
 import java.net.InetSocketAddress
@@ -21,6 +27,7 @@ import java.net.Socket
 import java.security.SecureRandom
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -73,6 +80,29 @@ class PairingChannelTest {
         assertAll(
             { assertTrue(pendingWhileOn, "rig: the pairing waits while the device is on") },
             { assertTrue(endedAfterHangUp) },
+        )
+    }
+
+    /**
+     * The poll path on the real server (bee#209): plain requests and complete responses, no stream,
+     * so a proxy that holds a stream back passes them. Only the token `POST /pair` gave answers.
+     */
+    @Test
+    fun aDevicePairsByPollAndOnlyItsTokenAnswers() = runBlocking {
+        val base = "http://127.0.0.1:$port"
+        val opening = client.post(base + PairingWire.PATH)
+        val opened = Json.decodeFromString(PairingPoll.serializer(), opening.bodyAsText())
+        val code = assertIs<PairingMessage.Code>(opened.message)
+        val polled = client.post(base + PairingWire.POLL_PATH) { setBody(opened.token) }
+        val polledMessage = Json.decodeFromString(PairingMessage.serializer(), polled.bodyAsText())
+        val byPairingId = client.post(base + PairingWire.POLL_PATH) { setBody(code.pairing) }
+        assertAll(
+            { assertEquals(HttpStatusCode.OK, opening.status) },
+            { assertEquals("no-store", opening.headers[HttpHeaders.CacheControl]) },
+            { assertTrue(pairing.isPending(PairingId(code.pairing)), "the pairing waits on its polls") },
+            { assertEquals(code, polledMessage) },
+            { assertEquals("no-store", polled.headers[HttpHeaders.CacheControl]) },
+            { assertEquals(HttpStatusCode.NotFound, byPairingId.status, "the pairing id, on the board for all, is no token") },
         )
     }
 

@@ -2,6 +2,8 @@ package us.tractat.bee.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -27,6 +29,19 @@ sealed interface PairingMessage {
     data class Ended(val reason: PairingEnd) : PairingMessage
 }
 
+/**
+ * What `POST` [PairingWire.PATH] answers: the pairing's [message] so far, and the [token] that
+ * fetches what follows from [PairingWire.POLL_PATH] (bee#209). Pairing by poll is plain requests
+ * and complete responses, so a proxy that holds back a stream until it ends can't stall it.
+ *
+ * [token] is the poll's only capability, and a secret: unlike the pairing id, it never goes on
+ * the board. Whoever holds it can fetch the pairing's key.
+ */
+@Serializable
+data class PairingPoll(val token: String, val message: PairingMessage) {
+    override fun toString(): String = "PairingPoll(token=…, message=${message::class.simpleName})"
+}
+
 /** Why a pairing ended without a key. */
 enum class PairingEnd {
     /** Nobody typed the code within its two minutes. */
@@ -50,8 +65,21 @@ enum class PairingEnd {
 
 /** The pairing wire's coordinates, shared by the host and the page. */
 object PairingWire {
-    /** The pairing channel's route: a server-sent event stream, not a WebSocket. */
+    /**
+     * The pairing channel's route. `GET` is a server-sent event stream, not a WebSocket. `POST`
+     * opens a pairing by poll instead, and answers a [PairingPoll].
+     */
     const val PATH: String = "/pair"
+
+    /**
+     * Where a device pairing by poll asks what its pairing has come to: `POST` its
+     * [PairingPoll.token] as the body, and get the newest [PairingMessage], or a 404 once the
+     * host holds no pairing for that token.
+     */
+    const val POLL_PATH: String = "/pair/poll"
+
+    /** How often a device pairing by poll asks. A pairing nobody asks after for a few of these ends, as a hang-up does. */
+    val POLL_EVERY: Duration = 1.seconds
 
     /** The query parameter carrying a device key, on the page's URL and on every socket it dials. */
     const val KEY_PARAM: String = "k"
