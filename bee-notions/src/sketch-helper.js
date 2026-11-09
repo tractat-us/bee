@@ -4,9 +4,10 @@
 //
 // It speaks the MCP Apps (SEP-1865) View-to-Host envelope, JSON-RPC 2.0 over postMessage: a click
 // on a `[data-choice]` element is a `ui/message` request whose text is the element's text, and
-// whose `_meta` names the choice. It also keeps the brainstorming companion's page API
-// (`toggleSelect`, `window.brainstorm`), so a companion screen behaves as it does on the
-// companion server.
+// whose `_meta` names the choice. It reports the document's height as a
+// `ui/notifications/size-changed` notification, so the page can fit the frame to it. It also keeps
+// the brainstorming companion's page API (`toggleSelect`, `window.brainstorm`), so a companion
+// screen behaves as it does on the companion server.
 
 /** Runs inside the sandboxed frame. */
 export function sketchHelper() {
@@ -107,6 +108,82 @@ export function sketchHelper() {
       choose(value, metadata && metadata.text !== undefined ? metadata.text : value);
     },
   };
+
+  // The document's height, so the page can fit the frame to it: an MCP Apps
+  // `ui/notifications/size-changed` notification whenever it changes, a few at most per frame's
+  // worth of layout. The root's box holds the body's margins; the body's scroll height catches
+  // content that overflows it.
+  var reportedHeight = -1;
+  var sizeTimer = null;
+  // Content sized in `vh` follows the frame's height, so a fit to it changes it again, and every
+  // fit would shrink the next report, down to the floor. So a resize of the frame's height alone,
+  // with nothing in the document changed and its width the same, reports nothing.
+  var contentChanged = true;
+  var frameWidth = innerWidth;
+  var frameHeight = innerHeight;
+  function contentChange() {
+    contentChanged = true;
+    scheduleSize();
+  }
+  function scrolls(el) {
+    var overflow = getComputedStyle(el).overflowY;
+    return overflow === 'auto' || overflow === 'scroll';
+  }
+  // A document that hides its own overflow pins itself to the frame and scrolls inside, as the
+  // companion's frame template does (`html, body { height: 100%; overflow: hidden }`, then a
+  // scrolling `.main`): its root and body are always exactly the frame's height. So measure what
+  // it holds: collapse the root and body for one synchronous layout, take what the body still
+  // holds, add what each scrolling element inside holds past its own box, and put them back.
+  // Nothing paints in between, and a ResizeObserver hears only the restored size.
+  function pinnedHeight(root, body) {
+    var rootStyle = root.style.cssText;
+    var bodyStyle = body.style.cssText;
+    [root, body].forEach(function (el) {
+      el.style.setProperty('height', '0', 'important');
+      el.style.setProperty('min-height', '0', 'important');
+    });
+    var margins = getComputedStyle(body);
+    var height = body.scrollHeight + parseFloat(margins.marginTop) + parseFloat(margins.marginBottom);
+    Array.prototype.forEach.call(body.querySelectorAll('*'), function (el) {
+      if (scrolls(el)) height += Math.max(0, el.scrollHeight - el.clientHeight);
+    });
+    root.style.cssText = rootStyle;
+    body.style.cssText = bodyStyle;
+    // This measurement's own style changes aren't the document changing.
+    changes.takeRecords();
+    return height;
+  }
+  function documentHeight() {
+    var root = document.documentElement;
+    var body = document.body;
+    if (!body) return Math.ceil(root.getBoundingClientRect().height);
+    if (getComputedStyle(root).overflowY === 'hidden' || getComputedStyle(body).overflowY === 'hidden') {
+      return Math.ceil(pinnedHeight(root, body));
+    }
+    return Math.ceil(Math.max(root.getBoundingClientRect().height, body.scrollHeight));
+  }
+  function reportSize() {
+    sizeTimer = null;
+    var frameOnly = !contentChanged && innerWidth === frameWidth && innerHeight !== frameHeight;
+    contentChanged = false;
+    frameWidth = innerWidth;
+    frameHeight = innerHeight;
+    if (frameOnly) return;
+    var height = documentHeight();
+    if (height === reportedHeight) return;
+    reportedHeight = height;
+    window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: height } }, '*');
+  }
+  function scheduleSize() {
+    if (sizeTimer === null) sizeTimer = setTimeout(reportSize, 50);
+  }
+  new ResizeObserver(scheduleSize).observe(document.documentElement);
+  // A pinned root never changes size, so a ResizeObserver on it hears nothing of what it holds:
+  // any change to the document re-measures too.
+  var changes = new MutationObserver(contentChange);
+  changes.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+  window.addEventListener('load', contentChange);
+  if (document.fonts) document.fonts.addEventListener('loadingdone', contentChange);
 
   // The frame's status pill, when the screen has one: it's on the board, not a companion server.
   document.addEventListener('DOMContentLoaded', function () {

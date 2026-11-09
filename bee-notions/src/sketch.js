@@ -12,6 +12,11 @@
 // sketch-helper.js), which this element answers once the viewer sends it, dismisses it, or the
 // sketch replaces it.
 //
+// The frame fits its document's height, within [SKETCH_MIN_HEIGHT_PX, SKETCH_MAX_HEIGHT], from the
+// helper's `ui/notifications/size-changed` notifications. A fit can move this sketch's Send and
+// every Send below it, so it re-arms each shown proposal whose Send it moved (see `fit`), and a
+// frame that refits too often keeps its height.
+//
 // Not covered: WebRTC sits outside CSP, so a sketch can still reach the network, through an
 // `RTCPeerConnection` (ICE to a STUN or TURN server it names). The helper deletes the WebRTC
 // constructors, but that's a speed bump, not a boundary: a nested srcdoc frame gets a fresh
@@ -32,6 +37,23 @@ export const SKETCH_CSP =
 
 /** The `sandbox` the frame gets: scripts, and nothing else (no allow-same-origin, ever). */
 export const SKETCH_SANDBOX = 'allow-scripts';
+
+/** The shortest a frame gets, however little its document holds. */
+export const SKETCH_MIN_HEIGHT_PX = 120;
+
+/** The tallest a frame gets, and its height until its document reports one; past it, the frame scrolls. */
+export const SKETCH_MAX_HEIGHT = 'min(80vh, 720px)';
+
+/** Every connected `<bee-sketch>`, so one frame's fit can re-arm the Send of every other. */
+const connected = new Set();
+
+/**
+ * How many times in a second a frame's fits may turn from growing to shrinking, or back, before
+ * its height is pinned until its next screen. A document whose height follows the frame's
+ * (`height: calc(1000px - 100vh)`) would otherwise refit, and re-arm every Send it moves, many
+ * times a second, for as long as it's shown. Content that only grows, or only shrinks, never turns.
+ */
+const TURNS_PER_SECOND = 4;
 
 /** The A2UI action a choice becomes, and the record name bee-companion handles. */
 export const CHOICE_ACTION = 'choice';
@@ -93,13 +115,35 @@ export class SketchElement extends A2uiLitElement {
     this.armTimer = null;
     /** Send's box when arming last began: Send arms only if it's still there. */
     this.armRect = null;
+    /** Whether the pointer is over Send, from Send's own boundary events. */
+    this.pointerOver = false;
+    /** Where the pointer came over Send, until the `pointermove` after it (see `arm`). */
+    this.overAt = null;
+    /** Whether the pointer has moved onto Send since arming last began (see `arm`). */
+    this.pointerArrived = false;
+    /** Whether arming has finished, Send unmoved, but waits for the pointer resting on it to leave. */
+    this.awaitingLeave = false;
+    /** When Send was last enabled, and when a press on it last began: only a later press sends. */
+    this.enabledAt = Infinity;
+    this.pressedAt = -Infinity;
     /** When Send last took focus, for the key press that follows Tab out of a sketch. */
     this.focusedAt = -Infinity;
+    /** The height the frame was last fitted to, as CSS. */
+    this.fitted = null;
+    /** This screen's last fit's direction, when its fits recently turned, and whether it's pinned (see `fit`). */
+    this.fitDirection = 0;
+    this.turns = [];
+    this.pinned = false;
     this.onMessage = (event) => this.receive(event);
     // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
-    // a change in the size of the bar, this sketch or the page.
+    // a change in the size of the bar or this sketch. The page's body changes size with every fit
+    // on a page taller than the window, so its resize re-arms Send only if Send has moved.
     this.onMove = () => { if (this.proposal) this.arm(); };
-    this.resizes = new ResizeObserver(this.onMove);
+    this.resizes = new ResizeObserver((entries) => {
+      if (!this.proposal) return;
+      if (entries.every((entry) => entry.target === document.body)) this.rearmIfMoved();
+      else this.arm();
+    });
   }
 
   /** Light DOM, as the basic catalog's elements render. */
@@ -109,6 +153,7 @@ export class SketchElement extends A2uiLitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    connected.add(this);
     window.addEventListener('message', this.onMessage);
     window.addEventListener('scroll', this.onMove, true);
     window.addEventListener('resize', this.onMove);
@@ -118,6 +163,7 @@ export class SketchElement extends A2uiLitElement {
   }
 
   disconnectedCallback() {
+    connected.delete(this);
     window.removeEventListener('message', this.onMessage);
     window.removeEventListener('scroll', this.onMove, true);
     window.removeEventListener('resize', this.onMove);
@@ -138,7 +184,7 @@ export class SketchElement extends A2uiLitElement {
     if (!this.frame) {
       const frame = document.createElement('iframe');
       frame.setAttribute('sandbox', SKETCH_SANDBOX);
-      frame.style.cssText = 'display:block;width:100%;height:min(80vh,720px);border:0';
+      frame.style.cssText = `display:block;width:100%;height:${SKETCH_MAX_HEIGHT};border:0`;
       this.insertBefore(frame, this.firstChild);
       this.frame = frame;
       this.bar = this.createBar();
@@ -153,6 +199,9 @@ export class SketchElement extends A2uiLitElement {
       // A proposal belongs to the screen that made it: a new screen's viewer never saw it.
       this.drop();
       this.shown = doc;
+      this.fitDirection = 0;
+      this.turns = [];
+      this.pinned = false;
       this.frame.srcdoc = doc;
     }
   }
@@ -187,9 +236,34 @@ export class SketchElement extends A2uiLitElement {
       // Tab out of a sketch lands on its Send, so a key press meant for the sketch would send it.
       // A keyboard activation (detail 0) counts once Send has had focus for SEND_ARM_MS.
       if (event.detail === 0 && performance.now() - this.focusedAt < SEND_ARM_MS) return;
+      // A press that began before Send was enabled was meant for what Send showed then, or for
+      // wherever Send was.
+      if (event.detail !== 0 && this.pressedAt < this.enabledAt) return;
       this.send();
     });
+    send.addEventListener('pointerdown', (event) => { if (event.isTrusted) this.pressedAt = performance.now(); });
     send.addEventListener('focus', () => { this.focusedAt = performance.now(); });
+    // A pointer moved onto Send gets its `pointerover` and a `pointermove` from one input event,
+    // at the same point. One that Send was moved under gets a `pointerover` alone, and its next
+    // move, a hand's tremor, is somewhere else (see `arm`).
+    send.addEventListener('pointerover', (event) => {
+      this.pointerOver = true;
+      this.overAt = { x: event.clientX, y: event.clientY };
+    });
+    send.addEventListener('pointermove', (event) => {
+      if (this.overAt && event.clientX === this.overAt.x && event.clientY === this.overAt.y) this.pointerArrived = true;
+      this.overAt = null;
+    });
+    // Leaving Send is the only way out of waiting for the pointer to leave it: a mouse moved off
+    // it, or a touch lifted. Moving on Send isn't.
+    send.addEventListener('pointerout', () => {
+      this.pointerOver = false;
+      this.overAt = null;
+      if (!this.awaitingLeave) return;
+      this.awaitingLeave = false;
+      if (sameRect(send.getBoundingClientRect(), this.armRect)) this.enable();
+      else this.arm();
+    });
     // A held key repeats: only a fresh press may send.
     send.addEventListener('keydown', (event) => { if (event.repeat) event.preventDefault(); });
     dismiss.addEventListener('click', (event) => { if (event.isTrusted) this.dismiss(); });
@@ -211,6 +285,8 @@ export class SketchElement extends A2uiLitElement {
       }
       const text = params.content?.type === 'text' ? String(params.content.text ?? '') : '';
       this.propose(message.id, String(choice), text);
+    } else if (message.method === 'ui/notifications/size-changed') {
+      this.fit(message.params?.height);
     } else {
       this.reply(message.id, { error: { code: -32601, message: `Method not found: ${message.method}` } });
     }
@@ -234,18 +310,75 @@ export class SketchElement extends A2uiLitElement {
   }
 
   /**
+   * Fits the frame to a document [height] tall, in CSS pixels, within SKETCH_MIN_HEIGHT_PX and
+   * SKETCH_MAX_HEIGHT. A new height can move this sketch's Send and every Send below it, and when
+   * the page is shorter than the window a move changes no element's size, so no ResizeObserver
+   * hears it. So each shown proposal whose Send has moved re-arms here, in the same task that
+   * moved it, before any click can land on a Send in its new place.
+   *
+   * After TURNS_PER_SECOND turns in a second, the frame keeps its height until its next screen.
+   */
+  fit(height) {
+    if (this.pinned || typeof height !== 'number' || !Number.isFinite(height) || height < 0) return;
+    // The frame's own border is inside its height (border-box): add it, or the document scrolls.
+    const border = this.frame.offsetHeight - this.frame.clientHeight;
+    const css = `clamp(${SKETCH_MIN_HEIGHT_PX}px, ${Math.ceil(height) + border}px, ${SKETCH_MAX_HEIGHT})`;
+    if (css === this.fitted) return;
+    this.fitted = css;
+    const before = this.frame.offsetHeight;
+    this.frame.style.height = css;
+    const after = this.frame.offsetHeight;
+    if (after === before) return;
+    const direction = Math.sign(after - before);
+    if (this.fitDirection && direction !== this.fitDirection) {
+      const now = performance.now();
+      this.turns = this.turns.filter((at) => now - at < 1_000);
+      this.turns.push(now);
+      if (this.turns.length >= TURNS_PER_SECOND) this.pinned = true;
+    }
+    this.fitDirection = direction;
+    for (const sketch of connected) sketch.rearmIfMoved();
+  }
+
+  /**
+   * Re-arms Send if it has left the box it was armed in. Away and back again are both moves, so
+   * a Send slid away and back under a click still re-arms twice.
+   */
+  rearmIfMoved() {
+    if (!this.proposal) return;
+    const send = this.bar.querySelector('.bee-proposal-send');
+    if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
+  }
+
+  /**
    * Disables Send, and enables it SEND_ARM_MS later only if Send is still where it was when
    * arming began; otherwise arming starts again. A sketch can't move Send under a click on its way.
+   *
+   * Nor under a pointer at rest: a sketch can learn where a resting pointer is (a frame grown over
+   * it hears `pointerover`, with coordinates, in Chromium), then fit its frame so its own Send
+   * lands there. So when arming ends with the pointer over Send, and the pointer hasn't moved onto
+   * Send since arming began, Send stays disabled until the pointer leaves it. A move on Send, as
+   * small as a tremor, doesn't count. A touch held on Send leaves it when it lifts, and that
+   * touch's own tap can't send, since it began before Send was enabled.
    */
   arm() {
     const send = this.bar.querySelector('.bee-proposal-send');
     send.disabled = true;
     this.armRect = send.getBoundingClientRect();
+    this.pointerArrived = false;
+    this.awaitingLeave = false;
     clearTimeout(this.armTimer);
     this.armTimer = setTimeout(() => {
-      if (sameRect(send.getBoundingClientRect(), this.armRect)) send.disabled = false;
-      else this.arm();
+      if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
+      else if (this.pointerOver && !this.pointerArrived) this.awaitingLeave = true;
+      else this.enable();
     }, SEND_ARM_MS);
+  }
+
+  /** Enables Send, armed where it is. */
+  enable() {
+    this.bar.querySelector('.bee-proposal-send').disabled = false;
+    this.enabledAt = performance.now();
   }
 
   /**
@@ -276,6 +409,7 @@ export class SketchElement extends A2uiLitElement {
   /** Forgets the proposal, unanswered, and hides the bar. */
   drop() {
     this.proposal = null;
+    this.awaitingLeave = false;
     clearTimeout(this.armTimer);
     if (this.bar) this.bar.style.display = 'none';
   }

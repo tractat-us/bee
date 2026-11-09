@@ -230,8 +230,9 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
   await forgeFrom(frame, 'moved');
   const send = proposal(page).getByRole('button', { name: 'Send', exact: true });
   await expect(send).toBeEnabled();
-  // Where the sketch's scroll puts Send: a dry run, then back to the top.
-  const scroll = () => frame.locator('#mark').evaluate((mark) => mark.scrollIntoView({ block: 'start' }));
+  // Where the sketch's scroll puts Send: a dry run, then back to the top. Centred, so Send lands
+  // clear of the board's sticky header.
+  const scroll = () => frame.locator('#mark').evaluate((mark) => mark.scrollIntoView({ block: 'center' }));
   await scroll();
   // Precondition: the sketch's scrollIntoView scrolls the page.
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0);
@@ -254,9 +255,16 @@ test('a sketch that scrolls its armed Send under the pointer records nothing', a
   await page.waitForTimeout(1_500);
   expect(eventLines()).toEqual([]);
 
-  // Control: once Send has stayed put, the same click sends.
+  // Control: once Send has stayed put and the pointer has left it and come back, a click sends.
+  // (Send came to rest under a still pointer, so it waits for the pointer to leave: see
+  // sketch-fit.spec.mjs.)
+  const off = { x: at.x, y: at.y + 80 };
+  expect(await page.evaluate(under, off)).not.toBe('bee-proposal-send');
+  await page.mouse.move(off.x, off.y);
+  await page.mouse.move(at.x, at.y);
   await expect(send).toBeEnabled();
-  await page.mouse.click(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.up();
   await expect.poll(eventLines, { timeout: 10_000 }).toHaveLength(1);
   expect(JSON.parse(eventLines()[0])).toMatchObject({ choice: 'moved', text: 'moved' });
   await max.context.close();
