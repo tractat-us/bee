@@ -73,7 +73,9 @@ export default defineConfig({
     ...(process.env.BEE_E2E_WEBKIT ? [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }] : []),
   ],
   webServer: hasSpecs ? {
-    command: `${build}exec bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR}`,
+    // `--host-name bee-lan.test`: bring-your-claude.spec.mjs reaches this shared host by that name,
+    // which the host refuses as a rebinding name otherwise (bee#45).
+    command: `${build}exec bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR} --host-name bee-lan.test`,
     cwd: join(here, '..'),
     url: `${baseURL}/`,
     reuseExistingServer: false,
