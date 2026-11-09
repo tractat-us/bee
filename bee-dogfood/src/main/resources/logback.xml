@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The seeder's stdout is its report, one line per surface, so log lines go to stderr. The MCP SDK
+  logs every request at DEBUG, so it and Ktor are held to WARN.
+-->
+<configuration>
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="io.modelcontextprotocol" level="WARN"/>
+    <logger name="io.ktor" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDERR"/>
+    </root>
+</configuration>
