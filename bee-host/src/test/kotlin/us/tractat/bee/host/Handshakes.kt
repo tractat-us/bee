@@ -38,6 +38,14 @@ internal class Handshakes(private val port: Int) {
         response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
     }
 
+    /** The status and body of a `POST` of [body] to [path], with [host] and these other [headers], each `name: value`. */
+    fun post(path: String, host: String, body: String, vararg headers: String): Pair<String, String> = Socket().use { socket ->
+        val bytes = body.encodeToByteArray()
+        send(socket, "POST $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n$body")
+        val response = socket.getInputStream().readAllBytes().decodeToString()
+        response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
+    }
+
     /**
      * Opens a server-sent event stream at [path], with [host] and these other [headers], each
      * `name: value`, and stays on it until the returned stream is closed: a device on its pairing channel.
