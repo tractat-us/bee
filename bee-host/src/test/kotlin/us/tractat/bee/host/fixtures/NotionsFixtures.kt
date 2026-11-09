@@ -25,7 +25,7 @@ import kotlin.time.Instant
  * (`{items, order}`, A12), and `markup`, which puts an `<img onerror>` in every label.
  */
 internal val NOTIONS_FIXTURES: List<String> =
-    listOf("poll-tabs", "poll-basis", "poll-history", "board-drop", "board-race", "markup")
+    listOf("poll-tabs", "poll-basis", "poll-history", "board-drop", "board-race", "board-tap", "markup")
 
 private const val MARKUP = "<img src=x onerror=window.pwned=1>"
 
@@ -35,7 +35,7 @@ internal suspend fun seedNotion(writer: BoardClient, author: ReplicaId, id: Stri
     val (components, data, appends) = when (id) {
         "poll-tabs", "poll-history" -> poll("Lunch?", "pizza", "salad")
         "poll-basis" -> poll("Tea or coffee?", "tea", "coffee")
-        "board-drop", "board-race" -> board("Write the spec")
+        "board-drop", "board-race", "board-tap" -> board("Write the spec")
         "markup" -> markup()
         else -> error("No Notions fixture $id")
     }
