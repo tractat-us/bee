@@ -384,6 +384,10 @@ bridge keeps its identity across a host restart, and an HTTP session doesn't
 
 The board's **Bring your Claude** panel offers the same line, filled in for whoever opened the
 page, with `claude mcp remove --scope user bee` ahead of it so it can be run again for a new link.
+On the host's own machine the panel offers the owner's lines instead: first the kit's
+`claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'`, as `bee-up` prints it (with
+your own path if you set `BEE_HOME`), then the one-folder URL line below. It never offers the
+owner `--scope user`.
 
 On the host's own machine, a URL needs no key. Register it for one folder only, never with
 `--scope user`: every `claude` started anywhere on the machine, dispatched workers included,
