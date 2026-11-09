@@ -101,10 +101,10 @@ class InviteEndpointTest {
         const val LAN_NAME = "tractatus.local"
         const val PORT = 8233
 
-        val TEST_PEERS = PeerAddress { call -> requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" } }
+        val TEST_PEERS = PeerAddress { call -> Caller.byPeer(requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" }) }
 
         fun arrivalOf(peer: String) = Arrival(if (isLoopback(peer)) LOOPBACK else LAPTOP, PORT)
 
-        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call)) }
+        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call).address) }
     }
 }

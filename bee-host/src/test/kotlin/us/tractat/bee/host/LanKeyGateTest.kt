@@ -271,11 +271,11 @@ class LanKeyGateTest {
         val BOARD = "${BoardRelay.PATH}?peer=probe&${BoardId.PARAM}=$BOARD_ID"
         val CLAIMS = "${BeeHost.CLAIMS_PATH}?peer=probe&${BoardId.PARAM}=$BOARD_ID"
 
-        val TEST_PEERS = PeerAddress { call -> requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" } }
+        val TEST_PEERS = PeerAddress { call -> Caller.byPeer(requireNotNull(call.request.headers[TEST_PEER]) { "rig: no $TEST_PEER header" }) }
 
         /** A loopback peer reaches the laptop at loopback; any other, at its LAN address. */
         fun arrivalOf(peer: String) = Arrival(if (isLoopback(peer)) "127.0.0.1" else LAPTOP, PORT)
 
-        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call)) }
+        val TEST_ARRIVALS = ArrivalAddress { call -> arrivalOf(TEST_PEERS.of(call).address) }
     }
 }

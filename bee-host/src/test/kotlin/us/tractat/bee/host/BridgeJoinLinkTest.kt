@@ -186,7 +186,7 @@ class BridgeJoinLinkTest {
     }
 
     private suspend fun startHost(port: Int = 0, reset: KeyReset = KeyReset.Keep) =
-        BeeHost.start(scope, HostConfig(port = port, dataDir = dir, keyReset = reset), peers = { ANOTHER_MACHINE })
+        BeeHost.start(scope, HostConfig(port = port, dataDir = dir, keyReset = reset), peers = { Caller.byPeer(ANOTHER_MACHINE) })
 
     /** A bridge's board replica and claims connection on [host], as `bee-mcp`'s `main` builds them. */
     private inner class Bridge(host: HostAddress) {
