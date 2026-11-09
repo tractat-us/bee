@@ -102,6 +102,23 @@ class BoardStateTest {
         )
     }
 
+    /**
+     * bee#171: a page received another page's write to a surface before the surface's open, so it
+     * held a surface with data and no meta, and reading the board threw. The surface waits, unshown,
+     * until its open arrives.
+     */
+    @Test
+    fun aWriteThatArrivesBeforeItsSurfacesOpenWaitsUnshownUntilTheOpenArrives() {
+        val open = opened()
+        val early = BoardState.EMPTY.piece(open.updateData(B, SURFACE, "/answer", str("x")).delta)
+        assertAll(
+            { assertEquals(emptyList(), early.openSurfaces()) },
+            { assertEquals(emptyList(), early.closedSurfaces()) },
+            { assertEquals(null, early.meta(SURFACE)) },
+            { assertEquals(listOf(SURFACE), early.piece(open).openSurfaces()) },
+        )
+    }
+
     @Test
     fun rewriteOfAReadLeafLeavesNoPhantomConflict() {
         // A13: each write starts from the register just read, so it supersedes what it read.
