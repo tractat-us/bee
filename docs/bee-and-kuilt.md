@@ -60,7 +60,8 @@ Everything that makes it a board for people and their agents:
   what, the claims, and how a surface maps onto A2UI. The browser client, the bridge and the host
   are all built on it.
 - **The catalog** (`bee-notions`). bee's own set of on-screen components: A2UI's basic ones,
-  plus `Poll`, `Board` (cards in columns) and `Sketch`, which runs agent-written HTML in a sandbox.
+  plus `Poll`, `Board` (cards in columns), `Chat` (people and agents talking) and `Sketch`, which
+  runs agent-written HTML in a sandbox.
 - **The visual companion** (`bee-companion`). The brainstorming companion, running on the board
   through `Sketch`.
 - **The rules.** Who may put what on the board, who may let a new screen in, and where bee runs.

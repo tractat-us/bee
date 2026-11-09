@@ -9,6 +9,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.Role
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.JsonObject
+import us.tractat.bee.a2ui.NotionActions
 
 /**
  * How to be a good whiteboard participant, as the bridge tells a Claude session: the server's
@@ -122,6 +123,17 @@ object WhiteboardGuide {
                 "optional href (http: or https: only) makes its label a link, and its optional detail is one " +
                 "short line under the label: keep the label short and put the rest there. An empty href or detail clears it.",
         ),
+        Example(
+            name = "Chat: talk with the people on the board",
+            components = """[{"id":"root","component":"Chat","messages":{"path":"/messages"}}]""",
+            data = null,
+            append = null,
+            note = "People type a message and Send; it lands in /messages as {id, author, text, at} and records " +
+                "\"send\" with {id, text}, which your wait hears. Reply, or speak first, with bee_surface_update " +
+                "append {\"/messages\": [{\"id\": \"<fresh>\", \"author\": \"<you, from bee_board>\", \"text\": \"…\", " +
+                "\"at\": \"<now, ISO 8601>\"}]}. Text is plain, never markup, up to ${NotionActions.MAX_MESSAGE_LENGTH} " +
+                "characters, and a message is never edited.",
+        ),
     )
 
     private const val SURFACES =
@@ -148,7 +160,7 @@ object WhiteboardGuide {
         |Surfaces
         |$SURFACES
         |${ESSENTIAL.joinToString("\n") { it.render() }}
-        |Call $EXAMPLES_TOOL for the rest: Text with Markdown, layout and a Button, Poll, and Board.
+        |Call $EXAMPLES_TOOL for the rest: Text with Markdown, layout and a Button, Poll, Board, and Chat.
     """.trimMargin()
 
     /** The [EXAMPLES_TOOL] tool's result: every entry in [EXAMPLES]. */

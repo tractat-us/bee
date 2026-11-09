@@ -406,6 +406,12 @@ components plus these:
 - **`Board`**: columns and draggable cards. It's the work split, where a drop is an action.
 - **`Poll`**: a question, options, and live per-peer answers. Options and question revisions are
   appended, never edited, so a vote's basis can say which options the voter had seen (§6.1).
+- **`Chat`** (bee#214): people and agents talking on the board, one surface like any other, never a
+  sidebar. Its messages are appended entries `{id, author, text, at}`, shown oldest first in
+  append order, and never edited. A person's Send is appended by their own page, in the same
+  transform as its `send` record, so a session waiting on the Chat hears it. An agent posts by
+  appending the same entry. The author is declared, as every actor is (§5.7), and a message's
+  text is plain, at most 2000 characters.
 - **`Microphone` (later):** A2UI's basic catalog has no audio input. A placed microphone
   captures in the browser and returns a transcript as an action. Before it ships it needs a consent
   rule, because it records everyone in the room, not just the person who asked.

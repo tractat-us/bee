@@ -4,6 +4,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
 /** The data write a Notions action makes beside its record: [value] at the JSON Pointer [path]. */
@@ -30,6 +32,10 @@ sealed interface NotionEdit {
  * - **`Board`** binds `columns` and `cards`, each an ordered collection `{items, order}`: `items`
  *   keyed by id (a column `{title, owner?}`, a card `{label, column, href?, detail?}`), and `order`
  *   an array of ids. The action [DROP], with context `{card, column}`, writes the card's `column` leaf.
+ * - **`Chat`** binds `messages`, an append-only array of `{id, author, text, at}`. The action
+ *   [SEND], with context `{id, text}`, appends the message as the actor's, stamped with the
+ *   record's time, so two people sending at once both land, each once (bee#214). An agent
+ *   posts the same entry through the bridge's `append`.
  *
  * Every other action only records.
  */
@@ -49,16 +55,43 @@ object NotionActions {
     /**
      * The edit [action] by [actor] makes on [view], or null for an action that only records.
      *
-     * @throws IllegalArgumentException for an answer naming no option of the poll, or a drop naming
-     *   a card or column the board doesn't hold
+     * @param at when the actor acted, the time its record carries: a Chat message is stamped with it
+     * @throws IllegalArgumentException for an answer naming no option of the poll, a drop naming
+     *   a card or column the board doesn't hold, or a message with no id or a [textProblem]
      */
     fun edit(view: SurfaceView, action: A2uiAction, actor: String, at: Instant): NotionEdit? {
         val component = view.components[action.sourceComponentId] ?: return null
         return when (component.type() to action.name) {
             SurfaceValidator.POLL to ANSWER -> answer(view, component, action, actor)
             SurfaceValidator.BOARD to DROP -> drop(view, component, action)
+            SurfaceValidator.CHAT to SEND -> send(component, action, actor, at)
             else -> null
         }
+    }
+
+    /**
+     * What's wrong with a Chat message's [text], completing "A message …", or null when it may be
+     * sent: it must hold something besides whitespace, and at most [MAX_MESSAGE_LENGTH] characters.
+     */
+    fun textProblem(text: String): String? = when {
+        text.isBlank() -> "is empty"
+        text.length > MAX_MESSAGE_LENGTH -> "is ${text.length} characters, past the $MAX_MESSAGE_LENGTH a message holds"
+        else -> null
+    }
+
+    /** A message from [actor], stamped [at], appended to the Chat's messages: `{id, author, text, at}`. */
+    private fun send(chat: JsonObject, action: A2uiAction, actor: String, at: Instant): NotionEdit {
+        val id = action.string("id")
+        val text = action.string("text")
+        require(id.isNotBlank()) { "A message on Chat \"${action.sourceComponentId}\" has no id." }
+        textProblem(text)?.let { throw IllegalArgumentException("A message on Chat \"${action.sourceComponentId}\" $it.") }
+        val message = buildJsonObject {
+            put("id", id)
+            put("author", actor)
+            put("text", text)
+            put("at", at.toString())
+        }
+        return NotionEdit.Append(chat.path("messages"), message)
     }
 
     /** Each option's id, in order: a string entry is its own id, an object entry names its `id`. */
