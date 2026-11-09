@@ -50,6 +50,12 @@ private val CONFIG = QuilterConfig(antiEntropyInterval = 1.seconds, evictionAfte
 private const val BOUND = 2_048
 
 /**
+ * A link's own budget, tighter than [BOUND] but over the opened board's `FullState` (about 1.4 KB),
+ * which a budget of `BOUND / 2` would refuse on first contact.
+ */
+private const val TIGHTER_LINK = BOUND * 7 / 8
+
+/**
  * A relay that hangs up on a spoke the moment the spoke sends it a payload over [hangUpOver]
  * bytes, as the host does with 1009 on a frame over its bound, and counts what it saw. Its spokes
  * are woven from [mesh], whose host seam the test opens. A spoke's own close takes [closeTakes],
@@ -60,6 +66,8 @@ private class HangUpRelay(
     private val now: () -> Long,
     var hangUpOver: Int,
     private val closeTakes: Duration = Duration.ZERO,
+    /** The budget its spokes publish as their own, as a link that bounds its frames does; null publishes none. */
+    private val linkBudget: Int? = null,
 ) : Loom {
     /** The virtual time of each dial. */
     val dials = mutableListOf<Long>()
@@ -80,6 +88,8 @@ private class HangUpRelay(
     }
 
     private inner class Spoke(private val inner: Seam) : Seam by inner {
+        override val maxPayloadBytes: Int? get() = linkBudget ?: inner.maxPayloadBytes
+
         override suspend fun broadcast(payload: ByteArray) = refuseOr(payload) { inner.broadcast(payload) }
 
         override suspend fun sendTo(peer: PeerId, payload: ByteArray) = refuseOr(payload) { inner.sendTo(peer, payload) }
@@ -107,9 +117,9 @@ private fun TestScope.client(loom: Loom, initial: BoardState, maxPayloadBytes: I
     initial, CONFIG, Random(0), maxPayloadBytes = maxPayloadBytes, settleAfter = settleAfter,
 )
 
-private fun TestScope.relay(hangUpOver: Int, closeTakes: Duration = Duration.ZERO): HangUpRelay {
+private fun TestScope.relay(hangUpOver: Int, closeTakes: Duration = Duration.ZERO, linkBudget: Int? = null): HangUpRelay {
     val mesh = InMemoryLoom()
-    return HangUpRelay(mesh, { testScheduler.currentTime }, hangUpOver, closeTakes)
+    return HangUpRelay(mesh, { testScheduler.currentTime }, hangUpOver, closeTakes, linkBudget)
 }
 
 private fun TestScope.now(): Instant = Instant.fromEpochMilliseconds(testScheduler.currentTime)
@@ -168,8 +178,10 @@ class BoardClientFrameBoundTest {
 
     /**
      * A peer's presence, posted every 5 s with a growing clock, changes the board but never makes
-     * it fit, so it never redials a board too large to sync. Waiting for any change at all, a
-     * bridge redials every 5 to 10 s, each time a fresh socket, a full encode and a refusal.
+     * it fit, so it never redials a board too large to sync. This pins that the wait ends only
+     * when the board could fit, not on any change at all, which would redial every 5 to 10 s, each
+     * time a fresh socket and a refusal. It does not pin the presence filter inside the wait, which
+     * only saves a full encode per post and changes no dial.
      */
     @Test
     fun presencePostsDoNotRedialABoardTooLargeToSync() = runTest(StandardTestDispatcher()) {
@@ -194,8 +206,8 @@ class BoardClientFrameBoundTest {
     /**
      * A board too large to sync that shrinks syncs, and [BoardClient.tooLarge] clears once the
      * link settles. The shrinking edit lands while the refused connection is still closing, after
-     * it parted: a wait that snapshots the board only once the close is done misses that edit and
-     * never dials again.
+     * it parted. The wait measures the board as it is when the wait starts, so that edit is seen; a
+     * wait that only watched for the next change after the close would miss it and never dial again.
      */
     @Test
     fun aBoardThatShrinksWhileItsLinkClosesSyncsAndClearsTooLarge() = runTest(StandardTestDispatcher()) {
@@ -258,6 +270,34 @@ class BoardClientFrameBoundTest {
             { assertNull(alex.tooLarge.value, "one refused write isn't a board too large to sync") },
             { assertNull(alex.lastFailure.value, "nothing went wrong with the link") },
             { assertEquals(setOf(str("fits")), values(alex.state.value, "/note"), "the next write that fits went through") },
+        )
+    }
+
+    /**
+     * Where the link publishes a tighter budget than the client's own, an online write between the
+     * two is refused at write time, naming the link's budget, and the link stays up. Without the
+     * `min` in [BoundedSeam.maxPayloadBytes] the write is checked against [BOUND] and lets through
+     * a delta the link's frame can't carry.
+     */
+    @Test
+    fun anOnlineWriteOverTheLinksOwnTighterBudgetIsRefused() = runTest(StandardTestDispatcher()) {
+        val relay = relay(hangUpOver = BOUND, linkBudget = TIGHTER_LINK)
+        relay.openHost()
+        val alex = client(relay, opened(), settleAfter = 5.seconds)
+        alex.connect()
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        val before = alex.state.value
+        // Over the link's budget, under the client's own.
+        val refused = assertFailsWith<BoardWriteTooLarge> {
+            alex.mutate { it.updateData(A, SURFACE, "/note", str("x".repeat(BOUND / 5))) }
+        }
+        assertAll(
+            { assertEquals(TIGHTER_LINK, refused.limit, "the refusal names the link's budget") },
+            { assertTrue(refused.bytes in (TIGHTER_LINK + 1)..BOUND, "precondition: the delta is between the two budgets: ${refused.bytes}") },
+            { assertEquals(before, alex.state.value, "the refused write left the board unchanged") },
+            { assertTrue(alex.online.value, "the link stayed up") },
+            { assertEquals(0, relay.oversize, "no frame over the bound reached the relay") },
         )
     }
 
