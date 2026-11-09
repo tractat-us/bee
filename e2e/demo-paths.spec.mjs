@@ -197,19 +197,19 @@ test('the demo, beat by beat', async ({ browser }) => {
   });
 
   await test.step('2. teammate: opens the join link with its key, off loopback; their Claude joins over HTTP MCP', async () => {
-    rig.teammatePage = await openPage(browser, `${rig.link}&name=andrew`);
+    rig.teammatePage = await openPage(browser, `${rig.link}&name=alex`);
     await expect(surface(rig.teammatePage, MAIN)).toContainText('What comes before human review?', { timeout: 15_000 });
 
     // "Bring your Claude": the line the teammate pastes, with this tab's key and name in its URL.
     await rig.teammatePage.locator('#bar #bring-claude-toggle').click();
     const line = await rig.teammatePage.locator('#bring-claude-command').textContent();
     const mcpUrl = line.match(/--transport http bee '([^']+)'/)?.[1];
-    expect(mcpUrl, `no MCP URL in the line: ${line}`).toBe(`${new URL(rig.link).origin}/mcp?k=${rig.key}&name=andrew`);
+    expect(mcpUrl, `no MCP URL in the line: ${line}`).toBe(`${new URL(rig.link).origin}/mcp?k=${rig.key}&name=alex`);
     await rig.teammatePage.keyboard.press('Escape');
 
     rig.teammate = await startHttpAgent(mcpUrl);
     rig.httpIdentity.before = rig.teammate.identity;
-    expect(rig.teammate.identity).toMatch(/^agent:andrew-claude#/);
+    expect(rig.teammate.identity).toMatch(/^agent:alex-claude#/);
     await expect(peer(rig.ownerPage, rig.teammate.identity)).toBeVisible({ timeout: 15_000 });
   });
 

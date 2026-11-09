@@ -61,16 +61,16 @@ class McpHttpRestartTest {
 
     @Test
     fun aClaudeOverHttpComesBackFromAHostRestartAsItself() = runBlocking {
-        val before = openThenRestart("?name=andrew", "andrew-plan")
+        val before = openThenRestart("?name=alex", "alex-plan")
         val host = startHost()
         try {
-            val claude = connect(url(host, "?name=andrew"))
-            val after = drawAndLearnWho(claude, host, "andrew-after")
+            val claude = connect(url(host, "?name=alex"))
+            val after = drawAndLearnWho(claude, host, "alex-after")
             val state = host.state.value
             assertAll(
                 { assertEquals(before, after, "the same identity, so the surfaces it opened are still its own") },
                 { assertTrue(state.departures().none { it.identity == before }, "never departed, so its cards aren't muted: ${state.departures()}") },
-                { assertEquals(before, state.meta("andrew-plan")?.openedBy, "rig: the old surface survived the restart") },
+                { assertEquals(before, state.meta("alex-plan")?.openedBy, "rig: the old surface survived the restart") },
             )
             claude.close()
         } finally {
@@ -78,23 +78,23 @@ class McpHttpRestartTest {
         }
     }
 
-    /** Another key at the same name is someone else: they never get andrew's identity. */
+    /** Another key at the same name is someone else: they never get alex's identity. */
     @Test
     fun anotherKeyWithTheSameNameGetsAnIdentityOfItsOwn() = runBlocking {
-        val before = openThenRestart("?name=andrew", "andrew-plan")
+        val before = openThenRestart("?name=alex", "alex-plan")
         val host = startHost()
         try {
             // On loopback the host admits any key, so the key here only names whose Claude it is.
-            val stranger = connect(url(host, "?name=andrew&k=someone-else"))
+            val stranger = connect(url(host, "?name=alex&k=someone-else"))
             val strangers = drawAndLearnWho(stranger, host, "stranger-surface")
-            val andrew = connect(url(host, "?name=andrew"))
-            val andrews = drawAndLearnWho(andrew, host, "andrew-after")
+            val alex = connect(url(host, "?name=alex"))
+            val alexs = drawAndLearnWho(alex, host, "alex-after")
             assertAll(
-                { assertNotEquals(before, strangers, "another key doesn't inherit andrew's surfaces") },
-                { assertEquals(before, andrews, "control: andrew's own URL still does") },
+                { assertNotEquals(before, strangers, "another key doesn't inherit alex's surfaces") },
+                { assertEquals(before, alexs, "control: alex's own URL still does") },
             )
             stranger.close()
-            andrew.close()
+            alex.close()
         } finally {
             host.close()
         }
@@ -103,15 +103,15 @@ class McpHttpRestartTest {
     /** One identity, one session: a second session at the same URL never takes the first's surfaces. */
     @Test
     fun aSecondSessionAtTheSameUrlNeverTakesTheFirstsIdentity() = runBlocking {
-        val before = openThenRestart("?name=andrew", "andrew-plan")
+        val before = openThenRestart("?name=alex", "alex-plan")
         val host = startHost()
         try {
-            val first = connect(url(host, "?name=andrew"))
+            val first = connect(url(host, "?name=alex"))
             val firsts = drawAndLearnWho(first, host, "first-after")
-            val second = connect(url(host, "?name=andrew"))
+            val second = connect(url(host, "?name=alex"))
             val seconds = drawAndLearnWho(second, host, "second-after")
             assertAll(
-                { assertEquals(before, firsts, "rig: the first session back comes back as andrew") },
+                { assertEquals(before, firsts, "rig: the first session back comes back as alex") },
                 { assertNotEquals(firsts, seconds, "the second, while the first is live, is someone new") },
             )
             first.close()
@@ -123,8 +123,8 @@ class McpHttpRestartTest {
 
     /**
      * The demo's setup: the presenter's stdio bridge stays connected across the restart, and its
-     * first-contact push brings the old host's presence slot for andrew back, old claims node and
-     * all. The voter drops that node a learner grace after boot; andrew, live on a new node, must
+     * first-contact push brings the old host's presence slot for alex back, old claims node and
+     * all. The voter drops that node a learner grace after boot; alex, live on a new node, must
      * not be departed for it.
      */
     @Test
@@ -133,21 +133,21 @@ class McpHttpRestartTest {
         val first = startHost(port)
         val presenter = BridgePeer.join(HostAddress.parse("ws://127.0.0.1:$port"), "presenter", peerHttpClient(), scope, Random(9), { Clock.System.now() })
         presenter.start()
-        val before = drawAndLearnWho(connect(url(first, "?name=andrew")), first, "andrew-plan")
+        val before = drawAndLearnWho(connect(url(first, "?name=alex")), first, "alex-plan")
         withTimeout(TIMEOUT) { presenter.board.state.first { s -> s.latestPresence().any { it.identity == before && it.claimsNode != null } } }
         first.close()
         val host = startHost(port)
         try {
-            val claude = connect(url(host, "?name=andrew"))
-            val after = drawAndLearnWho(claude, host, "andrew-after")
+            val claude = connect(url(host, "?name=alex"))
+            val after = drawAndLearnWho(claude, host, "alex-after")
             // The rig: both slots are on the new board, the pushed-back one and the resumed one.
             withTimeout(TIMEOUT) { host.state.first { s -> s.latestPresence().count { it.identity == before } >= 2 } }
             val departed = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE * 2 + 10.seconds) {
                 host.state.first { s -> s.departures().any { it.identity == before } }
             }
             assertAll(
-                { assertEquals(before, after, "rig: andrew came back as itself") },
-                { assertEquals(null, departed?.departures()?.filter { it.identity == before }, "andrew, live, was never departed") },
+                { assertEquals(before, after, "rig: alex came back as itself") },
+                { assertEquals(null, departed?.departures()?.filter { it.identity == before }, "alex, live, was never departed") },
             )
             claude.close()
         } finally {
@@ -164,17 +164,17 @@ class McpHttpRestartTest {
     fun onlyAPairedDevicesOwnKeyComesBackAsItselfNeverTheJoinLinks() = runBlocking {
         val first = startHost()
         val ticket = assertIs<Opened.Ticket>(first.pairing.open(Caller.byPeer(ANOTHER_MACHINE)))
-        val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("andrew"), ticket.code)).key.value
+        val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("alex"), ticket.code)).key.value
         val join = first.pairing.joinKey.value
         val (onDevice, onJoin) = try {
-            drawAndLearnWho(connect(url(first, "?name=andrew&k=$device")), first, "device-plan") to
+            drawAndLearnWho(connect(url(first, "?name=alex&k=$device")), first, "device-plan") to
                 drawAndLearnWho(connect(url(first, "?name=bea&k=$join")), first, "join-plan")
         } finally {
             first.close()
         }
         val host = startHost()
         try {
-            val onDeviceAgain = drawAndLearnWho(connect(url(host, "?name=andrew&k=$device")), host, "device-after")
+            val onDeviceAgain = drawAndLearnWho(connect(url(host, "?name=alex&k=$device")), host, "device-after")
             val onJoinAgain = drawAndLearnWho(connect(url(host, "?name=bea&k=$join")), host, "join-after")
             assertAll(
                 { assertEquals(onDevice, onDeviceAgain, "a paired device's key, a chosen name: the same identity") },
@@ -193,9 +193,9 @@ class McpHttpRestartTest {
     fun aSessionThatCannotComeBackDepartsLeftWhenTheHostStops() = runBlocking {
         val first = startHost()
         val join = first.pairing.joinKey.value
-        val (bea, andrew) = try {
+        val (bea, alex) = try {
             drawAndLearnWho(connect(url(first, "?name=bea&k=$join")), first, "bea-plan") to
-                drawAndLearnWho(connect(url(first, "?name=andrew")), first, "andrew-plan")
+                drawAndLearnWho(connect(url(first, "?name=alex")), first, "alex-plan")
         } finally {
             first.close()
         }
@@ -205,8 +205,8 @@ class McpHttpRestartTest {
             val departed = withTimeout(TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == bea } } }.departures()
             assertAll(
                 { assertEquals(DepartReason.Left, departed.single { it.identity == bea }.reason, "the join link's session left with its host") },
-                { assertTrue(departed.none { it.identity == andrew }, "control: andrew, who can come back, didn't") },
-                { assertEquals(listOf(andrew), kept.map { it.current }, "only andrew is kept") },
+                { assertTrue(departed.none { it.identity == alex }, "control: alex, who can come back, didn't") },
+                { assertEquals(listOf(alex), kept.map { it.current }, "only alex is kept") },
             )
         } finally {
             host.close()
@@ -222,21 +222,21 @@ class McpHttpRestartTest {
     fun forgettingDevicesRetiresTheSessionsKeptUnderTheirKeys() = runBlocking {
         val first = startHost()
         val ticket = assertIs<Opened.Ticket>(first.pairing.open(Caller.byPeer(ANOTHER_MACHINE)))
-        val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("andrew"), ticket.code)).key.value
-        val (andrew, iain) = try {
-            drawAndLearnWho(connect(url(first, "?name=andrew&k=$device")), first, "andrew-plan") to
+        val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("alex"), ticket.code)).key.value
+        val (alex, iain) = try {
+            drawAndLearnWho(connect(url(first, "?name=alex&k=$device")), first, "alex-plan") to
                 drawAndLearnWho(connect(url(first, "?name=iain")), first, "iain-plan")
         } finally {
             first.close()
         }
         val host = BeeHost.start(scope, HostConfig(port = 0, dataDir = dir, keyReset = KeyReset.ForgetDevices))
         try {
-            val departed = withTimeout(Departures.CHECK_EVERY + TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == andrew } } }
+            val departed = withTimeout(Departures.CHECK_EVERY + TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == alex } } }
                 .departures()
             val kept = KeptSessionFile(dir.resolve(KeptSessionFile.NAME))
-            withTimeout(TIMEOUT) { while (kept.load().any { it.session.current == andrew }) delay(50) }
+            withTimeout(TIMEOUT) { while (kept.load().any { it.session.current == alex }) delay(50) }
             assertAll(
-                { assertEquals(DepartReason.Quiet, departed.single { it.identity == andrew }.reason, "its key is gone, so its client can't come back") },
+                { assertEquals(DepartReason.Quiet, departed.single { it.identity == alex }.reason, "its key is gone, so its client can't come back") },
                 { assertTrue(departed.none { it.identity == iain }, "control: the keyless session on this machine still waits") },
                 { assertEquals(listOf(iain), kept.load().map { it.session.current }, "only iain is still kept") },
             )
@@ -279,7 +279,7 @@ class McpHttpRestartTest {
      */
     @Test
     fun aKeptSessionWhoseClientNeverComesBackDepartsQuietAndIsForgotten() = runBlocking {
-        val before = openThenRestart("?name=andrew", "andrew-plan")
+        val before = openThenRestart("?name=alex", "alex-plan")
         val host = BeeHost.start(scope, HostConfig(port = 0, dataDir = dir, mcpUnclaimedAfter = 1.seconds))
         try {
             val departed = withTimeout(TIMEOUT) { host.state.first { s -> s.departures().any { it.identity == before } } }
@@ -298,7 +298,7 @@ class McpHttpRestartTest {
     /**
      * As above, but Claude Code is slow to come back: it re-initializes only once the voter has
      * dropped the old claims node, as it does after a `/mcp` or a relaunch. Until then the pushed-back
-     * slot is andrew's only entry; kept for its client, andrew is still never departed.
+     * slot is alex's only entry; kept for its client, alex is still never departed.
      */
     @Test
     fun aClientThatComesBackAfterTheLearnerGraceIsStillItself() = runBlocking {
@@ -306,23 +306,23 @@ class McpHttpRestartTest {
         val first = startHost(port)
         val presenter = BridgePeer.join(HostAddress.parse("ws://127.0.0.1:$port"), "presenter", peerHttpClient(), scope, Random(11), { Clock.System.now() })
         presenter.start()
-        val before = drawAndLearnWho(connect(url(first, "?name=andrew")), first, "andrew-plan")
+        val before = drawAndLearnWho(connect(url(first, "?name=alex")), first, "alex-plan")
         withTimeout(TIMEOUT) { presenter.board.state.first { s -> s.latestPresence().any { it.identity == before && it.claimsNode != null } } }
         first.close()
         val host = startHost(port)
         try {
-            // The rig: the presenter pushed andrew's old slot back, and nothing else speaks for andrew.
+            // The rig: the presenter pushed alex's old slot back, and nothing else speaks for alex.
             withTimeout(TIMEOUT) { host.state.first { s -> s.latestPresence().any { it.identity == before } } }
             delay(ClaimsVoter.LEARNER_GRACE + 5.seconds)
             val whileAway = host.state.value.departures().filter { it.identity == before }
-            val claude = connect(url(host, "?name=andrew"))
-            val after = drawAndLearnWho(claude, host, "andrew-after")
+            val claude = connect(url(host, "?name=alex"))
+            val after = drawAndLearnWho(claude, host, "alex-after")
             val departed = withTimeoutOrNull(ClaimsVoter.LEARNER_GRACE + 10.seconds) {
                 host.state.first { s -> s.departures().any { it.identity == before } }
             }
             assertAll(
                 { assertEquals(emptyList(), whileAway, "not departed while its client was away") },
-                { assertEquals(before, after, "andrew came back as itself, late") },
+                { assertEquals(before, after, "alex came back as itself, late") },
                 { assertEquals(null, departed?.departures()?.filter { it.identity == before }, "and was never departed") },
             )
             claude.close()
