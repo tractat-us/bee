@@ -54,7 +54,7 @@ fun interface PeerAddress {
 
     companion object {
         private const val FORWARDED_FOR = "X-Forwarded-For"
-        private const val FORWARDED = "Forwarded"
+        private const val FORWARDED_HEADER = "Forwarded"
 
         /**
          * The TCP peer, never a forwarded header: no proxy stands in front of the host, and a
@@ -74,7 +74,7 @@ fun interface PeerAddress {
             val forwardedFor = headers.getAll(FORWARDED_FOR).orEmpty().flatMap { it.split(',') }.map(String::trim).lastOrNull { it.isNotEmpty() }
             when {
                 forwardedFor != null -> Caller.forwarded(forwardedFor)
-                headers.contains(FORWARDED_FOR) || headers.contains(FORWARDED) -> Caller.forwarded(call.request.local.remoteAddress)
+                headers.contains(FORWARDED_FOR) || headers.contains(FORWARDED_HEADER) -> Caller.forwarded(call.request.local.remoteAddress)
                 else -> Caller.byPeer(call.request.local.remoteAddress)
             }
         }
