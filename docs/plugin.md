@@ -41,6 +41,12 @@ shows `bee` as failed.
   Sketch, and says what a Sketch can't do. Then it offers to ask bee for the piece as a new
   component, in an issue on `tractat-us/bee`. It shows you the draft and files only when you say
   yes, and keeps what's on your board out of it.
+- **A skill, `present`, for talking through a design.** Say "mock it up", "compare these
+  layouts", or "take a vote", or let a brainstorm reach a question that's clearer seen than read.
+  The session puts that one question on the board, as mockups side by side with a button to choose
+  each, or as a poll with how long it stays open. It reads the answers, sums them up in the
+  terminal, and replaces or closes the surface as the talk moves on. With a board attached, it
+  takes the place of the brainstorming skill's visual companion, and starts no server of its own.
 
 ## Pick the board
 

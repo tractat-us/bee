@@ -1,7 +1,7 @@
 {
   "name": "bee",
   "version": "0.2.0",
-  "description": "Join a bee board from Claude Code: the board's MCP server over HTTP, /bee:draw and /bee:checkin, and skills on how to share the board and how to ask for a component it lacks.",
+  "description": "Join a bee board from Claude Code: the board's MCP server over HTTP, /bee:draw and /bee:checkin, and skills on how to share the board, how to ask for a component it lacks, and how to show a design or poll the room.",
   "author": {
     "name": "Iain Keddie"
   },
