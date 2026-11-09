@@ -44,7 +44,7 @@ fun interface PeerAddress {
  * anything unparseable: resolving a name would cost a lookup, and a name can say anything.
  */
 fun isLoopback(literal: String): Boolean = try {
-    InetAddress.ofLiteral(literal).isLoopbackAddress
+    spikeOfLiteral(literal).isLoopbackAddress
 } catch (_: IllegalArgumentException) {
     false
 }
