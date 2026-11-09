@@ -276,6 +276,11 @@ key, a surface's content or a tool call's arguments. Each folder is capped at 10
 To turn it off, start the host or the bridge with `BEE_TELEMETRY=off`. `bee-up` and `bee-join`
 pass that setting to the bridges they configure.
 
+To read it back, run `bin/bee-telemetry`: it prints every record under `$BEE_HOME` as one
+timeline, oldest first. `--role host`, `--peer <name>`, `--since 10m` and `--tail 50` narrow it,
+and `--json` prints JSONL. It copies each record before reading it, so a running host or bridge is
+never disturbed.
+
 ## Run the host by hand
 
 `bee-up` wraps the host. To run it in a terminal of your own instead:

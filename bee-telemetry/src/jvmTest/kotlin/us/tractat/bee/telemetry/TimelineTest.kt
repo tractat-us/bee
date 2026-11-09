@@ -54,7 +54,55 @@ class TimelineTest {
             { assertTrue(lines[2].startsWith("08:00:00.020  host   host-1"), lines[2]) },
             { assertEquals(listOf("mcp.tool"), timeline(merged, TimelineFilter(peer = "ada")).map { it.name }, "--peer") },
             { assertEquals(listOf("board.restored", "surface.open"), timeline(merged, TimelineFilter(role = Role.HOST)).map { it.name }, "--role") },
+            { assertEquals(listOf("mcp.tool", "surface.open"), timeline(merged, TimelineFilter(sinceEpochNanos = merged[1].epochNanos)).map { it.name }, "--since") },
+            { assertEquals(listOf("surface.open"), timeline(merged, TimelineFilter(), tail = 1).map { it.name }, "--tail") },
+            { assertEquals(listOf("mcp.tool"), timeline(merged, TimelineFilter(role = Role.BRIDGE), tail = 1).map { it.name }, "--tail after the filter") },
         )
+    }
+
+    /**
+     * Reading a buffer its process still holds open leaves every byte of it as it was, and the
+     * process records on; a second read sees what it recorded since.
+     */
+    @Test
+    fun readingALiveBufferLeavesItUntouched() {
+        val dir = home.resolve("host/telemetry")
+        val scratch = Files.createDirectories(home.resolve("scratch"))
+        val live = ProcessTelemetry.open(listOf(dir), mapOf(Attr.ROLE to Role.HOST), env = on, captureLogs = false)
+        try {
+            live.telemetry.event("board.restored")
+            eventually { readBuffer(dir, scratch).any { it.name == "board.restored" } }
+            val before = snapshot(dir.resolve("buffer"))
+            readBuffer(dir, scratch)
+            val after = snapshot(dir.resolve("buffer"))
+            live.telemetry.event("surface.open")
+            eventually { readBuffer(dir, scratch).any { it.name == "surface.open" } }
+            assertEquals(before, after, "the read changed the live buffer")
+        } finally {
+            live.close()
+        }
+    }
+
+    @Test
+    fun aDirectoryWithNoBufferIsAnErrorNotAnEmptyTimeline() {
+        val bridge = home.resolve("telemetry/bridge-ada")
+        ProcessTelemetry.open(listOf(bridge), mapOf(Attr.ROLE to Role.BRIDGE), env = on, captureLogs = false).close()
+        val scratch = Files.createDirectories(home.resolve("scratch"))
+        assertAll(
+            { assertFailsWith<IllegalArgumentException> { readBuffer(bridge.resolve("buffer"), scratch) } },
+            { assertEquals(emptyList(), telemetryDirs(home.resolve("telemetry/bridge-ada")), "a bridge's own folder isn't a home") },
+        )
+    }
+
+    private fun snapshot(dir: Path): Map<String, List<Byte>> =
+        Files.list(dir).use { files -> files.toList().associate { it.fileName.toString() to Files.readAllBytes(it).toList() } }
+
+    private fun eventually(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "not within 10 s" }
+            Thread.sleep(20)
+        }
     }
 
     /** Reading twice copies twice; each record is still printed once. */

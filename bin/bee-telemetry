@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bee-telemetry: print what this machine's bee processes recorded, as one timeline.
 #
-#   bee-telemetry [--role host|bridge|page] [--peer <name>] [--since <10m>] [--tail <n>] [--json]
+#   bee-telemetry [--role host|bridge] [--peer <name>] [--since <10m>] [--tail <n>] [--json]
 #                 [--home <dir>] [--dir <telemetry dir>]...
 #
 # Reads the host's telemetry (<BEE_HOME>/host/telemetry) and each bridge's

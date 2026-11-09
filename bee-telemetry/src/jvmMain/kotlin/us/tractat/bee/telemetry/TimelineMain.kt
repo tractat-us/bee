@@ -6,7 +6,7 @@ import kotlin.system.exitProcess
 import kotlin.time.Clock
 import kotlin.time.Duration
 
-private const val USAGE = """bee-telemetry [--home <dir>] [--dir <telemetry dir>]... [--role host|bridge|page] [--peer <name>] [--since <10m>] [--tail <n>] [--json]
+private const val USAGE = """bee-telemetry [--home <dir>] [--dir <telemetry dir>]... [--role host|bridge] [--peer <name>] [--since <10m>] [--tail <n>] [--json]
 
 Prints every bee process's telemetry under a bee home as one timeline, oldest first: the host's
 (<home>/host/telemetry) and each bridge's (<home>/telemetry/bridge-*). --dir reads only the
@@ -32,7 +32,12 @@ fun main(args: Array<String>) {
         System.err.println("No telemetry under ${options.home}. Is BEE_HOME right, or BEE_TELEMETRY=off?")
         exitProcess(1)
     }
-    val entries = timeline(dirs.flatMap { readBuffer(it, scratch) }, options.filter).let { all -> options.tail?.let(all::takeLast) ?: all }
+    val entries = try {
+        timeline(dirs.flatMap { readBuffer(it, scratch) }, options.filter, options.tail)
+    } catch (wrong: IllegalArgumentException) {
+        System.err.println(wrong.message)
+        exitProcess(1)
+    }
     val zone = ZoneId.systemDefault()
     entries.forEach { println(if (options.json) it.json() else it.text(zone)) }
 }

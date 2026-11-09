@@ -117,7 +117,7 @@ class HostTelemetryTest {
             { assertEquals("true", refusal["bee.board.named"]) },
             { assertEquals(Role.HOST, refusal[Attr.ROLE], "kept as the host's") },
             { assertEquals(host.boardId.value, refusal[Attr.BOARD], "stamped with the board") },
-            { assertEquals(host.author.value, refusal[BeeHost.REPLICA_ATTRIBUTE], "stamped with this boot's replica") },
+            { assertEquals(host.author.value, refusal[Attr.REPLICA], "stamped with this boot's replica") },
             { assertEquals(host.boardId.value, events.first { it.attributes[Attr.EVENT] == "board.restored" }.attributes[Attr.BOARD], "from the first record") },
             { assertEquals(listOf("true", "true"), dials.map { it["bee.key.presented"] }, "both dials") },
             { assertTrue(bytes.none { forged in it }, "the forged key is in a stored file") },

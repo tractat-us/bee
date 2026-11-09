@@ -56,6 +56,12 @@ object Attr {
     /** The commit the recording build is from ([BuildInfo.commit]). */
     const val COMMIT = "bee.commit"
 
+    /** A bridge's session name, `BEE_SESSION_NAME` or its folder's. */
+    const val SESSION = "bee.session"
+
+    /** The host's CRDT author for this boot. A host's `bee.peer` is the steady `host`. */
+    const val REPLICA = "bee.replica"
+
     /** The recording process's id. */
     const val PID = "process.pid"
 

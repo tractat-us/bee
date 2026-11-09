@@ -10,14 +10,15 @@ import us.tractat.kuilt.otel.LogRecord
 import us.tractat.kuilt.otel.SpanRecord
 import us.tractat.kuilt.otel.SpanStatus
 import us.tractat.kuilt.otel.WarpTelemetry
+import us.tractat.kuilt.otel.logging.LOGGER_NAME_ATTRIBUTE
 import us.tractat.kuilt.store.FileChannelDurableStore
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.io.path.copyTo
-import kotlin.io.path.createDirectories
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
@@ -67,16 +68,20 @@ data class TimelineEntry(
 data class TimelineFilter(val role: String? = null, val peer: String? = null, val sinceEpochNanos: Long? = null) {
     fun admits(entry: TimelineEntry): Boolean =
         (role == null || entry.role == role) &&
-            (peer == null || peer in entry.peer || peer == entry.attributes["bee.session"]) &&
+            (peer == null || peer in entry.peer || peer == entry.attributes[Attr.SESSION]) &&
             (sinceEpochNanos == null || entry.epochNanos >= sinceEpochNanos)
 }
 
-/** [entries] as one timeline: each record once, however many copies hold it, in time order, as [filter] admits. */
-fun timeline(entries: List<TimelineEntry>, filter: TimelineFilter): List<TimelineEntry> =
-    entries.distinctBy { it.kind to it.id }.filter(filter::admits).sortedWith(compareBy({ it.epochNanos }, { it.id }))
+/**
+ * [entries] as one timeline: each record once, however many copies hold it, in time order, as
+ * [filter] admits, and only the last [tail] if given. Entries at the same instant keep the order
+ * their buffer holds them in.
+ */
+fun timeline(entries: List<TimelineEntry>, filter: TimelineFilter, tail: Int? = null): List<TimelineEntry> =
+    entries.distinctBy { it.kind to it.id }.filter(filter::admits).sortedBy { it.epochNanos }.let { all -> tail?.let(all::takeLast) ?: all }
 
 /** Attributes the text form shows as columns, or leaves out as the same on every line of a process. */
-private val COLUMNS = setOf(Attr.ROLE, Attr.PEER, Attr.SERVICE, Attr.BOARD, Attr.COMMIT, Attr.PID, "bee.session", "bee.replica", Attr.EVENT, "logger.name")
+private val COLUMNS = setOf(Attr.ROLE, Attr.PEER, Attr.SERVICE, Attr.BOARD, Attr.COMMIT, Attr.PID, Attr.SESSION, Attr.REPLICA, Attr.EVENT, LOGGER_NAME_ATTRIBUTE)
 
 private val TIME = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 
@@ -94,7 +99,7 @@ fun TimelineEntry.text(zone: ZoneId): String = buildString {
     )
     append("  ").append(name)
     durationNanos?.let { append(" (").append(it / NANOS_PER_MILLI).append(" ms)") }
-    if (kind == TimelineEntry.Kind.LOG) attributes["logger.name"]?.let { append("  [").append(it.substringAfterLast('.')).append(']') }
+    if (kind == TimelineEntry.Kind.LOG) attributes[LOGGER_NAME_ATTRIBUTE]?.let { append("  [").append(it.substringAfterLast('.')).append(']') }
     attributes.filterKeys { it !in COLUMNS }.forEach { (key, value) -> append("  ").append(key).append('=').append(value) }
 }
 
@@ -119,21 +124,31 @@ private const val NANOS_PER_MILLI = 1_000_000L
  * under each data dir's `telemetry/` (bee-up keeps the host's in `host/`).
  */
 fun telemetryDirs(home: Path): List<Path> {
-    val bridges = home.resolve("telemetry").takeIf { it.isDirectory() }?.listDirectoryEntries()?.filter { it.isDirectory() }.orEmpty()
+    val bridges = home.resolve("telemetry").takeIf { it.isDirectory() }?.listDirectoryEntries()?.filter { it.resolve("buffer").isDirectory() }.orEmpty()
     val hosts = home.takeIf { it.isDirectory() }?.listDirectoryEntries()?.map { it.resolve("telemetry") }?.filter { it.resolve("buffer").isDirectory() }.orEmpty()
     return (hosts + bridges).sorted()
 }
 
 /**
  * Every entry the buffer in [dir] holds, read from a copy taken into [scratch]: recovering a
- * buffer can write to it, and its own process may still be writing. A copy taken mid-write can
- * be inconsistent, so an unreadable one reads as empty; read again.
+ * buffer can write to it, and its own process may still be writing. The store only ever renames a
+ * finished file into place, so each file copied is whole. A copy taken mid-write may lack the
+ * newest records, as an older snapshot would; read again for them. A file the writer renames or
+ * deletes between the listing and the copy is skipped, and its `.tmp` files are never read.
+ *
+ * @throws IllegalArgumentException if [dir] holds no buffer
  */
 fun readBuffer(dir: Path, scratch: Path): List<TimelineEntry> {
     val source = dir.resolve("buffer")
-    if (!source.isDirectory()) return emptyList()
-    val copy = scratch.resolve(dir.toAbsolutePath().toString().replace('/', '_')).createDirectories()
-    source.listDirectoryEntries().filter { it.isRegularFile() }.forEach { it.copyTo(copy.resolve(it.fileName), overwrite = true) }
+    require(source.isDirectory()) { "$dir holds no telemetry buffer: there is no $source." }
+    val copy = Files.createTempDirectory(scratch, "buffer-")
+    source.listDirectoryEntries().filter { it.isRegularFile() && !it.fileName.toString().endsWith(".tmp") }.forEach { file ->
+        try {
+            file.copyTo(copy.resolve(file.fileName))
+        } catch (_: NoSuchFileException) {
+            // Gone since the listing: renamed over or retired by the writer. Recovery copes with a missing segment.
+        }
+    }
     val warp = WarpTelemetry(ReplicaId("bee-telemetry-reader"), FileChannelDurableStore(copy.toFile()))
     runBlocking { warp.recover() }
     return warp.logs.snapshot().toList().map(TimelineEntry::of) + warp.spans.snapshot().elements.map(TimelineEntry::of)

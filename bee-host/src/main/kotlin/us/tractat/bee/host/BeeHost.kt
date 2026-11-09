@@ -114,8 +114,6 @@ class BeeHost private constructor(
 
         internal const val CSP_HEADER = "Content-Security-Policy"
 
-        /** The host's CRDT author for this boot, on its records: `bee.peer` is the steady "host". */
-        const val REPLICA_ATTRIBUTE: String = "bee.replica"
 
         /**
          * The page's policy, sent with the page's files ([mountEndpoints]): no frame may load a
@@ -191,7 +189,7 @@ class BeeHost private constructor(
                 joinRequests.complete(requests)
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
                 val relay = core.board.relay
-                telemetry.resource.set(REPLICA_ATTRIBUTE, relay.replica.value)
+                telemetry.resource.set(Attr.REPLICA, relay.replica.value)
                 val watch = scope.watchBoard(relay.state, relay.spokes, PeerId(relay.replica.value), telemetry.telemetry)
                 return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, watch, telemetry, lock)
             } catch (failure: Throwable) {
