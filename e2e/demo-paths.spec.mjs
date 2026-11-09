@@ -256,10 +256,12 @@ test('the demo, beat by beat', async ({ browser }) => {
       await expect(boardCard(page, NEXT, 'doing', 'checks')).toBeVisible({ timeout: 15_000 });
     }
 
-    // The HTTP agent reconnects on its next call: one new session, and it works.
-    const board = await rig.teammate.call('bee_board', {});
-    expect(board.open.map((s) => s.surfaceId)).toEqual(expect.arrayContaining([MAIN, POLL, NEXT]));
+    // The HTTP agent reconnects on its next call: one new session, and it works. Its new bridge
+    // answers before its replica has the board, so the first read can come back empty: read again.
+    await rig.teammate.call('bee_board', {});
     expect(rig.teammate.sessions).toBe(2);
+    await expect.poll(() => rig.teammate.call('bee_board', {}).then((b) => b.open.map((s) => s.surfaceId)), { timeout: 15_000 })
+      .toEqual(expect.arrayContaining([MAIN, POLL, NEXT]));
 
     // The stdio bridge keeps its identity, and a click on its pre-restart surface still reaches it.
     const before = rig.owner.identity;
