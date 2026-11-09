@@ -163,7 +163,7 @@ class McpHttpRestartTest {
     @Test
     fun onlyAPairedDevicesOwnKeyComesBackAsItselfNeverTheJoinLinks() = runBlocking {
         val first = startHost()
-        val ticket = assertIs<Opened.Ticket>(first.pairing.open(ANOTHER_MACHINE))
+        val ticket = assertIs<Opened.Ticket>(first.pairing.open(Caller.byPeer(ANOTHER_MACHINE)))
         val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("andrew"), ticket.code)).key.value
         val join = first.pairing.joinKey.value
         val (onDevice, onJoin) = try {
@@ -221,7 +221,7 @@ class McpHttpRestartTest {
     @Test
     fun forgettingDevicesRetiresTheSessionsKeptUnderTheirKeys() = runBlocking {
         val first = startHost()
-        val ticket = assertIs<Opened.Ticket>(first.pairing.open(ANOTHER_MACHINE))
+        val ticket = assertIs<Opened.Ticket>(first.pairing.open(Caller.byPeer(ANOTHER_MACHINE)))
         val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("andrew"), ticket.code)).key.value
         val (andrew, iain) = try {
             drawAndLearnWho(connect(url(first, "?name=andrew&k=$device")), first, "andrew-plan") to
