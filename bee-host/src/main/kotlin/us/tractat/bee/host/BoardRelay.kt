@@ -10,6 +10,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
 import us.tractat.bee.core.BEE_QUILTER_CONFIG
 import us.tractat.bee.core.BoardState
+import us.tractat.bee.core.HostAddress
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Seam
 import us.tractat.kuilt.core.Swatch
@@ -134,7 +135,7 @@ class BoardRelay(
 
     companion object {
         /** The board relay's WebSocket route. */
-        const val PATH: String = "/ws/board"
+        const val PATH: String = HostAddress.BOARD_PATH
 
         /** The Quilter's wire format, named here because the forward decodes the same frames. */
         @OptIn(ExperimentalSerializationApi::class)

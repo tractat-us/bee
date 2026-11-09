@@ -30,6 +30,7 @@ import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.PairingEnd
@@ -40,8 +41,6 @@ import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.cluster.ClusterEndpoints
-import us.tractat.kuilt.core.PeerId
-import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.VersionVector
@@ -56,9 +55,6 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private val log = KotlinLogging.logger("us.tractat.bee.web.Main")
-
-/** The host's board relay route (bee-host's `BoardRelay.PATH`). */
-private const val BOARD_PATH = "/ws/board"
 
 /** Where this tab keeps the key pairing gave it. A tab's own storage: a new tab on a LAN device pairs again. */
 private const val KEY_STORAGE = "bee.lan.key"
@@ -165,6 +161,14 @@ private fun socketUrl(path: String, query: String): String {
     return "$scheme://${window.location.host}$path${if (query.isEmpty()) "" else "?$query"}"
 }
 
+/** The host this page came from, with the page's key if it has one: what the board socket is dialled through. */
+private fun pageHost(access: Access.Admitted): HostAddress = HostAddress.parse(
+    when (access) {
+        is Access.Keyed -> "${window.location.origin}/?${param(PairingWire.KEY_PARAM, access.key)}"
+        Access.Loopback -> window.location.origin
+    },
+)
+
 private fun param(name: String, value: String): String = "$name=${encodeURIComponent(value)}"
 
 internal fun encodeURIComponent(value: String): String = js("encodeURIComponent(value)")
@@ -262,7 +266,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
         is Access.Keyed -> param(PairingWire.KEY_PARAM, access.key)
         Access.Loopback -> ""
     }
-    val rendezvous = Rendezvous.Existing(WebSocketAdvertisement(socketUrl(BOARD_PATH, query), PeerId("bee-host"), "board"))
+    val rendezvous = pageHost(access).boardRendezvous()
     scope.launch {
         val answer = askBoardId()
         val (copy, initial) = restore(answer, author, store)

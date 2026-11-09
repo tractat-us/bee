@@ -7,6 +7,9 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.http.encodeURLQueryComponent
 import io.ktor.http.encodedPath
 import io.ktor.http.parseUrl
+import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.core.Rendezvous
+import us.tractat.kuilt.websocket.WebSocketAdvertisement
 
 /**
  * Where a bee host is, for a peer that dials it from a process (the bridge, a companion): its
@@ -33,6 +36,14 @@ class HostAddress private constructor(private val root: Url, private val key: St
         key?.let { parameters.append(PairingWire.KEY_PARAM, it) }
     }.buildString()
 
+    /**
+     * Where a client dials the board: the host's `/ws/board` socket, key included, as the one
+     * existing rendezvous. The bridge, the companion, the page and the app all dial the board
+     * through this, so the socket's path and its key change in one place.
+     */
+    fun boardRendezvous(): Rendezvous =
+        Rendezvous.Existing(WebSocketAdvertisement(socket(BOARD_PATH), PeerId(BOARD_HOST_PEER), BOARD_SESSION))
+
     /** [text] with this address's key, as given or URL-encoded, replaced by `…` wherever it appears. */
     fun redact(text: String): String =
         key?.let { listOf(it.encodeURLParameter(), it.encodeURLQueryComponent(), it).distinct() }.orEmpty()
@@ -52,6 +63,15 @@ class HostAddress private constructor(private val root: Url, private val key: St
     override fun toString(): String = if (key == null) http else "$http, with a join key"
 
     companion object {
+        /** The board relay's WebSocket route. */
+        const val BOARD_PATH: String = "/ws/board"
+
+        /** The host's peer id on the board socket. */
+        private const val BOARD_HOST_PEER = "bee-host"
+
+        /** The session name the board socket's advertisement carries. */
+        private const val BOARD_SESSION = "board"
+
         /** What [redact] puts where the key was. */
         private const val REDACTED = "…"
 

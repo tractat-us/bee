@@ -16,11 +16,8 @@ import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.askBoardId
 import us.tractat.bee.core.pinnedTo
-import us.tractat.kuilt.core.PeerId
-import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.NodeId
-import us.tractat.kuilt.websocket.WebSocketAdvertisement
 import kotlin.random.Random
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
@@ -70,7 +67,7 @@ class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClie
             val board = BoardClient(
                 author,
                 SpokeLoom(http, Dispatchers.Default, scope, author.value, random, clock).pinnedTo(pin),
-                Rendezvous.Existing(WebSocketAdvertisement(host.socket("/ws/board"), PeerId("bee-host"), "board")),
+                host.boardRendezvous(),
                 scope,
                 clock,
             )

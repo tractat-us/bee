@@ -1,6 +1,9 @@
 package us.tractat.bee.core
 
+import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.test.assertAll
+import us.tractat.kuilt.websocket.WebSocketAdvertisement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -15,6 +18,16 @@ class HostAddressTest {
             { assertEquals("http://127.0.0.1:8233", host.http) },
             { assertEquals("ws://127.0.0.1:8233/ws/board", host.socket("/ws/board")) },
             { assertEquals("http://127.0.0.1:8233", host.toString()) },
+        )
+    }
+
+    @Test
+    fun theBoardIsDialledAtItsSocketAsTheHostsExistingPeer() {
+        fun board(url: String) = Rendezvous.Existing(WebSocketAdvertisement(url, PeerId("bee-host"), "board"))
+        assertAll(
+            { assertEquals(board("ws://127.0.0.1:8233/ws/board"), HostAddress.parse("ws://127.0.0.1:8233").boardRendezvous(), "local") },
+            { assertEquals(board("ws://tractatus.local:8233/ws/board?k=$KEY"), HostAddress.parse("http://tractatus.local:8233/?k=$KEY").boardRendezvous(), "lan, key") },
+            { assertEquals(board("wss://bee.example/ws/board?k=$KEY"), HostAddress.parse("https://bee.example/?k=$KEY").boardRendezvous(), "hosted, key") },
         )
     }
 

@@ -31,11 +31,8 @@ import us.tractat.bee.mcp.awaitAnotherBoard
 import us.tractat.bee.mcp.beeHostFrom
 import us.tractat.bee.mcp.boardNamedOrNull
 import us.tractat.bee.mcp.peerHttpClient
-import us.tractat.kuilt.core.PeerId
-import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.raft.NodeId
-import us.tractat.kuilt.websocket.WebSocketAdvertisement
 import java.io.IOException
 import java.io.PrintStream
 import java.nio.file.Files
@@ -89,7 +86,7 @@ fun main(args: Array<String>) {
     val board = BoardClient(
         author,
         SpokeLoom(http, Dispatchers.Default, scope, author.value, random, clock).pinnedTo(pin),
-        Rendezvous.Existing(WebSocketAdvertisement(host.socket("/ws/board"), PeerId("bee-host"), "board")),
+        host.boardRendezvous(),
         scope,
         clock,
     )
