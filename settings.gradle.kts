@@ -1,6 +1,8 @@
 rootProject.name = "bee"
 
 pluginManagement {
+    // The bee.publish convention plugin, applied by every published module.
+    includeBuild("build-logic")
     repositories {
         mavenCentral()
         gradlePluginPortal()

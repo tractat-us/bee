@@ -1,0 +1,234 @@
+// Klib ABI Dump
+// Targets: [wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <us.tractat.bee:bee-a2ui>
+sealed interface us.tractat.bee.a2ui/A2uiMessage { // us.tractat.bee.a2ui/A2uiMessage|null[0]
+    abstract val surfaceId // us.tractat.bee.a2ui/A2uiMessage.surfaceId|{}surfaceId[0]
+        abstract fun <get-surfaceId>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+
+    final class CreateSurface : us.tractat.bee.a2ui/A2uiMessage { // us.tractat.bee.a2ui/A2uiMessage.CreateSurface|null[0]
+        constructor <init>(kotlin/String, kotlin/String, kotlin/Boolean = ...) // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.<init>|<init>(kotlin.String;kotlin.String;kotlin.Boolean){}[0]
+
+        final val catalogId // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.catalogId|{}catalogId[0]
+            final fun <get-catalogId>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.catalogId.<get-catalogId>|<get-catalogId>(){}[0]
+        final val sendDataModel // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.sendDataModel|{}sendDataModel[0]
+            final fun <get-sendDataModel>(): kotlin/Boolean // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.sendDataModel.<get-sendDataModel>|<get-sendDataModel>(){}[0]
+        final val surfaceId // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.surfaceId|{}surfaceId[0]
+            final fun <get-surfaceId>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+
+        final fun component1(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.component1|component1(){}[0]
+        final fun component2(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.component2|component2(){}[0]
+        final fun component3(): kotlin/Boolean // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.component3|component3(){}[0]
+        final fun copy(kotlin/String = ..., kotlin/String = ..., kotlin/Boolean = ...): us.tractat.bee.a2ui/A2uiMessage.CreateSurface // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.copy|copy(kotlin.String;kotlin.String;kotlin.Boolean){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.CreateSurface.toString|toString(){}[0]
+    }
+
+    final class DeleteSurface : us.tractat.bee.a2ui/A2uiMessage { // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface|null[0]
+        constructor <init>(kotlin/String) // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.<init>|<init>(kotlin.String){}[0]
+
+        final val surfaceId // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.surfaceId|{}surfaceId[0]
+            final fun <get-surfaceId>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+
+        final fun component1(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.component1|component1(){}[0]
+        final fun copy(kotlin/String = ...): us.tractat.bee.a2ui/A2uiMessage.DeleteSurface // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.copy|copy(kotlin.String){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.DeleteSurface.toString|toString(){}[0]
+    }
+
+    final class UpdateComponents : us.tractat.bee.a2ui/A2uiMessage { // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents|null[0]
+        constructor <init>(kotlin/String, kotlin.collections/List<kotlinx.serialization.json/JsonObject>) // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.<init>|<init>(kotlin.String;kotlin.collections.List<kotlinx.serialization.json.JsonObject>){}[0]
+
+        final val components // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.components|{}components[0]
+            final fun <get-components>(): kotlin.collections/List<kotlinx.serialization.json/JsonObject> // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.components.<get-components>|<get-components>(){}[0]
+        final val surfaceId // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.surfaceId|{}surfaceId[0]
+            final fun <get-surfaceId>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+
+        final fun component1(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.component1|component1(){}[0]
+        final fun component2(): kotlin.collections/List<kotlinx.serialization.json/JsonObject> // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.component2|component2(){}[0]
+        final fun copy(kotlin/String = ..., kotlin.collections/List<kotlinx.serialization.json/JsonObject> = ...): us.tractat.bee.a2ui/A2uiMessage.UpdateComponents // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.copy|copy(kotlin.String;kotlin.collections.List<kotlinx.serialization.json.JsonObject>){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateComponents.toString|toString(){}[0]
+    }
+
+    final class UpdateDataModel : us.tractat.bee.a2ui/A2uiMessage { // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel|null[0]
+        constructor <init>(kotlin/String, kotlin/String, kotlinx.serialization.json/JsonElement?) // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.<init>|<init>(kotlin.String;kotlin.String;kotlinx.serialization.json.JsonElement?){}[0]
+
+        final val path // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.path|{}path[0]
+            final fun <get-path>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.path.<get-path>|<get-path>(){}[0]
+        final val surfaceId // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.surfaceId|{}surfaceId[0]
+            final fun <get-surfaceId>(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+        final val value // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.value|{}value[0]
+            final fun <get-value>(): kotlinx.serialization.json/JsonElement? // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.value.<get-value>|<get-value>(){}[0]
+
+        final fun component1(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.component1|component1(){}[0]
+        final fun component2(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.component2|component2(){}[0]
+        final fun component3(): kotlinx.serialization.json/JsonElement? // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.component3|component3(){}[0]
+        final fun copy(kotlin/String = ..., kotlin/String = ..., kotlinx.serialization.json/JsonElement? = ...): us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.copy|copy(kotlin.String;kotlin.String;kotlinx.serialization.json.JsonElement?){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // us.tractat.bee.a2ui/A2uiMessage.UpdateDataModel.toString|toString(){}[0]
+    }
+}
+
+final class us.tractat.bee.a2ui/A2uiAction { // us.tractat.bee.a2ui/A2uiAction|null[0]
+    constructor <init>(kotlin/String, kotlin/String, kotlin/String, kotlin/String, kotlinx.serialization.json/JsonObject) // us.tractat.bee.a2ui/A2uiAction.<init>|<init>(kotlin.String;kotlin.String;kotlin.String;kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
+
+    final val context // us.tractat.bee.a2ui/A2uiAction.context|{}context[0]
+        final fun <get-context>(): kotlinx.serialization.json/JsonObject // us.tractat.bee.a2ui/A2uiAction.context.<get-context>|<get-context>(){}[0]
+    final val name // us.tractat.bee.a2ui/A2uiAction.name|{}name[0]
+        final fun <get-name>(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.name.<get-name>|<get-name>(){}[0]
+    final val sourceComponentId // us.tractat.bee.a2ui/A2uiAction.sourceComponentId|{}sourceComponentId[0]
+        final fun <get-sourceComponentId>(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.sourceComponentId.<get-sourceComponentId>|<get-sourceComponentId>(){}[0]
+    final val surfaceId // us.tractat.bee.a2ui/A2uiAction.surfaceId|{}surfaceId[0]
+        final fun <get-surfaceId>(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.surfaceId.<get-surfaceId>|<get-surfaceId>(){}[0]
+    final val timestamp // us.tractat.bee.a2ui/A2uiAction.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.component1|component1(){}[0]
+    final fun component2(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.component2|component2(){}[0]
+    final fun component3(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.component3|component3(){}[0]
+    final fun component4(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.component4|component4(){}[0]
+    final fun component5(): kotlinx.serialization.json/JsonObject // us.tractat.bee.a2ui/A2uiAction.component5|component5(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String = ..., kotlin/String = ..., kotlin/String = ..., kotlinx.serialization.json/JsonObject = ...): us.tractat.bee.a2ui/A2uiAction // us.tractat.bee.a2ui/A2uiAction.copy|copy(kotlin.String;kotlin.String;kotlin.String;kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/A2uiAction.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/A2uiAction.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.a2ui/A2uiAction.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<us.tractat.bee.a2ui/A2uiAction> { // us.tractat.bee.a2ui/A2uiAction.$serializer|null[0]
+        final val descriptor // us.tractat.bee.a2ui/A2uiAction.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // us.tractat.bee.a2ui/A2uiAction.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // us.tractat.bee.a2ui/A2uiAction.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): us.tractat.bee.a2ui/A2uiAction // us.tractat.bee.a2ui/A2uiAction.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, us.tractat.bee.a2ui/A2uiAction) // us.tractat.bee.a2ui/A2uiAction.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;us.tractat.bee.a2ui.A2uiAction){}[0]
+    }
+
+    final object Companion { // us.tractat.bee.a2ui/A2uiAction.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<us.tractat.bee.a2ui/A2uiAction> // us.tractat.bee.a2ui/A2uiAction.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class us.tractat.bee.a2ui/NotionEdit { // us.tractat.bee.a2ui/NotionEdit|null[0]
+    constructor <init>(kotlin/String, kotlinx.serialization.json/JsonElement) // us.tractat.bee.a2ui/NotionEdit.<init>|<init>(kotlin.String;kotlinx.serialization.json.JsonElement){}[0]
+
+    final val path // us.tractat.bee.a2ui/NotionEdit.path|{}path[0]
+        final fun <get-path>(): kotlin/String // us.tractat.bee.a2ui/NotionEdit.path.<get-path>|<get-path>(){}[0]
+    final val value // us.tractat.bee.a2ui/NotionEdit.value|{}value[0]
+        final fun <get-value>(): kotlinx.serialization.json/JsonElement // us.tractat.bee.a2ui/NotionEdit.value.<get-value>|<get-value>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.a2ui/NotionEdit.component1|component1(){}[0]
+    final fun component2(): kotlinx.serialization.json/JsonElement // us.tractat.bee.a2ui/NotionEdit.component2|component2(){}[0]
+    final fun copy(kotlin/String = ..., kotlinx.serialization.json/JsonElement = ...): us.tractat.bee.a2ui/NotionEdit // us.tractat.bee.a2ui/NotionEdit.copy|copy(kotlin.String;kotlinx.serialization.json.JsonElement){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/NotionEdit.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/NotionEdit.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.a2ui/NotionEdit.toString|toString(){}[0]
+}
+
+final class us.tractat.bee.a2ui/SurfaceView { // us.tractat.bee.a2ui/SurfaceView|null[0]
+    constructor <init>(kotlin/String, kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonObject>, kotlinx.serialization.json/JsonObject, kotlin.collections/Map<kotlin/String, kotlin.collections/List<kotlinx.serialization.json/JsonElement>>, kotlin.collections/Set<kotlin/String>) // us.tractat.bee.a2ui/SurfaceView.<init>|<init>(kotlin.String;kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonObject>;kotlinx.serialization.json.JsonObject;kotlin.collections.Map<kotlin.String,kotlin.collections.List<kotlinx.serialization.json.JsonElement>>;kotlin.collections.Set<kotlin.String>){}[0]
+
+    final val appended // us.tractat.bee.a2ui/SurfaceView.appended|{}appended[0]
+        final fun <get-appended>(): kotlin.collections/Set<kotlin/String> // us.tractat.bee.a2ui/SurfaceView.appended.<get-appended>|<get-appended>(){}[0]
+    final val catalogId // us.tractat.bee.a2ui/SurfaceView.catalogId|{}catalogId[0]
+        final fun <get-catalogId>(): kotlin/String // us.tractat.bee.a2ui/SurfaceView.catalogId.<get-catalogId>|<get-catalogId>(){}[0]
+    final val components // us.tractat.bee.a2ui/SurfaceView.components|{}components[0]
+        final fun <get-components>(): kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonObject> // us.tractat.bee.a2ui/SurfaceView.components.<get-components>|<get-components>(){}[0]
+    final val conflicts // us.tractat.bee.a2ui/SurfaceView.conflicts|{}conflicts[0]
+        final fun <get-conflicts>(): kotlin.collections/Map<kotlin/String, kotlin.collections/List<kotlinx.serialization.json/JsonElement>> // us.tractat.bee.a2ui/SurfaceView.conflicts.<get-conflicts>|<get-conflicts>(){}[0]
+    final val data // us.tractat.bee.a2ui/SurfaceView.data|{}data[0]
+        final fun <get-data>(): kotlinx.serialization.json/JsonObject // us.tractat.bee.a2ui/SurfaceView.data.<get-data>|<get-data>(){}[0]
+    final val id // us.tractat.bee.a2ui/SurfaceView.id|{}id[0]
+        final fun <get-id>(): kotlin/String // us.tractat.bee.a2ui/SurfaceView.id.<get-id>|<get-id>(){}[0]
+
+    final fun component1(): kotlin/String // us.tractat.bee.a2ui/SurfaceView.component1|component1(){}[0]
+    final fun component2(): kotlin/String // us.tractat.bee.a2ui/SurfaceView.component2|component2(){}[0]
+    final fun component3(): kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonObject> // us.tractat.bee.a2ui/SurfaceView.component3|component3(){}[0]
+    final fun component4(): kotlinx.serialization.json/JsonObject // us.tractat.bee.a2ui/SurfaceView.component4|component4(){}[0]
+    final fun component5(): kotlin.collections/Map<kotlin/String, kotlin.collections/List<kotlinx.serialization.json/JsonElement>> // us.tractat.bee.a2ui/SurfaceView.component5|component5(){}[0]
+    final fun component6(): kotlin.collections/Set<kotlin/String> // us.tractat.bee.a2ui/SurfaceView.component6|component6(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String = ..., kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonObject> = ..., kotlinx.serialization.json/JsonObject = ..., kotlin.collections/Map<kotlin/String, kotlin.collections/List<kotlinx.serialization.json/JsonElement>> = ..., kotlin.collections/Set<kotlin/String> = ...): us.tractat.bee.a2ui/SurfaceView // us.tractat.bee.a2ui/SurfaceView.copy|copy(kotlin.String;kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonObject>;kotlinx.serialization.json.JsonObject;kotlin.collections.Map<kotlin.String,kotlin.collections.List<kotlinx.serialization.json.JsonElement>>;kotlin.collections.Set<kotlin.String>){}[0]
+    final fun dataModel(): kotlinx.serialization.json/JsonObject // us.tractat.bee.a2ui/SurfaceView.dataModel|dataModel(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // us.tractat.bee.a2ui/SurfaceView.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // us.tractat.bee.a2ui/SurfaceView.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // us.tractat.bee.a2ui/SurfaceView.toString|toString(){}[0]
+}
+
+final object us.tractat.bee.a2ui/A2uiJson { // us.tractat.bee.a2ui/A2uiJson|null[0]
+    final fun decodeAction(kotlin/String): us.tractat.bee.a2ui/A2uiAction // us.tractat.bee.a2ui/A2uiJson.decodeAction|decodeAction(kotlin.String){}[0]
+    final fun encode(kotlin.collections/List<us.tractat.bee.a2ui/A2uiMessage>): kotlin/String // us.tractat.bee.a2ui/A2uiJson.encode|encode(kotlin.collections.List<us.tractat.bee.a2ui.A2uiMessage>){}[0]
+}
+
+final object us.tractat.bee.a2ui/NotionActions { // us.tractat.bee.a2ui/NotionActions|null[0]
+    final const val ANSWER // us.tractat.bee.a2ui/NotionActions.ANSWER|{}ANSWER[0]
+        final fun <get-ANSWER>(): kotlin/String // us.tractat.bee.a2ui/NotionActions.ANSWER.<get-ANSWER>|<get-ANSWER>(){}[0]
+    final const val DROP // us.tractat.bee.a2ui/NotionActions.DROP|{}DROP[0]
+        final fun <get-DROP>(): kotlin/String // us.tractat.bee.a2ui/NotionActions.DROP.<get-DROP>|<get-DROP>(){}[0]
+
+    final fun edit(us.tractat.bee.a2ui/SurfaceView, us.tractat.bee.a2ui/A2uiAction, kotlin/String): us.tractat.bee.a2ui/NotionEdit? // us.tractat.bee.a2ui/NotionActions.edit|edit(us.tractat.bee.a2ui.SurfaceView;us.tractat.bee.a2ui.A2uiAction;kotlin.String){}[0]
+    final fun optionIds(kotlinx.serialization.json/JsonElement?): kotlin.collections/List<kotlin/String> // us.tractat.bee.a2ui/NotionActions.optionIds|optionIds(kotlinx.serialization.json.JsonElement?){}[0]
+}
+
+final object us.tractat.bee.a2ui/SurfaceFormat { // us.tractat.bee.a2ui/SurfaceFormat|null[0]
+    final const val COMPONENTS // us.tractat.bee.a2ui/SurfaceFormat.COMPONENTS|{}COMPONENTS[0]
+        final fun <get-COMPONENTS>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.COMPONENTS.<get-COMPONENTS>|<get-COMPONENTS>(){}[0]
+    final const val DATA // us.tractat.bee.a2ui/SurfaceFormat.DATA|{}DATA[0]
+        final fun <get-DATA>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.DATA.<get-DATA>|<get-DATA>(){}[0]
+    final const val META // us.tractat.bee.a2ui/SurfaceFormat.META|{}META[0]
+        final fun <get-META>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.META.<get-META>|<get-META>(){}[0]
+    final const val META_CATALOG_ID // us.tractat.bee.a2ui/SurfaceFormat.META_CATALOG_ID|{}META_CATALOG_ID[0]
+        final fun <get-META_CATALOG_ID>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.META_CATALOG_ID.<get-META_CATALOG_ID>|<get-META_CATALOG_ID>(){}[0]
+    final const val META_CLOSED_AT // us.tractat.bee.a2ui/SurfaceFormat.META_CLOSED_AT|{}META_CLOSED_AT[0]
+        final fun <get-META_CLOSED_AT>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.META_CLOSED_AT.<get-META_CLOSED_AT>|<get-META_CLOSED_AT>(){}[0]
+    final const val META_OPENED_AT // us.tractat.bee.a2ui/SurfaceFormat.META_OPENED_AT|{}META_OPENED_AT[0]
+        final fun <get-META_OPENED_AT>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.META_OPENED_AT.<get-META_OPENED_AT>|<get-META_OPENED_AT>(){}[0]
+    final const val META_OPENED_BY // us.tractat.bee.a2ui/SurfaceFormat.META_OPENED_BY|{}META_OPENED_BY[0]
+        final fun <get-META_OPENED_BY>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.META_OPENED_BY.<get-META_OPENED_BY>|<get-META_OPENED_BY>(){}[0]
+    final const val META_TITLE // us.tractat.bee.a2ui/SurfaceFormat.META_TITLE|{}META_TITLE[0]
+        final fun <get-META_TITLE>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.META_TITLE.<get-META_TITLE>|<get-META_TITLE>(){}[0]
+    final const val RESERVED_DATA_KEY // us.tractat.bee.a2ui/SurfaceFormat.RESERVED_DATA_KEY|{}RESERVED_DATA_KEY[0]
+        final fun <get-RESERVED_DATA_KEY>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.RESERVED_DATA_KEY.<get-RESERVED_DATA_KEY>|<get-RESERVED_DATA_KEY>(){}[0]
+    final const val STRUCTURED_PREFIX // us.tractat.bee.a2ui/SurfaceFormat.STRUCTURED_PREFIX|{}STRUCTURED_PREFIX[0]
+        final fun <get-STRUCTURED_PREFIX>(): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.STRUCTURED_PREFIX.<get-STRUCTURED_PREFIX>|<get-STRUCTURED_PREFIX>(){}[0]
+
+    final val VALUE_ORDER // us.tractat.bee.a2ui/SurfaceFormat.VALUE_ORDER|{}VALUE_ORDER[0]
+        final fun <get-VALUE_ORDER>(): kotlin/Comparator<us.tractat.kuilt.crdt/JsonValue> // us.tractat.bee.a2ui/SurfaceFormat.VALUE_ORDER.<get-VALUE_ORDER>|<get-VALUE_ORDER>(){}[0]
+
+    final fun canonical(kotlinx.serialization.json/JsonElement): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.canonical|canonical(kotlinx.serialization.json.JsonElement){}[0]
+    final fun decodeLeaf(us.tractat.kuilt.crdt/JsonValue): kotlinx.serialization.json/JsonElement // us.tractat.bee.a2ui/SurfaceFormat.decodeLeaf|decodeLeaf(us.tractat.kuilt.crdt.JsonValue){}[0]
+    final fun encodeLeaf(kotlinx.serialization.json/JsonElement): us.tractat.kuilt.crdt/JsonValue // us.tractat.bee.a2ui/SurfaceFormat.encodeLeaf|encodeLeaf(kotlinx.serialization.json.JsonElement){}[0]
+    final fun escapeSegment(kotlin/String): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.escapeSegment|escapeSegment(kotlin.String){}[0]
+    final fun isStructured(us.tractat.kuilt.crdt/JsonValue): kotlin/Boolean // us.tractat.bee.a2ui/SurfaceFormat.isStructured|isStructured(us.tractat.kuilt.crdt.JsonValue){}[0]
+    final fun metaString(us.tractat.kuilt.crdt/JsonNode.Leaf): kotlin/String? // us.tractat.bee.a2ui/SurfaceFormat.metaString|metaString(us.tractat.kuilt.crdt.JsonNode.Leaf){}[0]
+    final fun pointer(kotlin.collections/List<kotlin/String>): kotlin/String // us.tractat.bee.a2ui/SurfaceFormat.pointer|pointer(kotlin.collections.List<kotlin.String>){}[0]
+    final fun segments(kotlin/String): kotlin.collections/List<kotlin/String> // us.tractat.bee.a2ui/SurfaceFormat.segments|segments(kotlin.String){}[0]
+    final fun winner(us.tractat.kuilt.crdt/JsonNode.Leaf): kotlinx.serialization.json/JsonElement // us.tractat.bee.a2ui/SurfaceFormat.winner|winner(us.tractat.kuilt.crdt.JsonNode.Leaf){}[0]
+}
+
+final object us.tractat.bee.a2ui/SurfaceValidator { // us.tractat.bee.a2ui/SurfaceValidator|null[0]
+    final const val BOARD // us.tractat.bee.a2ui/SurfaceValidator.BOARD|{}BOARD[0]
+        final fun <get-BOARD>(): kotlin/String // us.tractat.bee.a2ui/SurfaceValidator.BOARD.<get-BOARD>|<get-BOARD>(){}[0]
+    final const val POLL // us.tractat.bee.a2ui/SurfaceValidator.POLL|{}POLL[0]
+        final fun <get-POLL>(): kotlin/String // us.tractat.bee.a2ui/SurfaceValidator.POLL.<get-POLL>|<get-POLL>(){}[0]
+    final const val SKETCH // us.tractat.bee.a2ui/SurfaceValidator.SKETCH|{}SKETCH[0]
+        final fun <get-SKETCH>(): kotlin/String // us.tractat.bee.a2ui/SurfaceValidator.SKETCH.<get-SKETCH>|<get-SKETCH>(){}[0]
+
+    final val NOTIONS_COMPONENT_TYPES // us.tractat.bee.a2ui/SurfaceValidator.NOTIONS_COMPONENT_TYPES|{}NOTIONS_COMPONENT_TYPES[0]
+        final fun <get-NOTIONS_COMPONENT_TYPES>(): kotlin.collections/Set<kotlin/String> // us.tractat.bee.a2ui/SurfaceValidator.NOTIONS_COMPONENT_TYPES.<get-NOTIONS_COMPONENT_TYPES>|<get-NOTIONS_COMPONENT_TYPES>(){}[0]
+
+    final fun appendErrors(us.tractat.bee.a2ui/SurfaceView): kotlin.collections/List<kotlin/String> // us.tractat.bee.a2ui/SurfaceValidator.appendErrors|appendErrors(us.tractat.bee.a2ui.SurfaceView){}[0]
+    final fun errors(us.tractat.bee.a2ui/SurfaceView): kotlin.collections/List<kotlin/String> // us.tractat.bee.a2ui/SurfaceValidator.errors|errors(us.tractat.bee.a2ui.SurfaceView){}[0]
+}
+
+final const val us.tractat.bee.a2ui/NOTIONS_CATALOG_ID // us.tractat.bee.a2ui/NOTIONS_CATALOG_ID|{}NOTIONS_CATALOG_ID[0]
+    final fun <get-NOTIONS_CATALOG_ID>(): kotlin/String // us.tractat.bee.a2ui/NOTIONS_CATALOG_ID.<get-NOTIONS_CATALOG_ID>|<get-NOTIONS_CATALOG_ID>(){}[0]
+
+final fun (us.tractat.kuilt.crdt/JsonCrdt).us.tractat.bee.a2ui/toSurfaceView(kotlin/String): us.tractat.bee.a2ui/SurfaceView // us.tractat.bee.a2ui/toSurfaceView|toSurfaceView@us.tractat.kuilt.crdt.JsonCrdt(kotlin.String){}[0]
+final fun us.tractat.bee.a2ui/diff(us.tractat.bee.a2ui/SurfaceView?, us.tractat.bee.a2ui/SurfaceView?): kotlin.collections/List<us.tractat.bee.a2ui/A2uiMessage> // us.tractat.bee.a2ui/diff|diff(us.tractat.bee.a2ui.SurfaceView?;us.tractat.bee.a2ui.SurfaceView?){}[0]
