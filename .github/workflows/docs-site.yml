@@ -1,5 +1,5 @@
 # The docs site: docs-site/properdocs.yml over docs/, published to GitHub Pages
-# with private visibility: only people with read access to this repo can open it.
+# at https://tractat-us.github.io/bee/.
 # Build and preview: docs-site/README.md.
 #
 # A PR that touches the site gets a strict build as its check; a push to main

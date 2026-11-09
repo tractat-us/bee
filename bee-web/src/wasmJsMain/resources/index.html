@@ -130,7 +130,8 @@
     #status[data-online="true"]::before { background: var(--acting); }
 
     /* Bring your Claude: a quiet control in the bar, and its panel in the flow under the bar. */
-    #bring-claude-toggle, .bring-claude-open, #bring-claude-copy, #bring-claude-close {
+    #bring-claude-toggle, .bring-claude-open, #bring-claude-copy, #bring-claude-close,
+    #invite-toggle, #invite-copy, #invite-close {
       flex: none;
       padding: 2px 10px;
       border: 1px solid var(--line);
@@ -141,8 +142,8 @@
       font-size: 0.85em;
       cursor: pointer;
     }
-    #bring-claude-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
-    #bring-claude {
+    #bring-claude-toggle[aria-expanded="true"], #invite-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+    #bring-claude, #invite {
       order: 1;
       width: calc(100% - 32px);
       max-width: 848px;
@@ -176,6 +177,39 @@
     }
     .bring-claude-unnamed { color: var(--muted); }
     .bring-claude-offer { display: block; margin-top: 10px; }
+
+    /* Invite: the owner's join link as a QR code, big enough to scan across a room. Dark on white
+       in either theme, since a scanner wants it so; the quiet zone is in the SVG. */
+    #invite[hidden] { display: none; }
+    #invite p { margin: 6px 0; }
+    #invite-head { display: flex; align-items: center; justify-content: space-between; }
+    #invite-close { padding: 0 9px; font-size: 1.1em; line-height: 1.4; }
+    #invite-code { display: flex; justify-content: center; margin: 8px 0; }
+    #invite-qr { display: block; max-width: 100%; height: auto; background: #fff; border-radius: 6px; }
+    #invite-scan { text-align: center; font-size: 1.05em; }
+    #invite-line { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    #invite-link {
+      display: block;
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      font: 1rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+      user-select: all;
+    }
+    #invite-copy { font-size: 0.95em; }
+    #invite-copied { min-height: 1.45em; color: var(--acting); font-size: 0.9em; }
+    #invite-others {
+      margin: 4px 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
 
     #problem {
       order: 1;

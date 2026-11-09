@@ -9,6 +9,18 @@ kotlin { jvmToolchain(25) }
 
 application { mainClass = "us.tractat.bee.mcp.MainKt" }
 
+// ToolsPageTest reads docs/tools.md, from this module's directory, and checks it names every tool
+// and prompt the bridge serves. PluginCommandsTest reads the plugin's command skills, which copy
+// the prompts. Both are inputs, so an edit to either reruns the tests.
+tasks.test {
+    inputs.file(layout.projectDirectory.file("../docs/tools.md"))
+        .withPropertyName("toolsPage")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(layout.projectDirectory.dir("../plugins/bee/skills"))
+        .withPropertyName("pluginSkills")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     implementation(platform(libs.kuilt.bom))
     implementation(platform(libs.ktor.bom))
@@ -33,11 +45,4 @@ dependencies {
     testImplementation(libs.ktor.server.websockets)
     // bee-host's in-memory voter and relay, for the bridge's claims and board tests (Task 7).
     testImplementation(testFixtures(project(":bee-host")))
-}
-
-// PluginCommandsTest reads the plugin's command skills, so a change to one reruns the tests.
-tasks.test {
-    inputs.dir(rootProject.layout.projectDirectory.dir("plugins/bee/skills"))
-        .withPropertyName("pluginSkills")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
 }

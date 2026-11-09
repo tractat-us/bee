@@ -30,6 +30,7 @@ import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.OrphanAnswers
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
@@ -271,6 +272,8 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
         val chrome = BoardChrome(root, shell.peers)
         // A room screen has no person to bring a session, and its key is the room's own: never shown.
         if (!screen) chrome.addToHint(BringYourClaude(shell, McpCommand.of(window.location.origin, access, viewer)).opener())
+        // Only the owner's own page invites: a keyed viewer doesn't pass its key on, nor does a screen.
+        if (!screen && access == Access.Loopback) offerInvite(shell)
         val answering = if (screen) {
             OrphanAnswering.Refused
         } else {
@@ -329,6 +332,17 @@ private fun claimsConnection(http: HttpClient, pin: BoardPin, query: String, sco
         onFailure = { failure -> log.warn(failure) { "The claims link failed; it is rebuilt." } },
         retryDelay = ClaimsConnection.jitteredBackoff(Random.Default),
     )
+
+/**
+ * An Invite control in the bar, once the host gives this page its join links at
+ * [InviteLinks.PATH]: only a `--lan` host does, and only to its own machine. Anything else (a 404,
+ * a 403, no host) leaves the bar as it is.
+ */
+private fun offerInvite(shell: PageShell) {
+    fetchText(InviteLinks.PATH) { text, _ ->
+        if (text != null) Invite(shell, Json.decodeFromString(InviteLinks.serializer(), text))
+    }
+}
 
 /** What asking the host for its board came to. */
 private sealed interface HostAnswer {

@@ -21,14 +21,17 @@ import us.tractat.bee.core.PresenceEntry
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.bee.mcp.HttpBridges
 import us.tractat.kuilt.raft.RaftConfig
 import java.security.SecureRandom
+import kotlin.random.asKotlinRandom
 import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
  * The always-on host (spec §5.4): it serves the page at `/`, names its board at [BoardId.PATH],
- * relays the board at [BoardRelay.PATH], and runs the claims voter at [CLAIMS_PATH]. Invariant:
+ * relays the board at [BoardRelay.PATH], runs the claims voter at [CLAIMS_PATH], and serves MCP
+ * over HTTP at [MCP_PATH], running a bridge for each session there ([HttpBridges]). Invariant:
  * **the host writes to the board only through its own replica**; it has no write route. Its
  * writes are the claims mirror and the departed list, from the voter's fold, the join
  * requests of LAN pairing ([JoinRequestSurface]), and the decisions orphaned claims ask for
@@ -49,6 +52,8 @@ class BeeHost private constructor(
     val pairing: Pairing,
     private val joinRequests: Job,
     private val orphanDecisions: Job,
+    /** The bridges this host runs for MCP clients over HTTP, at [MCP_PATH]. */
+    val bridges: HttpBridges,
     /** The host's hold on [HostConfig.dataDir], let go once [close] has saved the board. */
     private val dataDir: DataDirLock,
 ) : AutoCloseable {
@@ -69,13 +74,15 @@ class BeeHost private constructor(
     suspend fun mutate(f: (BoardState) -> Patch<BoardState>) = core.board.relay.mutate(f)
 
     /**
-     * Stops the host: join requests and orphan decisions first, since they write through the relay, then the core, whose
-     * voter's last mirror and server's last write are on the board before its last save. The data
-     * dir goes last, so the next host on it starts after that save.
+     * Stops the host: the HTTP bridges first, each departing `Left` while the voter can still
+     * commit it, then join requests and orphan decisions, since they write through the relay, then
+     * the core, whose voter's last mirror and server's last write are on the board before its last
+     * save. The data dir goes last, so the next host on it starts after that save.
      */
     override fun close() {
         dataDir.use {
             runBlocking {
+                bridges.close()
                 joinRequests.cancelAndJoin()
                 orphanDecisions.cancelAndJoin()
                 core.close()
@@ -88,6 +95,9 @@ class BeeHost private constructor(
         const val CLAIMS_PATH: String = "/ws/claims"
         const val CLAIMS_SESSION: String = "claims"
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
+
+        /** Where the host serves MCP over Streamable HTTP, for a Claude with nothing installed ([HttpBridges]). */
+        const val MCP_PATH: String = HttpBridges.PATH
 
         internal const val CSP_HEADER = "Content-Security-Policy"
 
@@ -135,9 +145,11 @@ class BeeHost private constructor(
             val pairing = Pairing(clock, secrets, keys, budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
+            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk)
+                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())
+                bridges.mount(this)
             }
             server.start(wait = false)
             try {
@@ -148,8 +160,9 @@ class BeeHost private constructor(
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
                 val decisions = hostOrphanDecisions(scope, core.board.relay, clock).start(scope)
-                return BeeHost(bound, core, pairing, pairingJob, decisions, lock)
+                return BeeHost(bound, core, pairing, pairingJob, decisions, bridges, lock)
             } catch (failure: Throwable) {
+                bridges.close()
                 server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
                 throw failure
             }

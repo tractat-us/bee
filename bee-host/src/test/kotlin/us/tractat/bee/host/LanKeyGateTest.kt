@@ -57,7 +57,7 @@ class LanKeyGateTest {
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
         application {
-            mountEndpoints(BOARD_ID, pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }))
+            mountEndpoints(BOARD_ID, pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }), Invitation.Closed)
             routing {
                 for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
                     route(gated) { get(PROBE) { call.respondText("through the gate") } }

@@ -23,11 +23,12 @@ export async function freePort() {
   });
 }
 
-/** A bee-host on [port] with its data in [dataDir], started and stopped as a process. */
+/** A bee-host on [port] with its data in [dataDir], and any further [flags], started and stopped as a process. */
 export class Host {
-  constructor(port, dataDir) {
+  constructor(port, dataDir, flags = []) {
     this.port = port;
     this.dataDir = dataDir;
+    this.flags = flags;
     this.url = `http://127.0.0.1:${port}`;
     this.process = null;
     this.log = [];
@@ -35,7 +36,7 @@ export class Host {
 
   async start() {
     const bin = join(repo, 'bee-host/build/install/bee-host/bin/bee-host');
-    this.process = spawn(bin, ['--port', String(this.port), '--data-dir', this.dataDir], { stdio: 'pipe' });
+    this.process = spawn(bin, ['--port', String(this.port), '--data-dir', this.dataDir, ...this.flags], { stdio: 'pipe' });
     for (const stream of [this.process.stdout, this.process.stderr]) {
       stream.on('data', (chunk) => this.log.push(chunk.toString()));
     }

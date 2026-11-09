@@ -9,11 +9,10 @@ claude plugin marketplace add tractat-us/bee
 claude plugin install bee@bee --scope local --config 'board_url=http://127.0.0.1:8233/mcp?name=${USER}'
 ```
 
-The repository is private for now, so the first line needs your GitHub access to it. Start
-`claude` in that folder and type `/bee:draw login-flow`, or say "draw the login flow on the
+Start `claude` in that folder and type `/bee:draw login-flow`, or say "draw the login flow on the
 board". The session draws on the board that `bin/bee-up` started on this machine.
 
-The plugin needs a host that serves MCP over HTTP at `/mcp`. That lands with
+The plugin needs a host that serves MCP over HTTP at `/mcp`, which bee has had since
 [#122](https://github.com/tractat-us/bee/pull/122). Against an older host, `/mcp` in Claude Code
 shows `bee` as failed.
 
@@ -73,7 +72,7 @@ where you want sessions on the board:
 - **On the host's own machine**, install with `--scope local`, as above. bee is then on in that
   folder only, for you only, and stays out of the project's git history.
 - **On a coworker's machine**, `--scope user` puts bee in every folder, as `claude mcp add --scope
-  user` does in [Setup](setup.md).
+  user` does in [An agent with nothing installed](setup.md#an-agent-with-nothing-installed).
 - To turn it on in another folder later, run `claude plugin install bee@bee --scope local` there.
   It keeps the board you set.
 

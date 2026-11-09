@@ -1,7 +1,7 @@
 # The bee docs site. Build: docs-site/README.md.
 site_name: bee docs
 site_description: A shared, agent-drawn board for a team and their coding agents, built on kuilt.
-site_url: https://potential-giggle-y9v4vm9.pages.github.io/
+site_url: https://tractat-us.github.io/bee/
 repo_url: https://github.com/tractat-us/bee
 repo_name: tractat-us/bee
 edit_uri: edit/main/docs/
@@ -105,20 +105,24 @@ plugins:
   # Sections mirror the nav tabs.
   - llmstxt:
       markdown_description: >-
-        The pages below cover what bee is, how to join a Claude Code session to
-        it, its design, and what each spike found.
+        The pages below cover what bee is, how to run a board or join one from
+        Claude Code, the tools and prompts a session gets, its design, and what
+        each spike found.
       full_output: llms-full.txt
       preprocess: llmstxt_preprocess.py
       sections:
         Docs:
-          - index.md: What bee is
-          - setup.md: Joining a Claude Code session to bee
-          - plugin.md: The Claude Code plugin that joins a session to a board
-          - superpowers/specs/2026-11-06-bee-design.md: The design
-          # A glob, so this line is a no-op until bee-and-kuilt.md exists: a plain
-          # path the build can't find is a warning, and --strict fails on it.
-          - bee-and-kuilt*.md: What bee builds and what it takes from kuilt
-          - spikes/*.md
+          - index.md: What bee is, and the three ways onto a board
+          - try-bee.md: Joining a board, or running your own, in a few minutes, from a Mac
+          - setup.md: Running a board with bee-up, joining one from its link, and adding bee to Claude Code
+          - tools.md: Every tool and prompt a Claude session gets from bee, one line each
+          - plugin.md: The Claude Code plugin, which joins a session to a board with one install
+          - superpowers/specs/2026-11-06-bee-design.md: The design spec, with its goals, architecture and the board's state
+          - bee-and-kuilt.md: What bee builds and what it takes from kuilt
+          - spikes/2026-11-spike-1-renderer-glue.md: Spike 1, Kotlin/wasm driving the stock A2UI renderer
+          - spikes/2026-11-spike-2-crdt-behind-a2ui.md: Spike 2, two browsers editing one surface through a CRDT
+          - spikes/2026-11-spike-3-bridge-mechanics.md: Spike 3a, the bridge surviving /clear, the /clear hook, and bounded waits
+          - spikes/2026-11-spike-4-claims.md: Spike 4, exactly-once claims through one durable voter
         Project:
           - project/index.md: Where bee stands, and what waits on Iain
           - project/timeline.md: Started, landed, and estimates for open work
@@ -142,7 +146,9 @@ validation:
 nav:
   - Docs:
       - Home: index.md
+      - Try bee: try-bee.md
       - Setup: setup.md
+      - Tools and prompts: tools.md
       - Claude Code plugin: plugin.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
       - bee and kuilt: bee-and-kuilt.md

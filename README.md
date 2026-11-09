@@ -10,22 +10,38 @@ list of who's doing what, then a code review. After that, maybe nothing at all, 
 The board remembers. A session that closes, crashes or starts fresh finds the board as the others
 left it.
 
-**Status:** early, but a board runs end to end. A Claude session draws a question on the board,
-you click it in a browser, and the session reads the click and redraws. The board survives a host
-restart. [Run a board](docs/setup.md#run-a-board) is the shortest way to try it. The plan's
-[remaining tasks](docs/superpowers/plans/2026-11-06-bee-v1.md) and each spike's notes in
-[`docs/spikes/`](docs/spikes/) say what is still open.
+**New here?** [Try bee](docs/try-bee.md) puts you on a board in a few minutes, from a Mac with
+Claude Code.
 
-## Share a board with a coworker
+## Three ways in
 
-From a checkout, `bin/bee-up --name <you>` starts a board on your network, opens it in your
-browser, and prints a join link. Send the link to a coworker. They run
-`bee-join '<link>' --name <them>`, which opens the board in their browser and points their Claude
-sessions at it. Each of you then starts Claude as the scripts print, and types
-`/mcp__bee__whiteboard`.
+**Join a coworker's board.** They send you a link. Open it in a browser and you're on the board.
+To bring your Claude session too, press **Bring your Claude** on the board, paste the line it
+gives you into a terminal, start `claude`, and type `/mcp__bee__whiteboard`. Nothing gets
+installed.
 
-Your coworker needs no checkout and no JDK. `bin/bee-bundle` builds a zip with the host, the
-bridge, a trimmed Java runtime and both scripts, for your own OS and CPU.
+**Run your own.** From a checkout, `bin/bee-up --name <you>` starts a board on your network, opens
+it in your browser, and prints a join link to send. For someone with no checkout and no JDK,
+`bin/bee-bundle` builds a zip that runs a board with nothing else installed. Building from a
+checkout needs credentials for [kuilt's packages](docs/bee-and-kuilt.md#how-bee-gets-kuilt); the
+zip needs none.
+
+**Watch all your sessions at once.** Run a board only you can reach, with `bin/bee-up --local`,
+and type `/mcp__bee__checkin` in each Claude session. Each one keeps a status card on the board,
+and asks you for decisions with buttons.
+
+[Setup](docs/setup.md) walks through each of these. [Tools and prompts](docs/tools.md) lists what
+a session can do on the board.
+
+[The Claude Code plugin](docs/plugin.md) joins your sessions to a board with one install, and
+shortens the prompts to `/bee:draw` and `/bee:checkin`.
+
+## Where it stands
+
+Early, but a board runs end to end: sessions draw, people click, sessions redraw, and the board
+survives a host restart. The plan's [remaining tasks](docs/superpowers/plans/2026-11-06-bee-v1.md)
+and each spike's notes in [`docs/spikes/`](docs/spikes/) say what is still open. The full docs are
+at <https://tractat-us.github.io/bee/>.
 
 bee is built on [kuilt](https://github.com/tractat-us/kuilt), which keeps every copy of the board
 in step. [bee and kuilt](docs/bee-and-kuilt.md) says which part does what.

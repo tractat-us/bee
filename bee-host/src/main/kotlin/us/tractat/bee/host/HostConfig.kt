@@ -1,7 +1,9 @@
 package us.tractat.bee.host
 
+import us.tractat.bee.mcp.HttpBridges
 import java.net.InetAddress
 import java.nio.file.Path
+import kotlin.time.Duration
 
 /** Who can reach the host: this machine only, or the local network too (spec §5.4, §5.7). */
 enum class Reach(val bind: String) {
@@ -17,6 +19,12 @@ enum class Reach(val bind: String) {
         Loopback -> emptySet()
         Lan -> setOf(lanName())
     }
+
+    /** Whether a host with this reach has a join link to give its owner's page ([inviteEndpoint]). */
+    fun invitation(): Invitation = when (this) {
+        Loopback -> Invitation.Closed
+        Lan -> Invitation.Open(lanName(), ::lanAddresses)
+    }
 }
 
 /** This machine's name on the local network: its host name, as mDNS serves it (`<name>.local`). */
@@ -30,6 +38,10 @@ fun lanName(): String = InetAddress.getLocalHost().hostName.let { if ('.' in it)
  * @param hostNames names the host answers to beyond those [reach] gives it ([SiteRule]): one the
  *   machine goes by that bee can't find itself, or a test's
  * @param keyReset what this boot does to the keys kept in [dataDir] ([HostKeys]): by default, nothing
+ * @param mcpIdleAfter how long an MCP session over HTTP may idle before its bridge departs
+ *   ([HttpBridges.IDLE_AFTER]); not a flag, a test's
+ * @param mcpMaxSessions how many MCP sessions over HTTP may have a bridge at once
+ *   ([HttpBridges.MAX_SESSIONS]); not a flag, a test's
  */
 data class HostConfig(
     val port: Int = DEFAULT_PORT,
@@ -38,6 +50,8 @@ data class HostConfig(
     val pairingBudget: PairingBudget = PairingBudget.DEFAULT,
     val hostNames: Set<String> = emptySet(),
     val keyReset: KeyReset = KeyReset.Keep,
+    val mcpIdleAfter: Duration = HttpBridges.IDLE_AFTER,
+    val mcpMaxSessions: Int = HttpBridges.MAX_SESSIONS,
 ) {
     /** The address the host binds, from [reach]. */
     val bind: String get() = reach.bind

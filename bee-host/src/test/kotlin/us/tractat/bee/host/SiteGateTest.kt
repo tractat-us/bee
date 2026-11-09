@@ -6,6 +6,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
+import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.host.Handshakes.Companion.FORBIDDEN
 import us.tractat.bee.host.Handshakes.Companion.OK
@@ -131,6 +132,29 @@ class SiteGateTest {
             { assertEquals(OK, calls.get(PAIR, own, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty"), "the board page's own channel") },
             { assertEquals(OK, calls.get(PAIR, own), "no Fetch Metadata: the bridge, or an older browser") },
         )
+    }
+
+    /**
+     * The join link goes to the owner's own page alone: a page from another site, open in a browser
+     * on this machine, is a loopback caller too, so only the site gate stands between it and the
+     * key. A host on loopback alone has no link, so this one is on `--lan`.
+     */
+    @Test
+    fun anotherSitesPageOnThisMachineIsRefusedTheJoinLink() {
+        val lanDir = Files.createTempDirectory("w45-site-gate-lan-")
+        val lan = runBlocking { BeeHost.start(scope, HostConfig(port = 0, reach = Reach.Lan, dataDir = lanDir)) }
+        try {
+            val lanCalls = Handshakes(lan.port)
+            val at = "127.0.0.1:${lan.port}"
+            assertAll(
+                { assertEquals(OK, lanCalls.get(InviteLinks.PATH, at, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty"), "the owner's own page") },
+                { assertEquals(FORBIDDEN, lanCalls.get(InviteLinks.PATH, at, "Origin: http://evil.example"), "another site, by its Origin") },
+                { assertEquals(FORBIDDEN, lanCalls.get(InviteLinks.PATH, at, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: empty"), "another site, by its Fetch Metadata") },
+            )
+        } finally {
+            lan.close()
+            lanDir.toFile().deleteRecursively()
+        }
     }
 
     private companion object {

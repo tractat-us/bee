@@ -12,6 +12,11 @@
 
     <logger name="us.tractat.kuilt" level="WARN"/>
     <logger name="io.ktor" level="WARN"/>
+    <!-- The MCP SDK, for the bridges the host runs over HTTP: INFO on every session and tool. -->
+    <logger name="io.modelcontextprotocol" level="WARN"/>
+    <!-- The SDK names its registries' loggers outside its package, one per feature kind. -->
+    <logger name="FeatureRegistry[Tool]" level="WARN"/>
+    <logger name="FeatureRegistry[Prompt]" level="WARN"/>
 
     <root level="INFO">
         <appender-ref ref="STDERR"/>
