@@ -77,7 +77,7 @@ fun main() {
             session.onClose { closed.complete(Unit) }
             anotherBoard.invokeOnCompletion { closed.complete(Unit) }
             closed.await()
-            board.close()
+            endBoard(board)
         }
     }
     leaving.value
@@ -133,6 +133,11 @@ private fun leave(bridge: BeeBridge) {
     } else {
         logger.warn { "$who's Depart(Left) didn't commit within $LEAVE_BOUND; the host will depart it as crashed." }
     }
+}
+
+/** Takes an ending bridge's replica off the board for good. */
+internal suspend fun endBoard(board: BoardClient) {
+    board.close()
 }
 
 /** The exit status of a bridge that ended because its host keeps another board. */
