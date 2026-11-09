@@ -56,12 +56,10 @@ class OpenBeforeWriteTest {
         val sam = star.client(SAM)
         sam.connect()
         settle(100.milliseconds)
-        sam.mutate { it.postPresence(SAM, presence("sam"), 1) }
         settle(300.milliseconds)
         val kim = star.client(KIM)
         kim.connect()
         settle(100.milliseconds)
-        kim.mutate { it.postPresence(KIM, presence("kim"), 1) }
         settle(gap)
 
         val seen = mutableListOf<String>()
