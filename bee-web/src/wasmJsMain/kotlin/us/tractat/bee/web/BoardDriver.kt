@@ -72,8 +72,11 @@ class BoardDriver(
         launch { combine(client.state, inputs.releases) { state, _ -> state }.collect(::show) }
         launch {
             renderer.actions.collect { action ->
+                // The surface as the person saw it when they acted: an answer decides the orphaning
+                // it shows (bee#83), even if the board moves on while the record is written.
+                val seen = rendered[action.surfaceId]?.data
                 // Launched: a proposal waits on its commit, and the next action mustn't wait behind it.
-                if (record(action)) launch { answer(action) }
+                if (record(action) && seen != null) launch { answer(action, seen) }
             }
         }
     }
@@ -170,14 +173,17 @@ class BoardDriver(
         }
     }
 
-    /** Proposes what the person chose, if [action] answers an orphan decision; tells them if it didn't take. */
-    private suspend fun answer(action: A2uiAction) {
+    /**
+     * Proposes what the person chose, if [action] answers an orphan decision, for the orphaning
+     * [seen] shows; tells them if it didn't take.
+     */
+    private suspend fun answer(action: A2uiAction, seen: JsonObject) {
         val answers = (answering as? OrphanAnswering.ByPerson)?.answers ?: return
-        when (val outcome = answers.answered(action.surfaceId, action.name, action.context)) {
+        when (val outcome = answers.answered(action.surfaceId, action.name, action.context, seen)) {
             OrphanAnswers.Outcome.Offline ->
                 onProblem("Your answer on ${action.surfaceId} is recorded, but claims are offline, so nothing was decided. Answer again shortly.")
             is OrphanAnswers.Outcome.Proposed -> if (!outcome.applied) {
-                onProblem("Your answer on ${action.surfaceId} didn't take: the claim is no longer orphaned, or that peer has left.")
+                onProblem("Your answer on ${action.surfaceId} didn't take: the claim is no longer orphaned, it was orphaned again since, or that peer has left.")
             }
             OrphanAnswers.Outcome.NotADecision, OrphanAnswers.Outcome.Waited -> Unit
         }
