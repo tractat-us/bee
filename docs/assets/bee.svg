@@ -3,7 +3,7 @@
   <defs>
     <mask id="stripes">
       <rect width="32" height="32" fill="#fff"/>
-      <path d="M8 19.6L24 15.6V18.2L8 22.2ZM8 24.8L24 20.8V23.4L8 27.4Z" fill="#000"/>
+      <path d="M8 18.2Q16 19.4 24 18.2V20.6Q16 21.8 8 20.6ZM8 23.2Q16 24.4 24 23.2V25.6Q16 26.8 8 25.6Z" fill="#000"/>
     </mask>
   </defs>
   <g fill="#1f2328" stroke="#1f2328" stroke-linecap="round" stroke-linejoin="round">

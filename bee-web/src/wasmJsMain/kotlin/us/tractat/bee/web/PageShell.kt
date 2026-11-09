@@ -48,12 +48,12 @@ class PageShell private constructor(
         /**
          * The bee mark, in the text colour (`#brand` sets the page's accent): the shapes of the
          * favicon (`favicon.svg`), whose stripes are cut out so the bar shows through. Each wing is
-         * two quilt patches stitched together (kuilt), and the stripes slant on Kotlin's diagonal.
+         * two quilt patches stitched together (kuilt).
          */
         private val BEE_MARK: String =
             """<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true" focusable="false">""" +
                 """<defs><mask id="bee-mark-stripes"><rect width="32" height="32" fill="#fff"/>""" +
-                """<path d="M8 19.6L24 15.6V18.2L8 22.2ZM8 24.8L24 20.8V23.4L8 27.4Z" fill="#000"/></mask></defs>""" +
+                """<path d="M8 18.2Q16 19.4 24 18.2V20.6Q16 21.8 8 20.6ZM8 23.2Q16 24.4 24 23.2V25.6Q16 26.8 8 25.6Z" fill="#000"/></mask></defs>""" +
                 """<g fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">""" +
                 """<path d="M14.4 7.6C13.6 5 12 3.6 9.6 3.2M17.6 7.6C18.4 5 20 3.6 22.4 3.2" fill="none" stroke-width="1.8"/>""" +
                 wing(placed = "translate(8.6 12.6) rotate(28)", outerSweep = 0) +
