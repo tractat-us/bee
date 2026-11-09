@@ -35,6 +35,7 @@ import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
+import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
@@ -225,6 +226,41 @@ class BeeToolsTest {
         val attached = ada.call(BeeTools.BOARD, emptyMap()).json().getValue("attached").jsonArray
             .map { it.jsonObject.getValue("identity").jsonPrimitive.content }
         assertEquals(listOf(ada.bridge.self, bo.bridge.self).map { it.toString() }.sorted(), attached)
+        rig.close()
+    }
+
+    /** `bee_board` names the caller as `you`, so a session can tell itself apart from a namesake (#136). */
+    @Test
+    fun boardSaysWhichAttachedAgentIsTheCaller() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val bo = rig.session("bo")
+
+        assertAll(
+            { assertEquals(ada.bridge.self.toString(), ada.call(BeeTools.BOARD, emptyMap()).json().getValue("you").jsonPrimitive.content) },
+            { assertEquals(bo.bridge.self.toString(), bo.call(BeeTools.BOARD, emptyMap()).json().getValue("you").jsonPrimitive.content) },
+        )
+        rig.close()
+    }
+
+    /** A departed identity is gone for good, so `bee_board` drops it from `attached` while its presence lingers (#136). */
+    @Test
+    fun boardLeavesDepartedAgentsOutOfAttached() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val bo = rig.session("bo")
+        val gone = bo.bridge.self
+        ada.client.state.first { s -> s.presence.entries.values.any { it.value?.identity == gone } }
+
+        rig.voter.depart(gone, DepartReason.Crashed)
+        ada.client.state.first { s -> s.departures().any { it.identity == gone } }
+        val attached = ada.call(BeeTools.BOARD, emptyMap()).json().getValue("attached").jsonArray
+            .map { it.jsonObject.getValue("identity").jsonPrimitive.content }
+        assertAll(
+            { assertTrue(gone in ada.bridge.roster(), "rig: bo's presence is still in ada's roster") },
+            { assertTrue(gone.toString() !in attached, "bo is departed, not attached: $attached") },
+            { assertTrue(ada.bridge.self.toString() in attached, "ada is still attached: $attached") },
+        )
         rig.close()
     }
 
