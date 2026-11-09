@@ -4,6 +4,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.ImageContent
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressToken
@@ -50,6 +51,7 @@ object WaitTool {
                 "Pass the returned cursor to the next call to keep reading from where this one stopped, with or without surfaceId. " +
                 "A record is returned with the claim token this session holds it under; one whose claim a person " +
                 "reassigned to this session, from another that left, arrives here too, under the reassign's token. " +
+                "A record of a Photo being taken comes with the photo itself, as an image. " +
                 "A pairing surface the host opened, such as a join request, is refused: the host handles its records.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
@@ -105,7 +107,8 @@ object WaitTool {
                 ticker?.cancel()
             }
         }
-        CallToolResult(content = listOf(TextContent(result.toJson().toString())), structuredContent = result.toJson())
+        val photo = result.photo?.let { ImageContent(data = it.base64, mimeType = it.mimeType) }
+        CallToolResult(content = listOfNotNull(TextContent(result.toJson().toString()), photo), structuredContent = result.toJson())
     }
 
     private suspend fun ClientConnection.sendProgress(

@@ -12,6 +12,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import us.tractat.bee.a2ui.Photo
+import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimOutcome
@@ -102,7 +104,7 @@ class BoardActionSource internal constructor(
             val record = json(got.id, got.record, got.token, got.record.basis.completeIn(state, got.record.surfaceId))
             bridge.handedOver(target(got.id), got.token)
             handed = true
-            return WaitResult(record = record, timedOut = false, cursor = encode(passed + got.id.dot))
+            return WaitResult(record = record, timedOut = false, cursor = encode(passed + got.id.dot), photo = photoOf(state, got.record))
         } finally {
             withContext(NonCancellable) {
                 if (!handed) won?.let { unreceived(it) }
@@ -292,6 +294,14 @@ class BoardActionSource internal constructor(
             require(parts.size == 2 && numbers.size == 2) { "Not a claim token: $text" }
             return ClaimToken(numbers[0], numbers[1])
         }
+
+        /** The photo a Photo's take record points at, as the surface shows it now; null for any other record. */
+        private fun photoOf(state: BoardState, record: ActionRecord): Photo.Image? =
+            if (record.name != Photo.TAKE) {
+                null
+            } else {
+                state.surfaceDoc(record.surfaceId)?.toSurfaceView(record.surfaceId)?.let { Photo.shown(it, record.componentId) }
+            }
 
         private fun json(id: RecordId, record: ActionRecord, token: ClaimToken?, basisComplete: Boolean): JsonObject = buildJsonObject {
             put("recordId", recordId(id))
