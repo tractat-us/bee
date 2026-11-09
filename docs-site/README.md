@@ -2,8 +2,7 @@
 
 The pages under `docs/`, built into a site with [ProperDocs](https://properdocs.org) (a
 continuation of MkDocs 1.6) and the [Material](https://squidfunk.github.io/mkdocs-material/)
-theme. It's published to GitHub Pages at <https://potential-giggle-y9v4vm9.pages.github.io/>,
-for people with read access to this repo.
+theme. It's published to GitHub Pages at <https://tractat-us.github.io/bee/>.
 
 ## Preview it
 

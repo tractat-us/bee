@@ -196,6 +196,10 @@ Claude session ── bee-mcp                                           ┘     
   host now holds those sessions' liveness, which on the stdio path the session's own process
   holds. A host restart ends them, nothing on the session's machine can say it crashed, and
   `/clear` has no hook to reach them.
+- **The bridge pings the host (design call, bee#77).** Its sockets only read, so a half-open link
+  after a host reboot or a dropped Wi-Fi link would otherwise wait out TCP's retransmits. They
+  ping every 5 s and close after 10 s with no pong, well inside the host's 60 s boot grace (§6.4),
+  then redial.
 - Gives each session a **peer identity** (session name plus a fresh instance id), distinct from
   the transport connection. A peer identity has a kind, **human** or **agent** (design call). All of
   a person's browser tabs are one human peer, and a tab is just a connection of that peer, so a
@@ -225,6 +229,12 @@ Claude session ── bee-mcp                                           ┘     
     `bee_board_clear`.
   - Records: `bee_wait_action`, `bee_list_actions`, `bee_action_done`.
   - Claims and presence: `bee_claim`, `bee_release`, `bee_presence`.
+  - The cheat-sheet: `bee_examples`, which reads one minimal surface per renderable component.
+- **The bridge briefs its session (design call).** `initialize` carries short instructions on
+  sharing a board, under Claude Code's 4096-character cut, and two prompts carry the rest:
+  `whiteboard` (whiteboard with the people in the room) and `checkin` (one status card per
+  session, named after its repo). All three live in `WhiteboardGuide` and `CheckinGuide`;
+  [Tools and prompts](../../tools.md) lists them.
 - **Waiting without polling, bounded (design call).** `bee_wait_action` holds until a matching
   action record arrives, and returns within 45 s, or a caller-chosen time up to 60 s. It returns
   `{record?, timedOut, cursor}`, and sends progress notifications while it holds.
@@ -349,7 +359,8 @@ Claude session ── bee-mcp                                           ┘     
   departure list on the board.
 - **Serves the web client** (the wasm bundle, the renderer and the Notions catalog), so a
   conference-room browser needs only a URL.
-- **Its coordinates (design call).** Port `8233` ("BEE" on a keypad), data in `~/.bee/host/`,
+- **Its coordinates (design call).** Port `8233` ("BEE" on a keypad), data in `~/.bee/host/`
+  unless `--data-dir` names another, held by one host at a time through a lock file in it,
   routes `/`, `/ws/board` and `/ws/claims`. The host has no write route: it writes to the board
   only through its own replica.
 - **Where it runs.** Solo: on Iain's laptop. It binds loopback only unless it's started with
@@ -474,8 +485,10 @@ a stable surface id. The board is the set of open surfaces plus their layout.
 to a history strip and can be reopened with their results. This takes the persistence goal at its
 word. A lunch break shouldn't erase the morning's vote.
 
-**The layout (design call).** Open surfaces stack in the order they were opened (ties by surface
-id). Closed surfaces sit in a collapsed history strip, newest first, and reopen with their records.
+**The layout (design call).** Open surfaces stack newest first, by when each was opened, so a
+surface drawn mid-meeting lands on top where the room sees it. An update never moves a surface,
+and one reopened from history keeps its first place. Closed surfaces sit in a collapsed history
+strip, newest first, and reopen with their records.
 
 **Two kinds of state in a surface (design call).** A sequence element in kuilt's `Rga` is
 write-once: it has insert, remove and compact, but no update, so two concurrent edits of one
@@ -592,6 +605,11 @@ table over the committed log:
   identity's claims the same way. The page shows `crashed` and `quiet` struck through and in red,
   and `cleared` and `left` muted, since a session that ended isn't a failure: the board outliving
   its sessions is the point.
+- **A card says whether its agent will hear it (design call).** An agent-opened card reads
+  `listening` while its opener is in `bee_wait_action`, else `working`. Once its opener has left,
+  crashed or gone quiet, its controls show greyed and it says answers wait for another session.
+  They stay clickable: a record is addressed to its surface, not to a session (§5.2). `/clear`
+  doesn't grey a card, since the bridge keeps handling the surfaces it opened before.
 - An orphaned claim produces a decision surface (for example, a `Poll`: reassign to …, release,
   wait). **Any participant, human or agent, may answer it (Iain; there's no human-only rule).** The
   decision commits as a new claim or a release through Raft, like any other.

@@ -51,18 +51,18 @@ Everything that makes it a board for people and their agents:
   to WebAssembly, so any browser can join with nothing installed. Its driver turns the board into
   messages for the stock A2UI renderer, and turns clicks back into edits. A2UI is the open format
   bee uses to describe what goes on screen.
-- **The bridge** (`bee-mcp`). One per Claude session. Today it handles the session's lifecycle,
-  including `/clear`. Task 7 of the plan gives it that session's copy of the board and the agent's
-  tools: draw on the board, wait for a click, claim the work.
+- **The bridge** (`bee-mcp`). One per Claude session. It holds that session's copy of the board
+  and gives the agent its tools: draw on the board, wait for a click, claim the work
+  ([Tools and prompts](tools.md)). It also handles the session's lifecycle, including `/clear`.
 - **The host** (`bee-host`). The one piece that's always on. It relays changes between everyone,
   keeps a copy on disk, casts the vote on claims, and serves the web page.
 - **The shared core** (`bee-core` and `bee-a2ui`). The board's shape, the records of who clicked
   what, the claims, and how a surface maps onto A2UI. The browser client, the bridge and the host
   are all built on it.
-- **The catalog** (`bee-notions`). bee's own set of on-screen components. Today it holds A2UI's
-  basic ones. Task 8 adds `Sketch`, which runs agent-written HTML in a sandbox.
-- **The visual companion** (`bee-companion`). The brainstorming companion, running on the board.
-  It's a placeholder until Task 8, which is also bee v1's acceptance test.
+- **The catalog** (`bee-notions`). bee's own set of on-screen components: A2UI's basic ones,
+  plus `Poll`, `Board` (cards in columns) and `Sketch`, which runs agent-written HTML in a sandbox.
+- **The visual companion** (`bee-companion`). The brainstorming companion, running on the board
+  through `Sketch`.
 - **The rules.** Who may put what on the board, who may let a new screen in, and where bee runs.
 
 The phone app, a thin frame around the web client, comes after v1 and is bee's too.
