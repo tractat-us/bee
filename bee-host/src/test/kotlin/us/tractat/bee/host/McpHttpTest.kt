@@ -3,6 +3,8 @@ package us.tractat.bee.host
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.sse.SSE
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -32,6 +34,7 @@ import us.tractat.bee.core.Departure
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.PeerKind
 import us.tractat.bee.mcp.BeeTools
+import us.tractat.bee.mcp.CheckinGuide
 import us.tractat.bee.mcp.HttpBridges
 import us.tractat.bee.mcp.WhiteboardGuide
 import us.tractat.kuilt.test.assertAll
@@ -74,7 +77,7 @@ class McpHttpTest {
             val opener = board.meta("lunch")?.openedBy
             assertAll(
                 { assertTrue(BeeTools.BOARD in tools && BeeTools.OPEN in tools, "the bridge's tools: $tools") },
-                { assertTrue(WhiteboardGuide.PROMPT in prompts, "the whiteboard prompt: $prompts") },
+                { assertTrue(WhiteboardGuide.PROMPT in prompts && CheckinGuide.PROMPT in prompts, "stdio's prompts: $prompts") },
                 { assertEquals(WhiteboardGuide.INSTRUCTIONS, claude.serverInstructions, "the bridge's instructions, in initialize") },
                 { assertFalse(opened.isError == true, "the open succeeded: ${opened.content}") },
                 { assertEquals(PeerKind.Agent, opener?.kind, "opened by an agent") },
@@ -99,6 +102,63 @@ class McpHttpTest {
             assertAll(
                 { assertEquals(DepartReason.Left, departed.reason, "a DELETE is a goodbye") },
                 { assertEquals(0, left, "the host holds no bridge for it") },
+            )
+            claude.close()
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
+     * A client that only checks the server, as `claude mcp list` does, deletes its session within
+     * milliseconds, before its bridge's claims link is up: it still departs `Left`, never left for
+     * the host to find.
+     */
+    @Test
+    fun aSessionDeletedAtOnceStillDepartsLeft() = runBlocking {
+        val host = startHost()
+        try {
+            val url = url(host, "?name=flo")
+            val opened = http.post(url) { initializeBody() }
+            val session = requireNotNull(opened.headers[SESSION_HEADER]) { "rig: initialize answers a session: ${opened.status}" }
+            val deleted = http.delete(url) { header(SESSION_HEADER, session) }.status
+            val departed = withTimeout(TIMEOUT) {
+                host.state.first { state -> state.departures().any { it.identity.name == "flo-claude" } }
+                    .departures().first { it.identity.name == "flo-claude" }
+            }
+            assertAll(
+                { assertEquals(HttpStatusCode.OK, deleted, "rig: the DELETE closed the session") },
+                { assertEquals(DepartReason.Left, departed.reason, "departed as a goodbye") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
+     * Claude Code's first `initialize` names a protocol version newer than this SDK's, which the
+     * SDK answers 400 before Claude Code retries. That session never initialized, so its bridge
+     * never reaches the board: no presence, and no departure, when it closes.
+     */
+    @Test
+    fun aSessionThatNeverInitializesLeavesNoTrace() = runBlocking {
+        val host = startHost()
+        try {
+            val refused = http.post(url(host, "?name=gus")) {
+                initializeBody()
+                header("MCP-Protocol-Version", "2999-01-01")
+            }.status
+            val gone = withTimeout(TIMEOUT) { awaitCount(host, 0) }
+            // The control: a session that does initialize shows, so a trace of gus would have.
+            val claude = connect(url(host, "?name=hal"))
+            drawAndLearnWho(claude, host, "hal-surface")
+            withTimeout(TIMEOUT) { host.state.first { state -> state.latestPresence().any { it.identity.name == "hal-claude" } } }
+            val state = host.state.value
+            assertAll(
+                { assertEquals(HttpStatusCode.BadRequest, refused, "rig: the SDK refuses the version") },
+                { assertEquals(0, gone, "the host keeps no bridge for it") },
+                { assertTrue(state.latestPresence().none { it.identity.name == "gus-claude" }, "never on the roster") },
+                { assertTrue(state.departures().none { it.identity.name == "gus-claude" }, "never departed") },
             )
             claude.close()
         } finally {
@@ -177,14 +237,16 @@ class McpHttpTest {
     }
 
     /** A raw `initialize` POST: the status the host answers it with. */
-    private suspend fun initialize(url: String): HttpStatusCode = http.post(url) {
+    private suspend fun initialize(url: String): HttpStatusCode = http.post(url) { initializeBody() }.status
+
+    private fun HttpRequestBuilder.initializeBody() {
         contentType(ContentType.Application.Json)
         header(HttpHeaders.Accept, "application/json, text/event-stream")
         setBody(
             """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",""" +
                 """"capabilities":{},"clientInfo":{"name":"raw","version":"0"}}}""",
         )
-    }.status
+    }
 
     private fun openArgs(id: String) = mapOf(
         "surfaceId" to id,
@@ -209,5 +271,6 @@ class McpHttpTest {
         val TIMEOUT = 20.seconds
         val IDLE = 1.seconds
         const val ANOTHER_MACHINE = "192.168.1.20"
+        const val SESSION_HEADER = "Mcp-Session-Id"
     }
 }

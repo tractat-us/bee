@@ -70,6 +70,7 @@ fun main() {
     val board = peer.board
     val pin = peer.pin
     val identity = peer.identity
+    peer.start()
     val anotherBoard = CompletableDeferred<AnotherBoard>()
     endOnAnotherBoard(board, pin, http, host, bridgeScope, anotherBoard)
     runBlocking { bridge.announce() }

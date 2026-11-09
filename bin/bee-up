@@ -9,7 +9,8 @@
 # --local, and keeps the board and its keys in ~/.bee/host unless --data-dir says otherwise, so a
 # restart brings back the board, the join link and every paired device. Opens the board in your
 # browser as <you>, writes ~/.bee/mcp.json for your own Claude sessions, and prints the join link
-# to send a coworker, copied to the clipboard on macOS. Run it again to reprint the links.
+# to send a coworker, copied to the clipboard on macOS, and the claude mcp add line that joins a
+# Claude over HTTP with nothing installed. Run it again to reprint the links.
 #
 # --new-link restarts the host with a new join link: the old link stops working, and paired
 # devices keep their keys. --forget-devices restarts it forgetting every device, paired or joined
@@ -35,7 +36,7 @@ while [ $# -gt 0 ]; do
         --new-link) [ "$reset" = --forget-devices ] || reset=--new-link; shift ;;
         --forget-devices) reset=--forget-devices; shift ;;
         --stop) stop=1; shift ;;
-        -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "bee-up: unknown argument $1 (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -136,8 +137,13 @@ if [ -n "$join" ]; then
     for ip in $ips; do echo "      http://$ip:$port/?k=$key"; done
     echo "      $join"
     echo "  They open it in a browser (add &name=<them>), and run:  bee-join '<link>' --name <them>"
-    echo "  Plain HTTP on your network: don't put on the board what you wouldn't say in the room."
     first=${ips%%$'\n'*}
+    # Their Claude reaches the host where the first link does, else where the host's own link does.
+    origin=${join%%/\?k=*}
+    [ -n "$first" ] && origin="http://$first:$port"
+    echo "  Or their Claude joins with nothing installed (Java and the kit not needed):"
+    echo "      claude mcp add --scope user --transport http bee '$origin/mcp?k=$key&name=<them>'"
+    echo "  Plain HTTP on your network: don't put on the board what you wouldn't say in the room."
     if [ -n "$first" ] && command -v pbcopy >/dev/null 2>&1 && printf '%s' "http://$first:$port/?k=$key" | pbcopy; then
         echo "  Copied the first link to your clipboard."
     fi
@@ -146,8 +152,10 @@ elif [ "$lan_host" = 1 ]; then
     echo "  The host hasn't logged its join link yet; run bee-up again in a moment to print it."
 fi
 echo
-echo "  Your Claude session:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
-echo "                        then type  /mcp__bee__whiteboard"
+echo "  Your Claude session:  claude mcp add --scope user --transport http bee 'http://localhost:$port/mcp?name=$name'"
+echo "                        then start claude and type  /mcp__bee__whiteboard"
+echo "  Or, with the kit's bridge:  claude --mcp-config $bee_home/mcp.json --allowedTools 'mcp__bee__*'"
+echo "  (If claude says bee already exists, run  claude mcp remove --scope user bee  first.)"
 echo "  Stop the host:        bee-up --stop     (log: $log)"
 echo
 bee_open "$me"

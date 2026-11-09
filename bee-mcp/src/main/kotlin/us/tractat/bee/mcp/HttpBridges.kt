@@ -23,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.HostAddress
 import java.util.concurrent.ConcurrentHashMap
@@ -112,7 +113,11 @@ class HttpBridges(
         http.close()
     }
 
-    /** A new MCP session's server, over a fresh bridge named for the call's `?name=`. */
+    /**
+     * A new MCP session's server, over a fresh bridge named for the call's `?name=`. The bridge
+     * stays off the board until the session initializes ([bind]): Claude Code's first POST offers
+     * a protocol version this SDK refuses, then retries, and that first session must leave no trace.
+     */
     private fun open(context: RoutingContext): Server {
         val call = context.call
         val name = sessionNameFrom(call.request.queryParameters[NAME_PARAM])
@@ -120,14 +125,12 @@ class HttpBridges(
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
         val peer = BridgePeer.join(host, name, http, bridgeScope, random, clock)
-        bridgeScope.launch { peer.bridge.announce() }
         val server = BeeServer.create(peer.bridge)
         val session = Session(peer, bridgeScope, server)
         open += session
         call.attributes.put(OPENING, session)
         // One server per session, so the one session it connects is this one: its close is the bridge's.
         server.onConnect { server.sessions.values.single().onClose { session.depart() } }
-        logger.info { "An MCP client over HTTP joins as ${peer.bridge.self}." }
         return server
     }
 
@@ -139,7 +142,8 @@ class HttpBridges(
 
         @Volatile private var reason: DepartReason = DepartReason.Left
 
-        @Volatile var id: String? = null
+        /** The session's id, once it has initialized and its bridge is on the board. */
+        @Volatile private var id: String? = null
 
         private val departing = AtomicBoolean()
 
@@ -151,6 +155,15 @@ class HttpBridges(
         fun exit() {
             lastActive = clock()
             inFlight.decrementAndGet()
+        }
+
+        /** The session initialized as [sessionId]: files it there, and puts its bridge on the board. */
+        fun start(sessionId: String) {
+            id = sessionId
+            byId[sessionId] = this
+            peer.start()
+            bridgeScope.launch { peer.bridge.announce() }
+            logger.info { "An MCP client over HTTP joins as ${peer.bridge.self}." }
         }
 
         fun idle(now: Instant): Boolean = inFlight.get() == 0 && now - lastActive >= idleAfter
@@ -173,17 +186,25 @@ class HttpBridges(
             depart()
         }
 
-        /** The session closed: departs the bridge, once, then ends its work. */
+        /**
+         * The session closed: departs the bridge, once, then ends its work. A bridge whose session
+         * never initialized was never on the board, so it has nothing to depart.
+         */
         fun depart() {
             if (!departing.compareAndSet(false, true)) return
             val why = reason
+            val started = id
             val job = work.launch(CoroutineName("http-bridge-depart")) {
                 val who = peer.bridge.self
                 val committed = try {
+                    if (started == null) return@launch
+                    // A session can end before its claims link is up (a client that only checks
+                    // the server, then deletes): wait for it, briefly, so the Depart has a link.
+                    withTimeoutOrNull(CLAIMS_BOUND) { peer.bridge.awaitClaims() }
                     peer.bridge.leave(LEAVE_BOUND, why)
                 } finally {
                     open -= this@Session
-                    id?.let { byId.remove(it, this@Session) }
+                    started?.let { byId.remove(it, this@Session) }
                     peer.board.close()
                     bridgeScope.cancel()
                 }
@@ -197,12 +218,11 @@ class HttpBridges(
     /** Which session a call is on: by its `Mcp-Session-Id`, or the one it opened. */
     private fun sessionOf(call: ApplicationCall): Session? = call.request.headers[SESSION_HEADER]?.let(byId::get)
 
-    /** After a call that opened a session: files it under the id the SDK answered with. */
+    /** After a call that opened a session: starts it under the id the SDK answered with, if it did. */
     private fun bind(call: ApplicationCall) {
         val session = call.attributes.getOrNull(OPENING) ?: return
         val id = call.response.headers[SESSION_HEADER] ?: return
-        session.id = id
-        byId[id] = session
+        session.start(id)
     }
 
     /** [Activity]'s configuration: the registry it reports to. */
@@ -219,15 +239,26 @@ class HttpBridges(
 
         /**
          * How long a session may go with no request in flight and no GET stream open before it
-         * departs `Quiet`. A Claude session holds its GET stream open while it runs, so this only
-         * counts once that stream is gone, or for a client that never opens one; a `bee_wait_action`
-         * long-poll is a request in flight, so it never counts at all. Five minutes outlasts a GET
-         * stream's reconnect, and a client without one between two turns of a long task; it also
-         * caps how long a Claude that exited without a DELETE stays on the board.
+         * departs `Quiet`.
+         *
+         * Measured (Claude Code 2.1.319): a session holds its GET stream from `initialize` until
+         * the process exits, and exits without a DELETE; a `bee_wait_action` long-poll is a POST
+         * in flight for its full 20 s. So a live Claude never counts as idle, however long it sits
+         * at its prompt, and this clock starts only when the stream is gone. Two minutes then
+         * covers the stream's own reconnect after a dropped link, with room to spare, and is how
+         * long a Claude that exited stays on the board. The host's own quiet rule (20 minutes
+         * without acting, bee-host's `Departures`) still applies to a live one, as for
+         * any bridge.
          */
-        val IDLE_AFTER: Duration = 5.minutes
+        val IDLE_AFTER: Duration = 2.minutes
 
         private val CHECK_EVERY: Duration = 5.seconds
+
+        /**
+         * How long a departing bridge waits for its claims link to come up, if it isn't yet. On
+         * loopback it comes up in tens of milliseconds; this only bounds a host that is stopping.
+         */
+        private val CLAIMS_BOUND: Duration = 5.seconds
 
         /** Every GET stream sends a comment this often, well inside any client's read timeout. */
         private val HEARTBEAT: Duration = 15.seconds

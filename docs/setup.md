@@ -13,6 +13,9 @@ on how to share the board, and offers a `whiteboard` prompt; see
 Want a board running in five minutes? Start with [Run a board](#run-a-board). The numbered steps
 after it set bee up for every session you start.
 
+No Java on the machine the session runs on? See
+[An agent with nothing installed](#an-agent-with-nothing-installed).
+
 ## Run a board
 
 This is the shortest path from a clone to a Claude session and you sharing one board.
@@ -270,6 +273,40 @@ What to expect:
 - **A device on the network keeps no copy of the board.** A plain-HTTP page can't take the browser
   lock that guards the board's local copy, so it relies on the host for everything
   ([#39](https://github.com/tractat-us/bee/pull/39)).
+
+## An agent with nothing installed
+
+A Claude session can join the board by URL alone, with no bridge to build and no Java. The host
+serves MCP over HTTP at `/mcp` and runs a bridge for each session there, so the session gets the
+same tools, prompt and instructions as the stdio bridge.
+
+1. Start the host with `bee-up` (or `bee-host --lan` for a teammate). `bee-up` prints both lines
+   below with your port and key filled in.
+2. Register the URL once:
+
+    ```sh
+    # On the host's own machine: loopback needs no key.
+    claude mcp add --scope user --transport http bee 'http://localhost:8233/mcp?name=<you>'
+    # On a teammate's machine: the join link's key goes in ?k=.
+    claude mcp add --scope user --transport http bee 'http://192.168.1.5:8233/mcp?k=…&name=<them>'
+    ```
+
+    `?name=` names the session on the board as `agent:<name>-claude#…`. Without it the session
+    is `agent:claude#…`. `--scope user` registers bee for every folder; without it, the server
+    exists only in the folder you ran the command in.
+3. Start `claude` and type `/mcp__bee__whiteboard`.
+
+What to expect:
+
+- **`claude mcp add` refuses a name it already has.** It answers "MCP server bee already exists"
+  and exits 1. To point bee at a new link, run `claude mcp remove --scope user bee` first.
+- **The key is in your Claude config**, as with `BEE_HOST`. Treat the config like the link.
+- **No `/clear` hook.** The hook talks to a bridge process on your machine, and this bridge runs on
+  the host. A session that runs `/clear` keeps its identity until the host retires it.
+- **A Claude that exits leaves without saying so.** Claude Code closes its stream and sends no
+  goodbye, so the host waits two minutes, then departs the session as gone quiet.
+- **The bridge lives on the host.** A host restart ends every such session, and the session's
+  next call finds it gone. Reconnect from `/mcp` in Claude Code, or restart `claude`.
 
 ## An agent on another machine
 

@@ -35,16 +35,19 @@ private val logger by lazy { KotlinLogging.logger {} }
  * a bridge has always built them (spec §5.2). stdio's `main` joins one per process; the host joins
  * one per MCP session over HTTP ([HttpBridges]). Either way the session is the same kind of peer.
  *
- * @param board the bridge's replica, already connecting
+ * @param board the bridge's replica, online once [start]ed
  * @param pin the board the replica belongs to, learned from the host on the first dial
  * @param identity the bridge's identity, which `/clear` retires (stdio's [ClearControl])
  */
 class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClient, val pin: BoardPin, val identity: BridgeIdentity) {
+    /** Puts the peer on the board: its replica goes online, and stays online, redialling. */
+    fun start() = board.connect()
+
     companion object {
         /**
          * Joins a bridge named [name] to [host], dialling with [http], its work on [scope]. A
-         * retired identity's `Depart` goes through Raft. The replica starts connecting before this
-         * returns; call [BeeBridge.announce] to post its presence at once.
+         * retired identity's `Depart` goes through Raft. Its claims link dials at once; the board
+         * waits for [start], so a peer that is never started never shows on the board.
          */
         @OptIn(ExperimentalUuidApi::class)
         @Suppress("LongParameterList")
@@ -78,7 +81,6 @@ class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClie
                 logger.warn(failure) { "Presence tracking failed." }
             }
             val bridge = BeeBridge(board, author, claims, identity, presence, clock, scope)
-            board.connect()
             return BridgePeer(bridge, board, pin, identity)
         }
     }
