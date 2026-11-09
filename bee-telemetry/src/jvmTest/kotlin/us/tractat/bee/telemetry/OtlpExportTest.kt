@@ -57,10 +57,11 @@ class OtlpExportTest {
         val key = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(Random(5).nextBytes(32))
         Collector().use { collector ->
             val env = mapOf(OtlpExport.ENDPOINT to collector.url)
-            ProcessTelemetry.open(listOf(root.resolve("on")), resource, env = env::get, captureLogs = false).use {
+            ProcessTelemetry.open(listOf(root.resolve("on")), resource, env = env::get, captureLogs = false, timing = fast).use {
                 it.telemetry.event("socket.dial_failed", Attr.REASON to "ws://10.0.0.2:8233/ws/board?k=$key")
                 val now = Clock.System.now()
                 it.telemetry.span("mcp.tool", now, now + 3.milliseconds, mapOf(Attr.TOOL to "bee_board"))
+                eventually { collector.requests.any { r -> "socket.dial_failed" in r.second } && collector.requests.any { r -> "mcp.tool" in r.second } }
             }
             ProcessTelemetry.open(listOf(root.resolve("off")), resource, env = { null }, captureLogs = false).use {
                 it.telemetry.event("never.sent")
@@ -77,29 +78,61 @@ class OtlpExportTest {
         }
     }
 
-    /** A collector that isn't there: recording carries on, and closing still takes about its grace. */
+    /**
+     * A collector that takes the connection and never answers, the worst a demo network can do:
+     * recording carries on, closing stays within its two graces plus a margin, and every record
+     * is still kept locally.
+     */
     @Test
-    fun aCollectorThatIsDownCostsTheProcessNothing() {
-        val closedPort = ServerSocket(0).use { it.localPort }
-        val env = mapOf(OtlpExport.ENDPOINT to "http://127.0.0.1:$closedPort")
-        val dir = root.resolve("down")
-        val spent = measureTime {
-            ProcessTelemetry.open(listOf(dir), resource, env = env::get, captureLogs = false).use { opened ->
-                repeat(100) { opened.telemetry.event("surface.update", Attr.SURFACE to "s-$it") }
+    fun aCollectorThatNeverAnswersCostsTheProcessNothing() {
+        ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress()).use { silent ->
+            val held = CopyOnWriteArrayList<java.net.Socket>()
+            val accepting = Thread { runCatching { while (true) held += silent.accept() } }.apply { isDaemon = true; start() }
+            val env = mapOf(OtlpExport.ENDPOINT to "http://127.0.0.1:${silent.localPort}")
+            val dir = root.resolve("silent")
+            val spent = measureTime {
+                ProcessTelemetry.open(listOf(dir), resource, env = env::get, captureLogs = false, timing = fast).use { opened ->
+                    repeat(100) { opened.telemetry.event("surface.update", Attr.SURFACE to "s-$it") }
+                    Thread.sleep(500) // several periods: sends are in flight, hanging, as the process records on
+                }
             }
+            val kept = readBuffer(dir, Files.createDirectories(root.resolve("scratch")))
+            assertAll(
+                { assertTrue(held.isNotEmpty(), "the export never dialled the collector, so nothing was tested") },
+                { assertTrue(spent < 3.seconds, "recording and closing took $spent") },
+                { assertEquals(100, kept.count { it.name == "surface.update" }, "every record is still kept locally") },
+            )
+            held.forEach { it.close() }
+            accepting.interrupt()
         }
-        val kept = readBuffer(dir, Files.createDirectories(root.resolve("scratch")))
-        assertAll(
-            { assertTrue(spent < 6.seconds, "recording and closing took $spent") },
-            { assertEquals(100, kept.count { it.name == "surface.update" }, "every record is still kept locally") },
-        )
     }
 
+    /** A protocol bee can't speak: nothing reaches a live collector, and the record is still kept. */
     @Test
     fun aProtocolItCantSpeakSendsNothingAndRecordsOn() {
-        val env = mapOf(OtlpExport.ENDPOINT to "http://127.0.0.1:1", OtlpExport.PROTOCOL to "grpc")
-        ProcessTelemetry.open(listOf(root.resolve("grpc")), resource, env = env::get, captureLogs = false).use {
-            assertTrue(it.telemetry !== BeeTelemetry.Off, "recording is still on")
+        Collector().use { collector ->
+            val env = mapOf(OtlpExport.ENDPOINT to collector.url, OtlpExport.PROTOCOL to "grpc")
+            val dir = root.resolve("grpc")
+            ProcessTelemetry.open(listOf(dir), resource, env = env::get, captureLogs = false, timing = fast).use {
+                it.telemetry.event("surface.open")
+                Thread.sleep(300)
+            }
+            val kept = readBuffer(dir, Files.createDirectories(root.resolve("scratch")))
+            assertAll(
+                { assertEquals(emptyList(), collector.requests.toList(), "a request reached the collector") },
+                { assertEquals(listOf("surface.open"), kept.map { it.name }) },
+                { assertTrue(!Files.exists(dir.resolve("otlp-sent")), "a sent-set opened with nothing to send") },
+            )
         }
     }
+
+    private fun eventually(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 20_000_000_000L
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "not within 20 s" }
+            Thread.sleep(20)
+        }
+    }
+
+    private val fast = TelemetryTiming(closeGrace = 500.milliseconds, otlpPeriod = 50.milliseconds)
 }

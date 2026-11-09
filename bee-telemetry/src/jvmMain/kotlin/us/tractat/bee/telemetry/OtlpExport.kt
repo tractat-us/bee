@@ -26,10 +26,11 @@ import kotlin.time.Duration.Companion.seconds
  * a collector that was down gets the gap once it is back, and the buffer is never emptied by it:
  * the local record stands whether or not anything is sent.
  *
- * A failed send is logged once, until a send succeeds. It never touches recording: sends run on
- * telemetry's own thread, after the buffer has recovered.
+ * A failed send is logged once, until a send succeeds. It never touches recording: sends wait for
+ * the buffer to recover, run on telemetry's own thread while the process runs (the last one runs
+ * on the closing thread), and time out after 5 s.
  */
-class OtlpExport(private val warp: WarpTelemetry, private val edge: OtlpEdge, private val clock: Clock) {
+class OtlpExport(private val warp: WarpTelemetry, private val edge: OtlpEdge, private val clock: Clock, private val client: HttpClient? = null) : AutoCloseable {
     private val bridge = WarpOtlpBridge(warp, clock)
     private var failing = false
 
@@ -59,6 +60,11 @@ class OtlpExport(private val warp: WarpTelemetry, private val edge: OtlpEdge, pr
         }
     }
 
+    /** Closes the HTTP client this export sends through, if it owns one. */
+    override fun close() {
+        client?.close()
+    }
+
     private fun report(line: String) {
         if (failing) return
         failing = true
@@ -79,12 +85,12 @@ class OtlpExport(private val warp: WarpTelemetry, private val edge: OtlpEdge, pr
         private val log = KotlinLogging.logger("${RecordingTelemetry.LOGGER_PREFIX}.OtlpExport")
 
         /**
-         * An [OtlpExport] to the collector [env] names, remembering what it sent in [sent], or null
-         * when [env] names none.
+         * An [OtlpExport] to the collector [env] names, remembering what it sent in the store [sent]
+         * opens, or null when [env] names none, in which case [sent] is never called.
          *
          * @throws IllegalArgumentException if [PROTOCOL] is neither `json` nor `protobuf`
          */
-        fun fromEnv(env: (String) -> String?, warp: WarpTelemetry, sent: DurableStore, clock: Clock): OtlpExport? {
+        fun fromEnv(env: (String) -> String?, warp: WarpTelemetry, sent: () -> DurableStore, clock: Clock): OtlpExport? {
             val endpoint = env(ENDPOINT)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
             val wire = when (env(PROTOCOL)?.trim()?.lowercase()) {
                 null, "", "json", "http/json" -> OtlpWireFormat.JSON
@@ -98,7 +104,7 @@ class OtlpExport(private val warp: WarpTelemetry, private val edge: OtlpEdge, pr
                 }
             }
             log.info { "Telemetry goes on to the OTLP collector at ${Redaction.scrub(endpoint)}, as $wire." }
-            return OtlpExport(warp, OtlpHttpEdge(client, endpoint, sent, wire = wire), clock)
+            return OtlpExport(warp, OtlpHttpEdge(client, endpoint, sent(), wire = wire), clock, client)
         }
     }
 }

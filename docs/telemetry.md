@@ -63,12 +63,15 @@ OpenTelemetry collector. `bee-otel-viewer` runs one locally, in Docker, with Gra
 
 ```sh
 bin/bee-otel-viewer
+bin/bee-up --stop                                    # if a host is running: it keeps the setting it started with
 BEE_OTLP_ENDPOINT=http://127.0.0.1:4318 bin/bee-up
 ```
 
-Then open `http://127.0.0.1:3000`, go to **Explore**, and pick **Loki** for log lines and events,
-or **Tempo** for tool calls. Each host and bridge shows as its own service, `bee-host` or
-`bee-mcp`, labelled with its peer. `bin/bee-otel-viewer --stop` stops it.
+`bee-up` writes the endpoint into the bridges' configuration too, so restart your Claude sessions
+to bring their bridges along. Then open `http://127.0.0.1:3000`, go to **Explore**, and pick
+**Loki** for log lines and events, or **Tempo** for tool calls. Each host and bridge shows as its
+own service, `bee-host` or `bee-mcp`, and each line carries its peer (`bee.peer`) to filter on.
+`bin/bee-otel-viewer --stop` stops it.
 
 `BEE_OTLP_ENDPOINT` takes any OTLP/HTTP collector, and `BEE_OTLP_PROTOCOL=protobuf` switches the
 encoding from JSON. Sending is off unless it is set. A collector that is down costs nothing: the
