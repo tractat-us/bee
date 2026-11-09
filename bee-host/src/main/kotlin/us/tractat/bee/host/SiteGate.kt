@@ -138,6 +138,15 @@ class SiteRule(names: Set<String>) {
         InetAddress.ofLiteral(text)
     } catch (_: IllegalArgumentException) {
         null
+    } catch (_: LinkageError) {
+        // SPIKE (docs/spikes/2026-11-bee-app.md): Android has no InetAddress.ofLiteral (Java 22).
+        // getByName does no lookup for a literal; anything else is refused before it gets there.
+        text.takeIf { SPIKE_LITERAL.matches(it) && (':' in it || SPIKE_V4.matches(it)) }?.let(InetAddress::getByName)
+    }
+
+    private companion object {
+        val SPIKE_LITERAL = Regex("[0-9A-Fa-f:.%]+")
+        val SPIKE_V4 = Regex("""\d{1,3}(\.\d{1,3}){3}""")
     }
 }
 
