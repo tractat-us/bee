@@ -5,7 +5,7 @@
 # A PR that touches the site gets a strict build as its check; a push to main
 # builds and deploys. Neither is a required check, and ci.yml's detect counts
 # this file and docs-site/ as docs-class, so the site never buys the Gradle build.
-# The repo is private, so minutes are billed: ubuntu-latest, a timeout on every job.
+# ubuntu-latest and a timeout on every job, to keep the org's shared job queue short.
 name: Docs site
 
 on:
