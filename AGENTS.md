@@ -11,6 +11,8 @@ and `docs/superpowers/specs/` for the design.
 `docs/superpowers/`. Epic #6 and `docs/project/plan.yaml` track which tasks have landed. Don't
 scaffold code ahead of the plan. Build and test with `timeout 600 ./gradlew check`.
 
+Before adding anything a person sees or does, read `docs/architecture/product.md`: bee acts like a physical, infinite whiteboard, simplicity first, no clutter (Iain).
+
 ## bee and kuilt
 
 bee is an application built on [kuilt](https://github.com/tractat-us/kuilt). The split:
