@@ -283,15 +283,10 @@ class BoardActionSource internal constructor(
         }
 
         /** A claim token as tools show it: `<term>:<index>`. */
-        fun tokenText(token: ClaimToken): String = "${token.term}:${token.index}"
+        fun tokenText(token: ClaimToken): String = token.text
 
         /** Reads a token [tokenText] wrote. */
-        fun parseToken(text: String): ClaimToken {
-            val parts = text.split(':')
-            val numbers = parts.mapNotNull { it.toLongOrNull() }
-            require(parts.size == 2 && numbers.size == 2) { "Not a claim token: $text" }
-            return ClaimToken(numbers[0], numbers[1])
-        }
+        fun parseToken(text: String): ClaimToken = ClaimToken.parse(text)
 
         private fun json(id: RecordId, record: ActionRecord, token: ClaimToken?, basisComplete: Boolean): JsonObject = buildJsonObject {
             put("recordId", recordId(id))
