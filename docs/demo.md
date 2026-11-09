@@ -5,8 +5,8 @@ for that: two people, two laptops with Claude Code, and a phone if you have one.
 click; your two Claude sessions draw on one board that every screen shows. Each step says what to
 do and what it shows.
 
-Never used bee yourself? Spend ten minutes with [Try bee](try-bee.md) first. It's the same paths,
-on your own.
+Never used bee yourself? Spend ten minutes with [Try bee](try-bee.md) first. It walks the same
+paths, on your own.
 
 ## Before the meeting
 
