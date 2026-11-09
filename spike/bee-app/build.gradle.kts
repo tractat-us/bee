@@ -20,7 +20,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "us.tractat.bee.spike"
-        // java.util.HexFormat (bee-host's HostKeys) arrived in API 34.
+        // Conservative: java.nio.file needs 26; nothing below 34 was tried.
         minSdk = 34
         targetSdk = 36
         versionCode = 1
