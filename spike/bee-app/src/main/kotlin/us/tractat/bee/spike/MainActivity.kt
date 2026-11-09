@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.host.BeeHost
 import us.tractat.bee.host.HostConfig
+import us.tractat.bee.host.Reach
 
 /**
  * SPIKE, throwaway. Starts bee-host in-process on 8233 and shows its board: the WebView is the
@@ -30,7 +31,8 @@ class MainActivity : Activity() {
         Thread {
             val started = System.nanoTime()
             try {
-                val config = HostConfig(dataDir = filesDir.toPath().resolve("bee-host"))
+                // Lan: the phone's own WebView is still on loopback; Wi-Fi peers pair or use the join link.
+                val config = HostConfig(dataDir = filesDir.toPath().resolve("bee-host"), reach = Reach.Lan)
                 val running = runBlocking { BeeHost.start(scope, config) }
                 host = running
                 Log.i(TAG, "host on ${running.port} after ${(System.nanoTime() - started) / 1_000_000} ms")
