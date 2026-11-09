@@ -38,6 +38,20 @@ async function shotWithExif(page, width, height) {
   return Buffer.concat([jpeg.subarray(0, 2), Buffer.from([0xff, 0xe1]), length, payload, jpeg.subarray(2)]);
 }
 
+/** The payload of each APP1 segment (EXIF or XMP) in `jpeg`, read from its head up to the scan. */
+function app1Segments(jpeg) {
+  const segments = [];
+  for (let at = 2; at + 4 <= jpeg.length && jpeg[at] === 0xff && jpeg[at + 1] !== 0xda;) {
+    const length = jpeg.readUInt16BE(at + 2);
+    if (jpeg[at + 1] === 0xe1) segments.push(jpeg.subarray(at + 4, at + 2 + length));
+    at += 2 + length;
+  }
+  return segments;
+}
+
+/** The GPS IFD pointer, EXIF tag 0x8825, in either byte order. */
+const GPS_TAG = [Buffer.from([0x88, 0x25]), Buffer.from([0x25, 0x88])];
+
 async function openPage(browser, name) {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -92,7 +106,11 @@ test('a photo taken on one page shows on another, without its EXIF, and reaches 
     expect(src.length).toBeLessThanOrEqual(384 * 1024);
     const shown = Buffer.from(src.split(',')[1], 'base64');
     expect(shown.includes(SECRET), "the shown photo keeps none of the shot's EXIF").toBe(false);
-    expect(shown.includes(Buffer.from('Exif\0', 'latin1')), 'the shown photo has no EXIF segment').toBe(false);
+    // Chromium's canvas writes no EXIF at all. WebKit's writes its own small one (dimensions,
+    // colour space), so the check is that none of it is location, rather than that it's absent.
+    const exif = app1Segments(shown);
+    expect(app1Segments(shot).length, 'the reader finds the fixture EXIF').toBe(1);
+    expect(exif.filter((segment) => GPS_TAG.some((tag) => segment.includes(tag))), 'no EXIF segment has a GPS IFD').toEqual([]);
 
     // The agent's wait returns the record, light, and the photo itself as an image block.
     const result = await waited;
