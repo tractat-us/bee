@@ -32,7 +32,9 @@ const AFTER_DRAG_MS = 300;
 
 /**
  * Board's properties, each a data binding to an ordered collection `{items, order}`: `columns`
- * (items `{title, owner?}`) and `cards` (items `{label, column}`), with `order` an array of ids.
+ * (items `{title, owner?}`) and `cards` (items `{label, column, href?, detail?}`), with `order` an
+ * array of ids. A card's label links to its `href`, an http: or https: URL, in a new tab; its
+ * `detail` is one muted line under the label (bee#197).
  * Keep SurfaceValidator.BOARD (bee-a2ui) in step: the bridge refuses what the renderer can't draw.
  */
 export const BoardApi = {
@@ -41,7 +43,8 @@ export const BoardApi = {
     .omit({ text: true, variant: true })
     .extend({
       columns: DynamicValueSchema.describe('REF:#/$defs/DynamicValue|The columns: {items: {id: {title, owner?}}, order: [id]}.'),
-      cards: DynamicValueSchema.describe('REF:#/$defs/DynamicValue|The cards: {items: {id: {label, column}}, order: [id]}.'),
+      cards: DynamicValueSchema.describe('REF:#/$defs/DynamicValue|The cards: {items: {id: {label, column, href?, detail?}}, order: [id]}. '
+        + 'href is an http: or https: URL the label links to; detail is one short line under the label.'),
     })
     .strict(),
 };
@@ -59,6 +62,20 @@ export function ordered(collection) {
   }
   const rest = Object.keys(items).filter((id) => !listed.includes(id)).sort();
   return [...listed, ...rest].map((id) => ({ ...(items[id] ?? {}), id }));
+}
+
+/**
+ * A card's `href` if it is an http: or https: URL, else null. SurfaceValidator refuses any
+ * other, and this keeps a page that renders unvalidated data from linking `javascript:`.
+ */
+export function cardHref(href) {
+  if (typeof href !== 'string' || !/^https?:\/\/./i.test(href)) return null;
+  try {
+    const { protocol } = new URL(href);
+    return protocol === 'http:' || protocol === 'https:' ? href : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The columns a card in `column` can move to, as `{id, title}` in board order: every other one. */
@@ -84,7 +101,11 @@ const LIST = 'list-style:none;padding:0;margin:0';
 // 2.75rem is 44px at the default font size: Apple's minimum touch target.
 const CARD_ROW = `display:block;min-height:2.75rem;padding:0.6rem 0.75rem;margin:0.4rem 0;border:1px solid ${LINE};`
   + `border-radius:8px;background:${CARD};color:${INK};cursor:grab;font-size:1.05rem`;
-const CARD_OPEN = `border:2px solid ${ACCENT};padding:calc(0.6rem - 1px) calc(0.75rem - 1px)`;
+// The label as a link stays the card's ink, with a faint underline: quiet, but plainly a link.
+const LINK = `color:inherit;text-decoration:underline;text-decoration-color:${LINE};text-underline-offset:0.2em`;
+const DETAIL = `display:block;margin-top:0.15rem;color:${MUTED};font-size:0.85rem;`
+  + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+const CARD_OPEN =`border:2px solid ${ACCENT};padding:calc(0.6rem - 1px) calc(0.75rem - 1px)`;
 const MENU = 'display:flex;flex-direction:column;gap:0.4rem;margin-top:0.5rem';
 const MOVE = `min-height:2.75rem;padding:0.5rem 0.75rem;border:1px solid ${ACCENT};border-radius:8px;`
   + `background:color-mix(in srgb, ${ACCENT} 14%, ${CARD});color:${INK};font:inherit;text-align:left;cursor:pointer`;
@@ -167,7 +188,29 @@ export class BoardElement extends A2uiLitElement {
         @dragend=${(event) => {
           this.dragging = null;
           this.dragEndedAt = event.timeStamp;
-        }}><span class="label">${label}</span>${open ? this.moveMenu(card, label, columns) : nothing}</li>`;
+        }}>${this.label(card, label)}${this.detail(card)}${open ? this.moveMenu(card, label, columns) : nothing}</li>`;
+  }
+
+  /**
+   * The card's label, as a link to its `href` when it has one. The link isn't draggable itself,
+   * so a drag that starts on it drags the card, and a click that ends a drag doesn't follow it.
+   */
+  label(card, label) {
+    const href = cardHref(card.href);
+    if (!href) return html`<span class="label">${label}</span>`;
+    return html`<a class="label" href=${href} target="_blank" rel="noopener noreferrer" draggable="false"
+        style=${LINK} @click=${(event) => { if (this.endsDrag(event)) event.preventDefault(); }}>${label}</a>`;
+  }
+
+  /** The card's detail: one muted line, cut with an ellipsis, its whole text on hover. */
+  detail(card) {
+    if (typeof card.detail !== 'string' || !card.detail) return nothing;
+    return html`<span class="detail" title=${card.detail} style=${DETAIL}>${card.detail}</span>`;
+  }
+
+  /** Whether `event` belongs to a drag: one under way, or one that ended a moment ago. */
+  endsDrag(event) {
+    return Boolean(this.dragging) || event.timeStamp - this.dragEndedAt < AFTER_DRAG_MS;
   }
 
   /** The open card's menu: a button per column it can move to, disabled until armed. */
@@ -185,10 +228,13 @@ export class BoardElement extends A2uiLitElement {
     </div>`;
   }
 
-  /** A tap or click on a card toggles its menu, unless it ends a drag or lands in the menu. */
+  /**
+   * A tap or click on a card toggles its menu, unless it ends a drag, lands in the menu, or
+   * follows the card's link.
+   */
   tap(event, card) {
-    if (this.dragging || event.timeStamp - this.dragEndedAt < AFTER_DRAG_MS) return;
-    if (event.target?.closest?.('.move')) return;
+    if (this.endsDrag(event)) return;
+    if (event.target?.closest?.('.move, a.label')) return;
     if (this.menu?.card === card.id) this.close();
     else this.open(card, false);
   }

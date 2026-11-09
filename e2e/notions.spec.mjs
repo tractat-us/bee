@@ -211,6 +211,59 @@ test('a card dragged onto another board moves nothing', async ({ browser }) => {
   expect([await records(alex.page, 'board-drop').count(), await records(alex.page, 'board-race').count()]).toEqual(recordsBefore);
 });
 
+// `board-link`'s c1 links to BOARD_LINK_HREF with a detail line (NotionsFixtures.kt, bee#197).
+// Each context answers that URL itself, so following the link never leaves the machine.
+const BOARD_LINK_HREF = 'https://example.test/bee/197';
+
+async function openLinkPeer(browser, name) {
+  const context = await browser.newContext();
+  await context.route('https://example.test/**', (route) => route.fulfill({ contentType: 'text/html', body: '<title>linked</title>' }));
+  return openPeer(browser, name, context);
+}
+
+test('a card with an href links its label, and clicking it opens the link and moves nothing', async ({ browser }) => {
+  const alex = await openLinkPeer(browser, 'alex');
+  peers = [alex];
+  const linked = card(alex.page, 'board-link', 'c1');
+  await expect(column(alex.page, 'board-link', 'todo').locator('[data-card="c1"]')).toBeVisible();
+  const link = linked.locator('a.label');
+  await expect(link).toHaveText('Write the spec');
+  await expect(link).toHaveAttribute('href', BOARD_LINK_HREF);
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(linked.locator('.detail')).toHaveText('The label is the link; this is its one quiet line.');
+  // A card without an href shows its label as plain text, and no detail.
+  await expect(card(alex.page, 'board-link', 'c2').locator('a')).toHaveCount(0);
+  await expect(card(alex.page, 'board-link', 'c2').locator('.detail')).toHaveCount(0);
+  const recordsBefore = await records(alex.page, 'board-link').count();
+
+  const [opened] = await Promise.all([alex.context.waitForEvent('page'), link.click()]);
+  await opened.waitForLoadState();
+  expect(opened.url()).toBe(BOARD_LINK_HREF);
+
+  // The click followed the link: it opened no move menu, moved no card and recorded nothing.
+  await alex.page.waitForTimeout(1_000);
+  await expect(linked.locator('.move')).toHaveCount(0);
+  await expect(column(alex.page, 'board-link', 'todo').locator('[data-card="c1"]')).toBeVisible();
+  await expect(records(alex.page, 'board-link')).toHaveCount(recordsBefore);
+});
+
+test('a card with an href still drags by its label, and the drag follows no link', async ({ browser }) => {
+  const alex = await openLinkPeer(browser, 'alex');
+  peers = [alex];
+  const opened = [];
+  alex.context.on('page', (page) => opened.push(page));
+  await expect(column(alex.page, 'board-link', 'todo').locator('[data-card="c1"]')).toBeVisible();
+
+  await card(alex.page, 'board-link', 'c1').locator('a.label').dragTo(column(alex.page, 'board-link', 'doing'));
+
+  await expect(column(alex.page, 'board-link', 'doing').locator('[data-card="c1"]')).toBeVisible({ timeout: 5_000 });
+  await expect(records(alex.page, 'board-link').last()).toContainText('human:alex drop on root');
+  await alex.page.waitForTimeout(1_000);
+  expect(opened).toHaveLength(0);
+  expect(alex.page.url()).not.toContain('example.test');
+});
+
 test('clear the board then reopen from history keeps the votes', async ({ browser }) => {
   test.setTimeout(120_000);
   const alex = await openPeer(browser, 'alex');
