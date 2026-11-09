@@ -88,14 +88,18 @@ class BeeHost private constructor(
      */
     override fun close() {
         dataDir.use {
-            runBlocking {
-                watch.cancelAndJoin()
-                bridges.close()
-                joinRequests.cancelAndJoin()
-                orphanDecisions.cancelAndJoin()
-                core.close()
+            try {
+                runBlocking {
+                    bridges.close()
+                    joinRequests.cancelAndJoin()
+                    orphanDecisions.cancelAndJoin()
+                    core.close()
+                    // Last, so the departures and leaves the close itself causes are recorded.
+                    watch.cancelAndJoin()
+                }
+            } finally {
+                telemetry.close()
             }
-            telemetry.close()
         }
     }
 

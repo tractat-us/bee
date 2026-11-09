@@ -5,6 +5,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -77,8 +78,10 @@ fun CoroutineScope.watchBridge(
     telemetry: BeeTelemetry,
     resource: TelemetryResource,
 ) {
-    launch { board.online.drop(1).collect { telemetry.event(if (it) "socket.connected" else "socket.disconnected", Attr.PATH to "/ws/board") } }
-    launch { board.lastFailure.filterNotNull().collect { telemetry.event("socket.dial_failed", Attr.PATH to "/ws/board", Attr.REASON to describe(it)) } }
-    launch { pin.board.filterNotNull().collect { resource.set(Attr.BOARD, it.value) } }
-    launch { identity.collect { resource.set(Attr.PEER, it.toString()) } }
+    // Undispatched, so each subscribes before this returns and the first connect isn't missed.
+    val now = CoroutineStart.UNDISPATCHED
+    launch(start = now) { board.online.drop(1).collect { telemetry.event(if (it) "socket.connected" else "socket.disconnected", Attr.PATH to "/ws/board") } }
+    launch(start = now) { board.lastFailure.filterNotNull().collect { telemetry.event("socket.dial_failed", Attr.PATH to "/ws/board", Attr.REASON to describe(it)) } }
+    launch(start = now) { pin.board.filterNotNull().collect { resource.set(Attr.BOARD, it.value) } }
+    launch(start = now) { identity.collect { resource.set(Attr.PEER, it.toString()) } }
 }

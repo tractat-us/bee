@@ -58,7 +58,7 @@ fun main() {
     val board = peer.board
     val pin = peer.pin
     val identity = peer.identity
-    // Before start(), which connects: watching after it could miss the first connect.
+    // Before start(), which connects; watchBridge subscribes before it returns.
     bridgeScope.watchBridge(board, pin, identity.current, host::describe, telemetry.telemetry, telemetry.resource)
     peer.start()
     val anotherBoard = CompletableDeferred<AnotherBoard>()

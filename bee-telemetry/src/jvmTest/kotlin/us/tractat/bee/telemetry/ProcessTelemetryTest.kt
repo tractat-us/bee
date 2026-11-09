@@ -99,6 +99,25 @@ class ProcessTelemetryTest {
         )
     }
 
+    /** The SDK's own failure lines can quote a whole tool call: none of its words are kept. */
+    @Test
+    fun anMcpSdkLineKeepsNoneOfItsWords() {
+        val dir = root.resolve("sdk")
+        ProcessTelemetry.open(listOf(dir), resource, env = on).use {
+            val sdk = LoggerFactory.getLogger("io.modelcontextprotocol.kotlin.sdk.shared.ReadBuffer")
+            sdk.error("Failed to deserialize message from line: {\"method\":\"tools/call\",\"params\":{\"arguments\":{\"title\":\"secret plans\"}}}", IllegalStateException("JSON input: secret plans"))
+        }
+        val stored = Stored(dir)
+        val bytes = Files.walk(dir).use { files -> files.filter { it.isRegularFile() }.map { it.readBytes().decodeToString() }.toList() }
+        val line = stored.logs.single { it.attributes["logger.name"]?.startsWith("io.modelcontextprotocol") == true }
+        assertAll(
+            { assertTrue(bytes.none { "secret plans" in it }, "a request's words are in a stored file") },
+            { assertEquals(LogbackEdge.WITHHELD_MESSAGE, line.body) },
+            { assertEquals("ERROR", line.severityText) },
+            { assertEquals("java.lang.IllegalStateException", line.attributes["exception.type"]) },
+        )
+    }
+
     @Test
     fun theKillSwitchOpensNothingAndCapturesNothing() {
         val dir = root.resolve("off")

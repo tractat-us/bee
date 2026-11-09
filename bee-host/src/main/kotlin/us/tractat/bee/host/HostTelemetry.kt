@@ -11,6 +11,7 @@ import io.ktor.server.application.install
 import io.ktor.server.request.path
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -90,10 +91,17 @@ private fun MutableList<BoardChange>.surfaceChanges(before: BoardState, after: B
 /**
  * Records the host's board as it changes ([boardChanges]), and which spokes are on its relay. The
  * first board seen is the one the host booted with, recorded as `board.restored`. A change that
- * can't be read is logged once and skipped: watching never stops the board.
+ * can't be read is logged once and skipped: watching never stops the board. It subscribes before
+ * it returns, so a change made straight after is seen. A burst of changes faster than the watch
+ * reads them is diffed as one, so two quick updates can read as one `surface.update`.
  */
-internal fun CoroutineScope.watchBoard(board: StateFlow<BoardState>, spokes: StateFlow<Set<PeerId>>, self: PeerId, telemetry: BeeTelemetry): Job = launch {
-    launch {
+internal fun CoroutineScope.watchBoard(board: StateFlow<BoardState>, spokes: StateFlow<Set<PeerId>>, self: PeerId, telemetry: BeeTelemetry): Job {
+    if (telemetry === BeeTelemetry.Off) return Job().apply { complete() }
+    return launch(start = CoroutineStart.UNDISPATCHED) { watch(board, spokes, self, telemetry) }
+}
+
+private suspend fun CoroutineScope.watch(board: StateFlow<BoardState>, spokes: StateFlow<Set<PeerId>>, self: PeerId, telemetry: BeeTelemetry) {
+    launch(start = CoroutineStart.UNDISPATCHED) {
         var was = emptySet<PeerId>()
         spokes.collect { now ->
             (now - was - self).forEach { telemetry.event("socket.join", Attr.SUBJECT to it.value, Attr.PATH to BoardRelay.PATH) }

@@ -21,13 +21,20 @@ import us.tractat.kuilt.otel.logging.NormalizedLogEvent
  * to the same kuilt capture core.
  *
  * Skips telemetry's own loggers and kuilt-otel's ([RecordingTelemetry.LOGGER_PREFIX]): a line
- * about a failed write, captured, would go to the failing buffer.
+ * about a failed write, captured, would go to the failing buffer. Keeps only the level, logger and
+ * exception type of a line from the MCP SDK ([WITHHELD]): its failures quote the JSON-RPC line
+ * they couldn't read, a tool call's arguments and all.
  */
 class LogbackEdge(private val recording: RecordingTelemetry) : AppenderBase<ILoggingEvent>() {
     override fun append(event: ILoggingEvent) {
         val name = event.loggerName
         if (SKIPPED.any(name::startsWith)) return
         val level = event.level.toLogLevel() ?: return
+        if (WITHHELD.any(name::startsWith)) {
+            val type = event.throwableProxy?.let { mapOf(EXCEPTION_TYPE to it.className) }.orEmpty()
+            recording.captured(NormalizedLogEvent(level, name, WITHHELD_MESSAGE, type, emittedEpochNanos = event.instant.epochNanos()))
+            return
+        }
         val attributes = buildMap {
             event.mdcPropertyMap?.forEach { (key, value) -> if (value != null) put(key, value) }
             event.throwableProxy?.let { thrown ->
@@ -47,6 +54,12 @@ class LogbackEdge(private val recording: RecordingTelemetry) : AppenderBase<ILog
     companion object {
         private const val EXCEPTION_TYPE = "exception.type"
         private val SKIPPED = listOf(RecordingTelemetry.LOGGER_PREFIX, "us.tractat.kuilt.otel")
+
+        /** Loggers whose lines can quote a request: the MCP SDK's, and its feature registries'. */
+        val WITHHELD: List<String> = listOf("io.modelcontextprotocol", "FeatureRegistry")
+
+        /** What a [WITHHELD] line's message reads as. */
+        const val WITHHELD_MESSAGE: String = "(an MCP SDK line, its words withheld: they can quote a request)"
 
         /**
          * Attaches an edge into [recording] to the root logger of the process's logback context,
