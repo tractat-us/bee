@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.plus
 import us.tractat.bee.core.HostAddress
 import us.tractat.kuilt.crdt.ReplicaId
 import java.security.SecureRandom
@@ -25,7 +27,9 @@ class MainActivity : ComponentActivity() {
         val http = appHttpClient()
         val random = SecureRandom().asKotlinRandom()
         val clock = { Clock.System.now() }
-        val join = { host: HostAddress -> joinBoard(host, http, lifecycleScope, ReplicaId("app-${Uuid.random()}"), clock, random) }
+        // The replica merges off the main thread, and ends with the Activity.
+        val scope = lifecycleScope + Dispatchers.Default
+        val join = { host: HostAddress -> joinBoard(host, http, scope, ReplicaId("app-${Uuid.random()}"), clock, random) }
         setContent { BeeApp(AppScreen.AskForBoard(), join) }
     }
 }
