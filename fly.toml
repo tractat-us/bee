@@ -1,0 +1,54 @@
+# Fly.io app config for hosted bee: one bee-host at https://bee.tractat.us. Deployed only by
+# .github/workflows/deploy.yml (workflow_dispatch). Setup, DNS, the owner key and the deploy
+# itself: docs/deploy.md.
+
+app = "bee-tractat-us"
+primary_region = "iad"
+
+# The JVM runs its shutdown hook on SIGTERM: the host closes its sockets and its store.
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Rolling, never bluegreen. The board lives on the bee_data volume below, a Fly volume attaches to
+# exactly one machine, and the host holds a lock on its data directory. Bluegreen starts a second,
+# volume-less machine beside the first: an empty board. One machine, one volume, rolling; a deploy
+# drops every socket for the restart, and peers redial.
+[deploy]
+  strategy = "rolling"
+
+[env]
+  # Heap sized explicitly for the 512 MB VM below. Idle, the host's heap holds about 26 MB and the
+  # whole process about 180 MB; 256 MB of heap leaves the rest of the VM to metaspace, code cache,
+  # threads and Netty's buffers. Out of memory exits, so Fly restarts the machine.
+  BEE_HOST_OPTS = "-Xmx256m -XX:+ExitOnOutOfMemoryError"
+
+# Provisioned 2026-11-08: `flyctl volumes create bee_data --size 1 --region iad`.
+[[mounts]]
+  source = "bee_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Never stopped: the host is the board's always-on replica and its one Raft voter, and its
+  # WebSockets hold every peer. Fly's proxy idle timeout never bites them: the host pings each
+  # socket every 15 s (kuilt's KtorServerLoom.DEFAULT_PING_PERIOD).
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # /board-id answers 200 with the board id. The check calls the machine over Fly's private
+  # network, so it passes bee's site gate only with a Host the gate accepts (docs/deploy.md).
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/board-id"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
