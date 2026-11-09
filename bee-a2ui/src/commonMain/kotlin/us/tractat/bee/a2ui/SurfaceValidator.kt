@@ -26,8 +26,15 @@ object SurfaceValidator {
     /** A question, options and per-peer answers ([NotionActions]): binds `question`, `options` and `answers`. */
     const val POLL = "Poll"
 
-    /** Columns and draggable cards ([NotionActions]): binds `columns` and `cards`. */
+    /**
+     * Columns and draggable cards ([NotionActions]): binds `columns` and `cards`. A card is
+     * `{label, column, href?, detail?}`: its label links to `href`, an `http:` or `https:` URL,
+     * and `detail` is one muted line under it ([cardErrors]).
+     */
     const val BOARD = "Board"
+
+    /** The URL schemes a Board card's `href` may use. The page opens it, so never `javascript:`. */
+    private val CARD_HREF_SCHEMES = listOf("http://", "https://")
 
     /** The data bindings each Notions type needs, in the order its errors are named. */
     private val BINDINGS: Map<String, List<String>> = mapOf(
@@ -57,6 +64,7 @@ object SurfaceValidator {
         view.components.keys.sorted().forEach { id ->
             val component = view.components.getValue(id)
             addAll(typeErrors(id, component))
+            addAll(cardErrors(id, component, view.data))
             references(component)
                 .filter { it !in view.components }
                 .forEach { add("Component \"$id\" names child \"$it\", which no component has as its id.") }
@@ -86,22 +94,52 @@ object SurfaceValidator {
         }
     }
 
-    /** The normalized pointer of [path] if [data] holds a value there, else null. */
-    private fun heldAt(data: JsonObject, path: String): String? {
+    /**
+     * The problems with the cards a Board [component] binds in [data]: an `href` that isn't an
+     * `http:` or `https:` URL string (empty is fine: it clears the link), or a `detail` that isn't a string. Cards not written yet are fine.
+     */
+    private fun cardErrors(id: String, component: JsonObject, data: JsonObject): List<String> {
+        if (component["component"]?.stringOrNull() != BOARD) return emptyList()
+        val path = (component["cards"] as? JsonObject)?.get("path")?.stringOrNull() ?: return emptyList()
+        val items = (valueAt(data, path) as? JsonObject)?.get("items") as? JsonObject ?: return emptyList()
+        return items.keys.sorted().flatMap { cardId ->
+            val card = items.getValue(cardId) as? JsonObject ?: return@flatMap emptyList()
+            listOfNotNull(
+                card["href"]?.takeUnless { it.stringOrNull() == "" || isCardHref(it) }?.let {
+                    "Component \"$id\" is a Board whose card \"$cardId\" has href $it, which isn't an http: or https: URL."
+                },
+                card["detail"]?.takeUnless { it.stringOrNull() != null }?.let {
+                    "Component \"$id\" is a Board whose card \"$cardId\" has detail $it, which isn't a string."
+                },
+            )
+        }
+    }
+
+    /** Whether [href] is a string naming an `http:` or `https:` URL, case aside. */
+    private fun isCardHref(href: JsonElement): Boolean {
+        val url = href.stringOrNull()?.lowercase() ?: return false
+        return CARD_HREF_SCHEMES.any { url.startsWith(it) && url.length > it.length }
+    }
+
+    /** The value [data] holds at [path], or null if it holds none or [path] isn't a pointer. */
+    private fun valueAt(data: JsonObject, path: String): JsonElement? {
         val segments = try {
             SurfaceFormat.segments(path)
         } catch (_: IllegalArgumentException) {
             return null
         }
-        val held = segments.fold<String, JsonElement?>(data) { at, key ->
+        return segments.fold<String, JsonElement?>(data) { at, key ->
             when (at) {
                 is JsonObject -> at[key]
                 is JsonArray -> key.toIntOrNull()?.let(at::getOrNull)
                 else -> null
             }
         }
-        return held?.let { SurfaceFormat.pointer(segments) }
     }
+
+    /** The normalized pointer of [path] if [data] holds a value there, else null. */
+    private fun heldAt(data: JsonObject, path: String): String? =
+        valueAt(data, path)?.let { SurfaceFormat.pointer(SurfaceFormat.segments(path)) }
 
     private fun typeErrors(id: String, component: JsonObject): List<String> {
         val type = component["component"]?.stringOrNull() ?: return listOf("Component \"$id\" has no type.")

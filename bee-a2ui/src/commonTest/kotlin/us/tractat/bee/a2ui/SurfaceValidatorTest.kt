@@ -96,6 +96,42 @@ class SurfaceValidatorTest {
         )
     }
 
+    /** A Board card may link its label to an http: or https: URL and carry a detail line (bee#197). */
+    @Test
+    fun aBoardCardWithAnHttpHrefAndADetailIsValid() {
+        val linked = boardWith(
+            "c1" to card { put("href", "https://github.com/tractat-us/bee/issues/197"); put("detail", "Cards link out.") },
+            "c2" to card { put("href", "HTTP://example.test/plan") },
+            "c3" to card {},
+            "c4" to card { put("href", "") },
+        )
+        assertEquals(emptyList(), SurfaceValidator.errors(linked))
+    }
+
+    /** The page opens a card's href, so any scheme but http: and https: is refused, as is a detail that isn't text. */
+    @Test
+    fun aBoardCardWithAnotherSchemeOrANonStringDetailIsNamed() {
+        val bad = boardWith(
+            "c1" to card { put("href", "javascript:alert(1)") },
+            "c2" to card { put("href", " https://example.test") },
+            "c3" to card { put("href", "data:text/html,hi") },
+            "c4" to card { put("href", "https://") },
+            "c5" to card { put("href", 7) },
+            "c6" to card { put("detail", JsonArray(listOf(JsonPrimitive("x")))) },
+        )
+        assertEquals(
+            listOf(
+                "Component \"root\" is a Board whose card \"c1\" has href \"javascript:alert(1)\", which isn't an http: or https: URL.",
+                "Component \"root\" is a Board whose card \"c2\" has href \" https://example.test\", which isn't an http: or https: URL.",
+                "Component \"root\" is a Board whose card \"c3\" has href \"data:text/html,hi\", which isn't an http: or https: URL.",
+                "Component \"root\" is a Board whose card \"c4\" has href \"https://\", which isn't an http: or https: URL.",
+                "Component \"root\" is a Board whose card \"c5\" has href 7, which isn't an http: or https: URL.",
+                "Component \"root\" is a Board whose card \"c6\" has detail [\"x\"], which isn't a string.",
+            ),
+            SurfaceValidator.errors(bad),
+        )
+    }
+
     /**
      * A Poll's options and question must be appended (bee#81). Data there is named, whether a
      * whole array or a scalar; an appended path or an empty one is fine. Rendering doesn't check
@@ -138,6 +174,27 @@ class SurfaceValidatorTest {
         conflicts = emptyMap(),
         appended = emptySet(),
     )
+
+    /** A Board as the root, its cards bound at `/cards` and held there, every card in column `todo`. */
+    private fun boardWith(vararg cards: Pair<String, JsonObject>): SurfaceView {
+        val board = component("root", SurfaceValidator.BOARD) {
+            putJsonObject("columns") { put("path", "/columns") }
+            putJsonObject("cards") { put("path", "/cards") }
+        }
+        val data = buildJsonObject {
+            putJsonObject("cards") {
+                put("items", JsonObject(cards.toMap()))
+                put("order", JsonArray(cards.map { JsonPrimitive(it.first) }))
+            }
+        }
+        return view(board).copy(data = data)
+    }
+
+    private fun card(more: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) = buildJsonObject {
+        put("label", "Spec")
+        put("column", "todo")
+        more()
+    }
 
     private fun component(id: String, type: String, more: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) =
         buildJsonObject {

@@ -18,8 +18,8 @@ data class NotionEdit(val path: String, val value: JsonElement)
  *   [ANSWER], with context `{option}`, writes `answers/<actor>`, so one person counts once
  *   however many tabs they answer from.
  * - **`Board`** binds `columns` and `cards`, each an ordered collection `{items, order}`: `items`
- *   keyed by id (a column `{title, owner?}`, a card `{label, column}`), and `order` an array of
- *   ids. The action [DROP], with context `{card, column}`, writes the card's `column` leaf.
+ *   keyed by id (a column `{title, owner?}`, a card `{label, column, href?, detail?}`), and `order`
+ *   an array of ids. The action [DROP], with context `{card, column}`, writes the card's `column` leaf.
  *
  * Every other action only records.
  */

@@ -22,10 +22,11 @@ import kotlin.time.Instant
 /**
  * The Notions fixtures for e2e/notions.spec.mjs, one surface per test: polls whose question and
  * options are appended entries (A1), boards whose columns and cards are ordered collections
- * (`{items, order}`, A12), and `markup`, which puts an `<img onerror>` in every label.
+ * (`{items, order}`, A12), `board-link`, whose first card links out with a detail line
+ * (bee#197), and `markup`, which puts an `<img onerror>` in every label.
  */
 internal val NOTIONS_FIXTURES: List<String> =
-    listOf("poll-tabs", "poll-basis", "poll-history", "board-drop", "board-race", "board-tap", "markup")
+    listOf("poll-tabs", "poll-basis", "poll-history", "board-drop", "board-race", "board-tap", "board-link", "markup")
 
 private const val MARKUP = "<img src=x onerror=window.pwned=1>"
 
@@ -36,6 +37,7 @@ internal suspend fun seedNotion(writer: BoardClient, author: ReplicaId, id: Stri
         "poll-tabs", "poll-history" -> poll("Lunch?", "pizza", "salad")
         "poll-basis" -> poll("Tea or coffee?", "tea", "coffee")
         "board-drop", "board-race", "board-tap" -> board("Write the spec")
+        "board-link" -> board("Write the spec", mapOf("c1" to CardLink(BOARD_LINK_HREF, BOARD_LINK_DETAIL)))
         "markup" -> markup()
         else -> error("No Notions fixture $id")
     }
@@ -87,11 +89,20 @@ private fun poll(question: String, vararg options: String) = Fixture(
     appends = listOf("/question" to question) + options.map { "/options" to it },
 )
 
-private fun board(label: String) = Fixture(
+/** A Board card's optional link and detail line (bee#197). */
+private data class CardLink(val href: String, val detail: String)
+
+/** The link `board-link`'s first card carries; e2e/notions.spec.mjs routes it, so nothing leaves the machine. */
+private const val BOARD_LINK_HREF = "https://example.test/bee/197"
+
+private const val BOARD_LINK_DETAIL = "The label is the link; this is its one quiet line."
+
+private fun board(label: String, links: Map<String, CardLink> = emptyMap()) = Fixture(
     components = listOf(boardComponent("root")),
     data = boardData(
         columns = listOf("todo" to "To do", "doing" to "Doing", "done" to "Done"),
         cards = listOf("c1" to label, "c2" to "Review it"),
+        links = links,
     ),
     appends = emptyList(),
 )
@@ -129,7 +140,11 @@ private fun boardComponent(id: String) = buildJsonObject {
 }
 
 /** Columns and cards as ordered collections; every card starts in the first column. */
-private fun boardData(columns: List<Pair<String, String>>, cards: List<Pair<String, String>>) = buildJsonObject {
+private fun boardData(
+    columns: List<Pair<String, String>>,
+    cards: List<Pair<String, String>>,
+    links: Map<String, CardLink> = emptyMap(),
+) = buildJsonObject {
     putJsonObject("columns") {
         putJsonObject("items") { columns.forEach { (id, title) -> putJsonObject(id) { put("title", title) } } }
         put("order", JsonArray(columns.map { JsonPrimitive(it.first) }))
@@ -140,6 +155,7 @@ private fun boardData(columns: List<Pair<String, String>>, cards: List<Pair<Stri
                 putJsonObject(id) {
                     put("label", label)
                     put("column", columns.first().first)
+                    links[id]?.let { put("href", it.href); put("detail", it.detail) }
                 }
             }
         }

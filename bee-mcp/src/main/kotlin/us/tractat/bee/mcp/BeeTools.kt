@@ -68,7 +68,8 @@ object BeeTools {
                 "options go in append, never data (options as strings or {id, label}), and answers is an object " +
                 "keyed by peer, which each answer writes. It also adds " +
                 "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +
-                "owner?} and a card {label, column}; a drop moves a card to another column. Each answer or drop is " +
+                "owner?} and a card {label, column, href?, detail?}: href, an http: or https: URL, makes the label " +
+                "a link, and detail is one short line under it; an empty href or detail clears it. A drop moves a card to another column. Each answer or drop is " +
                 "also an action record.",
             inputSchema = schema(required = listOf("surfaceId", "title", "components")) {
                 putJsonObject("surfaceId") { put("type", "string") }

@@ -114,10 +114,13 @@ object WhiteboardGuide {
             name = "Board: cards in columns",
             components = """[{"id":"root","component":"Board","columns":{"path":"/columns"},"cards":{"path":"/cards"}}]""",
             data = """{"columns":{"items":{"todo":{"title":"To do"},"done":{"title":"Done"}},"order":["todo","done"]},""" +
-                """"cards":{"items":{"c1":{"label":"Draft the API","column":"todo"}},"order":["c1"]}}""",
+                """"cards":{"items":{"c1":{"label":"Draft the API","column":"todo",""" +
+                """"href":"https://example.com/api-draft","detail":"Endpoints and errors first"}},"order":["c1"]}}""",
             append = null,
             note = "People drag cards between columns; each drop moves the card and records \"drop\" with " +
-                "{card, column}. Add a card by writing /cards/items/<id> and a new /cards/order.",
+                "{card, column}. Add a card by writing /cards/items/<id> and a new /cards/order. A card's " +
+                "optional href (http: or https: only) makes its label a link, and its optional detail is one " +
+                "short line under the label: keep the label short and put the rest there. An empty href or detail clears it.",
         ),
     )
 
