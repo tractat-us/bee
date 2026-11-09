@@ -20,10 +20,10 @@
 {% endblock %}
 
 {#- Search and link-preview metadata. seo.py sets page.meta.description from a
-    page's first paragraph, and page.meta.home on the homepage, which Material's
-    page.is_homepage misses because hooks.py adds it from README.md. The card
-    image is overrides/assets/images/social-card.png; its source is
-    docs-site/social-card.svg. -#}
+    page's first paragraph, and page.meta.home on the homepage. Material's
+    page.is_homepage is False there: it means a top-level page, and nav puts Home
+    under the Docs tab. The card is overrides/assets/images/social-card.png;
+    docs-site/README.md § Social card says how to redraw it. -#}
 {% block htmltitle %}
   {% if page.meta and page.meta.home %}
     <title>{{ config.site_name }}: {{ config.extra.home_title }}</title>

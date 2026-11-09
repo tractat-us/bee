@@ -20,8 +20,11 @@ from bs4 import BeautifulSoup
 
 # Search results show roughly 155 characters before cutting a description off.
 _LIMIT = 155
-# A paragraph shorter than this is a label or a status line, not a summary.
-_SHORTEST = 40
+# A paragraph shorter than this is a label or boilerplate, not a summary.
+_SHORTEST = 50
+# Prose ends a sentence. A status line ("Date: … · Status: …") doesn't, and a paragraph
+# ending in a colon introduces a list rather than summarising the page.
+_SENTENCE_END = re.compile(r"[.!?…][\"'”’)]*$")
 
 
 def _summary(html: str) -> str | None:
@@ -31,7 +34,7 @@ def _summary(html: str) -> str | None:
         if p.find_parent(["div", "table", "li", "blockquote", "details"]):
             continue
         text = re.sub(r"\s+", " ", p.get_text()).strip()
-        if len(text) >= _SHORTEST:
+        if len(text) >= _SHORTEST and _SENTENCE_END.search(text):
             return _trim(text)
     return None
 
@@ -39,12 +42,12 @@ def _summary(html: str) -> str | None:
 def _trim(text: str) -> str:
     if len(text) <= _LIMIT:
         return text
-    cut = text[: _LIMIT - 1].rsplit(" ", 1)[0].rstrip(",;:—–-")
+    cut = text[: _LIMIT - 1].rsplit(" ", 1)[0].rstrip(",;:.—–-")
     return cut + "…"
 
 
 def _is_home(page) -> bool:
-    # page.is_homepage is False here: hooks.py adds index.md from README.md, outside docs_dir.
+    # page.is_homepage is False: it means a top-level page, and nav puts Home under the Docs tab.
     return page.file.src_uri == "index.md"
 
 
