@@ -226,8 +226,8 @@ doesn't know, so one written into `keys` would stop an older host from booting.
 
 ### Hosts and eviction
 
-[#164](https://github.com/tractat-us/bee/issues/164). Folds into [`setup.md`](../setup.md) §
-pairing when it lands, and the menu into [`product.md`](product.md).
+[#164](https://github.com/tractat-us/bee/issues/164). Folds into [`setup.md`](../setup.md#cutting-a-device-off) §
+"Cutting a device off" when it lands, and the menu into [`product.md`](product.md).
 
 **Roles live on keys, in the host's key file, and nowhere else.** A key's holder is one of:
 
