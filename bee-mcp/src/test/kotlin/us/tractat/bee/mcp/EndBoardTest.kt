@@ -1,5 +1,6 @@
 package us.tractat.bee.mcp
 
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -84,8 +85,9 @@ class EndBoardTest {
 
     /**
      * The `Depart` and the flush run at once, so an ending takes one bound, not two. The depart
-     * here takes the whole bound; it starts while the write is still unacknowledged, and the
-     * ending still takes only the bound, with the write flushed.
+     * here takes the whole bound, and so does the ack wait (it never returns, so the flush runs
+     * to its timeout); run one after the other they would take two bounds. The depart starts while
+     * the write is still unacknowledged, and the ending takes only the bound.
      */
     @Test
     fun theDepartAndTheFlushRunTogetherWithinOneBound() = runTest(StandardTestDispatcher()) {
@@ -95,7 +97,7 @@ class EndBoardTest {
         board.mutate { it.openSurface(bridge, "only", meta(), validSurface(), JsonObject(emptyMap())) }
         var relayHadItAtDepart: Boolean? = null
         val (acknowledged, took) = timed {
-            endSession(board, BOUND) { within ->
+            endSession(board, BOUND, awaitAck = { awaitCancellation() }) { within ->
                 relayHadItAtDepart = "only" in star.relay.state.value.openSurfaces()
                 delay(within)
             }
@@ -104,8 +106,8 @@ class EndBoardTest {
 
         assertAll(
             { assertEquals(false, relayHadItAtDepart, "the depart began before the write was flushed") },
-            { assertTrue(acknowledged, "the host acknowledged the write") },
-            { assertEquals(BOUND, took, "the ending took the depart's bound, and no more") },
+            { assertEquals(false, acknowledged, "rig: the ack wait never returned, so it timed out") },
+            { assertEquals(BOUND, took, "the ending took one bound, not two") },
             { assertEquals(listOf("only"), star.relay.state.value.openSurfaces(), "the write reached the relay") },
         )
     }

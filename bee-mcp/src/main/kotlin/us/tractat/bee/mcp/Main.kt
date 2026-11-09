@@ -148,28 +148,35 @@ private suspend fun depart(bridge: BeeBridge, within: Duration) {
 }
 
 /**
- * An ending bridge's last steps on the board, run at once so the exit takes at most [within], not
- * twice it: [depart], and wait for the host to acknowledge [board]'s writes, then close [board]
- * (bee#116). Closing parts the connection, which cancels any write the seam hasn't sent yet
+ * An ending bridge's last steps on the board, run at once so the two steps take at most [within],
+ * not twice it: [depart], and wait for the host to acknowledge [board]'s writes, then close [board]
+ * (bee#116). The close after them isn't bounded by [within]: on a half-open link it can take up
+ * to the seam's close timeout (2 s). Closing parts the connection, which cancels any write the seam hasn't sent yet
  * (kuilt's `Quilter.close`); just after a redial, the first-contact sync can hold one back for
  * longer than a session takes to end. An offline write is lost either way: it would ride the next
  * connection's FullState.
  *
  * @param depart bounds itself by the [within] it's given, and doesn't throw
+ * @param awaitAck suspends until the host has acknowledged [board]'s writes, or says it can't
  * @return whether the host acknowledged the writes in time
  */
-internal suspend fun endSession(board: BoardClient, within: Duration, depart: suspend (Duration) -> Unit): Boolean = try {
+internal suspend fun endSession(
+    board: BoardClient,
+    within: Duration,
+    awaitAck: suspend () -> Boolean = board::awaitAcknowledged,
+    depart: suspend (Duration) -> Unit,
+): Boolean = try {
     coroutineScope {
         launch { depart(within) }
-        flushed(board, within)
+        flushed(within, awaitAck)
     }
 } finally {
     withContext(NonCancellable) { board.close() }
 }
 
 /** Whether the host acknowledged [board]'s writes within [within]; it says why not, if not. */
-private suspend fun flushed(board: BoardClient, within: Duration): Boolean {
-    val acknowledged = withTimeoutOrNull(within) { board.awaitAcknowledged() }
+private suspend fun flushed(within: Duration, awaitAck: suspend () -> Boolean): Boolean {
+    val acknowledged = withTimeoutOrNull(within) { awaitAck() }
     when (acknowledged) {
         true -> Unit
         false -> logger.warn { "This bridge isn't connected to the host, so any writes it made since its last connection are lost." }
