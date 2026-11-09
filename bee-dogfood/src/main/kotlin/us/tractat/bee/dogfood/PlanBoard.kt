@@ -50,7 +50,7 @@ object PlanBoard {
     const val SURFACE_ID = "dogfood-plan"
     const val TITLE = "Plan"
     const val DONE_SHOWN = 5
-    const val SUMMARY_CHARS = 90
+    const val SUMMARY_CHARS = 60
     const val EARLIER_DONE = "done-earlier"
     private const val DONE = "done"
 

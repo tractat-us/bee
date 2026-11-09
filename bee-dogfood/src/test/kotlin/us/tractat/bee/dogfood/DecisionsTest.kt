@@ -41,7 +41,8 @@ class DecisionsTest {
         assertAll(
             { assertEquals("Who places a surface?", Decisions.question("> Is this quoted?\n\n- **Who places a surface?** The agent.")) },
             { assertNull(Decisions.question("Nothing asked.")) },
-            { assertEquals(Decisions.QUESTION_CHARS, Decisions.question("a".repeat(300) + "?")!!.length) },
+            { assertNull(Decisions.question("A name from `/mcp?name=`, then\n| Module | Publish? |"), "a ? in code or a table asks nothing") },
+            { assertEquals(Decisions.QUESTION_CHARS, Decisions.question("A".repeat(300) + "?")!!.length) },
         )
     }
 
