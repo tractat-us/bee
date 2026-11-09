@@ -646,7 +646,16 @@ table over the committed log:
     the current orphaning's answers, so an answer to an earlier orphaning doesn't show. Its
     proposal is fenced the same way: a `Reassign` or a token-less `Release` carries the token of
     the surface the person answered, and the table rejects it once the target is orphaned under
-    another, so a stale answer decides nothing (tractat-us/bee#83).
+    another, so a stale answer decides nothing (tractat-us/bee#83). An agent's `bee_release` of
+    an orphan names the token the board shows it the same way. A page records an answer only
+    against the orphaning the person saw: if the surface moved on to another before the record
+    is written, it records nothing and asks them to answer again.
+
+  Upgrading to the fenced decisions needs running bridges and companions restarted and pages
+  reloaded, so every replica runs one version. An older reader can't parse a `Reassign` or
+  `Release` that names its orphaning, and folds it as rejected while the voter applies it: a
+  reassigned agent's bridge would never learn it holds the claim. Reading the new field leniently
+  would be worse, since an older reader would then apply a stale answer the voter rejects.
 
   An answer is the action `answer` with context `{option}`. The answerer's own client proposes the
   `Reassign` or `Release`, and "Wait" proposes nothing. The host proposes nothing but `Depart`. A

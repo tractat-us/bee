@@ -122,8 +122,11 @@ class ClaimsClient(
         return verdict.outcome
     }
 
-    /** True if the release committed and freed [target]; false if it was rejected or unavailable. */
-    suspend fun release(target: ClaimTarget, by: PeerIdentity, token: ClaimToken?, timeout: Duration = 10.seconds): Boolean =
+    /**
+     * True if holder [by]'s release of [target] under its current [token] committed and freed it;
+     * false if it was rejected or unavailable. An orphan is released with [releaseOrphan].
+     */
+    suspend fun release(target: ClaimTarget, by: PeerIdentity, token: ClaimToken, timeout: Duration = 10.seconds): Boolean =
         propose(ClaimCommand.Release(target, by, token), timeout)?.second == ClaimStatus.Free
 
     /**
