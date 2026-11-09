@@ -109,7 +109,7 @@ test('a photo taken on one page shows on another, without its EXIF, and reaches 
     // Chromium's canvas writes no EXIF at all. WebKit's writes its own small one (dimensions,
     // colour space), so the check is that none of it is location, rather than that it's absent.
     const exif = app1Segments(shown);
-    expect(app1Segments(shot).length, 'the reader finds the fixture EXIF').toBe(1);
+    expect(app1Segments(shot).some((segment) => segment.includes(SECRET)), 'the reader finds the fixture EXIF').toBe(true);
     expect(exif.filter((segment) => GPS_TAG.some((tag) => segment.includes(tag))), 'no EXIF segment has a GPS IFD').toEqual([]);
 
     // The agent's wait returns the record, light, and the photo itself as an image block.
