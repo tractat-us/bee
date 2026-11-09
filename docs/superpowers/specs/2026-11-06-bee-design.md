@@ -203,8 +203,12 @@ Claude session ── bee-mcp                                           ┘     
   does, whatever the name, since everyone holding the link holds it: a session that joined by
   the link comes back as a new identity. A resumed session never takes an identity another live
   session holds, never matches another key, and never matches a name nobody chose (none, or the
-  page's `you`). Two kept sessions under one name and key match neither. One that no session
-  picks up within the quiet timeout (§6.4) the host departs `Quiet`.
+  page's `you`). Two kept sessions under one name and key match neither. Until a session picks it
+  up, the host's departure rules (§6.4) leave a kept identity alone, and its claims stay held: its
+  only presence entry is the one a surviving peer pushed back, and Claude Code may take minutes to
+  re-initialize. One that no session picks up within the quiet timeout the host departs `Quiet`.
+  A session that can't resume (the join link's key, or a name nobody chose) isn't kept: a host
+  stop departs it `Left`, as before.
 - **The bridge pings the host (design call, bee#77).** Its sockets only read, so a half-open link
   after a host reboot or a dropped Wi-Fi link would otherwise wait out TCP's retransmits. They
   ping every 5 s and close after 10 s with no pong, well inside the host's 60 s boot grace (§6.4),
