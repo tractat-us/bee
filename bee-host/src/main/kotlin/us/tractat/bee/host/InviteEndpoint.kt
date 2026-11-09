@@ -62,22 +62,27 @@ private const val MAX_REDEMPTION_BYTES = 512
  *
  * - `POST` [InviteLinks.PATH], with an admitted `?k=`, mints an invite ([Invites.mint]) and answers
  *   its [MintedInvite]: the public URL with the secret in its fragment, `#i=<secret>`. That answer
- *   is the only place the secret ever appears.
+ *   is the only place the secret ever appears. The invite records its minter by the key's hash;
+ *   past [Invites.MAX_LIVE_PER_MINTER] live, or [Invites.MAX_LIVE] on the board, it answers 429.
  * - `POST` [InviteWire.REDEEM_PATH], with a [Redemption] as its body (at most [MAX_REDEMPTION_BYTES],
- *   read no further), needs no key: the secret is the capability. It answers a [Redeemed]: a device
- *   key, or why not, with a status a proxy's own page can't be mistaken for.
+ *   read no further, with or without a length), needs no key: the secret is the capability. It
+ *   answers a [Redeemed]: a device key, or why not, with a status a proxy's own page can't be
+ *   mistaken for; 503 when the host couldn't record the use, and so gave no key.
  */
 fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAddress, arrivals: ArrivalAddress) {
     post(InviteLinks.PATH) {
         call.response.header(HttpHeaders.CacheControl, "no-store")
         if (invitation !is Invitation.Public) return@post call.respond(HttpStatusCode.NotFound, "Only a hosted board mints invites: this one's join link is at GET.")
-        if (!pairing.admits(keyOf(call))) return@post call.respond(HttpStatusCode.Forbidden, "Only someone already on the board may invite.")
-        when (val minted = invitation.invites.mint()) {
+        val key = keyOf(call)?.takeIf(pairing::admits)
+            ?: return@post call.respond(HttpStatusCode.Forbidden, "Only someone already on the board may invite.")
+        // The minter is kept as its key's hash, never the key.
+        when (val minted = invitation.invites.mint(by = KeyHash.of(key))) {
             is Mint.Minted -> {
                 val link = "${invitation.url.page}#${InviteWire.SECRET_PARAM}=${minted.secret.value}"
                 call.respondText(Json.encodeToString(MintedInvite.serializer(), MintedInvite(link, minted.expiresAt)), ContentType.Application.Json)
             }
-            Mint.TooMany -> call.respond(HttpStatusCode.TooManyRequests, "Too many invites are live: the oldest lapses within a day.")
+            Mint.BoardFull -> call.respondText("The board has as many live invites as it keeps. The oldest lapses within a day.", status = HttpStatusCode.TooManyRequests)
+            Mint.MinterFull -> call.respondText("You have ${Invites.MAX_LIVE_PER_MINTER} live invites already. Each lapses a day after it was made.", status = HttpStatusCode.TooManyRequests)
         }
     }
     post(InviteWire.REDEEM_PATH) {
@@ -91,7 +96,7 @@ fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAd
             // kotlinx.serialization's SerializationException is an IllegalArgumentException.
             return@post call.respondText("A redemption is JSON: an invite and a name.", status = HttpStatusCode.BadRequest)
         }
-        val redeemed = invitation.invites.redeem(peers.of(call), redemption.invite, redemption.name)
+        val redeemed = invitation.invites.redeem(redemption.invite, redemption.name)
         call.respondText(Json.encodeToString(Redeemed.serializer(), redeemed), ContentType.Application.Json, statusOf(redeemed))
     }
     get(InviteLinks.PATH) {
@@ -118,7 +123,8 @@ private fun statusOf(redeemed: Redeemed): HttpStatusCode = when (redeemed) {
     is Redeemed.Refused -> when (redeemed.reason) {
         InviteEnd.Unknown -> HttpStatusCode.NotFound
         InviteEnd.Lapsed, InviteEnd.Used -> HttpStatusCode.Gone
-        InviteEnd.TooManyTries -> HttpStatusCode.TooManyRequests
+        InviteEnd.DailyLimit -> HttpStatusCode.TooManyRequests
+        InviteEnd.Unavailable -> HttpStatusCode.ServiceUnavailable
         InviteEnd.BadName -> HttpStatusCode.BadRequest
     }
 }

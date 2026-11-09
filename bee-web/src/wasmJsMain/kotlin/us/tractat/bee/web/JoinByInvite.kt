@@ -77,7 +77,7 @@ internal class JoinByInvite(
 
     private fun join() {
         val person = InviteWire.nameOrNull(name.value)
-            ?: return say("A name is 1 to ${InviteWire.MAX_NAME} characters, with no : or #.")
+            ?: return say(refusalText(InviteEnd.BadName))
         submit.setAttribute("disabled", "")
         say("Joining…")
         val body = Json.encodeToString(Redemption.serializer(), Redemption(secret, person))
@@ -106,8 +106,9 @@ internal class JoinByInvite(
             sessionStorage.removeItem(INVITE_STORAGE)
             form.setAttribute("hidden", "")
             prompt.setAttribute("hidden", "")
-            pair.removeAttribute("hidden")
         }
+        // The board's day is full: the invite may admit tomorrow, and a code works today.
+        if (reason in DEAD || reason == InviteEnd.DailyLimit) pair.removeAttribute("hidden")
     }
 
     private fun pairInstead() {
@@ -129,8 +130,9 @@ internal class JoinByInvite(
             InviteEnd.Unknown -> "This invite isn't one this board made."
             InviteEnd.Lapsed -> "This invite has lapsed: an invite lasts a day."
             InviteEnd.Used -> "As many people as this invite admits have joined by it."
-            InviteEnd.TooManyTries -> "Too many tries from here. Wait a few minutes, then try again."
-            InviteEnd.BadName -> "A name is 1 to ${InviteWire.MAX_NAME} characters, with no : or #."
+            InviteEnd.DailyLimit -> "The board has let in as many people by invite as it does in a day."
+            InviteEnd.Unavailable -> "The board couldn't take you in just now. Try again in a moment."
+            InviteEnd.BadName -> "A name is 1 to ${InviteWire.MAX_NAME} characters, with no : or #, and no invisible characters."
         }
 
         /** Puts [person] in the page's `?name=`, keeping the rest, so a reload joins as the same person. */

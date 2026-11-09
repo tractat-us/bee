@@ -36,11 +36,7 @@ import kotlin.test.assertTrue
 class HostedInviteTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val dataDir = Files.createTempDirectory("w215-hosted-invite-")
-    private val config = HostConfig.fromArgs(
-        listOf("--public-url", PUBLIC_URL, "--client-ip-header", "Fly-Client-IP", "--port", "0", "--data-dir", dataDir.toString()),
-        home = Path.of("/nonexistent"),
-        environment = { name -> FAKE_OWNER_KEY.takeIf { name == OwnerKey.ENV } },
-    )
+    private val config = HostConfig.fromArgs(ARGS + dataDir.toString(), home = Path.of("/nonexistent"), environment = OWNER_ENV)
     private var host = runBlocking { BeeHost.start(scope, config) }
     private var calls = Handshakes(host.port)
 
@@ -124,6 +120,32 @@ class HostedInviteTest {
         assertEquals("413", refused.first)
     }
 
+    /** A chunked body says no length up front, so the host stops reading at its bound, not at the length. */
+    @Test
+    fun aChunkedBodyWithNoLengthIsBoundedToo() {
+        val refused = calls.postChunked("/invite/redeem", PUBLIC_HOST, List(64) { "x".repeat(128) }, SAME_ORIGIN, *fly(JOINER_CLIENT))
+        val small = calls.postChunked("/invite/redeem", PUBLIC_HOST, listOf("""{"invite":"${"A".repeat(43)}",""", """"name":"sam"}"""), SAME_ORIGIN, *fly(JOINER_CLIENT))
+        assertAll(
+            { assertEquals("413", refused.first) },
+            { assertEquals("404", small.first, "rig: a chunked body under the bound is read, and its secret is unknown") },
+        )
+    }
+
+    /** `--forget-devices` cuts off a key an invite gave, for minting as for the board. */
+    @Test
+    fun aKeyForgottenByForgetDevicesCantMint() {
+        val key = keyOf(redeem(secretOf(mint())))
+        val before = mint(key)
+        host.close()
+        host = runBlocking { BeeHost.start(scope, HostConfig.fromArgs(ARGS + dataDir.toString() + "--forget-devices", home = Path.of("/nonexistent"), environment = OWNER_ENV)) }
+        calls = Handshakes(host.port)
+        assertAll(
+            { assertEquals(OK, before.first, "rig: the invited key minted before") },
+            { assertEquals(FORBIDDEN, mint(key).first, "forgotten") },
+            { assertEquals(OK, mint().first, "the owner key, held in memory, still mints") },
+        )
+    }
+
     @Test
     fun aLiveInviteOutlivesARestart() {
         val secret = secretOf(mint())
@@ -171,6 +193,10 @@ class HostedInviteTest {
         const val OWNER_CLIENT = "203.0.113.10"
         const val JOINER_CLIENT = "203.0.113.30"
         const val SAME_ORIGIN = "Sec-Fetch-Site: same-origin"
+
+        /** The `Dockerfile`'s command line, up to the data dir. */
+        val ARGS = listOf("--public-url", PUBLIC_URL, "--client-ip-header", "Fly-Client-IP", "--port", "0", "--data-dir")
+        val OWNER_ENV = { name: String -> FAKE_OWNER_KEY.takeIf { name == OwnerKey.ENV } }
 
         /** The headers Fly's proxy forwards a call from [client] with. */
         fun fly(client: String): Array<String> = arrayOf("X-Forwarded-For: $client, $APP", "Fly-Client-IP: $client")

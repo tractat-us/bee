@@ -46,6 +46,14 @@ internal class Handshakes(private val port: Int) {
         response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
     }
 
+    /** The status and body of a chunked `POST` of [chunks] to [path], with no `Content-Length`, with [host] and these other [headers]. */
+    fun postChunked(path: String, host: String, chunks: List<String>, vararg headers: String): Pair<String, String> = Socket().use { socket ->
+        val body = chunks.joinToString("") { "${it.encodeToByteArray().size.toString(16)}\r\n$it\r\n" } + "0\r\n\r\n"
+        send(socket, "POST $path HTTP/1.1\r\nHost: $host\r\n" + headers.joinToString("") { "$it\r\n" } + "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n$body")
+        val response = socket.getInputStream().readAllBytes().decodeToString()
+        response.substringBefore("\r\n").split(' ')[1] to response.substringAfter("\r\n\r\n")
+    }
+
     /**
      * Opens a server-sent event stream at [path], with [host] and these other [headers], each
      * `name: value`, and stays on it until the returned stream is closed: a device on its pairing channel.

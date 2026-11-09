@@ -186,7 +186,7 @@ class BeeHost private constructor(
             }
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock, admitters)
             // A hosted board's invites (#215) sit beside its keys, and only a hosted board keeps any.
-            val invitation = config.reach.invitation { Invites.boot(InviteFile(config.dataDir.resolve(InviteFile.NAME)), config.keyReset, clock, secrets, keys) }
+            val invitation = config.reach.invitation { Invites.boot(InviteFile(config.dataDir.resolve(InviteFile.NAME), clock), config.keyReset, clock, secrets, keys) }
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, invitation)

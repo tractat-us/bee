@@ -25,10 +25,14 @@ object InviteWire {
 
     /**
      * [raw], trimmed, as the name of a person `human:<name>` (A7), or null if it can't be one: empty,
-     * longer than [MAX_NAME], or holding `:`, `#` or a control character, which a log line would carry.
+     * longer than [MAX_NAME], or holding `:`, `#` or a character in [UNNAMEABLE]: a control
+     * character, which a log line would carry, or a format character or a line or paragraph
+     * separator (a bidi override, a zero-width joiner), which can make one name look like another.
      */
     fun nameOrNull(raw: String?): String? =
-        raw?.trim()?.takeIf { name -> name.isNotEmpty() && name.length <= MAX_NAME && name.none { it == ':' || it == '#' || it.isISOControl() } }
+        raw?.trim()?.takeIf { name -> name.isNotEmpty() && name.length <= MAX_NAME && name.none { it == ':' || it == '#' || it.category in UNNAMEABLE } }
+
+    private val UNNAMEABLE = setOf(CharCategory.CONTROL, CharCategory.FORMAT, CharCategory.LINE_SEPARATOR, CharCategory.PARAGRAPH_SEPARATOR)
 }
 
 /** What minting an invite gave: the [link] to share, good until [expiresAt]. Its [toString] never shows the link. */
@@ -70,8 +74,11 @@ enum class InviteEnd {
     /** As many devices as one invite admits have joined by it. */
     Used,
 
-    /** This device sent too many secrets the board never made; it waits a while. */
-    TooManyTries,
+    /** The board has let in as many devices by invite as it does in a day. */
+    DailyLimit,
+
+    /** The board couldn't record the redemption, so it gave no key; try again in a moment. */
+    Unavailable,
 
     /** The name isn't one a person can take ([InviteWire.nameOrNull]). */
     BadName,

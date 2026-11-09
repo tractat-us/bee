@@ -24,6 +24,8 @@ test.use({ launchOptions: { args: [`--host-resolver-rules=MAP ${HOSTED_NAME} 127
 let host;
 let origin;
 let contexts = [];
+/** Every invite secret a test minted, which the host log must never hold. */
+const secrets = [];
 
 test.beforeAll(async () => {
   const port = await freePort();
@@ -40,6 +42,7 @@ test.afterEach(async () => {
 test.afterAll(async () => {
   await host?.stop();
   expect(host.log.join(''), 'no key in the host log').not.toContain(OWNER_KEY);
+  for (const secret of secrets) expect(host.log.join(''), 'no invite secret in the host log').not.toContain(secret);
 });
 
 /** A device of its own, at its own address as the proxy names it. */
@@ -162,7 +165,9 @@ async function invited(owner) {
   const text = await link.textContent();
   await expect(owner.locator('#invite-qr')).toHaveAttribute('data-text', text);
   await expect(owner.locator('#invite')).toContainText('Anyone with this link can join, for a day.');
-  return { link: text, secret: text.split('#i=')[1] };
+  const secret = text.split('#i=')[1];
+  secrets.push(secret);
+  return { link: text, secret };
 }
 
 // bee#215: an invite admits whoever opens it, with nobody typing a code, and asks their name.

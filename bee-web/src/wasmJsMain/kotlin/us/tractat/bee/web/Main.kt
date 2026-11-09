@@ -422,14 +422,22 @@ private fun offerInvite(shell: PageShell, query: String) {
     }
 }
 
-/** Asks the host at [path] for a new invite, and calls [done] with it or with why not, in words for the panel. */
+/**
+ * This tab's invite, from its storage while it has more than [Invite.REMINT_BEFORE] left, so a
+ * reload doesn't spend one of the minter's live invites; otherwise a new one from the host at
+ * [path]. Calls [done] with it, or with why not in words for the panel: the host's own, when it
+ * says too many are live.
+ */
 private fun mintInvite(path: String, done: (Result<MintedInvite>) -> Unit) {
+    val kept = sessionStorage.getItem(MINTED_STORAGE)?.let { decodeOrNull(MintedInvite.serializer(), it) }
+    if (kept != null && Clock.System.now() < kept.expiresAt - Invite.REMINT_BEFORE) return done(Result.success(kept))
     postText(path, "", REQUEST_TIMEOUT_MS) { status, text ->
         val minted = text?.takeIf { status == HTTP_OK }?.let { decodeOrNull(MintedInvite.serializer(), it) }
+        minted?.let { sessionStorage.setItem(MINTED_STORAGE, Json.encodeToString(MintedInvite.serializer(), it)) }
         done(
             when {
                 minted != null -> Result.success(minted)
-                status == HTTP_TOO_MANY -> Result.failure(IllegalStateException("Too many invites are live. One lapses within a day."))
+                status == HTTP_TOO_MANY && !text.isNullOrBlank() -> Result.failure(IllegalStateException(text))
                 else -> Result.failure(IllegalStateException("Couldn't make a link. Close this and try again."))
             },
         )
@@ -437,6 +445,9 @@ private fun mintInvite(path: String, done: (Result<MintedInvite>) -> Unit) {
 }
 
 private const val HTTP_TOO_MANY = 429
+
+/** Where this tab keeps the invite it minted, as its key is kept: the tab's own storage (bee#215). */
+private const val MINTED_STORAGE = "bee.invite.minted"
 
 /** Where this tab keeps an invite's secret until it is redeemed or refused, so a reload still has it (bee#215). */
 internal const val INVITE_STORAGE = "bee.invite"
