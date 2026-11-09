@@ -11,6 +11,7 @@ import us.tractat.bee.core.BoardPin
 import us.tractat.bee.core.ClaimsConnection
 import us.tractat.bee.core.ClaimsLink
 import us.tractat.bee.core.HostAddress
+import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.askBoardId
@@ -47,11 +48,21 @@ class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClie
         /**
          * Joins a bridge named [name] to [host], dialling with [http], its work on [scope]. A
          * retired identity's `Depart` goes through Raft. Its claims link dials at once; the board
-         * waits for [start], so a peer that is never started never shows on the board.
+         * waits for [start], so a peer that is never started never shows on the board. It acts as
+         * [identity], having held [before] too ([BridgeIdentity]).
          */
         @OptIn(ExperimentalUuidApi::class)
         @Suppress("LongParameterList")
-        fun join(host: HostAddress, name: String, http: HttpClient, scope: CoroutineScope, random: Random, clock: () -> Instant): BridgePeer {
+        fun join(
+            host: HostAddress,
+            name: String,
+            http: HttpClient,
+            scope: CoroutineScope,
+            random: Random,
+            clock: () -> Instant,
+            identity: PeerIdentity = PeerIdentity.agent(name, random),
+            before: Set<PeerIdentity> = emptySet(),
+        ): BridgePeer {
             val author = ReplicaId("mcp-${Uuid.random()}")
             // The bridge's replica starts empty, so it belongs to the first board the host names; both
             // its sockets name that board from then on, and a wiped host refuses them (bee#46).
@@ -73,15 +84,15 @@ class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClie
                 onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
                 retryDelay = ClaimsConnection.jitteredBackoff(random),
             )
-            val identity = BridgeIdentity(name, random) { old, reason ->
+            val identities = BridgeIdentity(name, random, identity, before) { old, reason ->
                 val committed = claims.depart(old, reason)
                 logger.info { "Retired $old ($reason); its Depart ${if (committed) "committed" else "is pending until claims are back"}." }
             }
             val presence = Presence(board, author, claims.link.filterNotNull().map { it.node }, clock, scope) { failure ->
                 logger.warn(failure) { "Presence tracking failed." }
             }
-            val bridge = BeeBridge(board, author, claims, identity, presence, clock, scope)
-            return BridgePeer(bridge, board, pin, identity)
+            val bridge = BeeBridge(board, author, claims, identities, presence, clock, scope)
+            return BridgePeer(bridge, board, pin, identities)
         }
     }
 }

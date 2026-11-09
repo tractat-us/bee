@@ -55,13 +55,6 @@ interface KeptSessionStore {
     fun save(sessions: List<KeptSession>)
 }
 
-/** Keeps nothing: a host whose HTTP sessions never outlive it. */
-object NoKeptSessions : KeptSessionStore {
-    override fun load(): List<KeptSession> = emptyList()
-
-    override fun save(sessions: List<KeptSession>) {}
-}
-
 /**
  * The identities of the MCP-over-HTTP sessions alive when the last host on this data dir stopped,
  * or died (bee#126). Invariant: **each kept identity is acted as by at most one session, and a
