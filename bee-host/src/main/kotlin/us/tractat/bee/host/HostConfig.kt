@@ -78,7 +78,7 @@ sealed interface Reach {
      *
      * **Only paired device keys write** (Iain's device-keys-only ruling, bee#159): the join link
      * admits nothing ([JoinLink.Off]), so a device gets on by its code, which anyone already on
-     * types (Iain, 2026-11-08: any admitted person can admit anyone, for now), or by an invite
+     * types (the 2026-11-08 ruling: any admitted person can admit anyone, for now), or by an invite
      * someone already on minted, which admits whoever opens it for a day (#215, [Invites]).
      */
     data class Public(val url: PublicUrl, val client: ForwardedPeer, val owner: OwnerKey) : Reach {
