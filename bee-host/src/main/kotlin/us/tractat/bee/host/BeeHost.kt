@@ -22,8 +22,11 @@ import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.bee.mcp.HttpBridges
+import us.tractat.bee.mcp.KeptIdentities
+import us.tractat.bee.mcp.KeptSessionFile
 import us.tractat.kuilt.raft.RaftConfig
 import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.asKotlinRandom
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -74,8 +77,8 @@ class BeeHost private constructor(
     suspend fun mutate(f: (BoardState) -> Patch<BoardState>) = core.board.relay.mutate(f)
 
     /**
-     * Stops the host: the HTTP bridges first, each departing `Left` while the voter can still
-     * commit it, then join requests and orphan decisions, since they write through the relay, then
+     * Stops the host: the HTTP bridges first, departing none, so each comes back as itself on the
+     * next host (bee#126), though one whose client had just left still commits its `Left`; then join requests and orphan decisions, since they write through the relay, then
      * the core, whose voter's last mirror and server's last write are on the board before its last
      * save. The data dir goes last, so the next host on it starts after that save.
      */
@@ -145,7 +148,14 @@ class BeeHost private constructor(
             val pairing = Pairing(clock, secrets, keys, budget = config.pairingBudget)
             val joinRequests = CompletableDeferred<JoinRequestSurface>()
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock)
-            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
+            // The board the voter's departures are mirrored onto, once the core is up. Until then no
+            // departure is known, and a kept identity a session takes that was retired is retired
+            // again at its first write, as any bridge's is (`BeeBridge.beforeWrite`).
+            val board = AtomicReference<StateFlow<BoardState>?>()
+            val kept = KeptIdentities(KeptSessionFile(config.dataDir.resolve(KeptSessionFile.NAME))) {
+                board.get()?.value?.departures().orEmpty().map { it.identity }.toSet()
+            }
+            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())
@@ -156,6 +166,7 @@ class BeeHost private constructor(
                 val bound = server.engine.resolvedConnectors().first().port
                 val intake = AutoCloseable { server.stop(gracePeriodMillis = 100, timeoutMillis = 2_000) }
                 val core = HostCore.start(scope, endpoints.board, endpoints.claims, stores, intake, Dispatchers.Default, RaftConfig(), clock)
+                board.set(core.board.relay.state)
                 val requests = JoinRequestSurface(core.board.relay, pairing, clock)
                 val pairingJob = requests.start(scope)
                 joinRequests.complete(requests)
