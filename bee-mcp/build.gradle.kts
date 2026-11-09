@@ -9,6 +9,14 @@ kotlin { jvmToolchain(25) }
 
 application { mainClass = "us.tractat.bee.mcp.MainKt" }
 
+// ToolsPageTest reads docs/tools.md, from this module's directory, and checks it names every tool
+// and prompt the bridge serves. Declared as an input so an edit to the page reruns the test.
+tasks.test {
+    inputs.file(layout.projectDirectory.file("../docs/tools.md"))
+        .withPropertyName("toolsPage")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     implementation(platform(libs.kuilt.bom))
     implementation(platform(libs.ktor.bom))

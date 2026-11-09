@@ -1,81 +1,155 @@
 # Setting up bee in Claude Code
 
-Two pieces join a Claude Code session to bee: the **bridge** (`bee-mcp`, an MCP server) and a
-**`SessionStart` hook** that tells the bridge when you `/clear`. You install both yourself, in your
-own Claude Code settings. The bridge doesn't write to `~/.claude`.
+This page puts your Claude Code sessions on a bee board: one you run yourself, or one a coworker
+runs and sent you a link to. `bee-up` starts a board. Joining one takes a line pasted from the
+board, or `bee-join`.
 
-The bridge gives a session 12 tools: `bee_board`, `bee_presence`, `bee_surface_open`,
-`bee_surface_update`, `bee_surface_close`, `bee_board_clear`, `bee_wait_action`,
-`bee_list_actions`, `bee_action_done`, `bee_claim`, `bee_release` and `bee_examples`. It also briefs the session
-on how to share the board, and offers a `whiteboard` prompt; see
-[Whiteboard with a session](#whiteboard-with-a-session).
+Each Claude session reaches the board through the **bridge** (`bee-mcp`), a small MCP server that
+gives the session its board tools. [Tools and prompts](tools.md) lists them.
 
-Want a board running in five minutes? Start with [Run a board](#run-a-board). The numbered steps
-after it set bee up for every session you start.
-
-No Java on the machine the session runs on? See
-[An agent with nothing installed](#an-agent-with-nothing-installed).
+New to bee? [Try bee](try-bee.md) walks through the same paths in a few minutes, from a Mac.
 
 ## Run a board
 
-This is the shortest path from a clone to a Claude session and you sharing one board.
+From the root of a bee checkout, with a JDK 25 installed:
 
-1. Build the host and the bridge, from the root of your checkout:
+```sh
+bin/bee-up --name <you>
+```
 
-    ```sh
-    source ~/.sdkman/bin/sdkman-init.sh && sdk use java 25.0.5.0+8-tem
-    ./gradlew installDist
-    BEE=$(pwd)
-    ```
+The first run builds the host and the bridge, which takes a minute or two. The build fetches
+kuilt from a package store that needs credentials
+([How bee gets kuilt](bee-and-kuilt.md#how-bee-gets-kuilt)); without them, ask someone who has
+them for a [kit](#hand-a-coworker-a-kit), which runs `bee-up` with nothing to build. Then
+`bee-up`:
 
-2. Start the host in one terminal:
+- starts the **host**, the one always-on piece, in the background, logging to `~/.bee/host.log`;
+- opens the board in your browser as `human:<you>`;
+- writes `~/.bee/mcp.json`, an MCP config that points a Claude session at this board;
+- prints a join link for coworkers on your network, and copies it to your clipboard on a Mac,
+  with the `claude mcp add` line that brings a coworker's Claude session with nothing installed.
 
-    ```sh
-    $BEE/bee-host/build/install/bee-host/bin/bee-host --data-dir /tmp/bee-demo-data
-    ```
+Start a Claude session the way it prints:
 
-    It listens on port 8233 (`--port <n>` changes it), answers only this machine, and logs
-    `bee host on http://127.0.0.1:8233/`. Without `--data-dir` it keeps the board in
-    `~/.bee/host`. A fresh directory gives you a fresh board, and a restart on the same directory
-    brings the board back, with every key the host handed out. `--lan` lets other devices on your network reach it; see
-    [Showing the board on another screen](#showing-the-board-on-another-screen).
+```sh
+claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'
+```
 
-3. Open `http://localhost:8233/?name=<you>` in a browser. The board is empty and says
-   `online as human:<you>`. Without `?name=` you join as `human:guest`.
-
-4. Write an MCP config that points a session at the bridge:
-
-    ```sh
-    cat > /tmp/bee-mcp.json <<EOF
-    { "mcpServers": { "bee": { "type": "stdio",
-      "command": "$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp",
-      "env": { "JAVA_HOME": "$HOME/.sdkman/candidates/java/25.0.5.0+8-tem", "BEE_SESSION_NAME": "demo" } } } }
-    EOF
-    ```
-
-    The bridge dials `ws://127.0.0.1:8233`. If you gave the host another port, add
-    `"BEE_HOST": "ws://127.0.0.1:<port>"` to `env`.
-
-5. Start a session with it:
-
-    ```sh
-    claude --mcp-config /tmp/bee-mcp.json --strict-mcp-config --allowedTools "mcp__bee__*"
-    ```
-
-    Try this first prompt: *Put a question with three buttons on the board. Wait for my click,
-    mark it done, then update the surface to thank me.*
+Then type `/mcp__bee__whiteboard`. Within half a minute the session puts something on the board.
+Click it, and the session reacts.
 
 To check it worked:
 
-- Buttons appear on the board in your browser within about 10 seconds.
-- After you click one, the session redraws the surface to answer you.
-- `/mcp` in the session lists `bee` with its 11 tools.
-- Ask a second session, started the same way, to "read the bee board". It sees the same surface,
-  opened by `agent:demo#…`.
+- `/mcp` in the session lists `bee` and its tools.
+- A second session, started the same way and asked to "read the bee board", sees the same
+  board, with what the first one drew marked as opened by `agent:<you>-claude#…`.
 
-The numbered steps below make bee available in every session, with the `/clear` hook.
+Run `bee-up` again to reprint the links. `bee-up --stop` stops the host. The next `bee-up` brings
+the board back, with the same join link, and prints what it restored.
 
-## 1. Build the bridge
+What else to know:
+
+- **The board lives in `~/.bee/host`.** `--data-dir <dir>` keeps it elsewhere, and a fresh
+  directory is a fresh board. `BEE_HOME` moves everything `bee-up` keeps, the board included, so
+  `BEE_HOME=$(mktemp -d) bin/bee-up` is a scratch board that shares nothing with your own.
+- **One host per data dir.** A second host started on a directory another host holds stops at
+  once: `Another bee host (pid N) is using the data dir <dir>.`
+- **`--local`** keeps the board on this machine: no join link, and nothing on your network can
+  reach it. `--port <n>` moves it off the default port, 8233. `--no-open` skips the browser.
+
+## Join someone else's board
+
+The board's owner sends you a join link, such as `http://192.168.1.5:8233/?k=…`. Add
+`&name=<you>` to it and open it in your browser: you're on the board.
+
+To bring your Claude session, press **Bring your Claude** in the board's bar, then **Copy**, and
+paste the line into a terminal. It registers bee with Claude Code for every folder, replacing any
+bee you added before, and needs nothing installed. Start `claude` and type
+`/mcp__bee__whiteboard`. [An agent with nothing installed](#an-agent-with-nothing-installed) says
+what to expect.
+
+With a [kit](#hand-a-coworker-a-kit) or a checkout, `bee-join` does the same through a bridge on
+your own machine, which keeps its place on the board when the host restarts:
+
+```sh
+bin/bee-join '<link>' --name <you>
+```
+
+It checks that it can reach the board, opens the board in your browser, and writes
+`~/.bee/mcp.json` with the link in it. Start Claude with the `--mcp-config` line from
+[Run a board](#run-a-board), and type
+`/mcp__bee__whiteboard`. Your session shows on the board as `agent:<you>-claude#…`.
+
+If `bee-join` can't reach the board, it says what to try: the same network as the owner, the
+owner allowing `java` to accept incoming connections, or the numeric address in place of a
+`.local` name.
+
+The link's key is now in `~/.bee/mcp.json`, readable only by you. It keeps working across the
+host's restarts until its owner runs `bee-up --new-link` or `--forget-devices`.
+
+## Hand a coworker a kit
+
+A coworker who has no checkout and no JDK can still run both scripts. From your checkout:
+
+```sh
+bin/bee-bundle
+```
+
+It writes `build/kit/bee-kit-<os>-<arch>.zip`, about 113 MB on an Apple-silicon Mac. The zip
+holds the host, the bridge, a trimmed Java runtime, `bee-up` and `bee-join`, so nothing else needs
+installing. It runs only on the OS and CPU it was built on.
+
+Your coworker unzips it and runs `./bee-join '<link>' --name <them>` from the unzipped folder, or
+`./bee-up` to run a board of their own. If macOS refuses to run files from the downloaded zip,
+`xattr -dr com.apple.quarantine .` in that folder clears it. The kit's `README.txt` says the
+same.
+
+## Whiteboard with a session
+
+To use the board as a whiteboard with the people in the room, type this in the session:
+
+```text
+/mcp__bee__whiteboard login-flow
+```
+
+Keep the topic to one word: Claude Code may pass only the first word of what follows the
+command. For a longer topic, say it in your next message. Leave the topic off and the session
+asks, on the board, what to work on.
+
+The session draws the topic, keeps the board current as you talk, and reacts to clicks and typing
+on the board. It stops when someone says done, when nobody has the board open, or after about
+10 minutes with no clicks.
+
+Nothing else needs installing. The bridge briefs every session as it connects: look before
+drawing, one surface (one card on the board) per topic, leave other people's surfaces alone, and wait for clicks on
+anything interactive.
+
+Each card on the board says whether the session that drew it is **listening** for a click or
+**working**. Once that session has left, crashed or gone quiet, the card greys out and says that
+answers wait for another session. A click there still lands, and another session can take it.
+
+## A status card for every session
+
+With bee in several sessions at once, the board becomes a dashboard. In each session, type:
+
+```text
+/mcp__bee__checkin
+```
+
+Each session keeps one card for itself, named after its repo: what it's doing, how far it has got,
+and any decision it needs from you, as buttons. Click one, and that session acts on it. Press
+**Done** or **Pause** on a card to stop its check-ins. Add a word after the command to name the
+task, or leave it off to use the one under way.
+
+Cards carry summaries only, never secrets or file contents: the board travels over plain HTTP.
+
+## bee in every session
+
+`bee-up` and `bee-join` point the sessions you start with `--mcp-config` at the board. To give
+every session bee, and to have `/clear` handled properly, register the bridge with Claude Code and
+install a hook.
+
+### 1. Build the bridge
 
 From the root of your bee checkout:
 
@@ -92,7 +166,7 @@ This writes the launcher to `$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp`. It
 `installDist` again. The commands below use `$BEE`. In a JSON file, write the absolute path that
 `echo "$BEE"` prints.
 
-## 2. Register the MCP server
+### 2. Register the MCP server
 
 Pick one scope:
 
@@ -121,12 +195,15 @@ Either way:
 
 - The launcher needs a JDK 25 on `JAVA_HOME` or `PATH`. Set `env.JAVA_HOME` if Claude Code starts
   without one.
+- `BEE_HOST` names the board. Unset, the bridge dials `ws://127.0.0.1:8233`, a host on this
+  machine on the default port. For a board elsewhere, set it to the join link, pasted whole; see
+  [An agent on another machine](#an-agent-on-another-machine).
 - `BEE_SESSION_NAME` names the session on the board, as `agent:<name>#<8 hex>`. It defaults to
   the working directory's basename.
 - The bridge logs to stderr, never stdout, which carries the MCP protocol. Claude Code keeps that
   log.
 
-## 3. Install the `/clear` hook
+### 3. Install the `/clear` hook
 
 `/clear` wipes the agent's context but keeps the bridge process running. The hook tells the bridge
 to retire its identity, so the claims it held are orphaned, not silently kept (spec §5.2, A8).
@@ -165,7 +242,7 @@ For any other source, it exits at once. A `SessionStart` hook's stdout goes into
 context, so the hook never writes there. It always exits 0, so a missing bridge never blocks a
 session, and it reports problems on stderr.
 
-## Checking it
+### Checking it
 
 - `/mcp` in a session lists `bee` with its tools.
 - While a session runs, `~/.bee/run/` (mode 0700) holds one `<claudePid>.json` (mode 0600) per
@@ -176,6 +253,9 @@ session, and it reports problems on stderr.
 `BEE_RUN_DIR` moves the run directory, for the bridge and the hook alike. It's for tests. Leave it
 unset in normal use.
 
+A session that ends normally reads as **left** on the board, in muted text. Only a crash, or a
+session that went quiet for 20 minutes, shows in red.
+
 A bridge belongs to the board its host kept when the bridge first reached it. If you wipe the
 host's data, or move its `claims/` aside, the host starts a new board and refuses the old
 bridge, so the old board can't leak into the new one. A refused bridge ends: it prints which board
@@ -183,40 +263,38 @@ it was on and which the host keeps now, and exits with status 2, so `/mcp` shows
 failed. Restart it from `/mcp` to join the new board. An open browser tab reloads onto the new
 board by itself.
 
-## Whiteboard with a session
+## Run the host by hand
 
-To use the board as a whiteboard with the people in the room, type this in the session:
-
-```text
-/mcp__bee__whiteboard login-flow
-```
-
-Keep the topic to one word: Claude Code may pass only the first word of what follows the
-command. For a longer topic, say it in your next message. Leave the topic off and the session
-asks, on the board, what to work on.
-
-The session draws the topic, keeps the board current as you talk, and reacts to clicks and typing
-on the board. It stops when someone says done, when nobody has the board open, or after about
-10 minutes with no clicks.
-
-Nothing else needs installing. The bridge sends every session a short briefing as it connects:
-look before drawing, one surface per topic, leave other people's surfaces alone, and wait for
-clicks on anything interactive. Claude Code cuts that briefing at 4096 characters, so it carries
-only the rules and two examples; `bee_examples` returns an example of every component that
-renders. All three texts live in `bee-mcp/src/main/kotlin/us/tractat/bee/mcp/WhiteboardGuide.kt`.
-
-## Showing the board on another screen
-
-A phone, a tablet or a meeting-room screen can show the board with nothing installed. By default
-the host answers only this machine, so start it with `--lan` to let your network reach it:
+`bee-up` wraps the host. To run it in a terminal of your own instead:
 
 ```sh
 ./gradlew :bee-host:installDist
-bee-host/build/install/bee-host/bin/bee-host --lan
+bee-host/build/install/bee-host/bin/bee-host --data-dir /tmp/bee-demo-data
 ```
 
-It logs the board's address on your network, such as `http://tractatus.local:8233/`, and a join
-link.
+It listens on port 8233 (`--port <n>` changes it), answers only this machine, and logs
+`bee host on http://127.0.0.1:8233/`. Without `--data-dir` it keeps the board in `~/.bee/host`. A
+restart on the same directory brings the board back, with every key the host handed out. `--lan`
+lets other devices on your network reach it; see
+[Showing the board on another screen](#showing-the-board-on-another-screen).
+
+Open `http://localhost:8233/?name=<you>` in a browser, and point a session at the bridge with
+an MCP config like the one `bee-up` writes:
+
+```sh
+cat > /tmp/bee-mcp.json <<EOF
+{ "mcpServers": { "bee": { "type": "stdio",
+  "command": "$BEE/bee-mcp/build/install/bee-mcp/bin/bee-mcp",
+  "env": { "JAVA_HOME": "$HOME/.sdkman/candidates/java/25.0.5.0+8-tem", "BEE_SESSION_NAME": "demo" } } } }
+EOF
+claude --mcp-config /tmp/bee-mcp.json --strict-mcp-config --allowedTools "mcp__bee__*"
+```
+
+## Showing the board on another screen
+
+A phone, a tablet or a meeting-room screen can show the board with nothing installed. `bee-up`
+starts the host reachable from your network; run by hand, the host needs `--lan`. It logs the
+board's address on your network, such as `http://tractatus.local:8233/`, and a join link.
 
 1. On the other device, open that address. Add `?screen=room` to name it as a room screen, so the
    board shows it as `human:room`.
@@ -236,6 +314,8 @@ one code at a time, and can ask for a new one every ten seconds. All devices tog
 The join link carries a key (`?k=…`), so a device that opens it skips the code. The page moves
 the key out of the address bar as it loads. Anyone holding the link gets in, across host restarts,
 until you make a new link, so share it only with people you'd admit anyway.
+
+<!-- TODO(feat/invite-qr, #129): once it merges, say that the owner's page shows the join link as a QR code to scan. -->
 
 ### Cutting a device off
 
@@ -263,8 +343,9 @@ What to expect:
   say in the room.
 - **Your own machine needs no code** at `http://localhost:8233/`. Opened by its network name, it
   counts as another device and pairs like one.
-- **A host restart keeps every key.** A paired tab left open reconnects on its own. After
-  `--forget-devices` it can't, and shows **Pair this screen again**.
+- **A host restart keeps every key.** A paired tab left open shows `offline` in its bar while the
+  host is down, and reconnects on its own. After `--forget-devices` it can't, and shows
+  **Pair this screen again**.
 - **A key belongs to one browser tab.** A new tab on the same device pairs again.
 - **The host answers only to its own names**: `localhost`, the address a device used, and the
   network name it logs. Reached by any other name, it refuses, which stops a website from reaching
@@ -273,6 +354,8 @@ What to expect:
 - **A device on the network keeps no copy of the board.** A plain-HTTP page can't take the browser
   lock that guards the board's local copy, so it relies on the host for everything
   ([#39](https://github.com/tractat-us/bee/pull/39)).
+
+<!-- TODO(fix/board-touch, #128): once it merges, say that on a phone you tap a Board card to move it. -->
 
 ## An agent with nothing installed
 
@@ -320,11 +403,11 @@ What to expect:
 
 ## An agent on another machine
 
-A teammate's Claude session, on their own laptop, can join your board. The bridge takes the host's
-join link as its `BEE_HOST`.
+A teammate's Claude session, on their own laptop, can join your board. `bee-join` sets this up
+for them. By hand, the bridge takes the host's join link as its `BEE_HOST`.
 
-1. Start the host with `--lan`, as above, and copy the join link it logs:
-   `http://<your machine>.local:8233/?k=…`.
+1. Start the host reachable from your network (`bee-up`, or `bee-host --lan`), and copy the join
+   link it prints: `http://<your machine>.local:8233/?k=…`.
 2. Send your teammate the link. They build the bridge and register it, as in
    [steps 1 and 2](#1-build-the-bridge), and add the link, pasted whole, to the bridge's `env`:
 
@@ -344,6 +427,8 @@ What to expect:
   the config like the link itself. The bridge's log names the host and says "with a join key"; it
   never prints the key, not even when a dial fails and the failure names the URL it dialled.
 - **A host restart keeps the link.** Their bridge redials on its own, with the same `BEE_HOST`.
+  It checks the link every few seconds, so a dropped Wi-Fi link is noticed and redialled within
+  about 15 seconds.
 - **After `--new-link` or `--forget-devices`, the old key no longer admits**, so their bridge is
   refused ([Cutting a device off](#cutting-a-device-off)). Send the new link, and have them update
   `BEE_HOST` and restart the bridge from `/mcp`.
