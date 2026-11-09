@@ -15,7 +15,8 @@ The board remembers. A session that closes, crashes or starts fresh finds the bo
 left it.
 
 **New here?** [Try bee](docs/try-bee.md) puts you on a board in a few minutes, from a Mac with
-Claude Code.
+Claude Code. **Showing it to someone?** The [demo walkthrough](docs/demo.md) is a five-minute
+script for two laptops.
 
 ## Three ways in
 
