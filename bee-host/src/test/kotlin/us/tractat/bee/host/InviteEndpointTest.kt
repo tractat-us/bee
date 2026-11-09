@@ -70,6 +70,20 @@ class InviteEndpointTest {
         )
     }
 
+    /** A keyed page is a viewer's, even on this machine by the LAN name: the owner's own page holds no key. */
+    @Test
+    fun aKeyedCallerOnThisMachineIsRefusedAndGetsNoKey() = host(Invitation.Open(LAN_NAME) { listOf(LAPTOP) }) { client ->
+        val response = client.get("${InviteLinks.PATH}?k=${pairing.joinKey.value}") {
+            header(TEST_PEER, LOOPBACK)
+            header(HttpHeaders.Host, "$LOOPBACK:$PORT")
+        }
+        val body = response.bodyAsText()
+        assertAll(
+            { assertEquals(HttpStatusCode.Forbidden, response.status) },
+            { assertEquals(1, body.split(pairing.joinKey.value).size, "no key in the answer") },
+        )
+    }
+
     @Test
     fun aHostOnLoopbackAloneHasNoInvite() = host(Invitation.Closed) { client ->
         assertEquals(HttpStatusCode.NotFound, client.invite(LOOPBACK).status)

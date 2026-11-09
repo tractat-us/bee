@@ -21,6 +21,15 @@ class McpCommandTest {
         )
     }
 
+    /** A hosted board's page is `https://`, behind its proxy (bee#145): the line is too, so it needs no trust step. */
+    @Test
+    fun aKeyedViewerOnAHostedBoardGetsAnHttpsLine() {
+        assertEquals(
+            "claude mcp remove --scope user bee >/dev/null 2>&1; claude mcp add --scope user --transport http bee 'https://bee.tractat.us/mcp?k=s3cr3t&name=iain'",
+            McpCommand.of("https://bee.tractat.us", Access.Keyed("s3cr3t"), Viewer.Named("iain")).line,
+        )
+    }
+
     /** On the host's own machine a user-scope bee would bring every `claude` there onto the board. */
     @Test
     fun aLoopbackViewerIsOfferedTheKitsBridgeFirstAndAUrlForOneFolder() {

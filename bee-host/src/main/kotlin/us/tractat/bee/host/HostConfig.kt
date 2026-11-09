@@ -25,6 +25,9 @@ sealed interface Reach {
     /** Where each call to a host with this reach came from ([mountEndpoints]). */
     fun peers(): PeerAddress
 
+    /** Keys a host with this reach admits from memory alone, never saved ([HostKeys.boot]). */
+    fun heldKeys(): Set<DeviceKey>
+
     /** The default: only this machine's own browsers and sessions. */
     data object Loopback : Reach {
         override val bind: String = "127.0.0.1"
@@ -36,6 +39,8 @@ sealed interface Reach {
         override fun invitation(): Invitation = Invitation.Closed
 
         override fun peers(): PeerAddress = PeerAddress.DIRECT
+
+        override fun heldKeys(): Set<DeviceKey> = emptySet()
     }
 
     /** `--lan`: every interface. A device off this machine needs a key, from pairing or a join link. */
@@ -49,6 +54,8 @@ sealed interface Reach {
         override fun invitation(): Invitation = Invitation.Open(lanName(), ::lanAddresses)
 
         override fun peers(): PeerAddress = PeerAddress.DIRECT
+
+        override fun heldKeys(): Set<DeviceKey> = emptySet()
     }
 
     /**
@@ -57,17 +64,23 @@ sealed interface Reach {
      * caller is the one the proxy names, read the way [client] says that proxy writes it:
      * `--client-ip-header <name>` is [ForwardedPeer.ClientHeader], and without it,
      * [ForwardedPeer.AppendedForwardedFor].
+     *
+     * **Being on loopback grants nothing here**: no caller is [Caller.local], so every socket, MCP
+     * session and invite is by key. The [owner] proves themselves with theirs; there is no public
+     * host without one.
      */
-    data class Public(val url: PublicUrl, val client: ForwardedPeer) : Reach {
+    data class Public(val url: PublicUrl, val client: ForwardedPeer, val owner: OwnerKey) : Reach {
         override val bind: String = ALL_INTERFACES
 
         override fun names(): Set<String> = emptySet()
 
         override fun publicUrls(): Set<PublicUrl> = setOf(url)
 
-        override fun invitation(): Invitation = Invitation.Public(url)
+        override fun invitation(): Invitation = Invitation.Public(url, owner)
 
         override fun peers(): PeerAddress = client
+
+        override fun heldKeys(): Set<DeviceKey> = setOf(owner.key)
     }
 }
 
@@ -131,11 +144,15 @@ data class HostConfig(
          * `--forget-devices` is [KeyReset.ForgetDevices], which mints a new link too, so the two
          * together are `--forget-devices`.
          *
+         * `--public-url` reads its owner's key from [environment]'s [OwnerKey.ENV], never from a
+         * flag, so it stays out of the process list ([OwnerKey.parse]).
+         *
          * @throws IllegalArgumentException on an unknown or repeated flag, a flag without a value, a
          *   bad port, a budget below one, a URL [PublicUrl.parse] refuses, `--lan` with `--public-url`,
-         *   or `--client-ip-header` without `--public-url` or with a value that is no header name
+         *   `--client-ip-header` without `--public-url` or with a value that is no header name, or
+         *   `--public-url` with no owner key, or one [OwnerKey.parse] refuses
          */
-        fun fromArgs(args: List<String>, home: Path): HostConfig {
+        fun fromArgs(args: List<String>, home: Path, environment: (String) -> String?): HostConfig {
             val repeatedSwitches = SWITCHES.filter { switch -> args.count { it == switch } > 1 }
             require(repeatedSwitches.isEmpty()) { "Repeated flags: ${repeatedSwitches.joinToString()}" }
             val valued = args.filterNot { it in SWITCHES }
@@ -158,7 +175,7 @@ data class HostConfig(
             return HostConfig(
                 port = port ?: DEFAULT_PORT,
                 reach = when {
-                    public != null -> Reach.Public(public, client)
+                    public != null -> Reach.Public(public, client, OwnerKey.parse(environment(OwnerKey.ENV)))
                     LAN_FLAG in args -> Reach.Lan
                     else -> Reach.Loopback
                 },

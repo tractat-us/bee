@@ -132,11 +132,19 @@ private fun actorOf(params: URLSearchParams): PeerIdentity {
 /**
  * A join link's key moves into this tab's storage and out of the address bar at once, so a
  * screenshot, a shared screen or a copied URL doesn't carry it on, and a reload still has it.
+ *
+ * The key comes in the query, `?k=`, as a LAN join link has it, or in the fragment, `#k=`, as a
+ * hosted board's owner link has it (bee#145). A browser never sends a fragment, so a key there
+ * never reaches the host or a proxy's log; this runs before the page's first fetch. The browser's
+ * own history of visited pages may still hold the URL as it was opened: `replaceState` rewrites
+ * the tab's entry, not that history.
  */
 private fun accessOf(params: URLSearchParams): Access {
-    params.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() }?.let {
+    val fragment = URLSearchParams(window.location.hash.removePrefix("#").toJsString())
+    val given = params.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() } ?: fragment.get(PairingWire.KEY_PARAM)?.takeIf { it.isNotEmpty() }
+    given?.let {
         sessionStorage.setItem(KEY_STORAGE, it)
-        window.history.replaceState(null, "", window.location.pathname + searchWithoutKey() + window.location.hash)
+        window.history.replaceState(null, "", window.location.pathname + searchWithoutKey() + hashWithoutKey())
     }
     val key = sessionStorage.getItem(KEY_STORAGE)
     return when {
@@ -274,8 +282,9 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
         val chrome = BoardChrome(root, shell.peers)
         // A room screen has no person to bring a session, and its key is the room's own: never shown.
         if (!screen) chrome.addToHint(BringYourClaude(shell, McpCommand.of(window.location.origin, access, viewer)).opener())
-        // Only the owner's own page invites: a keyed viewer doesn't pass its key on, nor does a screen.
-        if (!screen && access == Access.Loopback) offerInvite(shell)
+        // Only the owner's page invites, and the host says whose that is: on loopback, or by the
+        // owner key on a public host (bee#145). A screen never asks.
+        if (!screen) offerInvite(shell, query)
         val answering = if (screen) {
             OrphanAnswering.Refused
         } else {
@@ -337,11 +346,12 @@ private fun claimsConnection(http: HttpClient, pin: BoardPin, query: String, sco
 
 /**
  * An Invite control in the bar, once the host gives this page its join links at
- * [InviteLinks.PATH]: only a `--lan` host does, and only to its own machine. Anything else (a 404,
- * a 403, no host) leaves the bar as it is.
+ * [InviteLinks.PATH], asked with the page's key [query] if it has one: a `--lan` host answers its
+ * own machine, and a public host its owner's key. Anything else (a 404, a 403, no host) leaves
+ * the bar as it is.
  */
-private fun offerInvite(shell: PageShell) {
-    fetchText(InviteLinks.PATH) { text, _ ->
+private fun offerInvite(shell: PageShell, query: String) {
+    fetchText(InviteLinks.PATH + if (query.isEmpty()) "" else "?$query") { text, _ ->
         if (text != null) Invite(shell, Json.decodeFromString(InviteLinks.serializer(), text))
     }
 }
@@ -477,6 +487,14 @@ private fun offerRepair(scope: CoroutineScope, client: BoardClient) {
 private fun searchWithoutKey(): String {
     val params = URLSearchParams(window.location.search.toJsString()).apply { delete(PairingWire.KEY_PARAM) }
     return params.toString().let { if (it.isEmpty()) "" else "?$it" }
+}
+
+/** The page's fragment with any key taken out: `#…`, or empty when nothing is left. A fragment with no key stays as it was. */
+private fun hashWithoutKey(): String {
+    val params = URLSearchParams(window.location.hash.removePrefix("#").toJsString())
+    if (!params.has(PairingWire.KEY_PARAM)) return window.location.hash
+    params.delete(PairingWire.KEY_PARAM)
+    return params.toString().let { if (it.isEmpty()) "" else "#$it" }
 }
 
 private fun Element.appendElement(tag: String, id: String): Element =

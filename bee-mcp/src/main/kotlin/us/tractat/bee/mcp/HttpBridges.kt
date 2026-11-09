@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.HostAddress
+import us.tractat.bee.core.PairingWire
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -61,6 +62,9 @@ private val logger = KotlinLogging.logger {}
  * @param scope the host's scope: the idle check and every bridge's work run under it
  * @param kept the identities of the sessions the last host on this data dir had, and of these
  * @param keyKind which of the host's keys a call's `?k=` is, by the host's own reckoning
+ * @param dialKey the key every bridge's sockets carry: one the host admits, held in its memory
+ *   alone. On a host behind a proxy being on loopback grants nothing, so the bridges hold a key
+ *   like any other peer; on loopback or a LAN it changes nothing.
  * @param checkEvery how often the idle check runs
  * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
  */
@@ -70,6 +74,7 @@ class HttpBridges(
     private val random: Random,
     private val kept: KeptIdentities,
     private val keyKind: (String?) -> PresentedKey,
+    private val dialKey: String,
     private val idleAfter: Duration = IDLE_AFTER,
     private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
     private val maxSessions: Int = MAX_SESSIONS,
@@ -144,8 +149,8 @@ class HttpBridges(
         val caller = Caller.of(key)
         val canResume = resumable(name, keyKind(key))
         val resumed = if (canResume) kept.pickUp(name, caller) else null
-        // The call arrived on the host's own port: the bridge dials it on loopback, which needs no key.
-        val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
+        // The call arrived on the host's own port: the bridge dials it on loopback, with the host's own key.
+        val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}/?${PairingWire.KEY_PARAM}=$dialKey")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
         val peer = when (resumed) {
             null -> BridgePeer.join(host, name, http, bridgeScope, random, clock)
