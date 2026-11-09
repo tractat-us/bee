@@ -18,3 +18,44 @@
   {% endif %}
   {{ super() }}
 {% endblock %}
+
+{#- Search and link-preview metadata. seo.py sets page.meta.description from a
+    page's first paragraph, and page.meta.home on the homepage. Material's
+    page.is_homepage is False there: it means a top-level page, and nav puts Home
+    under the Docs tab. The card is overrides/assets/images/social-card.png;
+    docs-site/README.md § Social card says how to redraw it. -#}
+{% block htmltitle %}
+  {% if page.meta and page.meta.home %}
+    <title>{{ config.site_name }}: {{ config.extra.home_title }}</title>
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% if page.meta and page.meta.home %}
+    {% set title = config.site_name ~ ": " ~ config.extra.home_title %}
+  {% else %}
+    {% set title = page.title | striptags ~ " - " ~ config.site_name %}
+  {% endif %}
+  {% if page.meta and page.meta.description %}
+    {% set description = page.meta.description %}
+  {% else %}
+    {% set description = config.site_description %}
+  {% endif %}
+  {% set image = config.site_url ~ "assets/images/social-card.png" %}
+  <meta property="og:type" content="{{ 'website' if page.meta and page.meta.home else 'article' }}">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ title | e }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  <meta property="og:image" content="{{ image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="bee: a shared, agent-drawn board">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title | e }}">
+  <meta name="twitter:description" content="{{ description }}">
+  <meta name="twitter:image" content="{{ image }}">
+{% endblock %}

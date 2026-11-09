@@ -82,3 +82,26 @@ CI runs [`.github/workflows/docs-site.yml`](../.github/workflows/docs-site.yml) 
 runner. On a PR it runs the strict build as a check. On a push to `main` it builds and deploys.
 It is not a required check, and `ci.yml` counts `docs-site/` as docs, so a change here never
 starts the Gradle build.
+
+## Search and link previews
+
+[`seo.py`](seo.py) gives each page a search-result description: its first paragraph that's at
+least 50 characters long and ends a sentence, outside admonitions, lists and tables. A page whose
+opening still makes a poor summary sets its own with `description:` front matter.
+`overrides/main.html` turns that description, the title and a card image into the OpenGraph and
+Twitter tags a link preview reads. The card is
+[`overrides/assets/images/social-card.png`](overrides/assets/images/social-card.png), drawn from
+[`social-card.svg`](social-card.svg).
+
+The sitemap, each page's canonical link, and the URLs in `llms.txt` all come from `site_url` in
+`properdocs.yml`, so that line has to name the address the site is served from.
+
+### Social card
+
+After editing `social-card.svg`, render the PNG again from the repo root:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+  --window-size=1200,630 --screenshot="$PWD/docs-site/overrides/assets/images/social-card.png" \
+  "file://$PWD/docs-site/social-card.svg"
+```
