@@ -16,4 +16,4 @@ class MemoryKeyStore : KeyStore {
 
 /** Fresh [HostKeys] in a [MemoryKeyStore], their join key from [secrets]. */
 fun memoryKeys(secrets: PairingSecrets = SecureSecrets(SecureRandom())): HostKeys =
-    HostKeys.boot(MemoryKeyStore(), secrets, KeyReset.Keep)
+    HostKeys.boot(MemoryKeyStore(), secrets, KeyReset.Keep, JoinLink.Admits)

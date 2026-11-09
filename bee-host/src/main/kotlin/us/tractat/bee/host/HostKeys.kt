@@ -67,6 +67,18 @@ enum class KeyReset {
     ForgetDevices,
 }
 
+/** Whether the join link's key admits whoever holds it ([HostKeys.admits]), by the host's [Reach]. */
+enum class JoinLink {
+    /** On loopback and the LAN: the bearer link the host prints admits, with no code. */
+    Admits,
+
+    /**
+     * On a hosted board: only paired device keys write (Iain's device-keys-only ruling, bee#159),
+     * so the join key admits nothing. The host still keeps one, so the data dir reads the same.
+     */
+    Off,
+}
+
 /**
  * Every key that admits a device to this host: the join link's, and one per paired device
  * (spec §5.7, bee#106). Invariant: **a key admits only once its hash is saved**, so a key the host
@@ -76,7 +88,7 @@ enum class KeyReset {
  * [admits] reads a snapshot and never waits on a save. [add]s queue on their own lock, held while
  * one saves, so a slow disk delays only the next admission, never a socket's key check.
  */
-class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys, held: Set<DeviceKey>) {
+class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys, held: Set<DeviceKey>, joinLink: JoinLink) {
     /** The join link's key: anyone holding the link is admitted. */
     val join: DeviceKey = kept.join
 
@@ -84,6 +96,12 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
 
     /** The keys held in memory alone ([boot]'s `held`): never saved, so no reset forgets them. */
     private val heldHashes: Set<KeyHash> = held.mapTo(mutableSetOf(), KeyHash::of)
+
+    /** The keys that admit besides the paired devices': the join key only where [JoinLink.Admits]. */
+    private val standing: Set<KeyHash> = when (joinLink) {
+        JoinLink.Admits -> heldHashes + joinHash
+        JoinLink.Off -> heldHashes
+    }
 
     @Volatile
     private var devices: Set<KeyHash> = kept.devices
@@ -112,7 +130,7 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
     fun admits(presented: String?): Boolean {
         if (presented.isNullOrEmpty()) return false
         val hash = KeyHash.of(presented).value.encodeToByteArray()
-        return (devices + joinHash + heldHashes).fold(false) { matched, held -> MessageDigest.isEqual(hash, held.value.encodeToByteArray()) or matched }
+        return (devices + standing).fold(false) { matched, held -> MessageDigest.isEqual(hash, held.value.encodeToByteArray()) or matched }
     }
 
     /**
@@ -135,7 +153,7 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
          * [held] admit too, from memory alone: the owner key of a public host ([Reach.heldKeys]) and
          * the host's own bridge key ([BeeHost]). None is ever saved or logged, and none is forgotten by [reset].
          */
-        fun boot(store: KeyStore, secrets: PairingSecrets, reset: KeyReset, held: Set<DeviceKey> = emptySet()): HostKeys {
+        fun boot(store: KeyStore, secrets: PairingSecrets, reset: KeyReset, joinLink: JoinLink, held: Set<DeviceKey> = emptySet()): HostKeys {
             val kept = when (reset) {
                 KeyReset.Keep -> store.load()
                 KeyReset.NewLink -> store.load()?.copy(join = secrets.key())
@@ -147,7 +165,7 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
                 KeyReset.NewLink -> logger.info { "A new join link: the old one no longer admits. Paired devices keep their keys." }
                 KeyReset.ForgetDevices -> logger.info { "Forgot every device, paired or joined by the link. Each one pairs again, or takes the new link." }
             }
-            return HostKeys(store, kept, held)
+            return HostKeys(store, kept, held, joinLink)
         }
     }
 }

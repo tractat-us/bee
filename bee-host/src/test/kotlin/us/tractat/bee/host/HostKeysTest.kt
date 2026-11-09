@@ -27,7 +27,7 @@ class HostKeysTest {
         dir.toFile().deleteRecursively()
     }
 
-    private fun boot(reset: KeyReset = KeyReset.Keep) = HostKeys.boot(KeyFile(file), secrets, reset)
+    private fun boot(reset: KeyReset = KeyReset.Keep) = HostKeys.boot(KeyFile(file), secrets, reset, JoinLink.Admits)
 
     @Test
     fun aRestartOnTheSameDataDirStillAdmitsThePairedKeyAndTheJoinKey() {

@@ -1,7 +1,5 @@
 package us.tractat.bee.host
 
-import java.security.MessageDigest
-
 /**
  * The key a hosted board's owner holds ([Reach.Public], bee#145): on a host behind a proxy nobody
  * is on loopback, so the owner proves themselves with this. The operator supplies it as
@@ -13,10 +11,6 @@ import java.security.MessageDigest
 @JvmInline
 value class OwnerKey private constructor(val key: DeviceKey) {
     override fun toString(): String = "OwnerKey(…)"
-
-    /** Whether [presented] is this key, compared in constant time. */
-    fun admits(presented: String?): Boolean =
-        presented != null && MessageDigest.isEqual(presented.encodeToByteArray(), key.value.encodeToByteArray())
 
     companion object {
         /** The environment variable the owner key comes from. */

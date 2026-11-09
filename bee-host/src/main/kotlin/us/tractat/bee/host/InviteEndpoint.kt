@@ -28,20 +28,20 @@ sealed interface Invitation {
     class Open(val name: String, val addresses: () -> List<String>) : Invitation
 
     /**
-     * A host behind a proxy ([Reach.Public]): its link is its public [url], bare. It never holds the
-     * join key, which on a hosted board must not let anyone in without a code: whoever opens it
-     * pairs. Nobody there is on the host's machine, so its [owner] asks with their key.
+     * A host behind a proxy ([Reach.Public]): its link is its public [url], bare. It holds no key,
+     * since a hosted board's join link admits no one ([JoinLink.Off]): whoever opens it pairs, and
+     * anyone already on admits them, so every admitted viewer may invite (Iain, 2026-11-08).
      */
-    data class Public(val url: PublicUrl, val owner: OwnerKey) : Invitation
+    data class Public(val url: PublicUrl) : Invitation
 }
 
 /**
- * The host's join link at [InviteLinks.PATH], for the board owner's page to show as a QR code. It
- * answers the owner alone, with a 403 to anyone else: another device holds a key already, and
- * doesn't pass it on. On an [Invitation.Open] host the owner is a [Caller.local] caller, read as
- * the socket gate reads it ([peers]); on an [Invitation.Public] host, the call whose `?k=` is the
- * owner key, compared in constant time. A host that is [Invitation.Closed] answers 404, and the
- * page offers no invite.
+ * The host's join link at [InviteLinks.PATH], for a page to show as a QR code. On an
+ * [Invitation.Open] host it answers the owner alone, a [Caller.local] caller with no key, read as
+ * the socket gate reads it ([peers]), with a 403 to anyone else: another device holds a key
+ * already, and doesn't pass it on. On an [Invitation.Public] host it answers any caller whose
+ * `?k=` the host admits ([Pairing.admits]), since the link holds no key. A host that is
+ * [Invitation.Closed] answers 404, and the page offers no invite.
  *
  * An [Invitation.Open] link names the port the call arrived on ([arrivals]): the port the host is
  * bound to, and holds [Pairing.joinKey]'s key, which goes into the response only, never a log.
@@ -60,8 +60,8 @@ fun Route.inviteEndpoint(invitation: Invitation, pairing: Pairing, peers: PeerAd
                 val link = { authority: String -> "http://$authority:$port/${keyed()}" }
                 InviteLinks(numeric = invitation.addresses().map(link), named = link(invitation.name))
             }
-            is Invitation.Public -> call.respondLinks(invitation.owner.admits(keyOf(call)), "Only the board's owner may ask for its link.") {
-                InviteLinks(numeric = emptyList(), named = invitation.url.page)
+            is Invitation.Public -> call.respondLinks(pairing.admits(keyOf(call)), "Only someone already on the board may ask for its link.") {
+                InviteLinks(numeric = emptyList(), named = invitation.url.page, joins = InviteLinks.Joins.Anywhere)
             }
         }
     }

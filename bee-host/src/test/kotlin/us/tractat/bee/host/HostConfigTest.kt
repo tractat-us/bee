@@ -61,6 +61,12 @@ class HostConfigTest {
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--lan"), home, OWNER_ENV) } },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/?k=fake"), home, OWNER_ENV) } },
             { assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url"), home, NO_ENV) } },
+            {
+                val newLink = assertFailsWith<IllegalArgumentException> { HostConfig.fromArgs(listOf("--public-url", "https://bee.tractat.us/", "--new-link"), home, OWNER_ENV) }
+                assertContains(newLink.message.orEmpty(), "--new-link", message = "a hosted board's join link admits no one, so a new one means nothing")
+            },
+            { assertEquals(JoinLink.Off, parsed.reach.joinLink(), "only paired keys write on a hosted board") },
+            { assertEquals(JoinLink.Admits, Reach.Lan.joinLink()) },
         )
     }
 

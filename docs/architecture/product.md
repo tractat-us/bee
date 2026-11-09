@@ -21,6 +21,16 @@ get onto it. A rule here binds every subsystem that puts something in front of a
 
     It's `review` because no compiler, Konsist rule or text scan can tell clutter from a need.
 
+2.  **On a hosted board, nobody waits to be let in by someone who isn't there (Iain,
+    2026-11-08).** A device asking to join while no person who can admit it is attached is
+    refused at once, and no join request goes on the board. One that asked while someone was
+    there closes when the last of them leaves. Iain can't approve someone while he isn't there.
+    A person is a peer whose presence says it's human; that kind is declared, not attested
+    ([bee#64](https://github.com/tractat-us/bee/issues/64)). A LAN board is unchanged: its
+    request waits for whoever comes. Enforcer: `PairingDeskTest`'s
+    `withNobodyHereAPairingIsRefusedAtOnceAndLeavesNoRequest`, with its control: one person
+    attached, and the same dial gets a code. `PublicHostTest` holds it on a real host.
+
 ## Current design
 
 - **The board is one page.** Open surfaces are cards in one column, newest first, and a card

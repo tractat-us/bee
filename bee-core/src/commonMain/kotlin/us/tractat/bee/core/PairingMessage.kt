@@ -40,6 +40,12 @@ enum class PairingEnd {
 
     /** This device asked too soon after its last code, or while one was still waiting; wait a moment. */
     TooSoon,
+
+    /**
+     * On a hosted board, nobody who can admit a device is on it now, or the last one left while
+     * this request was up: nothing waits on the board for someone who isn't there (bee#145).
+     */
+    NobodyHere,
 }
 
 /** The pairing wire's coordinates, shared by the host and the page. */

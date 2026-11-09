@@ -31,7 +31,7 @@ class InviteEndpointTest {
 
     private fun host(invitation: Invitation, test: suspend (HttpClient) -> Unit) = testApplication {
         application {
-            val desk = PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL) { Clock.System.now() }
+            val desk = PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, { Clock.System.now() }, Admitters.WHOEVER_COMES)
             mountEndpoints(BoardId.mint(), pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, desk, invitation)
         }
         test(client)

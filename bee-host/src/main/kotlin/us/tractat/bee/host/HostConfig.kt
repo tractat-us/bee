@@ -28,6 +28,9 @@ sealed interface Reach {
     /** Keys a host with this reach admits from memory alone, never saved ([HostKeys.boot]). */
     fun heldKeys(): Set<DeviceKey>
 
+    /** Whether the join link admits on a host with this reach ([HostKeys.boot]). */
+    fun joinLink(): JoinLink
+
     /** The default: only this machine's own browsers and sessions. */
     data object Loopback : Reach {
         override val bind: String = "127.0.0.1"
@@ -41,6 +44,8 @@ sealed interface Reach {
         override fun peers(): PeerAddress = PeerAddress.DIRECT
 
         override fun heldKeys(): Set<DeviceKey> = emptySet()
+
+        override fun joinLink(): JoinLink = JoinLink.Admits
     }
 
     /** `--lan`: every interface. A device off this machine needs a key, from pairing or a join link. */
@@ -56,6 +61,8 @@ sealed interface Reach {
         override fun peers(): PeerAddress = PeerAddress.DIRECT
 
         override fun heldKeys(): Set<DeviceKey> = emptySet()
+
+        override fun joinLink(): JoinLink = JoinLink.Admits
     }
 
     /**
@@ -68,6 +75,10 @@ sealed interface Reach {
      * **Being on loopback grants nothing here**: no caller is [Caller.local], so every socket, MCP
      * session and invite is by key. The [owner] proves themselves with theirs; there is no public
      * host without one.
+     *
+     * **Only paired device keys write** (Iain's device-keys-only ruling, bee#159): the join link
+     * admits nothing ([JoinLink.Off]), so a device gets on by its code, which anyone already on
+     * types (Iain, 2026-11-08: any admitted person can admit anyone, for now).
      */
     data class Public(val url: PublicUrl, val client: ForwardedPeer, val owner: OwnerKey) : Reach {
         override val bind: String = ALL_INTERFACES
@@ -76,11 +87,13 @@ sealed interface Reach {
 
         override fun publicUrls(): Set<PublicUrl> = setOf(url)
 
-        override fun invitation(): Invitation = Invitation.Public(url, owner)
+        override fun invitation(): Invitation = Invitation.Public(url)
 
         override fun peers(): PeerAddress = client
 
         override fun heldKeys(): Set<DeviceKey> = setOf(owner.key)
+
+        override fun joinLink(): JoinLink = JoinLink.Off
     }
 }
 
@@ -172,6 +185,8 @@ data class HostConfig(
             require(public == null || LAN_FLAG !in args) { "$LAN_FLAG and $PUBLIC_FLAG exclude each other: a public host binds every interface already." }
             require(public != null || CLIENT_IP_FLAG !in flags) { "$CLIENT_IP_FLAG needs $PUBLIC_FLAG: only a host behind a proxy has one to name its clients." }
             val client = flags[CLIENT_IP_FLAG]?.let(ForwardedPeer::ClientHeader) ?: ForwardedPeer.AppendedForwardedFor
+            // Refused rather than ignored: a flag that silently does nothing reads as one that worked.
+            require(public == null || NEW_LINK_FLAG !in args) { "$NEW_LINK_FLAG means nothing with $PUBLIC_FLAG: a hosted board's join link admits no one." }
             return HostConfig(
                 port = port ?: DEFAULT_PORT,
                 reach = when {

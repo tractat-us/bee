@@ -7,14 +7,14 @@ import org.w3c.dom.events.KeyboardEvent
 import us.tractat.bee.core.InviteLinks
 
 /**
- * "Invite": on the board owner's own page (loopback, or a public host's owner by key; never a
- * room screen), a control in the page's bar that opens a panel with the host's join link as a QR
- * code to scan from a phone or a laptop in the room, the link as text with Copy, and the host's
- * other links.
+ * "Invite": on a page that may invite (never a room screen), a control in the page's bar that
+ * opens a panel with the host's join link as a QR code to scan from a phone or a laptop in the
+ * room, the link as text with Copy, and the host's other links.
  *
- * - **Only from the host, only for its owner.** The links come from `GET` [InviteLinks.PATH],
- *   which a `--lan` host answers on its own machine alone, and a `--public-url` host to its
- *   owner's key alone (bee#145). Without them there is no control.
+ * - **Only from the host, which says who may invite.** The links come from `GET`
+ *   [InviteLinks.PATH], which a `--lan` host answers on its own machine alone, and a
+ *   `--public-url` host to any page it admitted, with its bare public URL, since any admitted
+ *   person can admit anyone (bee#145). Without them there is no control.
  * - **Legible across a room.** The code is an SVG, [QR_PIXELS] a side or the panel's width,
  *   dark on white whatever the page's theme, with the standard's four-module quiet zone.
  * - **Like Bring your Claude.** The panel sits in the page's flow under the bar and pushes the
@@ -43,7 +43,7 @@ internal class Invite(shell: PageShell, private val links: InviteLinks) {
     init {
         panel.appendChild(heading())
         panel.appendChild(element("div", "invite-code").also { it.appendChild(qrSvg(links.primary)) })
-        panel.appendChild(element("p", "invite-scan").also { it.textContent = "Scan to join on a phone or laptop on this network." })
+        panel.appendChild(element("p", "invite-scan").also { it.textContent = scanText(links.joins) })
         panel.appendChild(
             element("div", "invite-line").also { row ->
                 row.appendChild(line)
@@ -108,6 +108,12 @@ internal class Invite(shell: PageShell, private val links: InviteLinks) {
 
         /** The standard's light margin around the symbol, in modules. */
         const val QUIET_ZONE = 4
+
+        /** Where a device that scans the code can join from: a hosted board's link works anywhere (bee#145). */
+        fun scanText(joins: InviteLinks.Joins): String = when (joins) {
+            InviteLinks.Joins.OnThisNetwork -> "Scan to join on a phone or laptop on this network."
+            InviteLinks.Joins.Anywhere -> "Scan to join on a phone or laptop."
+        }
 
         fun element(tag: String, id: String): Element = document.createElement(tag).also { if (id.isNotEmpty()) it.id = id }
 
