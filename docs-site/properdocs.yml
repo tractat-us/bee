@@ -112,6 +112,7 @@ plugins:
       sections:
         Docs:
           - index.md: What bee is
+          - try-bee.md: Joining a board, or running your own, in a few minutes
           - setup.md: Joining a Claude Code session to bee
           - superpowers/specs/2026-11-06-bee-design.md: The design
           # A glob, so this line is a no-op until bee-and-kuilt.md exists: a plain
@@ -141,6 +142,7 @@ validation:
 nav:
   - Docs:
       - Home: index.md
+      - Try bee: try-bee.md
       - Setup: setup.md
       - Design: superpowers/specs/2026-11-06-bee-design.md
       - bee and kuilt: bee-and-kuilt.md

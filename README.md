@@ -16,6 +16,8 @@ restart. [Run a board](docs/setup.md#run-a-board) is the shortest way to try it.
 [remaining tasks](docs/superpowers/plans/2026-11-06-bee-v1.md) and each spike's notes in
 [`docs/spikes/`](docs/spikes/) say what is still open.
 
+**New here?** [Try bee](docs/try-bee.md) puts you on a board in a few minutes, from a Mac with Claude Code.
+
 ## Share a board with a coworker
 
 From a checkout, `bin/bee-up --name <you>` starts a board on your network, opens it in your
