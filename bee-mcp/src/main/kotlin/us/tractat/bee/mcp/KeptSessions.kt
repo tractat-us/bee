@@ -8,6 +8,7 @@ import us.tractat.bee.core.PeerIdentity
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.charset.CharacterCodingException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -16,6 +17,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.WRITE
 import java.security.MessageDigest
 import java.util.Base64
+import kotlin.time.Instant
 
 private val logger = KotlinLogging.logger {}
 
@@ -64,32 +66,43 @@ interface KeptSessionStore {
  * A session's identities are kept from the moment it is on the board ([live]) until it departs
  * ([drop]): a host that stops, or dies, departs none of them, as a laptop's bridge isn't departed
  * when its host restarts. The next host offers each to the one session that comes back with its
- * name and key ([pickUp]); the host's own departures retire any that never comes back, exactly as
- * they retire a laptop's bridge that doesn't.
+ * name and key ([pickUp]). One that no session picks up is the host's to retire ([unclaimed],
+ * [forget]): no live peer may post for it again, so the host's own quiet rule can't see it.
  *
  * - **Ambiguous is nobody's.** Two kept sessions under one name and key can't be told apart, so
  *   neither is picked up: a session taking the other's surfaces would be worse than a new identity.
  * - **A retired identity is never offered.** One the board lists as departed ([retired]) is dropped.
  * - **A pick-up is held until the session starts.** A session that never initializes puts its
- *   pick-up back ([putBack]) unsaved, so a host that dies between leaves the store as it was.
+ *   pick-up back ([putBack]) unsaved, so a host that dies between leaves the store as it was; and
+ *   it waits afresh from then, so its client has the whole window again.
  *
  * A save that fails is logged: the sessions still work, and come back new after a restart.
  */
-class KeptIdentities(private val store: KeptSessionStore, private val retired: () -> Set<PeerIdentity>) {
+class KeptIdentities(private val store: KeptSessionStore, private val retired: () -> Set<PeerIdentity>, private val clock: () -> Instant) {
     private val lock = Any()
-    private val waiting: MutableList<KeptSession> = store.load().toMutableList()
+
+    /** Each session the last host kept that no session has picked up, and since when it has waited. */
+    private val waiting: MutableMap<KeptSession, Instant> = clock().let { now -> store.load().associateWithTo(mutableMapOf()) { now } }
     private val live = mutableMapOf<Any, KeptSession>()
 
     /** The one session the last host kept for [name] and [caller], taken out of waiting; or null. */
     fun pickUp(name: String, caller: Caller): KeptSession? = synchronized(lock) {
         val gone = retired()
-        waiting.removeAll { it.current in gone }
-        val matching = waiting.filter { it.name == name && it.caller == caller }
+        waiting.keys.removeAll { it.current in gone }
+        val matching = waiting.keys.filter { it.name == name && it.caller == caller }
         matching.singleOrNull()?.also { waiting -= it }
     }
 
-    /** A [pickUp] whose session never started: it waits again. */
-    fun putBack(session: KeptSession): Unit = synchronized(lock) { waiting += session }
+    /** A [pickUp] whose session never started: it waits again, from now. */
+    fun putBack(session: KeptSession): Unit = synchronized(lock) { waiting[session] = clock() }
+
+    /** The kept sessions nobody has picked up since [before]: their clients aren't coming back. */
+    fun unclaimed(before: Instant): List<KeptSession> = synchronized(lock) { waiting.filterValues { it <= before }.keys.toList() }
+
+    /** [session], [unclaimed] and now departed, is kept no more, unless a session picked it up meanwhile. */
+    fun forget(session: KeptSession): Unit = synchronized(lock) {
+        if (waiting.remove(session) != null) save()
+    }
 
     /** [owner]'s session is on the board as [session]: kept from now on, replacing what it was. */
     fun live(owner: Any, session: KeptSession): Unit = synchronized(lock) {
@@ -104,7 +117,7 @@ class KeptIdentities(private val store: KeptSessionStore, private val retired: (
 
     private fun save() {
         try {
-            store.save(waiting + live.values)
+            store.save(waiting.keys + live.values)
         } catch (failure: IOException) {
             logger.error(failure) { "Couldn't save the HTTP sessions' identities; a host restart gives them new ones." }
         }
@@ -121,6 +134,9 @@ class KeptSessionFile(private val path: Path) : KeptSessionStore {
         val text = try {
             Files.readString(path)
         } catch (_: NoSuchFileException) {
+            return emptyList()
+        } catch (failure: CharacterCodingException) {
+            logger.warn(failure) { "$path doesn't read as HTTP sessions; they come back as new identities." }
             return emptyList()
         }
         return try {
