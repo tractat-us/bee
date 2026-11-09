@@ -51,7 +51,8 @@ can still go on the board as a survey (step 4), so everyone in the room has a sa
 ## 3. Showing a design
 
 Draw each option as its own compact `Sketch`, labelled A, B, C, with a Button under each to choose
-it. Two to four options at most. Keep diagrams sans-serif (`font-family='system-ui,sans-serif'`)
+it. Two to four options at most. The board doesn't show a Sketch's `title`, so put the label in its
+`html` too, as a caption ("A: one column"). Keep diagrams sans-serif (`font-family='system-ui,sans-serif'`)
 and compact: nodes in one or two rows, and a viewBox only as tall as they need. Make the mockup as
 detailed as the question, a wireframe for layout, polish only for a polish question.
 
