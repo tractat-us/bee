@@ -59,6 +59,7 @@ private val logger = KotlinLogging.logger {}
  *
  * @param scope the host's scope: the idle check and every bridge's work run under it
  * @param kept the identities of the sessions the last host on this data dir had, and of these
+ * @param keyKind which of the host's keys a call's `?k=` is, by the host's own reckoning
  * @param checkEvery how often the idle check runs
  * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
  */
@@ -67,6 +68,7 @@ class HttpBridges(
     private val clock: () -> Instant,
     private val random: Random,
     private val kept: KeptIdentities,
+    private val keyKind: (String?) -> PresentedKey,
     private val idleAfter: Duration = IDLE_AFTER,
     private val checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
     private val maxSessions: Int = MAX_SESSIONS,
@@ -128,15 +130,17 @@ class HttpBridges(
     /**
      * A new MCP session's server, over a bridge named for the call's `?name=`: the identities the
      * last host kept for that name and the call's key, if it kept one session's ([KeptIdentities]),
-     * else a fresh one. A name nobody chose ([resumable]) always gets a fresh one. The bridge stays
-     * off the board until the session initializes ([bind]): Claude Code's first POST offers a
-     * protocol version this SDK refuses, then retries, and that first session must leave no trace.
+     * else a fresh one. The join link's key, or a name nobody chose ([resumable]), always gets a
+     * fresh one. The bridge stays off the board until the session initializes ([bind]): Claude
+     * Code's first POST offers a protocol version this SDK refuses, then retries, and that first
+     * session must leave no trace.
      */
     private fun open(context: RoutingContext): Server {
         val call = context.call
         val name = sessionNameFrom(call.request.queryParameters[NAME_PARAM])
-        val caller = Caller.of(call.request.queryParameters[KEY_PARAM])
-        val resumed = if (resumable(name)) kept.pickUp(name, caller) else null
+        val key = call.request.queryParameters[KEY_PARAM]
+        val caller = Caller.of(key)
+        val resumed = if (resumable(name, keyKind(key))) kept.pickUp(name, caller) else null
         // The call arrived on the host's own port: the bridge dials it on loopback, which needs no key.
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
@@ -354,10 +358,13 @@ class HttpBridges(
         const val PLACEHOLDER_NAME: String = "you"
 
         /**
-         * Whether a session named [name] may come back as a kept identity (bee#126): only under a
-         * name someone chose. No name, or the page's [PLACEHOLDER_NAME], is anybody's.
+         * Whether a session named [name], presenting [key], may come back as a kept identity
+         * (bee#126): only on a key that is one device's, or none (the host's own machine), and only
+         * under a name someone chose. Everyone holding the join link holds its key, and no name, or
+         * the page's [PLACEHOLDER_NAME], is anybody's.
          */
-        fun resumable(name: String): Boolean = name != DEFAULT_NAME && name != sessionNameFrom(PLACEHOLDER_NAME)
+        fun resumable(name: String, key: PresentedKey): Boolean =
+            key != PresentedKey.Join && name != DEFAULT_NAME && name != sessionNameFrom(PLACEHOLDER_NAME)
 
         /**
          * Counts each call on [PATH] as activity on its session from start to finish: a GET stream

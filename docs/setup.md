@@ -380,7 +380,9 @@ same tools, prompt and instructions as the stdio bridge.
 This is the path for a teammate's machine. On the host's own machine, keep the kit's bridge:
 `claude --mcp-config ~/.bee/mcp.json --allowedTools 'mcp__bee__*'`, which `bee-up` prints. Each
 session on that bridge keeps its own identity across a host restart. An HTTP session keeps its
-identity too, since the host remembers which name and key each live session joined with. But two
+identity too when it joined with a paired device's key, or with no key on this machine, under a
+name someone chose: the host remembers which name and key each live session joined with. One that
+joined with the join link's key never does, since everyone holding the link holds that key. Two
 sessions at one URL look alike, so neither keeps its identity, and every session on the host's
 machine shares the keyless URL.
 

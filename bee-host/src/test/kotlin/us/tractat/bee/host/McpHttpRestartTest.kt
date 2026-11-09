@@ -36,6 +36,7 @@ import kotlin.time.Clock
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -156,6 +157,35 @@ class McpHttpRestartTest {
     }
 
     /**
+     * Everyone holding the join link holds its key, so a session on it never comes back as a kept
+     * identity, whatever name it chose. A paired device's own key does: the key is that device's.
+     */
+    @Test
+    fun onlyAPairedDevicesOwnKeyComesBackAsItselfNeverTheJoinLinks() = runBlocking {
+        val first = startHost()
+        val ticket = assertIs<Opened.Ticket>(first.pairing.open(ANOTHER_MACHINE))
+        val device = assertIs<Attempt.Admitted>(first.pairing.attempt(ticket.id, PeerIdentity.human("andrew"), ticket.code)).key.value
+        val join = first.pairing.joinKey.value
+        val (onDevice, onJoin) = try {
+            drawAndLearnWho(connect(url(first, "?name=andrew&k=$device")), first, "device-plan") to
+                drawAndLearnWho(connect(url(first, "?name=bea&k=$join")), first, "join-plan")
+        } finally {
+            first.close()
+        }
+        val host = startHost()
+        try {
+            val onDeviceAgain = drawAndLearnWho(connect(url(host, "?name=andrew&k=$device")), host, "device-after")
+            val onJoinAgain = drawAndLearnWho(connect(url(host, "?name=bea&k=$join")), host, "join-after")
+            assertAll(
+                { assertEquals(onDevice, onDeviceAgain, "a paired device's key, a chosen name: the same identity") },
+                { assertNotEquals(onJoin, onJoinAgain, "the join link's key is everyone's: a new identity, though bea chose her name") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
      * Everyone who pastes the page's line unedited is `name=you` on the one join link, and a URL
      * with no name is anybody's: neither name comes back as the identity it had.
      */
@@ -250,5 +280,6 @@ class McpHttpRestartTest {
 
     private companion object {
         val TIMEOUT = 20.seconds
+        const val ANOTHER_MACHINE = "192.168.1.20"
     }
 }

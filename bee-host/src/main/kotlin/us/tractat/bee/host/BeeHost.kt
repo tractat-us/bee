@@ -168,7 +168,7 @@ class BeeHost private constructor(
                 retired = { board.get()?.value?.departures().orEmpty().map { it.identity }.toSet() },
                 clock = clock,
             )
-            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
+            val bridges = HttpBridges(scope, clock, SecureRandom().asKotlinRandom(), kept, keys::kindOf, config.mcpIdleAfter, maxSessions = config.mcpMaxSessions)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
                 endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, config.reach.invitation())

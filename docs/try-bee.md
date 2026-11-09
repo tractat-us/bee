@@ -44,10 +44,10 @@ You need the link the board's owner sent you. It looks like `http://192.168.1.5:
 
 The link admits whoever holds it, across the owner's restarts, until they make a new one. If the
 board goes offline for a moment, the owner probably restarted it. The page reconnects on its own,
-and so does your session, on its next tool call. It comes back as the same participant, so the
-cards it drew before the restart are still its own. Two sessions at one URL are the exception:
-the board can't tell them apart, so both come back as new participants and their old cards read as
-muted.
+and so does your session, on its next tool call. A session that joined by the link comes back as
+a new participant, because everyone holding the link holds the same key, so the cards it drew
+before the restart read as muted. A session on a key paired to your own device comes back as
+itself, with its cards still its own.
 
 ## Your own board
 

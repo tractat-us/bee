@@ -1,6 +1,7 @@
 package us.tractat.bee.host
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import us.tractat.bee.mcp.PresentedKey
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -109,6 +110,16 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
         if (presented.isNullOrEmpty()) return false
         val hash = KeyHash.of(presented).value.encodeToByteArray()
         return (devices + joinHash).fold(false) { matched, held -> MessageDigest.isEqual(hash, held.value.encodeToByteArray()) or matched }
+    }
+
+    /**
+     * Which key [presented] is: none, the join link's (compared in constant time), or another. The
+     * gate has already admitted the call, so off loopback another key is a paired device's own.
+     */
+    fun kindOf(presented: String?): PresentedKey = when {
+        presented.isNullOrEmpty() -> PresentedKey.None
+        MessageDigest.isEqual(KeyHash.of(presented).value.encodeToByteArray(), joinHash.value.encodeToByteArray()) -> PresentedKey.Join
+        else -> PresentedKey.Device
     }
 
     companion object {

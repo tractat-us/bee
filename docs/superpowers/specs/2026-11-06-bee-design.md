@@ -195,15 +195,16 @@ Claude session ── bee-mcp                                           ┘     
   session never idles and one that exited departs two minutes later. **The trade-off:** the host
   now holds those sessions' liveness, which on the stdio path the session's own process holds.
   Nothing on the session's machine can say it crashed, and `/clear` has no hook to reach them.
-- **An HTTP session comes back from a host restart as itself (design call, bee#126).** A host
-  stop departs no HTTP session. The host keeps each live session's identities in its data dir,
-  under its name and a hash of its key, and the first session that presents that name and key to
-  the next host acts as them again, so its surfaces are still its own. It never takes an identity
-  another live session holds, never matches another key, and never matches a name nobody chose
-  (none, or the page's `you`). Two kept sessions under one name and key match neither. One that no
-  session picks up within the quiet timeout (§6.4) the host departs `Quiet`. Anyone holding the
-  join link shares its key, so two people who chose the same name on it are one person to the
-  host.
+- **An HTTP session on a device's own key comes back from a host restart as itself (design call,
+  bee#126).** A host stop departs no HTTP session. The host keeps each live session's identities
+  in its data dir, under its name and a hash of its key, and the first session that presents that
+  name and key to the next host acts as them again, so its surfaces are still its own. Only a
+  paired device's own key resumes, or no key on the host's own machine. The join link's key never
+  does, whatever the name, since everyone holding the link holds it: a session that joined by
+  the link comes back as a new identity. A resumed session never takes an identity another live
+  session holds, never matches another key, and never matches a name nobody chose (none, or the
+  page's `you`). Two kept sessions under one name and key match neither. One that no session
+  picks up within the quiet timeout (§6.4) the host departs `Quiet`.
 - **The bridge pings the host (design call, bee#77).** Its sockets only read, so a half-open link
   after a host reboot or a dropped Wi-Fi link would otherwise wait out TCP's retransmits. They
   ping every 5 s and close after 10 s with no pong, well inside the host's 60 s boot grace (§6.4),

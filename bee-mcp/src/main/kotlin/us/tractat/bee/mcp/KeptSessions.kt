@@ -48,6 +48,18 @@ value class Caller private constructor(val value: String) {
     }
 }
 
+/** Which of the host's keys an MCP call presented, as the host tells them apart (bee#126). */
+enum class PresentedKey {
+    /** None: the call came on the host's own machine, which needs no key. */
+    None,
+
+    /** The join link's key, which everyone holding the link shares. */
+    Join,
+
+    /** Any other key: off the laptop, one paired device's own. */
+    Device,
+}
+
 /** Where a host keeps its [KeptSession]s between boots. Production is [KeptSessionFile]. */
 interface KeptSessionStore {
     /** The sessions last saved, or none if none ever were. */
