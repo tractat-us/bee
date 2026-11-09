@@ -305,6 +305,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
                 }
         }
         scope.launch { client.state.collect { showRecords(records, it) } }
+        scope.launch { client.state.collect { b -> b.surfaces.keys.filter { it.startsWith("ot") && b.meta(it) == null }.forEach { println("DIAG171 STATE ${author.value} $it has data, no meta") } } }
         client.connect()
         if (copy != null) keep(copy, client.state, scope, store)
     }
