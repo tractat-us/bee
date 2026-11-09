@@ -65,8 +65,9 @@ The page dials its sockets at the scheme and host it was loaded from
 
 ### TLS off loopback, with a certificate the host mints
 
-[#73](https://github.com/tractat-us/bee/issues/73). **Iain, 2026-11-08: "Here I basically want
-something self-minted."** No domain, no issuing service, nothing that needs the internet. Folds
+[#73](https://github.com/tractat-us/bee/issues/73). **Iain, 2026-11-08, quoted as said:**
+<!-- vale House.Filler = NO -->"Here I basically want something self-minted."<!-- vale House.Filler = YES -->
+No domain, no issuing service, nothing that needs the internet. Folds
 into [`setup.md`](../setup.md) and [`try-bee.md`](../try-bee.md) when it lands.
 
 **The host is its own certificate authority.** On first start a `--lan` host mints two keys and
