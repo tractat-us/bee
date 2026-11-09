@@ -1,0 +1,6 @@
+# The image copies bee-host's application distribution and nothing else (Dockerfile). Everything
+# else, every other module's build output and node_modules among it, would ship to Fly's remote
+# builder on each deploy.
+*
+!Dockerfile
+!bee-host/build/install/bee-host
