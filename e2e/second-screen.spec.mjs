@@ -8,11 +8,33 @@
 // not this suite's. What this suite proves is the page: it shows a code and nothing of the board
 // until a person on the laptop types that code, and then joins with the key it was given.
 import { test, expect } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Host, freePort } from './host.mjs';
 
 const LAN_NAME = 'bee-lan.test';
-test.use({ launchOptions: { args: [`--host-resolver-rules=MAP ${LAN_NAME} 127.0.0.1`] } });
+
+// The tests pair devices and read the seeded fixtures back, so this spec runs a seeded host of its
+// own, and it names itself `bee-lan.test`, which the host refuses as a rebinding name otherwise
+// (bee#45). Its own host also keeps its pairing requests off every other spec's board (bee#74).
+const host = new Host(await freePort(), mkdtempSync(join(tmpdir(), 'bee-second-screen-')), ['--host-name', LAN_NAME]);
+test.use({
+  baseURL: host.url,
+  launchOptions: { args: [`--host-resolver-rules=MAP ${LAN_NAME} 127.0.0.1`] },
+});
 
 let contexts = [];
+
+test.beforeAll(async () => {
+  test.setTimeout(240_000);
+  await host.start();
+  host.seed();
+});
+
+test.afterAll(async () => {
+  if (host.process) await host.stop();
+});
 
 test.afterEach(async () => {
   for (const context of contexts) await context.close();
@@ -31,7 +53,7 @@ async function openRemote(browser, screen) {
   const requests = [];
   page.on('websocket', (ws) => sockets.push(new URL(ws.url())));
   page.on('request', (r) => requests.push({ url: new URL(r.url()), accept: r.headers()['accept'] }));
-  await page.goto(`http://${LAN_NAME}:${process.env.BEE_E2E_PORT}/?screen=${screen}`);
+  await page.goto(`http://${LAN_NAME}:${host.port}/?screen=${screen}`);
   return { page, sockets, requests };
 }
 
@@ -194,7 +216,7 @@ test("a person's page dials /ws/claims with its key and board", async ({ browser
   const person = await context.newPage();
   const sockets = [];
   person.on('websocket', (ws) => sockets.push(new URL(ws.url())));
-  await person.goto(`http://${LAN_NAME}:${process.env.BEE_E2E_PORT}/?name=ada&k=${key}`);
+  await person.goto(`http://${LAN_NAME}:${host.port}/?name=ada&k=${key}`);
   await expect(person.locator('#status')).toHaveText('online as human:ada', { timeout: 15_000 });
   await expect.poll(() => sockets.filter((url) => url.pathname === '/ws/claims').length, { timeout: 10_000 }).toBeGreaterThan(0);
 
@@ -218,7 +240,7 @@ test("a join link's key leaves the address bar once the page holds it", async ({
   const context = await browser.newContext();
   contexts.push(context);
   const linked = await context.newPage();
-  await linked.goto(`http://${LAN_NAME}:${process.env.BEE_E2E_PORT}/?screen=room-g&k=${key}`);
+  await linked.goto(`http://${LAN_NAME}:${host.port}/?screen=room-g&k=${key}`);
   await expect(linked.locator('#status')).toHaveText('online as human:room-g', { timeout: 15_000 });
   const search = await linked.evaluate(() => location.search);
   const kept = await linked.evaluate(() => sessionStorage.getItem('bee.lan.key'));

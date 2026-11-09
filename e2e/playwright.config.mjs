@@ -53,11 +53,12 @@ export default defineConfig({
   testIgnore: process.env.BEE_E2E_SKIP_DEMO ? 'demo-paths.spec.mjs' : undefined,
   globalSetup: hasSpecs ? './global-setup.mjs' : undefined,
   fullyParallel: false,
-  // Every spec shares one host, its board and its seeded fixtures, so spec files run one at a
-  // time: a test that counts the board's records (the basis tests) read another file's writes as
-  // its own. (The caret failure once blamed on parallel activity was Playwright's: an End key on a
-  // scrollable macOS page, and a press on an unfocused field resetting the caret. See #43.)
-  workers: 1,
+  // Two spec files at a time. They share the host and its seeded board, and two-browsers.spec.mjs
+  // counts the board's records (the basis tests), so a spec that writes records of its own runs on
+  // a host of its own (host.mjs): durability, empty-board, second-screen and sketch do. (The caret
+  // failure once blamed on parallel activity was Playwright's: an End key on a scrollable macOS
+  // page, and a press on an unfocused field resetting the caret. See #43.)
+  workers: 2,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
@@ -72,9 +73,7 @@ export default defineConfig({
     ...(process.env.BEE_E2E_WEBKIT ? [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }] : []),
   ],
   webServer: hasSpecs ? {
-    // `--host-name bee-lan.test`: second-screen.spec.mjs reaches the host by that name, which the
-    // host refuses as a rebinding name otherwise (bee#45).
-    command: `${build}exec bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR} --host-name bee-lan.test`,
+    command: `${build}exec bee-host/build/install/bee-host/bin/bee-host --port ${port} --data-dir ${process.env.BEE_E2E_DATA_DIR}`,
     cwd: join(here, '..'),
     url: `${baseURL}/`,
     reuseExistingServer: false,
