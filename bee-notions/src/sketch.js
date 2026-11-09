@@ -61,17 +61,29 @@ export const CHOICE_ACTION = 'choice';
 const CHOICE_META = 'us.tractat.bee/choice';
 
 /**
- * How long Send stays disabled after a proposal appears or changes, or after Send moves. The
- * sketch decides when its proposal changes, and it can scroll the page (scrollIntoView reaches
- * the parent in Chromium), so without this it could swap the text, or slide Send, under a
- * viewer's click already on its way. It's also how long a key press on Send is ignored after Send
- * takes focus. Browsers hold their own permission prompts' buttons about as long.
+ * How long Send stays disarmed after a proposal appears or changes, after Send moves, or after a
+ * click it refused. The sketch decides when its proposal changes, and it can scroll the page
+ * (scrollIntoView reaches the parent in Chromium), so without this it could swap the text, or
+ * slide Send, under a viewer's click already on its way. It's also how long after Send takes
+ * focus a key press on it is too soon. Browsers hold their own permission prompts' buttons about
+ * as long, and Chromium counts repeated clicks on them the same way (InputEventActivationProtector).
  */
 const SEND_ARM_MS = 500;
 
-/** Whether two `DOMRect`s are the same box. */
-const sameRect = (a, b) =>
-  !!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+/**
+ * Where [element] is on the screen: its client box, and the visual viewport's pan and zoom. A
+ * pinch-zoom, or a pan of the zoomed page, moves Send on the screen and leaves its client box as
+ * it was.
+ */
+const screenBox = (element) => {
+  const { x, y, width, height } = element.getBoundingClientRect();
+  const view = window.visualViewport;
+  return { x, y, width, height, left: view?.offsetLeft ?? 0, top: view?.offsetTop ?? 0, scale: view?.scale ?? 1 };
+};
+
+/** Whether two `screenBox`es are the same place on the screen. */
+const sameBox = (a, b) =>
+  !!a && !!b && ['x', 'y', 'width', 'height', 'left', 'top', 'scale'].every((key) => a[key] === b[key]);
 
 /**
  * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
@@ -113,7 +125,9 @@ export class SketchElement extends A2uiLitElement {
     /** The choice the frame proposes, `{id, choice, text, at}`, or null. Never on the board. */
     this.proposal = null;
     this.armTimer = null;
-    /** Send's box when arming last began: Send arms only if it's still there. */
+    /** Whether Send is armed: shown as `aria-disabled`, and checked by its click handler. */
+    this.armed = false;
+    /** Send's `screenBox` when arming last began: Send arms only if it's still there. */
     this.armRect = null;
     /** Whether the pointer is over Send, from Send's own boundary events. */
     this.pointerOver = false;
@@ -123,11 +137,12 @@ export class SketchElement extends A2uiLitElement {
     this.pointerArrived = false;
     /** Whether arming has finished, Send unmoved, but waits for the pointer resting on it to leave. */
     this.awaitingLeave = false;
-    /** When Send was last enabled, and when a press on it last began: only a later press sends. */
+    /** When Send last armed, and when a press on it last began: only a later press sends. */
     this.enabledAt = Infinity;
     this.pressedAt = -Infinity;
-    /** When Send last took focus, for the key press that follows Tab out of a sketch. */
+    /** When Send last took focus, and when a fresh Enter or Space on it last went down. */
     this.focusedAt = -Infinity;
+    this.keyPressedAt = -Infinity;
     /** The height the frame was last fitted to, as CSS. */
     this.fitted = null;
     /** This screen's last fit's direction, when its fits recently turned, and whether it's pinned (see `fit`). */
@@ -135,8 +150,8 @@ export class SketchElement extends A2uiLitElement {
     this.turns = [];
     this.pinned = false;
     this.onMessage = (event) => this.receive(event);
-    // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, or
-    // a change in the size of the bar or this sketch. The page's body changes size with every fit
+    // Anything that may have moved Send re-arms it: a scroll anywhere on the page, a resize, a
+    // pinch-zoom or a pan of the zoomed page, or a change in the size of the bar or this sketch. The page's body changes size with every fit
     // on a page taller than the window, so its resize re-arms Send only if Send has moved.
     this.onMove = () => { if (this.proposal) this.arm(); };
     this.resizes = new ResizeObserver((entries) => {
@@ -157,6 +172,8 @@ export class SketchElement extends A2uiLitElement {
     window.addEventListener('message', this.onMessage);
     window.addEventListener('scroll', this.onMove, true);
     window.addEventListener('resize', this.onMove);
+    window.visualViewport?.addEventListener('scroll', this.onMove);
+    window.visualViewport?.addEventListener('resize', this.onMove);
     this.resizes.observe(this);
     this.resizes.observe(document.body);
     if (this.bar) this.resizes.observe(this.bar);
@@ -167,6 +184,8 @@ export class SketchElement extends A2uiLitElement {
     window.removeEventListener('message', this.onMessage);
     window.removeEventListener('scroll', this.onMove, true);
     window.removeEventListener('resize', this.onMove);
+    window.visualViewport?.removeEventListener('scroll', this.onMove);
+    window.visualViewport?.removeEventListener('resize', this.onMove);
     this.resizes.disconnect();
     this.drop();
     super.disconnectedCallback();
@@ -229,20 +248,35 @@ export class SketchElement extends A2uiLitElement {
     dismiss.type = 'button';
     dismiss.className = 'bee-proposal-dismiss';
     dismiss.textContent = 'Dismiss';
+    // Send is never `disabled`: a disabled button hears no clicks, so a viewer clicking steadily
+    // at one spot would click nothing while Send armed under them, and a disabled Send that took
+    // focus would drop it. It's disarmed with `aria-disabled` instead, and refuses here.
+    //
     // Only a real gesture counts: `isTrusted` is false for any event a script dispatched, and a
     // sketch's script can't reach the page to dispatch one anyway.
     send.addEventListener('click', (event) => {
       if (!event.isTrusted) return;
-      // Tab out of a sketch lands on its Send, so a key press meant for the sketch would send it.
-      // A keyboard activation (detail 0) counts once Send has had focus for SEND_ARM_MS.
-      if (event.detail === 0 && performance.now() - this.focusedAt < SEND_ARM_MS) return;
-      // A press that began before Send was enabled was meant for what Send showed then, or for
-      // wherever Send was.
-      if (event.detail !== 0 && this.pressedAt < this.enabledAt) return;
-      this.send();
+      const keyPressedAt = this.keyPressedAt;
+      this.keyPressedAt = -Infinity;
+      // A press that began before Send armed was meant for what Send showed then, or for wherever
+      // Send was. A keyboard activation (detail 0) dates from its keydown, since Space activates
+      // on keyup. Tab out of a sketch lands on its Send, so that keydown also counts only once
+      // Send has had focus for SEND_ARM_MS: a key pressed for the sketch, even held past then,
+      // doesn't send. A detail-0 click with no keydown at all is assistive tech pressing the button
+      // through the accessibility API (screen reader browse mode, Voice Control, Dragon); it
+      // sends once armed, which `send()` checks. That reading assumes no page code stops a keydown
+      // before it reaches Send: true today, the only `stopPropagation` calls are in `board.js` and
+      // `renderer-host.js`.
+      const fresh = event.detail !== 0
+        ? this.pressedAt >= this.enabledAt
+        : keyPressedAt === -Infinity
+          || (keyPressedAt >= this.enabledAt && keyPressedAt - this.focusedAt >= SEND_ARM_MS);
+      if (!(fresh && this.send())) this.refuse();
     });
     send.addEventListener('pointerdown', (event) => { if (event.isTrusted) this.pressedAt = performance.now(); });
     send.addEventListener('focus', () => { this.focusedAt = performance.now(); });
+    // A key pressed on Send and never released there (focus moved on) isn't a press for the next one.
+    send.addEventListener('blur', () => { this.keyPressedAt = -Infinity; });
     // A pointer moved onto Send gets its `pointerover` and a `pointermove` from one input event,
     // at the same point. One that Send was moved under gets a `pointerover` alone, and its next
     // move, a hand's tremor, is somewhere else (see `arm`).
@@ -261,11 +295,15 @@ export class SketchElement extends A2uiLitElement {
       this.overAt = null;
       if (!this.awaitingLeave) return;
       this.awaitingLeave = false;
-      if (sameRect(send.getBoundingClientRect(), this.armRect)) this.enable();
+      if (sameBox(screenBox(send), this.armRect)) this.enable();
       else this.arm();
     });
     // A held key repeats: only a fresh press may send.
-    send.addEventListener('keydown', (event) => { if (event.repeat) event.preventDefault(); });
+    send.addEventListener('keydown', (event) => {
+      if (!event.isTrusted) return;
+      if (event.repeat) event.preventDefault();
+      else if (event.key === 'Enter' || event.key === ' ') this.keyPressedAt = performance.now();
+    });
     dismiss.addEventListener('click', (event) => { if (event.isTrusted) this.dismiss(); });
     bar.append(from, label, send, dismiss);
     return bar;
@@ -295,8 +333,8 @@ export class SketchElement extends A2uiLitElement {
   /**
    * Shows [choice] as this sketch's proposal, in place of any earlier one, which is answered as
    * replaced. It records nothing: only the viewer's Send does. Send re-arms (see `arm`) on every
-   * change, and a key press on Send counts only once Send has had focus for SEND_ARM_MS, so a
-   * click or key press meant for something else can't send it.
+   * change, and a key press on Send counts only if it went down once Send had had focus for
+   * SEND_ARM_MS, so a click or key press meant for something else can't send it.
    */
   propose(id, choice, text) {
     if (this.proposal) this.reply(this.proposal.id, { error: { code: -32001, message: 'Replaced by a later choice.' } });
@@ -346,57 +384,78 @@ export class SketchElement extends A2uiLitElement {
    */
   rearmIfMoved() {
     if (!this.proposal) return;
-    const send = this.bar.querySelector('.bee-proposal-send');
-    if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
+    if (!sameBox(screenBox(this.sendButton()), this.armRect)) this.arm();
   }
 
   /**
-   * Disables Send, and enables it SEND_ARM_MS later only if Send is still where it was when
-   * arming began; otherwise arming starts again. A sketch can't move Send under a click on its way.
+   * Disarms Send, and arms it SEND_ARM_MS later only if Send is still where it was when arming
+   * began; otherwise arming starts again. A sketch can't move Send under a click on its way.
    *
    * Nor under a pointer at rest: a sketch can learn where a resting pointer is (a frame grown over
    * it hears `pointerover`, with coordinates, in Chromium), then fit its frame so its own Send
    * lands there. So when arming ends with the pointer over Send, and the pointer hasn't moved onto
-   * Send since arming began, Send stays disabled until the pointer leaves it. A move on Send, as
+   * Send since arming began, Send stays disarmed until the pointer leaves it. A move on Send, as
    * small as a tremor, doesn't count. A touch held on Send leaves it when it lifts, and that
-   * touch's own tap can't send, since it began before Send was enabled.
+   * touch's own tap can't send, since it began before Send armed.
    */
   arm() {
-    const send = this.bar.querySelector('.bee-proposal-send');
-    send.disabled = true;
-    this.armRect = send.getBoundingClientRect();
+    const send = this.sendButton();
+    this.setArmed(false);
+    this.armRect = screenBox(send);
     this.pointerArrived = false;
     this.awaitingLeave = false;
     clearTimeout(this.armTimer);
     this.armTimer = setTimeout(() => {
-      if (!sameRect(send.getBoundingClientRect(), this.armRect)) this.arm();
+      if (!sameBox(screenBox(send), this.armRect)) this.arm();
       else if (this.pointerOver && !this.pointerArrived) this.awaitingLeave = true;
       else this.enable();
     }, SEND_ARM_MS);
   }
 
-  /** Enables Send, armed where it is. */
+  /** Arms Send where it is. */
   enable() {
-    this.bar.querySelector('.bee-proposal-send').disabled = false;
+    this.setArmed(true);
     this.enabledAt = performance.now();
   }
 
+  /** Shows Send armed or not, to the eye and to assistive tech. The click handler checks `armed`. */
+  setArmed(armed) {
+    const send = this.sendButton();
+    this.armed = armed;
+    send.setAttribute('aria-disabled', String(!armed));
+    send.style.opacity = armed ? '' : '0.5';
+    send.style.cursor = armed ? '' : 'default';
+  }
+
   /**
-   * The viewer's Send: records the proposal shown, as theirs, and answers the frame. Send must be
-   * armed, and still where it was armed: a move whose scroll or resize event hasn't fired yet
-   * re-arms it here instead.
+   * Re-arms Send after a click it refused, so a click within SEND_ARM_MS of a refused one never
+   * sends, however steady the stream. A pointer that arrived on Send still counts as arrived if
+   * Send hasn't moved, so a viewer who clicked too soon needn't leave Send and come back.
+   */
+  refuse() {
+    if (!this.proposal) return;
+    const arrived = this.pointerArrived && sameBox(screenBox(this.sendButton()), this.armRect);
+    this.arm();
+    this.pointerArrived = arrived;
+  }
+
+  /**
+   * The viewer's Send: records the proposal shown, as theirs, answers the frame, and says whether
+   * it did. Send must be armed, and still where it was armed: a move that fired no event, or whose
+   * event hasn't fired yet, is refused here.
    */
   send() {
     const proposal = this.proposal;
-    const button = this.bar.querySelector('.bee-proposal-send');
-    if (!proposal || button.disabled) return;
-    if (!sameRect(button.getBoundingClientRect(), this.armRect)) {
-      this.arm();
-      return;
-    }
+    if (!proposal || !this.armed || !sameBox(screenBox(this.sendButton()), this.armRect)) return false;
     this.context.dispatchAction({ event: { name: CHOICE_ACTION, context: { choice: proposal.choice, text: proposal.text } } });
     this.reply(proposal.id, { result: {} });
     this.drop();
+    return true;
+  }
+
+  /** The page's own Send, in this sketch's bar. */
+  sendButton() {
+    return this.bar.querySelector('.bee-proposal-send');
   }
 
   /** The viewer's Dismiss: the frame hears its choice was declined, and drops its selection. */
