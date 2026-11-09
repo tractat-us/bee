@@ -33,11 +33,8 @@ import java.net.InetAddress
  * so a caller is local only when the TCP peer itself is a loopback address and no proxy stood
  * between: a forwarded address is whatever the proxy, or a dialler posing as one, says.
  */
-class Caller private constructor(val address: String, val local: Boolean) {
-    override fun equals(other: Any?): Boolean = other is Caller && other.address == address && other.local == local
-
-    override fun hashCode(): Int = 31 * address.hashCode() + local.hashCode()
-
+@ConsistentCopyVisibility
+data class Caller private constructor(val address: String, val local: Boolean) {
     override fun toString(): String = if (local) "Caller($address, local)" else "Caller($address)"
 
     companion object {
@@ -65,23 +62,18 @@ fun interface PeerAddress {
 /**
  * Behind one trusted proxy ([Reach.Public]): each call's caller is the client the proxy names, read
  * the way that proxy writes it ([AppendedForwardedFor] or [ClientHeader]). A call where the proxy
- * names no usable client is its TCP peer's. A call carrying any forwarding header, `X-Forwarded-For`,
- * `Forwarded` or [ClientHeader.name], is never [Caller.local], whatever its TCP peer: the proxy dials
- * from wherever it runs, and a header claiming loopback came from someone who isn't. That decision
- * is [of]'s alone; a variant only reads the client's address.
+ * names no usable client is its TCP peer's.
+ *
+ * **No call is ever [Caller.local] here**, whatever its TCP peer or its headers: the proxy dials
+ * from wherever it runs, a header claiming loopback came from someone who isn't, and on a hosted
+ * machine loopback is the host's own processes, which hold keys like anyone. That decision is
+ * [of]'s alone; a variant only reads the client's address.
  */
 sealed class ForwardedPeer : PeerAddress {
-    /** The headers whose presence marks a call as forwarded. */
-    protected abstract val forwarding: Set<String>
-
     /** The client the proxy names in [headers], or null when it names none usable. */
     protected abstract fun client(headers: Headers): String?
 
-    final override fun of(call: ApplicationCall): Caller {
-        val headers = call.request.headers
-        val peer = call.request.local.remoteAddress
-        return if (forwarding.none(headers::contains)) Caller.byPeer(peer) else Caller.forwarded(client(headers) ?: peer)
-    }
+    final override fun of(call: ApplicationCall): Caller = Caller.forwarded(client(call.request.headers) ?: call.request.local.remoteAddress)
 
     /**
      * A proxy that appends the client it saw to `X-Forwarded-For`: the rightmost entry, since every
@@ -89,8 +81,6 @@ sealed class ForwardedPeer : PeerAddress {
      * app's own address, the same for every client ([ClientHeader]).
      */
     data object AppendedForwardedFor : ForwardedPeer() {
-        override val forwarding: Set<String> = setOf(FORWARDED_FOR, FORWARDED_HEADER)
-
         override fun client(headers: Headers): String? =
             headers.getAll(FORWARDED_FOR).orEmpty().flatMap { it.split(',') }.map(String::trim).lastOrNull { it.isNotEmpty() }
     }
@@ -105,14 +95,11 @@ sealed class ForwardedPeer : PeerAddress {
             require(FIELD_NAME.matches(name)) { "Not a header name: $name" }
         }
 
-        override val forwarding: Set<String> = setOf(FORWARDED_FOR, FORWARDED_HEADER, name)
-
         override fun client(headers: Headers): String? = headers.getAll(name)?.singleOrNull()?.trim()?.takeIf(::isIpLiteral)
     }
 
     private companion object {
         const val FORWARDED_FOR = "X-Forwarded-For"
-        const val FORWARDED_HEADER = "Forwarded"
 
         /** An HTTP field name: RFC 9110's `token`. */
         val FIELD_NAME = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")

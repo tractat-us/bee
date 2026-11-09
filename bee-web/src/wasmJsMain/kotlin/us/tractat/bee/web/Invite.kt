@@ -7,13 +7,14 @@ import org.w3c.dom.events.KeyboardEvent
 import us.tractat.bee.core.InviteLinks
 
 /**
- * "Invite": on the board owner's own page (loopback, never a keyed viewer or a room screen), a
- * control in the page's bar that opens a panel with the host's join link as a QR code to scan
- * from a phone or a laptop in the room, the link as text with Copy, and the host's other links.
+ * "Invite": on the board owner's own page (loopback, or a public host's owner by key; never a
+ * room screen), a control in the page's bar that opens a panel with the host's join link as a QR
+ * code to scan from a phone or a laptop in the room, the link as text with Copy, and the host's
+ * other links.
  *
- * - **Only from the host, only for loopback.** The page has no key of its own on loopback, so the
- *   links come from `GET` [InviteLinks.PATH], which the host answers on this machine alone, and
- *   only when it was started with `--lan`. Without them there is no control.
+ * - **Only from the host, only for its owner.** The links come from `GET` [InviteLinks.PATH],
+ *   which a `--lan` host answers on its own machine alone, and a `--public-url` host to its
+ *   owner's key alone (bee#145). Without them there is no control.
  * - **Legible across a room.** The code is an SVG, [QR_PIXELS] a side or the panel's width,
  *   dark on white whatever the page's theme, with the standard's four-module quiet zone.
  * - **Like Bring your Claude.** The panel sits in the page's flow under the bar and pushes the

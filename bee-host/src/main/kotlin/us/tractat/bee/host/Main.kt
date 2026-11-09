@@ -15,7 +15,12 @@ private val logger = KotlinLogging.logger {}
 
 /** Runs the host: `bee-host [--port <n>] [--data-dir <dir>] [--join-requests-per-hour <n>] [--host-name <name>] [--lan | --public-url <url> [--client-ip-header <name>]] [--new-link] [--forget-devices]`. */
 fun main(args: Array<String>) {
-    val config = HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")))
+    val config = try {
+        HostConfig.fromArgs(args.toList(), home = Path.of(System.getProperty("user.home")), environment = System::getenv)
+    } catch (refused: IllegalArgumentException) {
+        logger.error { refused.message }
+        exitProcess(2)
+    }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val host = try {
         runBlocking { BeeHost.start(scope, config) }

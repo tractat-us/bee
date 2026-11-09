@@ -56,6 +56,7 @@ class HttpBridgesCloseTest {
             Random(185),
             kept,
             { PresentedKey.None },
+            "no-key",
             HttpBridges.IDLE_AFTER,
             HttpBridges.IDLE_AFTER,
             HttpBridges.MAX_SESSIONS,

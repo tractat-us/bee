@@ -27,6 +27,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.HostAddress
+import us.tractat.bee.core.PairingWire
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -62,6 +63,9 @@ private val logger = KotlinLogging.logger {}
  * @param scope the host's scope: the idle check and every bridge's work run under it
  * @param kept the identities of the sessions the last host on this data dir had, and of these
  * @param keyKind which of the host's keys a call's `?k=` is, by the host's own reckoning
+ * @param dialKey the key every bridge's sockets carry: one the host admits, held in its memory
+ *   alone. On a host behind a proxy being on loopback grants nothing, so the bridges hold a key
+ *   like any other peer; on loopback or a LAN it changes nothing.
  * @param checkEvery how often the idle check runs
  * @param maxSessions how many sessions may have a bridge at once ([MAX_SESSIONS]); the SDK refuses the next with a 503
  * @param closeServer how a session's server closes: the SDK's own [Server.close]. A test's way to have it fail
@@ -73,6 +77,7 @@ class HttpBridges internal constructor(
     private val random: Random,
     private val kept: KeptIdentities,
     private val keyKind: (String?) -> PresentedKey,
+    private val dialKey: String,
     private val idleAfter: Duration,
     private val checkEvery: Duration,
     private val maxSessions: Int,
@@ -85,10 +90,11 @@ class HttpBridges internal constructor(
         random: Random,
         kept: KeptIdentities,
         keyKind: (String?) -> PresentedKey,
+        dialKey: String,
         idleAfter: Duration = IDLE_AFTER,
         checkEvery: Duration = minOf(CHECK_EVERY, idleAfter / 4),
         maxSessions: Int = MAX_SESSIONS,
-    ) : this(scope, clock, random, kept, keyKind, idleAfter, checkEvery, maxSessions, Server::close)
+    ) : this(scope, clock, random, kept, keyKind, dialKey, idleAfter, checkEvery, maxSessions, Server::close)
 
     private val supervisor = SupervisorJob(scope.coroutineContext[Job])
     private val work = CoroutineScope(scope.coroutineContext + supervisor + Dispatchers.Default)
@@ -160,8 +166,8 @@ class HttpBridges internal constructor(
         val caller = Caller.of(key)
         val canResume = resumable(name, keyKind(key))
         val resumed = if (canResume) kept.pickUp(name, caller) else null
-        // The call arrived on the host's own port: the bridge dials it on loopback, which needs no key.
-        val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}")
+        // The call arrived on the host's own port: the bridge dials it on loopback, with the host's own key.
+        val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}/?${PairingWire.KEY_PARAM}=$dialKey")
         val bridgeScope = CoroutineScope(work.coroutineContext + SupervisorJob(supervisor) + CoroutineName("http-bridge-$name"))
         val peer = when (resumed) {
             null -> BridgePeer.join(host, name, http, bridgeScope, random, clock)

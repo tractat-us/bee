@@ -76,11 +76,14 @@ enum class KeyReset {
  * [admits] reads a snapshot and never waits on a save. [add]s queue on their own lock, held while
  * one saves, so a slow disk delays only the next admission, never a socket's key check.
  */
-class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys) {
+class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys, held: Set<DeviceKey>) {
     /** The join link's key: anyone holding the link is admitted. */
     val join: DeviceKey = kept.join
 
     private val joinHash = KeyHash.of(join)
+
+    /** The keys held in memory alone ([boot]'s `held`): never saved, so no reset forgets them. */
+    private val heldHashes: Set<KeyHash> = held.mapTo(mutableSetOf(), KeyHash::of)
 
     @Volatile
     private var devices: Set<KeyHash> = kept.devices
@@ -109,7 +112,7 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
     fun admits(presented: String?): Boolean {
         if (presented.isNullOrEmpty()) return false
         val hash = KeyHash.of(presented).value.encodeToByteArray()
-        return (devices + joinHash).fold(false) { matched, held -> MessageDigest.isEqual(hash, held.value.encodeToByteArray()) or matched }
+        return (devices + joinHash + heldHashes).fold(false) { matched, held -> MessageDigest.isEqual(hash, held.value.encodeToByteArray()) or matched }
     }
 
     /**
@@ -128,8 +131,11 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
          * gets a join key from [secrets]: the first boot, or the first since the file was moved aside.
          * [KeyReset.ForgetDevices] keeps nothing, so it never reads [store]: it boots past a key
          * file that doesn't read.
+         *
+         * [held] admit too, from memory alone: the owner key of a public host ([Reach.heldKeys]) and
+         * the host's own bridge key ([BeeHost]). None is ever saved or logged, and none is forgotten by [reset].
          */
-        fun boot(store: KeyStore, secrets: PairingSecrets, reset: KeyReset): HostKeys {
+        fun boot(store: KeyStore, secrets: PairingSecrets, reset: KeyReset, held: Set<DeviceKey> = emptySet()): HostKeys {
             val kept = when (reset) {
                 KeyReset.Keep -> store.load()
                 KeyReset.NewLink -> store.load()?.copy(join = secrets.key())
@@ -141,7 +147,7 @@ class HostKeys private constructor(private val store: KeyStore, kept: StoredKeys
                 KeyReset.NewLink -> logger.info { "A new join link: the old one no longer admits. Paired devices keep their keys." }
                 KeyReset.ForgetDevices -> logger.info { "Forgot every device, paired or joined by the link. Each one pairs again, or takes the new link." }
             }
-            return HostKeys(store, kept)
+            return HostKeys(store, kept, held)
         }
     }
 }

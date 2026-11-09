@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# bee-dogfood: start (or reuse) bee's own development board, kept apart from your everyday one.
+#
+#   bee-dogfood [--port <n>] [--data-dir <dir>] [--name <you>] [--no-open]
+#   bee-dogfood --stop
+#
+# A bee-up host on port 8240 (BEE_DOGFOOD_PORT), reachable from this machine only, that keeps the
+# board, its keys and its log in ~/.bee-dogfood (BEE_DOGFOOD_HOME) unless --data-dir says
+# otherwise. In a checkout, it rebuilds the host first when the sources are newer than the build.
+# Run it again to reprint the links; --stop ends the host and keeps the board. Then
+# bin/bee-dogfood-seed draws the plan, the morning report and the open decisions on it.
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+export BEE_HOME=${BEE_DOGFOOD_HOME:-$HOME/.bee-dogfood}
+port=${BEE_DOGFOOD_PORT:-8240}
+
+case " $* " in
+    *" -h "*|*" --help "*) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
+if [ -x "$here/bee-up" ]; then bee_up=$here/bee-up
+elif command -v bee-up >/dev/null 2>&1; then bee_up=$(command -v bee-up)
+else echo "bee-dogfood: no bee-up beside this script or on PATH." >&2; exit 1
+fi
+
+# In a checkout, a host built before the latest edit is stale: bee-env rebuilds it with BEE_BUILD=1.
+# Never under a running host, whose jars a rebuild would replace: not this board's, nor an everyday
+# bee-up host running from the same checkout. Any process holding the jar open counts.
+root=$(cd "$here/.." && pwd)
+jar=$root/bee-host/build/install/bee-host/lib/bee-host.jar
+pidfile=$BEE_HOME/host.pid
+running() {
+    { [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; } || lsof -t -- "$jar" >/dev/null 2>&1
+}
+if [ "$bee_up" = "$here/bee-up" ] && [ -f "$jar" ] && [[ " $* " != *" --stop "* ]] && ! running; then
+    newer=$(find "$root"/bee-{a2ui,core,host,mcp,web,notions}/src "$root"/bee-{a2ui,core,host,mcp,web}/build.gradle.kts \
+        "$root/bee-notions/package.json" "$root/build.gradle.kts" "$root/settings.gradle.kts" \
+        "$root/gradle/libs.versions.toml" -newer "$jar" -type f -print -quit 2>/dev/null || true)
+    [ -n "$newer" ] && export BEE_BUILD=1
+fi
+
+# --local and the port first, so a --port the caller passes wins.
+exec "$bee_up" --local --port "$port" "$@"
