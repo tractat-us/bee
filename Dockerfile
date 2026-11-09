@@ -21,6 +21,6 @@ COPY bee-host/build/install/bee-host /app
 
 EXPOSE 8080
 ENTRYPOINT ["/bin/sh", "-c", "chown bee:bee /data && exec setpriv --reuid=bee --regid=bee --init-groups -- \"$0\" \"$@\""]
-# --public-url arrives with tractat-us/bee's hosted mode; in that mode the host refuses to start
-# without BEE_OWNER_KEY, a Fly secret on the app. JVM flags come from BEE_HOST_OPTS in fly.toml.
+# --public-url is hosted mode (#145). In it the host refuses to start without BEE_OWNER_KEY, a Fly
+# secret on the app (docs/deploy.md). JVM flags come from BEE_HOST_OPTS in fly.toml.
 CMD ["/app/bin/bee-host", "--public-url", "https://bee.tractat.us/", "--port", "8080", "--data-dir", "/data"]
