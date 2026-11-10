@@ -94,6 +94,7 @@ internal class Handshakes(private val port: Int) {
         const val SWITCHING = "101"
         const val OK = "200"
         const val FORBIDDEN = "403"
+        const val NOT_FOUND = "404"
 
         private const val TIMEOUT_MS = 10_000
 

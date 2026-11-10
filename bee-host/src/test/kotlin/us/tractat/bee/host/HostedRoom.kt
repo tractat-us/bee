@@ -39,7 +39,7 @@ internal fun Handshakes.poll(token: String, host: String, vararg headers: String
     val (status, body) = post(PairingWire.POLL_PATH, host, token, *headers)
     return when (status) {
         Handshakes.OK -> Json.decodeFromString(PairingMessage.serializer(), body)
-        NOT_FOUND -> null
+        Handshakes.NOT_FOUND -> null
         else -> error("rig: a poll got $status: $body")
     }
 }
@@ -60,4 +60,3 @@ internal suspend fun Handshakes.pairOnceSomeoneIsHere(path: String, host: String
 
 private val NOBODY_HERE = PairingPoll.Refused(PairingMessage.Ended(PairingEnd.NobodyHere))
 private const val ROSTER_TRIES = 50
-private const val NOT_FOUND = "404"
