@@ -94,8 +94,9 @@ class SiteGateTest {
 
     /**
      * A page on another site that loads `/pair` as an `<img>`, a `<script>` or a no-cors `fetch`
-     * sends no `Origin`, only Fetch Metadata (bee#54). Admitted, it would hold a pairing slot open
-     * and post its `?screen=` text to the board as a join request.
+     * sends no `Origin`, only Fetch Metadata (bee#54). Admitted, it would hold a pairing slot and
+     * post its `?screen=` text to the board as a join request. The gate refuses each before any
+     * route runs, so a `GET`, which `/pair` has no route for, gets its 403 as a `POST` does.
      */
     @Test
     fun aSubresourceFromAnotherSiteIsRefusedByItsFetchMetadata() {
@@ -103,14 +104,15 @@ class SiteGateTest {
             { assertEquals(FORBIDDEN, calls.get(PAIR, own, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "an <img> on another site") },
             { assertEquals(FORBIDDEN, calls.get(PAIR, own, SAME_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "an <img> on another loopback port") },
             { assertEquals(FORBIDDEN, calls.get(PAIR, own, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: empty"), "a no-cors fetch") },
+            { assertEquals(FORBIDDEN, calls.post(PAIR, own, "", CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: empty").first, "a no-cors POST, which opens a pairing") },
             { assertEquals(FORBIDDEN, calls.get("/", own, CROSS_SITE, "Sec-Fetch-Mode: navigate", "Sec-Fetch-Dest: iframe"), "the board page framed by another site") },
             { assertEquals(FORBIDDEN, calls.get(BoardId.PATH, own, CROSS_SITE, "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty")) },
         )
     }
 
     /**
-     * No legitimate caller navigates to `/pair`: the page opens it as an event stream, and a join
-     * link opens the page. Chromium marks a speculation-rules prefetch from another site's page
+     * No legitimate caller navigates to `/pair`: the page `POST`s to it, and a join link opens the
+     * page. Chromium marks a speculation-rules prefetch from another site's page
      * `none` with `Sec-Purpose: prefetch`, and another site setting `location.href` is a
      * `cross-site` navigation, so `/pair` takes neither (bee#55's review).
      */
@@ -129,8 +131,8 @@ class SiteGateTest {
         assertAll(
             { assertEquals(OK, calls.get("/", own, CROSS_SITE, NAVIGATE, DOCUMENT), "the board page, from a link") },
             { assertEquals(OK, calls.get("/", own, NONE, NAVIGATE, DOCUMENT), "the board page, typed or bookmarked") },
-            { assertEquals(OK, calls.get(PAIR, own, "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty"), "the board page's own channel") },
-            { assertEquals(OK, calls.get(PAIR, own), "no Fetch Metadata: the bridge, or an older browser") },
+            { assertEquals(OK, calls.post(PAIR, own, "", "Sec-Fetch-Site: same-origin", "Sec-Fetch-Mode: cors", "Sec-Fetch-Dest: empty").first, "the board page's own pairing") },
+            { assertEquals(OK, calls.post(PAIR, own, "").first, "no Fetch Metadata: an older browser") },
         )
     }
 
