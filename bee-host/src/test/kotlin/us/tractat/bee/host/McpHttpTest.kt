@@ -100,10 +100,13 @@ class McpHttpTest {
             val claude = connect(url(host, "?name=ada"), CLAUDE_CODE)
             val codex = connect(url(host, "?name=sam"), CODEX)
             val other = connect(url(host, "?name=lee"), Implementation("some-editor", "1.0"))
+            val claudeIs = drawAndLearnWho(claude, host, "ada-surface").name
+            val codexIs = drawAndLearnWho(codex, host, "sam-surface").name
+            val otherIs = drawAndLearnWho(other, host, "lee-surface").name
             assertAll(
-                { assertEquals("ada-claude", drawAndLearnWho(claude, host, "ada-surface").name, "Claude Code keeps its name") },
-                { assertEquals("sam-codex", drawAndLearnWho(codex, host, "sam-surface").name, "Codex is named as Codex") },
-                { assertEquals("lee-agent", drawAndLearnWho(other, host, "lee-surface").name, "anything else, a neutral name") },
+                { assertEquals("ada-claude", claudeIs, "Claude Code keeps its name") },
+                { assertEquals("sam-codex", codexIs, "Codex is named as Codex") },
+                { assertEquals("lee-agent", otherIs, "anything else, a neutral name") },
             )
             listOf(claude, codex, other).forEach { it.close() }
         } finally {
