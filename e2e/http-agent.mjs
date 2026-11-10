@@ -95,7 +95,8 @@ export async function startHttpAgent(url) {
 
   const initialize = async () => {
     sessionId = null;
-    await request('initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'bee-e2e-http', version: '0' } });
+    // Stands in for a teammate's Claude Code, so the host names the session `<name>-claude` (#224).
+    await request('initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'claude-code', version: '0' } });
     await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, { expectAnswer: false });
     state.sessions += 1;
   };
