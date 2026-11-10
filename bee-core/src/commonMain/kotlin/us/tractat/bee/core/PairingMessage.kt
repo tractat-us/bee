@@ -7,9 +7,9 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
- * What the host sends a keyless device on the pairing channel (spec §5.7), as the JSON data of
- * server-sent events. The channel carries these and nothing else: no board state, no presence, no
- * claims.
+ * What the host tells a keyless device about its pairing (spec §5.7), as the JSON body of a
+ * [PairingWire.POLL_PATH] answer. Pairing carries these and nothing else: no board state, no
+ * presence, no claims.
  */
 @Serializable
 sealed interface PairingMessage {
@@ -75,10 +75,7 @@ enum class PairingEnd {
 
 /** The pairing wire's coordinates, shared by the host and the page. */
 object PairingWire {
-    /**
-     * The pairing channel's route. `GET` is a server-sent event stream, not a WebSocket. `POST`
-     * opens a pairing by poll instead, and answers a [PairingPoll].
-     */
+    /** Where a keyless device opens a pairing: `POST` it, and get a [PairingPoll]. */
     const val PATH: String = "/pair"
 
     /**

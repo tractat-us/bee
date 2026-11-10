@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.host.Handshakes.Companion.FORBIDDEN
 import us.tractat.bee.host.Handshakes.Companion.SWITCHING
@@ -62,18 +63,16 @@ class AppendingProxyHostTest {
     @Test
     fun pairingLimitsTheAddressTheProxyAppended() = runBlocking {
         host.attachSomeone()
-        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, 203.0.113.7")
-        first.use {
-            val sameClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7").use { it.message() }
-            val anotherClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7, 198.51.100.9").use { it.message() }
-            val flyShaped = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.5, 203.0.113.7", "Fly-Client-IP: 198.51.100.5").use { it.message() }
-            assertAll(
-                { assertIs<PairingMessage.Code>(opened) },
-                { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), sameClient, "one client, whatever it put left of the proxy's entry") },
-                { assertIs<PairingMessage.Code>(anotherClient, "another client, from the same proxy") },
-                { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), flyShaped, "Fly-Client-IP unread without the flag") },
-            )
-        }
+        val opened = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, 203.0.113.7")
+        val sameClient = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7")
+        val anotherClient = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7, 198.51.100.9")
+        val flyShaped = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.5, 203.0.113.7", "Fly-Client-IP: 198.51.100.5")
+        assertAll(
+            { assertIs<PairingPoll.Opened>(opened) },
+            { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), sameClient, "one client, whatever it put left of the proxy's entry") },
+            { assertIs<PairingMessage.Code>(anotherClient, "another client, from the same proxy") },
+            { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), flyShaped, "Fly-Client-IP unread without the flag") },
+        )
     }
 
     private companion object {

@@ -14,7 +14,6 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
-import io.ktor.server.sse.SSE
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
@@ -171,7 +170,6 @@ fun Application.mountEndpoints(
 ): HostEndpoints {
     installSiteGate(site, arrivals)
     installBoundedWebSockets()
-    install(SSE)
     val relay = KtorConnectionSource(this, BoardRelay.PATH)
     val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
     val keyRefusal = { call: ApplicationCall ->
@@ -192,7 +190,7 @@ fun Application.mountEndpoints(
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respondText(board.value)
         }
-        pairingEndpoint(desk, PairingPolls(desk, this@mountEndpoints, SecureRandom()), peers)
+        pairingEndpoint(PairingPolls(desk, this@mountEndpoints, SecureRandom()), peers)
         inviteEndpoint(invitation, pairing, peers, arrivals)
         staticResources("/", "web") { modify { _, call -> call.response.header(BeeHost.CSP_HEADER, BeeHost.PAGE_CSP) } }
     }

@@ -71,25 +71,6 @@ internal class Handshakes(private val port: Int) {
         }
     }
 
-    /**
-     * Opens a server-sent event stream at [path], with [host] and these other [headers], each
-     * `name: value`, and stays on it until the returned stream is closed: a device on its pairing channel.
-     */
-    fun events(path: String, host: String, vararg headers: String): Events {
-        val socket = Socket()
-        send(socket, "GET $path HTTP/1.1\r\nHost: $host\r\nAccept: text/event-stream\r\n" + headers.joinToString("") { "$it\r\n" } + "\r\n")
-        return Events(socket)
-    }
-
-    /** An open event stream: [next] reads the next event's `data`, whatever framing the body has. */
-    class Events(private val socket: Socket) : AutoCloseable {
-        private val lines = socket.getInputStream().bufferedReader()
-
-        fun next(): String = generateSequence { lines.readLine() }.first { it.startsWith("data:") }.removePrefix("data:").trim()
-
-        override fun close() = socket.close()
-    }
-
     private fun send(socket: Socket, request: String) {
         socket.connect(InetSocketAddress("127.0.0.1", port), TIMEOUT_MS)
         socket.soTimeout = TIMEOUT_MS
@@ -113,6 +94,7 @@ internal class Handshakes(private val port: Int) {
         const val SWITCHING = "101"
         const val OK = "200"
         const val FORBIDDEN = "403"
+        const val NOT_FOUND = "404"
 
         private const val TIMEOUT_MS = 10_000
 
