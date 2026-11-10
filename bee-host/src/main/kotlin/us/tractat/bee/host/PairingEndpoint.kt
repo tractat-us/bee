@@ -4,16 +4,12 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.install
-import io.ktor.server.http.HttpRequestLifecycle
 import io.ktor.server.request.contentLength
 import io.ktor.server.request.receiveChannel
 import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
-import io.ktor.server.routing.route
-import io.ktor.server.sse.sse
 import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.coroutineScope
@@ -36,27 +32,19 @@ private const val MAX_SCREEN_NAME = 40
 private const val MAX_TOKEN_BYTES = 64
 
 /**
- * The pairing channel at [PairingWire.PATH] (spec §5.7, step 1): a keyless device opens it, gets a
- * code to show, and waits for a key. It is a stream of server-sent events, each one
- * [PairingMessage], and nothing else; [desk] serves each device. A device whose proxy holds a
- * stream back pairs by poll instead, through [polls]: `POST` [PairingWire.PATH] opens a pairing and
- * `POST` [PairingWire.POLL_PATH] asks after it (bee#209).
+ * The pairing channel (spec §5.7, step 1), pairing by poll (bee#209): a keyless device `POST`s
+ * [PairingWire.PATH] for a code to show and a token, then `POST`s the token to
+ * [PairingWire.POLL_PATH] to ask what came of it, until it gets a key or the pairing ends. Every
+ * call is a plain request and a complete response, so a proxy that holds a stream back until it
+ * ends can't leave a device waiting. [polls] holds each pairing between polls, and its [PairingDesk] serves it.
  *
- * Not a WebSocket: the host reads nothing from a keyless device, so it gives one no inbound frame
- * parser to feed. When the device hangs up, Netty cancels its call ([HttpRequestLifecycle]), and
- * that cancellation is how [desk] learns it left.
- *
- * Needs Ktor's `SSE` plugin installed on the application.
+ * Not a stream and not a WebSocket: one path, with one failure mode (bee#211). The host reads
+ * nothing from a keyless device but a bounded token, so it gives one no frame parser to feed.
  */
-fun Route.pairingEndpoint(desk: PairingDesk, polls: PairingPolls, peers: PeerAddress) {
-    route(PairingWire.PATH) {
-        install(HttpRequestLifecycle) { cancelCallOnClose = true }
-        sse { desk.serve(device(call, peers)) { send(data = Json.encodeToString(PairingMessage.serializer(), it)) } }
-        // Pairing by poll (bee#209): the same pairing, for a device whose proxy holds the stream back.
-        post {
-            val opened = polls.open(device(call, peers))
-            call.respondJson(Json.encodeToString(PairingPoll.serializer(), opened))
-        }
+fun Route.pairingEndpoint(polls: PairingPolls, peers: PeerAddress) {
+    post(PairingWire.PATH) {
+        val opened = polls.open(device(call, peers))
+        call.respondJson(Json.encodeToString(PairingPoll.serializer(), opened))
     }
     post(PairingWire.POLL_PATH) {
         val token = call.receiveAtMost(MAX_TOKEN_BYTES)
