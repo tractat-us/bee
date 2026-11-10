@@ -207,6 +207,7 @@ object WhiteboardGuide {
         }
         server.addTool(
             name = EXAMPLES_TOOL,
+            toolAnnotations = ToolHints.READ,
             description = "Reads the cheat-sheet: one minimal surface for each kind of component the board renders, " +
                 "each ready for bee_surface_open as it stands, with what it records when people use it.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),

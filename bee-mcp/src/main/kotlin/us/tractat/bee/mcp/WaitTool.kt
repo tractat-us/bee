@@ -42,6 +42,7 @@ object WaitTool {
         require(progressEvery.isPositive()) { "progressEvery must be positive: $progressEvery" }
         server.addTool(
             name = WAIT,
+            toolAnnotations = ToolHints.write(destructive = false, idempotent = false),
             description = "Waits for the next action record on the shared board, such as a click or a card dragged. " +
                 "Omit surfaceId to wait on all of your own surfaces at once, the ones this session opened, including ones " +
                 "opened after the wait began: the way to react to whatever a person does on any of them. Another session's " +
@@ -73,6 +74,7 @@ object WaitTool {
         ) { request -> waitAction(request, source, progressEvery) }
         server.addTool(
             name = LIST,
+            toolAnnotations = ToolHints.READ,
             description = "Lists the action records on the shared board, without waiting. " +
                 "Omit surfaceId to list the records on all of your own surfaces, the ones this session opened; pass it to list that one surface's. " +
                 "Returns {records, cursor}; each record names its surfaceId. Pass a cursor a previous call returned as since " +
