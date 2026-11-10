@@ -78,8 +78,9 @@ private suspend fun ApplicationCall.respondJson(json: String) {
 /**
  * Serves one keyless device's pairing, from its code to its last message, apart from the channel.
  *
- * Each device that [Pairing.open] lets in gets a code. Its join request goes on the board only once
- * it has stayed on for [dwell], so a device that dials and drops writes nothing there. The pairing
+ * Each device that [Pairing.open] lets in gets a code. Its join request goes on the board once
+ * [dwell] has passed, whether or not the device is still asking: one that opens and never polls
+ * leaves its request up until [PairingPolls] sees it gone (bee#211's second item). The pairing
  * ends when a person types the code (a [PairingMessage.Key]), when it is voided or its time runs
  * out (a [PairingMessage.Ended]), or when the device goes away, which closes its request.
  *

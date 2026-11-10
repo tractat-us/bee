@@ -125,7 +125,7 @@ class BeeHost private constructor(
          * That isn't "no network": WebRTC and DNS hints sit outside CSP (bee#49). CSP has no
          * `navigate-to`, and the frame's own policy can't stop its navigation; the embedder's
          * `frame-src` does. `child-src` covers what falls back to it. Nothing else is restricted,
-         * so the page's sockets and its pairing stream need nothing more.
+         * so the page's sockets and its pairing polls need nothing more.
          */
         const val PAGE_CSP: String = "frame-src 'none'; child-src 'none'"
 
