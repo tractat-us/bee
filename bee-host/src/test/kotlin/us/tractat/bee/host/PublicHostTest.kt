@@ -14,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -23,6 +22,7 @@ import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.PairingEnd
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingSurfaces
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
@@ -174,26 +174,30 @@ class PublicHostTest {
     }
 
     /**
-     * Product invariant 2, on the real host: with nobody attached who can admit, a pairing is
-     * refused at once and nothing goes on the board; once a person is attached, a dial gets a
-     * code and its request goes up.
+     * Product invariant 2, on the real host, by the pairing the page uses (bee#211): with nobody
+     * attached who can admit, a pairing is refused at once and nothing goes on the board; once a
+     * person is attached, a device gets a code and, polling as the page does, its request goes up.
      */
     @Test
     fun aPairingWithNobodyHereIsRefusedAndPostsNothing() = runBlocking {
-        val alone = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *CLIENT).use { it.message() }
+        val alone = calls.openPairing(PAIR, PUBLIC_HOST, SAME_ORIGIN, *CLIENT)
         delay(Pairing.DWELL + 1.seconds)
         val postedAlone = host.state.value.pairingRequests()
         host.attachSomeone()
-        val (device, withSomeone) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("203.0.113.51"))
-        device.use {
-            val posted = withTimeout(10.seconds) { host.state.first { it.pairingRequests().isNotEmpty() } }.pairingRequests()
-            assertAll(
-                { assertEquals(PairingMessage.Ended(PairingEnd.NobodyHere), alone) },
-                { assertEquals(emptyList(), postedAlone, "nothing waited on the board") },
-                { assertIs<PairingMessage.Code>(withSomeone, "the positive control: a person attached") },
-                { assertEquals(1, posted.size) },
-            )
+        val device = fly("203.0.113.51")
+        val withSomeone = assertIs<PairingPoll.Opened>(calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *device), "the positive control: a person attached")
+        val posted = withTimeout(10.seconds) {
+            while (host.state.value.pairingRequests().isEmpty()) {
+                calls.poll(withSomeone.token, PUBLIC_HOST, SAME_ORIGIN, *device)
+                delay(PairingWire.POLL_EVERY)
+            }
+            host.state.value.pairingRequests()
         }
+        assertAll(
+            { assertEquals(PairingPoll.Refused(PairingMessage.Ended(PairingEnd.NobodyHere)), alone) },
+            { assertEquals(emptyList(), postedAlone, "nothing waited on the board") },
+            { assertEquals(1, posted.size) },
+        )
     }
 
     /** Nobody is on loopback on a hosted machine, and a call from there gets nothing without a key. */
@@ -227,16 +231,14 @@ class PublicHostTest {
     @Test
     fun pairingGivesEachClientBehindTheProxyItsOwnTurn() = runBlocking {
         host.attachSomeone()
-        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("198.51.100.1"))
-        first.use {
-            val anotherClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("198.51.100.9")).use { it.message() }
-            val sameClient = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7, 198.51.100.1, $APP", "Fly-Client-IP: 198.51.100.1").use { it.message() }
-            assertAll(
-                { assertIs<PairingMessage.Code>(opened) },
-                { assertIs<PairingMessage.Code>(anotherClient, "another client, behind the same proxy") },
-                { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), sameClient, "one client, whatever it put in X-Forwarded-For") },
-            )
-        }
+        val opened = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("198.51.100.1"))
+        val anotherClient = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("198.51.100.9"))
+        val sameClient = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 203.0.113.7, 198.51.100.1, $APP", "Fly-Client-IP: 198.51.100.1")
+        assertAll(
+            { assertIs<PairingPoll.Opened>(opened) },
+            { assertIs<PairingMessage.Code>(anotherClient, "another client, behind the same proxy") },
+            { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), sameClient, "one client, whatever it put in X-Forwarded-For") },
+        )
     }
 
     /**
@@ -246,28 +248,24 @@ class PublicHostTest {
     @Test
     fun aClientHeaderThatNamesNoAddressFallsBackToTheTcpPeer() = runBlocking {
         host.attachSomeone()
-        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, $APP", "Fly-Client-IP: unknown")
-        first.use {
-            val again = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.9, 192.0.2.2", "Fly-Client-IP: 198.51.100.9, 192.0.2.2").use { it.message() }
-            assertAll(
-                { assertIs<PairingMessage.Code>(opened) },
-                { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), again, "both the proxy's, by their TCP peer") },
-            )
-        }
+        val opened = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.1, $APP", "Fly-Client-IP: unknown")
+        val again = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, "X-Forwarded-For: 198.51.100.9, 192.0.2.2", "Fly-Client-IP: 198.51.100.9, 192.0.2.2")
+        assertAll(
+            { assertIs<PairingPoll.Opened>(opened) },
+            { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), again, "both the proxy's, by their TCP peer") },
+        )
     }
 
     /** A forwarded loopback address is limited like any client: it is no local caller. */
     @Test
     fun pairingLimitsAForwardedLoopbackAddress() = runBlocking {
         host.attachSomeone()
-        val (first, opened) = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("127.0.0.1"))
-        first.use {
-            val again = calls.events(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("127.0.0.1")).use { it.message() }
-            assertAll(
-                { assertIs<PairingMessage.Code>(opened) },
-                { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), again) },
-            )
-        }
+        val opened = calls.pairOnceSomeoneIsHere(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("127.0.0.1"))
+        val again = calls.firstMessage(PAIR, PUBLIC_HOST, SAME_ORIGIN, *fly("127.0.0.1"))
+        assertAll(
+            { assertIs<PairingPoll.Opened>(opened) },
+            { assertEquals(PairingMessage.Ended(PairingEnd.TooSoon), again) },
+        )
     }
 
     private fun BoardState.pairingRequests(): List<String> = (openSurfaces() + closedSurfaces()).filter(PairingSurfaces::isPairing)
