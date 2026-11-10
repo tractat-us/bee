@@ -78,17 +78,17 @@ private suspend fun ApplicationCall.respondJson(json: String) {
 /**
  * Serves one keyless device's pairing, from its code to its last message, apart from the channel.
  *
- * Each device that [Pairing.open] lets in gets a code. Its join request goes on the board once
- * [dwell] has passed, whether or not the device is still asking: one that opens and never polls
- * leaves its request up until [PairingPolls] sees it gone (bee#211's second item). The pairing
- * ends when a person types the code (a [PairingMessage.Key]), when it is voided or its time runs
- * out (a [PairingMessage.Ended]), or when the device goes away, which closes its request.
+ * Each device that [Pairing.open] lets in gets a code. Its join request goes on the board only once
+ * [dwell] has passed and the device has asked after its pairing, so a device that opens and drops
+ * writes nothing there (bee#211). A first ask that comes late, past the dwell, still counts. The
+ * pairing ends when a person types the code (a [PairingMessage.Key]), when it is voided or its time
+ * runs out (a [PairingMessage.Ended]), or when the device goes away, which closes its request.
  *
  * **The device going away is the cancellation of [serve].** Whatever [serve] is doing when it is
  * cancelled, it ends the pairing and withdraws a posted request on the way out.
  *
  * **Someone who can admit must be here** ([admitters]). On a hosted board a pairing opens only
- * while a person is attached, its request is posted only if one still is after [dwell], and it
+ * while a person is attached, its request is posted only if one still is when it would go up, and it
  * ends [PairingEnd.NobodyHere] once the last one leaves, so no request outlives its last admitter
  * (Iain, 2026-11-08). A LAN host's [Admitters.WHOEVER_COMES] lets a request wait for whoever comes.
  *
@@ -103,8 +103,11 @@ class PairingDesk(
     private val admitters: Admitters,
     private val checkEvery: Duration = Admitters.CHECK_EVERY,
 ) {
-    /** Serves [device] until its pairing ends; [send] writes to its channel. Cancel it when the device leaves. */
-    suspend fun serve(device: Device, send: suspend (PairingMessage) -> Unit) {
+    /**
+     * Serves [device] until its pairing ends; [send] writes to its channel. [asked] returns once the
+     * device has first asked after its pairing, at once if it already has. Cancel it when the device leaves.
+     */
+    suspend fun serve(device: Device, asked: suspend () -> Unit, send: suspend (PairingMessage) -> Unit) {
         if (!admitters.anyHere()) return send(NOBODY_HERE)
         val ticket = when (val opened = pairing.open(device.caller)) {
             is Opened.Refused -> return send(PairingMessage.Ended(opened.wire))
@@ -113,6 +116,7 @@ class PairingDesk(
         try {
             send(PairingMessage.Code(ticket.id.value, ticket.code, ticket.expiresAt))
             delay(dwell)
+            asked()
             send(if (admitters.anyHere()) onTheBoard(ticket, device, joinRequests.await()) else NOBODY_HERE)
         } finally {
             // A device gone before its request was posted leaves no pairing behind.

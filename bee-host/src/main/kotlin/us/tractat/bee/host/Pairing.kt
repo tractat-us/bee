@@ -270,10 +270,9 @@ class Pairing(
         val COOLDOWN: Duration = 10.seconds
 
         /**
-         * How long a pairing waits after it opens before its request goes on the board. A device
-         * that opens a pairing and never polls still gets its request posted at the dwell, and it
-         * stays up until [PairingWire.IDLE] runs out ([PairingPolls]); holding it back until the
-         * device's first poll is bee#211's second item.
+         * How long a pairing waits after it opens before its request goes on the board, and then
+         * only once its device has polled ([PairingDesk]). A device that opens and drops writes
+         * nothing there, so a loop of them leaves no surfaces (bee#211).
          */
         val DWELL: Duration = 3.seconds
 
