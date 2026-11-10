@@ -71,7 +71,7 @@ class SeedOnHostTest {
                 { assertEquals(mapOf(PlanBoard.SURFACE_ID to Outcome.Updated), third, "a changed plan redraws the Plan") },
                 { assertEquals(surfaces.map { it.id }.sorted(), ids.sorted(), "one surface each, never duplicated") },
                 { assertTrue(dropped !in cards && cards.isNotEmpty(), "the redrawn Plan has no card for the dropped item") },
-                { assertEquals("dogfood-claude", board.meta(PlanBoard.SURFACE_ID)?.openedBy?.name, "drawn by the dogfood agent") },
+                { assertEquals("dogfood-agent", board.meta(PlanBoard.SURFACE_ID)?.openedBy?.name, "drawn by the dogfood agent") },
             )
         } finally {
             host.close()

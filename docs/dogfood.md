@@ -51,7 +51,7 @@ board moves back at the next seed.
 |---|---|---|
 | The board, its keys and the host's log | `~/.bee-dogfood/` | `BEE_DOGFOOD_HOME` |
 | The port | 8240 | `BEE_DOGFOOD_PORT`, or `--port` |
-| The seeder's name on the board | `dogfood-claude` | `bin/bee-dogfood-seed --name <agent>` |
+| The seeder's name on the board | `dogfood-agent` | `bin/bee-dogfood-seed --name <agent>` |
 
 `bin/bee-dogfood` is [`bee-up`](setup.md) with those defaults, kept to this machine; it takes the
 same flags, and rebuilds the checkout's host first when the sources are newer than the build. The

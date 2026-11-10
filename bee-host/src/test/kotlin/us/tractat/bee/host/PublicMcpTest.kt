@@ -170,7 +170,7 @@ class PublicMcpTest {
     private fun mcp(host: BeeHost, query: String) = "http://127.0.0.1:${host.port}${BeeHost.MCP_PATH}$query"
 
     private suspend fun connect(url: String): Client =
-        Client(Implementation("test", "0")).apply { connect(StreamableHttpClientTransport(http, url)) }
+        Client(Implementation("claude-code", "2.1.319")).apply { connect(StreamableHttpClientTransport(http, url)) }
 
     /** A raw `initialize` POST: the status the host answers it with. */
     private suspend fun initialize(url: String): HttpStatusCode = http.post(url) {

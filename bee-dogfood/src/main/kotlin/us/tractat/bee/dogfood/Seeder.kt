@@ -155,7 +155,8 @@ class ToolRefused(val tool: String, val reason: String) : IllegalStateException(
 
 /**
  * A session on the board at [host] over MCP Streamable HTTP, as a Claude with nothing installed
- * joins: `POST /mcp?name=<name>`. The host names its identity `<name>-claude`.
+ * joins: `POST /mcp?name=<name>`. Its client, `bee-dogfood`, is no agent tool the host knows, so the
+ * host names its identity `<name>-agent`.
  */
 class McpBoardTools private constructor(private val http: HttpClient, private val transport: StreamableHttpClientTransport, private val client: Client) :
     BoardTools {

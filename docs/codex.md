@@ -25,8 +25,8 @@ The line is the board's address, then `/mcp`, then who you are:
 
 - `?k=` is the key from the join link or the panel. The coworker's `bee-up` prints the same line
   with their address and key filled in.
-- `?name=` names your session on the board, as `agent:<you>-claude#…` for now: the host adds
-  `-claude` whichever agent you bring ([#224](https://github.com/tractat-us/bee/issues/224)).
+- `?name=` names your session on the board, as `agent:<you>-codex#…`. The host adds `-codex`
+  because Codex says it is Codex as it connects; your Claude Code sessions show as `-claude`.
 
 `codex mcp add` writes Codex's user config, `~/.codex/config.toml`, so every `codex` you start, in
 any folder, joins the board. It replaces a `bee` it already has, so run the line again for a new
