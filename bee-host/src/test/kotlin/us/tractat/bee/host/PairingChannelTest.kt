@@ -2,23 +2,22 @@ package us.tractat.bee.host
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.sse.SSE
-import io.ktor.client.plugins.sse.sse
+import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
+import io.ktor.http.contentType
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingMessage
@@ -36,14 +35,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /**
- * The pairing channel on a real Netty server, from loopback: it is a stream of server-sent events,
- * never a WebSocket, so a keyless device has no inbound frame parser to feed (the host reads
- * nothing from it). Whether a hang-up reaches the host is Netty's to tell, so only a real server
- * proves it; the dwell here is longer than the test, so only the hang-up can end the pairing.
+ * Pairing on a real Netty server, from loopback: plain requests and complete responses, never a
+ * stream or a WebSocket, so a keyless device has no inbound frame parser to feed (the host reads
+ * nothing from it but a bounded token). The dwell here is longer than the test, so no request
+ * goes on the board.
  */
 class PairingChannelTest {
     private val clock = { Clock.System.now() }
@@ -52,38 +49,12 @@ class PairingChannelTest {
         mountEndpoints(BoardId.mint(), pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), 10.minutes, clock, Admitters.WHOEVER_COMES), Invitation.Closed)
     }.start(wait = false)
     private val port = runBlocking { server.engine.resolvedConnectors().first().port }
-    private val client = HttpClient(CIO) { install(SSE) }
+    private val client = HttpClient(CIO)
 
     @AfterTest
     fun stop() {
         client.close()
         server.stop(gracePeriodMillis = 0, timeoutMillis = 1_000)
-    }
-
-    @Test
-    fun aDeviceGetsItsCodeAsAnEventAndItsHangUpEndsThePairing() = runBlocking {
-        val code = CompletableDeferred<PairingMessage.Code>()
-        val device = launch {
-            client.sse("http://127.0.0.1:$port${PairingWire.PATH}") {
-                // The device stays on, reading its stream as a browser's EventSource does, until it
-                // is cancelled. Not `incoming.first()`: Ktor's client hangs up the moment a collection
-                // of `incoming` ends, so the device would leave as soon as it saw its code (bee#85).
-                incoming.collect { event ->
-                    code.complete(assertIs<PairingMessage.Code>(Json.decodeFromString(PairingMessage.serializer(), requireNotNull(event.data))))
-                }
-            }
-        }
-        val id = PairingId(withTimeout(10.seconds) { code.await() }.pairing)
-        val pendingWhileOn = pairing.isPending(id)
-        device.cancel()
-        val endedAfterHangUp = withTimeout(5.seconds) {
-            while (pairing.isPending(id)) delay(50.milliseconds)
-            true
-        }
-        assertAll(
-            { assertTrue(pendingWhileOn, "rig: the pairing waits while the device is on") },
-            { assertTrue(endedAfterHangUp) },
-        )
     }
 
     /**
@@ -129,6 +100,16 @@ class PairingChannelTest {
             { assertEquals(HttpStatusCode.PayloadTooLarge, declared.status, "a Content-Length past the bound") },
             { assertEquals(HttpStatusCode.PayloadTooLarge, chunked.status, "a chunked body past the bound") },
             { assertEquals(HttpStatusCode.NotFound, token.status, "the positive control: a token's length is read, and isn't one") },
+        )
+    }
+
+    /** Pairing has one transport (bee#211): a `GET` asking for an event stream, as a browser's `EventSource` does, opens nothing. */
+    @Test
+    fun aGetOfThePairingPathIsNoStream() = runBlocking {
+        val asked = client.get("http://127.0.0.1:$port${PairingWire.PATH}") { header(HttpHeaders.Accept, "text/event-stream") }
+        assertAll(
+            { assertEquals(HttpStatusCode.MethodNotAllowed, asked.status) },
+            { assertFalse(asked.contentType()?.match(ContentType.Text.EventStream) == true, "an event stream: ${asked.contentType()}") },
         )
     }
 
