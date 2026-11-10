@@ -135,6 +135,34 @@ class BeeToolsTest {
     }
 
     /**
+     * Closing a closed surface again changes nothing, so `bee_surface_close` can honestly say it's
+     * idempotent: the surface keeps its first `closedAt` and its place in the history strip.
+     */
+    @Test
+    fun closingAClosedSurfaceAgainChangesNothing() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("one"))
+        ada.call(BeeTools.OPEN, openArgs("two"))
+        ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "one"))
+        val firstClose = ada.client.state.value.meta("one")!!.closedAt
+        delay(1.minutes)
+        ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "two"))
+        val before = ada.client.state.value.closedSurfaces()
+        delay(1.minutes)
+
+        val again = ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "one"))
+        val after = ada.client.state.value
+        assertAll(
+            { assertEquals(listOf("two", "one"), before, "rig: the later close lists first") },
+            { assertEquals(null, again.isError, "closing again: ${again.text()}") },
+            { assertEquals(firstClose, after.meta("one")!!.closedAt, "the first close's time stays") },
+            { assertEquals(before, after.closedSurfaces(), "the history strip keeps its order") },
+        )
+        rig.close()
+    }
+
+    /**
      * `bee_board_clear` skips the host's surfaces: a pending join request stays open, so its
      * device isn't stranded until its pairing expires (bee#71).
      */
