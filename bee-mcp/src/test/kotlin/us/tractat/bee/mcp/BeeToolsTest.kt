@@ -325,8 +325,8 @@ class BeeToolsTest {
     }
 
     /**
-     * Every tool that writes to the board says it's shared, first; no reading tool does. The
-     * writing set is checked against what's registered, so a new writing tool can't skip it.
+     * Every tool that puts what the session asks for on the board says it's shared, first; no other
+     * tool does. The writing set is checked against what's registered, so a new one can't skip it.
      */
     @Test
     fun everyWritingToolSaysItIsShared() = runTest(timeout = 120.seconds) {
@@ -337,7 +337,7 @@ class BeeToolsTest {
         val reading = tools - BeeTools.WRITING
         assertAll(
             { assertEquals(BeeTools.WRITING, writing.keys, "every writing tool is registered") },
-            { assertEquals(setOf(BeeTools.BOARD, WaitTool.WAIT, WaitTool.LIST, WhiteboardGuide.EXAMPLES_TOOL), reading.keys, "the rest only read") },
+            { assertEquals(setOf(BeeTools.BOARD, WaitTool.WAIT, WaitTool.LIST, WhiteboardGuide.EXAMPLES_TOOL), reading.keys, "the rest share nothing from the session: the wait claims, the others only read") },
             {
                 val unshared = writing.filterValues { !(it.startsWith("Puts ") && BeeTools.SHARED in it.substringBefore('.')) }
                 assertEquals(emptyMap(), unshared, "writing tools whose first sentence doesn't say it's shared")

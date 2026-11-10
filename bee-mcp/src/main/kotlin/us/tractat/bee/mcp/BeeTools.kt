@@ -25,8 +25,10 @@ import us.tractat.bee.core.PresenceEntry
 /**
  * The bridge's board, record and claim tools (spec §5.2; the wait tools are [WaitTool]).
  *
- * Every tool that writes to the board says so first: its description starts "Puts … on the
- * shared board, visible to everyone attached", so sharing is always an explicit act (§9).
+ * Every tool that puts what the session asks for on the board says so first: its description
+ * starts "Puts … on the shared board, visible to everyone attached", so sharing is always an
+ * explicit act (§9). `bee_wait_action` writes too, a claim on a record a person made and the
+ * session's waiting mark, but it shares nothing from the session's context, so it isn't one.
  */
 object BeeTools {
     const val BOARD = "bee_board"
@@ -39,7 +41,7 @@ object BeeTools {
     const val RELEASE = "bee_release"
     const val PRESENCE = "bee_presence"
 
-    /** The tools that write to the board, each described as sharing. */
+    /** The tools that put what the session asks for on the board, each described as sharing. */
     val WRITING: Set<String> = setOf(OPEN, UPDATE, CLOSE, CLEAR, DONE, CLAIM, RELEASE, PRESENCE)
 
     /** The phrase every writing tool's description ends its first clause with. */
