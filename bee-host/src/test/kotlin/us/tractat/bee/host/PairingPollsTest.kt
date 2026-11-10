@@ -56,6 +56,16 @@ class PairingPollsTest {
             return last
         }
 
+        /** Whether [code]'s join request was ever on the board: up now, or withdrawn since. */
+        fun everPosted(code: PairingMessage.Code): Boolean =
+            JoinRequestSurface.surfaceId(PairingId(code.pairing)) in board.openSurfaces() + board.closedSurfaces()
+
+        /** Moves virtual time on by [span] and runs what is due then. */
+        fun advance(span: Duration) {
+            test.advanceTimeBy(span)
+            test.runCurrent()
+        }
+
         /** [actor] types [code] into pairing [id]'s join request, as a browser's admit record arrives. */
         fun type(id: PairingId, actor: PeerIdentity, code: String) {
             val surfaceId = JoinRequestSurface.surfaceId(id)
@@ -177,5 +187,60 @@ class PairingPollsTest {
             { assertFalse(request in board.openSurfaces(), "its request was withdrawn") },
             { assertNull(polls.poll(opened.token)) },
         )
+    }
+
+    /**
+     * bee#211: a device that opens a pairing and never polls writes nothing to the board, even
+     * well past the dwell, and the host lets its pairing go at [PairingWire.IDLE].
+     */
+    @Test
+    fun aDeviceThatNeverPollsPutsNoRequestOnTheBoard() = rig {
+        val (opened, code) = openCode()
+        advance(Pairing.DWELL * 2)
+        val pastTheDwell = everPosted(code)
+        advance(PairingWire.IDLE)
+        assertAll(
+            { assertFalse(pastTheDwell, "no request at twice the dwell") },
+            { assertFalse(everPosted(code), "nor ever, up to the host letting the pairing go") },
+            { assertFalse(pairing.isPending(PairingId(code.pairing)), "the pairing ended") },
+            { assertNull(polls.poll(opened.token)) },
+        )
+    }
+
+    /**
+     * bee#211, with bee#209's lost polls: a first poll that reaches the host after the dwell, as
+     * one does at about 3 s when a proxy eats the first two, puts the request up then.
+     */
+    @Test
+    fun aFirstPollAfterTheDwellPutsTheRequestUpThen() = rig {
+        val (opened, code) = openCode()
+        advance(FIRST_POLL_LATE - 1.milliseconds)
+        val justBefore = everPosted(code)
+        advance(1.milliseconds)
+        polls.poll(opened.token)
+        test.runCurrent()
+        assertAll(
+            { assertFalse(justBefore, "past the dwell, with no poll yet, nothing is up") },
+            { assertTrue(everPosted(code), "the first poll puts the request up") },
+        )
+    }
+
+    /** A device that polls at once has its request up at the dwell, not before. */
+    @Test
+    fun aDeviceThatPollsAtOnceHasItsRequestUpAtTheDwell() = rig {
+        val (opened, code) = openCode()
+        polls.poll(opened.token)
+        advance(Pairing.DWELL - 1.milliseconds)
+        val justBefore = everPosted(code)
+        advance(1.milliseconds)
+        assertAll(
+            { assertFalse(justBefore, "nothing is up before the dwell") },
+            { assertTrue(everPosted(code), "the request is up at the dwell") },
+        )
+    }
+
+    private companion object {
+        /** When bee#209's proxy-page test's first poll reaches the host: past [Pairing.DWELL]. */
+        val FIRST_POLL_LATE: Duration = 3500.milliseconds
     }
 }
