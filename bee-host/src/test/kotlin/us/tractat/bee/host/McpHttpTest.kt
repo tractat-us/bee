@@ -11,8 +11,11 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.contentType
 import io.ktor.server.request.path
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeStringUtf8
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
@@ -245,6 +248,34 @@ class McpHttpTest {
     }
 
     /**
+     * The host reads an opening POST's body for its `clientInfo` only when the body states a length
+     * of at most 64 KiB: that read keeps the whole body in memory, so a chunked or a larger one is
+     * left to the SDK alone. Either still opens a session, named the neutral `-agent` though its
+     * client says it is Claude Code. Whether the host kept a body can't be seen from outside, so the
+     * name stands in for it: a body the host read names its session `-claude`, as the control's
+     * stated length does.
+     */
+    @Test
+    fun anOpeningBodyOfNoStatedLengthOrOver64KiBIsLeftUnreadAndNamedAgent() = runBlocking {
+        val host = startHost()
+        try {
+            val stated = http.post(url(host, "?name=pip")) { initializeBody() }
+            val chunked = http.post(url(host, "?name=kit")) { chunkedInitializeBody() }
+            val oversized = http.post(url(host, "?name=max")) { initializeBody(INITIALIZE + " ".repeat(OVER_64_KIB)) }
+            val names = withTimeout(TIMEOUT) { listOf("pip", "kit", "max").map { nameOnBoard(host, it) } }
+            assertAll(
+                { assertTrue(listOf(stated, chunked, oversized).all { it.status == HttpStatusCode.OK }, "every initialize opens") },
+                { assertTrue(listOf(stated, chunked, oversized).all { it.headers[SESSION_HEADER] != null }, "each answers a session") },
+                { assertEquals("pip-claude", names[0], "control: a body of stated length is read for its clientInfo") },
+                { assertEquals("kit-agent", names[1], "a chunked body is not read") },
+                { assertEquals("max-agent", names[2], "a body over 64 KiB is not read") },
+            )
+        } finally {
+            host.close()
+        }
+    }
+
+    /**
      * Off the laptop, `/mcp` takes a key, as the board's sockets do: the host reads each call to
      * `/mcp` as from [ANOTHER_MACHINE], while its own bridges' sockets stay on loopback.
      */
@@ -289,6 +320,13 @@ class McpHttpTest {
     private suspend fun departureOf(host: BeeHost, who: PeerIdentity): Departure =
         host.state.first { state -> state.departures().any { it.identity == who } }.departures().first { it.identity == who }
 
+    /** The name of the first session on the board whose `?name=` was [person]. */
+    private suspend fun nameOnBoard(host: BeeHost, person: String): String {
+        val ours = { identity: PeerIdentity -> identity.name.startsWith("$person-") }
+        return host.state.first { state -> state.latestPresence().any { ours(it.identity) } }
+            .latestPresence().first { ours(it.identity) }.identity.name
+    }
+
     private suspend fun awaitCount(host: BeeHost, n: Int): Int {
         while (host.bridges.count != n) delay(50)
         return n
@@ -297,12 +335,21 @@ class McpHttpTest {
     /** A raw `initialize` POST: the status the host answers it with. */
     private suspend fun initialize(url: String): HttpStatusCode = http.post(url) { initializeBody() }.status
 
-    private fun HttpRequestBuilder.initializeBody() {
+    private fun HttpRequestBuilder.initializeBody(body: String = INITIALIZE) {
+        header(HttpHeaders.Accept, "application/json, text/event-stream")
         contentType(ContentType.Application.Json)
+        setBody(body)
+    }
+
+    /** Claude Code's `initialize`, sent chunked: no Content-Length. */
+    private fun HttpRequestBuilder.chunkedInitializeBody() {
         header(HttpHeaders.Accept, "application/json, text/event-stream")
         setBody(
-            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",""" +
-                """"capabilities":{},"clientInfo":{"name":"claude-code","version":"2.1.319"}}}""",
+            object : OutgoingContent.WriteChannelContent() {
+                override val contentType = ContentType.Application.Json
+
+                override suspend fun writeTo(channel: ByteWriteChannel) = channel.writeStringUtf8(INITIALIZE)
+            },
         )
     }
 
@@ -331,6 +378,14 @@ class McpHttpTest {
         const val ANOTHER_MACHINE = "192.168.1.20"
         const val SESSION_HEADER = "Mcp-Session-Id"
         const val CAP = 3
+
+        /** Past the 64 KiB of an opening body the host reads. */
+        const val OVER_64_KIB = 70 * 1024
+
+        /** Claude Code's `initialize`, as a raw body. */
+        const val INITIALIZE =
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",""" +
+                """"capabilities":{},"clientInfo":{"name":"claude-code","version":"2.1.319"}}}"""
 
         /** The `clientInfo` Claude Code gives in `initialize`. */
         val CLAUDE_CODE = Implementation("claude-code", "2.1.319")
