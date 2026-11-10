@@ -234,7 +234,7 @@ and the menu into [`product.md`](product.md).
 | Holder | Who | Host? | Can be evicted or demoted? |
 |---|---|---|---|
 | **Root** | loopback on a local or LAN board; the owner key on a hosted one | always | no |
-| **Device** | a paired device's key | if a host made it one | yes, by a host |
+| **Device** | a device's own key, paired by code or given by an invite | if a host made it one | yes, by a host |
 | **Join link** | the bearer link, on a LAN board | never | evicting it mints a new link |
 
 A device line in the key file gains its role: `device <hash> host`. Root isn't in the file: it's
@@ -267,9 +267,11 @@ link has no case in `host`'s.
 
 An eviction takes five steps, in this order.
 
-1.  **Revoke.** `HostKeys.revoke` stops the key's hashes admitting at once, then saves the file. A
-    save that fails is answered as an error: the eviction holds until the host stops, and the
-    host says so.
+1.  **Revoke, and void its invites.** `HostKeys.revoke` stops the key's hashes admitting at once.
+    Under the invites' own lock, so no redemption slips between, `Invites` voids every live invite
+    those keys minted and the invite each of them came in by. Then both files are saved. A save
+    that fails is answered as an error: the eviction holds until the host stops, and the host
+    says so.
 2.  **Close live sockets.** The gate keeps each live gated call under its key's hash and ends
     them. kuilt can't close one principal's links (tractat-us/kuilt#3158), so until it can, bee
     cancels the Ktor call behind a comment naming that issue. The slice proves which handle closes
@@ -285,6 +287,15 @@ goes offline and offers to pair again, as it does today for a forgotten key. The
 who came by the join link says it mints a new link, since that cuts off everyone on it. A
 revocation survives a restart, because only a saved hash admits (invariant 1).
 
+**An evicted person can't redeem a link they still hold (Iain, 2026-11-09).** Evicting a key voids
+every live invite that key minted, which `StoredInvite.mintedBy` already records, and the invite
+the key came in by. For that, an invite records the hash of each key it gave, at most 25, written
+in the same save as the use; once the invite is forgotten there is nothing left to void, so the
+record never outlives the link. A voided invite admits no one from then on, and a page that opens
+it hears it lapsed, so no new refusal crosses the wire. Everyone already in by it keeps their own
+key. Two ways back stay open, under invariant 3: a link someone else minted that the person never
+used, and a person on the board admitting them again by code or a fresh invite.
+
 **Make host** sets the role on every device key the identity was declared on, saves, and updates
 the mirror. When a name is on more than one key, the menu says how many devices it covers. **Not
 host** takes the same slot on a host's bubble and clears the role.
@@ -297,6 +308,9 @@ host** takes the same slot on a host's bubble and clears the role.
 - Root can't be removed: the command target is a sealed type with no root case.
 - A revoke closes live sockets within one round trip and survives a restart: a test that evicts,
   checks the socket closes and the reconnect is refused, restarts, and checks again.
+- An evicted person can't redeem a link they hold: a test, not yet built, that evicts a key which
+  came in by one invite and minted another, then checks both secrets are refused while an invite
+  another key minted still admits.
 - Agents never hold the menu: the bridge exposes no access tool. That's `review`, since a peer's
   kind is self-declared and no new gate may rest on it (spec §5.7).
 
@@ -354,6 +368,15 @@ host** takes the same slot on a host's bubble and clears the role.
   writing until it dropped. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
 - **A menu on an agent's bubble.** An agent shares its person's key, so evicting it would evict the
   person; agents leave with the key. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-08)
+- **A hosted board with no link that admits: the 2026-11-08 ruling that a hosted join link admits
+  no one.** Every newcomer showed a code for someone on the board to type in, and the owner wanted
+  a link to hand someone that lets them in. The bearer join key stays off; an invite is that
+  link, and [`product.md`](product.md) invariant 3 holds its rule. ([#215](https://github.com/tractat-us/bee/issues/215), 2026-11-09)
+- **An eviction that leaves the evicted person's invites live.** They could redeem a link they
+  still hold for a new key until it lapsed or ran out. (Iain, [#173](https://github.com/tractat-us/bee/pull/173#issuecomment-6755901751), 2026-11-09)
+- **Finding the invite a key came in by from its device line.** The line would keep that link for
+  as long as the key lives, long after the invite stops admitting. The invite records the keys it
+  gave instead, and the record goes when the invite is forgotten. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-09)
 
 ## Open
 
@@ -364,9 +387,6 @@ host** takes the same slot on a host's bubble and clears the role.
   working through the migration. Recommendation: not in this migration; once the owner's page
   can mint a Claude token ([#287](https://github.com/tractat-us/bee/issues/287)),
   [`deploy.md`](../deploy.md) tells the owner to use one instead.
-- **Re-admission.** Any admitted person may admit, so an evicted person can pair again and be let
-  back in by anyone. Keep that (Iain's ruling on [#145](https://github.com/tractat-us/bee/issues/145)), or need a host to admit someone who was
-  evicted? [#164](https://github.com/tractat-us/bee/issues/164)
 - **A disguised writer.** Eviction finds a peer that stays itself. An admitted writer that declares
   one identity on its sockets and shows another on the board hides from the menu, since presence is
   self-declared. The fix is attested authors, tractat-us/kuilt#3149, and identity,
