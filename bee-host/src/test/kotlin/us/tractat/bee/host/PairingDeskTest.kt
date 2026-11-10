@@ -45,7 +45,7 @@ class PairingDeskTest {
 
         fun dial(address: String): Session {
             val session = Session(mutableListOf()).also { dialled += it }
-            session.serving = test.backgroundScope.launch { desk.serve(Device(Caller.byPeer(address), screen = null)) { session.sent += it } }
+            session.serving = test.backgroundScope.launch { desk.serve(Device(Caller.byPeer(address), screen = null), asked = {}) { session.sent += it } }
             test.runCurrent()
             return session
         }
