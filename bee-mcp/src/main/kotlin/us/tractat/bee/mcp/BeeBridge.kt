@@ -287,10 +287,15 @@ class BeeBridge(
         return Patch(delta)
     }
 
-    /** Closes surface [surfaceId]; it keeps its content and records. */
+    /**
+     * Closes surface [surfaceId]; it keeps its content and records. A surface already closed is
+     * left alone, so a repeated close keeps its first time and its place in the history strip.
+     */
     suspend fun close(surfaceId: String) {
         beforeWrite()
-        client.mutate { it.closeSurface(author, surfaceId, clock()) }
+        client.mutateOrSkip { state ->
+            if (state.meta(surfaceId)?.closedAt != null) null else state.closeSurface(author, surfaceId, clock())
+        }
     }
 
     /**
