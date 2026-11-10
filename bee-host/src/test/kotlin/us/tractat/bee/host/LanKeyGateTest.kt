@@ -1,13 +1,13 @@
 package us.tractat.bee.host
 
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.sse.SSE
-import io.ktor.client.plugins.sse.sse
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -19,10 +19,10 @@ import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import io.ktor.websocket.close
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingMessage
+import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
 import us.tractat.kuilt.test.assertAll
@@ -64,12 +64,7 @@ class LanKeyGateTest {
                 }
             }
         }
-        test(
-            createClient {
-                install(WebSockets)
-                install(SSE)
-            },
-        )
+        test(createClient { install(WebSockets) })
     }
 
     @Test
@@ -146,23 +141,27 @@ class LanKeyGateTest {
         )
     }
 
-    /** The page, the board's id and the pairing channel are what a keyless device needs, so all stay open to it. */
+    /**
+     * The page, the board's id and pairing are what a keyless device needs, so all stay open to it.
+     * It pairs as the page does, by poll (bee#211): it opens a pairing, then asks after it.
+     */
     @Test
     fun pageAndPairingNeedNoKey() = gated { client ->
         val page = client.get("/") { fromLan() }.status
         val boardId = client.get(BoardId.PATH) { fromLan() }.bodyAsText()
-        var shown: PairingMessage? = null
-        var pending = false
-        client.sse(PairingWire.PATH, request = { fromLan() }) {
-            shown = Json.decodeFromString(PairingMessage.serializer(), requireNotNull(incoming.first().data))
-            pending = pairing.isPending(PairingId((shown as PairingMessage.Code).pairing))
-        }
-        val code = assertIs<PairingMessage.Code>(shown)
+        val opened = assertIs<PairingPoll.Opened>(Json.decodeFromString(PairingPoll.serializer(), client.post(PairingWire.PATH) { fromLan() }.bodyAsText()))
+        val code = opened.code
+        val pending = pairing.isPending(PairingId(code.pairing))
+        val polled = client.post(PairingWire.POLL_PATH) {
+            fromLan()
+            setBody(opened.token)
+        }.bodyAsText()
         assertAll(
             { assertNotEquals(HttpStatusCode.Forbidden, page) },
             { assertEquals(BOARD_ID.value, boardId) },
             { assertTrue(code.code.matches(Regex("[0-9]{6}")), "a six-digit code: ${code.code}") },
             { assertTrue(pending, "the code names a live pairing") },
+            { assertEquals(code, Json.decodeFromString(PairingMessage.serializer(), polled), "a poll from the LAN, with no key, gets the code again") },
         )
     }
 
@@ -193,7 +192,7 @@ class LanKeyGateTest {
         val rebound = client.dial("$BOARD&k=$key", LAN, host = "evil.example:$PORT", origin = "http://evil.example:$PORT")
         val otherAddress = client.dial("$BOARD&k=$key", LAN, host = "192.168.1.9:$PORT")
         val loopbackFromLan = client.dial("$BOARD&k=$key", LAN, host = "127.0.0.1:$PORT")
-        val pairingRebound = client.get(PairingWire.PATH) {
+        val pairingRebound = client.post(PairingWire.PATH) {
             header(TEST_PEER, LAN)
             header(HttpHeaders.Host, "evil.example:$PORT")
         }.status
