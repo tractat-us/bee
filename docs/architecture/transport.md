@@ -14,18 +14,13 @@ plugin, the scripts that print links, and the docs that teach them.
     installed on the application, not on chosen routes
     ([`SiteGate.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/SiteGate.kt)).
 3.  **Off loopback, bee speaks only TLS: `https://` and `wss://` (Iain, 2026-11-08: "get entirely
-    off http"), unless its owner starts it `--unencrypted` (Iain, 2026-11-09).** Plain HTTP is
-    loopback's alone, by a loopback name. The one exception is a board its owner opts out of TLS,
-    for a space they already trust: it serves plain `http://` and `ws://` on the LAN, and its page
-    and every join line it prints call it **unencrypted**. TLS is the default; nothing turns it off
-    but the flag. **This doesn't hold yet:** a `--lan` host serves plain HTTP today, with no flag.
-    Enforcer: not built. It's the sealed listener type, whose one plain network variant takes a
-    value only the flag's parse makes, in
+    off http").** Plain HTTP is loopback's alone, by a loopback name. The one escape hatch is
+    [`--unencrypted`](#the-escape-hatch), which bee never suggests. **This doesn't hold yet:** a
+    `--lan` host serves plain HTTP today. Enforcer: not built. It's the sealed listener type in
     [§ Future, TLS off loopback](#tls-off-loopback-with-a-certificate-the-host-mints).
 4.  **A client that can pin the host's key joins with no trust step.** The bridge and the bee app
-    take the pin from the join link. Only a browser, which can't pin, trusts the host once. An
-    unencrypted board has nothing to pin and asks no step of anyone. Enforcer: not built. It's the
-    required pin on a TLS network `HostAddress` in
+    take the pin from the join link. Only a browser, which can't pin, trusts the host once.
+    Enforcer: not built. It's the required pin on a TLS network `HostAddress` in
     [§ Future](#tls-off-loopback-with-a-certificate-the-host-mints).
 
 ## Current design
@@ -101,11 +96,10 @@ device a secret out of band; it now hands over the host's identity on the same t
 | the owner's page and Claude, on the host's machine | plain HTTP on loopback, a secure context already | none |
 | the bridge, `bee-mcp` over stdio, on another machine | pins `ca=` from the join link `bee-join` was given | none |
 | the bee app ([#156](https://github.com/tractat-us/bee/issues/156)) | pins `ca=` from the QR it scanned | none |
-| a teammate's Claude Code | through the stdio bridge; on a TLS board the HTTP MCP line is retired off loopback | none |
+| a teammate's Claude Code | through the stdio bridge; the HTTP MCP line is retired off loopback | none |
 | a browser on another laptop | the host CA in the OS store: macOS Keychain "Always Trust"; Windows Trusted Root; Chrome on Linux, its NSS store; Firefox, its own store | once per device, per host |
 | Safari on an iPhone | the CA as a profile: download, Settings → Profile Downloaded → Install, then General → About → Certificate Trust Settings → on ([Apple](https://support.apple.com/en-us/102390)) | once per device, per host |
 | Chrome on Android | Settings → Security → Encryption & credentials → Install a certificate → CA certificate. Chrome is reported to honour user CAs, though Android apps don't by default; slice 6 checks it on a phone | once per device, per host |
-| any client of an `--unencrypted` board | trusts nothing: plain `http://` and `ws://`, as today | none, and nothing on the wire is encrypted |
 
 The browser rows are the honest cost under [`product.md`](product.md) invariant 1, and the
 design keeps them as small as it can:
@@ -120,35 +114,9 @@ design keeps them as small as it can:
 - **A browser's step is one page, served by the host.** The join link's first visit shows the
   browser's own warning, since nothing trusts the host yet. Behind it the host serves a short
   "Trust this board" page with the one download for that platform and its steps, then sends the
-  browser on to the board. On a TLS board every listener beyond loopback stays TLS: the warning
-  is the trust-on-first-use moment, and the wire is encrypted even before it.
+  browser on to the board. Every listener beyond loopback stays TLS: the warning is the
+  trust-on-first-use moment, and the wire is encrypted even before it.
 - **Room screens trust once.** A screen joins one host for months.
-- **A board that needs no encryption skips the step entirely**, by the opt-out below.
-
-**The opt-out: an unencrypted board.** Iain, 2026-11-09: a fully local board, in a space its
-people already trust, should just connect. `bee-up --unencrypted` starts the host
-`--lan --unencrypted`. It mints no CA and serves no trust page. It binds one plain listener on
-every interface and prints plain `http://…/?k=…` links with no `ca=`, so every device joins the
-way it does today. The flag names what the board becomes, in the same word the page shows. It's
-the need invariant 1 asks a second path to name: the trust step buys nothing where the room is
-already private. A board without it stays TLS, so the common case meets no setting.
-
-- **It's labelled.** The page's status in the bar reads "unencrypted" when it was loaded by plain
-  HTTP from an address that isn't loopback. That's a word in a status already there, not a new
-  control. The host's join line in its log, `bee-up`'s links, and the invite the page shows each
-  say "unencrypted". `bee-up` keeps today's line under the flag: don't put on the board what you
-  wouldn't say in the room.
-- **It costs what plain HTTP costs today.** The page isn't a secure context, so it keeps no local
-  copy, and it gets no microphone, Screen Wake Lock or async clipboard (§ Current design).
-- **A teammate's Claude keeps the HTTP MCP line.** It needs no CA here, so `bee-up` and the page
-  go on offering `claude mcp add --transport http` at the board's `http://` origin, as today.
-- **The flag fits one place.** The host refuses `--unencrypted` without `--lan`: loopback is plain
-  already. It also refuses it on a hosted board (#145), whose TLS is the platform's. `bee-up`
-  refuses it beside `--local`.
-- **A link says which board it is.** A join link to a network address is `https://…&ca=…` for a
-  TLS board and `http://…` for an unencrypted one. The bridge and the app read the scheme. They
-  dial an unencrypted board plainly and say so where they report the board. They never fall back
-  from one to the other.
 
 **Where it lives.** kuilt ships the pieces as a self-signed leaf pinned by its SHA-256
 (`generateDevTlsIdentity`, `fingerprintPinningTrustManager`, `pinnedTlsHttpClient` in
@@ -165,46 +133,43 @@ Network.framework does PSK over TLS 1.2 alone (tractat-us/kuilt#1560).
 **One port, two listeners.** Plain HTTP on `127.0.0.1` and TLS on every other address, both on
 8233, so the owner's URL and the join link name the same port. If the OS won't bind both,
 Netty's `OptionalSslHandler` takes TLS and plain on one socket, and the host refuses plain from any
-peer that isn't loopback. Slice 2 proves which one works on macOS and Linux. An unencrypted
-board has one plain listener on every interface, as every `--lan` host has today.
+peer that isn't loopback. Slice 2 proves which one works on macOS and Linux.
 
 **Slices, in order.** Each is one PR; the guard lands with the behaviour it guards.
 
 1.  **Mint and keep the host's identity.** The CA and leaf in the data dir; the leaf re-signed when
     addresses change; the name constraint and the 825-day cap tested. File the three kuilt issues
     first. Check name-constraint support on an iPhone, an Android phone, and a Mac.
-2.  **Serve TLS off loopback, and the `--unencrypted` opt-out.** A sealed `Listener`: `Loopback`
-    takes no identity and binds only a loopback address; `Network` requires a `HostIdentity`;
-    `Unencrypted` binds plain on a network address and requires an `UnencryptedOptIn`. That
-    value's constructor is private to `HostConfig.kt`, whose parse makes one from
-    `--lan --unencrypted` and nowhere else, so a test reaches it through `HostConfig.fromArgs`
-    too. Any other plain listener on a network address doesn't compile, which is invariant 3's
-    enforcer. The site gate takes `https://` from a TLS listener and `http://` from loopback or
-    an `Unencrypted` listener, and the default port follows the scheme. `bee-up` gains
-    `--unencrypted`; the host's join line and the page's status say "unencrypted" under it. This
-    slice lands both together, so no `--lan` board loses plain HTTP before the flag exists.
+2.  **Serve TLS off loopback.** A sealed `Listener`: `Loopback` takes no identity and binds only
+    a loopback address; `Network` requires a `HostIdentity`. No other plain listener on a network
+    address compiles, which is invariant 3's enforcer. The site gate takes the listener's own
+    scheme, and the default port follows it. The escape hatch is one more variant, `Unencrypted`,
+    needing a value only `HostConfig`'s parse of `--unencrypted` makes; the plain LAN e2e specs
+    run under it until slice 7.
 3.  **Join links carry the pin.** `inviteEndpoint`, the host's log line, the QR (a longer link
-    may bump its version) and `bin/bee-up` print `https://…?k=…&ca=…`. An unencrypted board
-    still prints `http://…?k=…`. `HostAddress` gains a sealed trust: `Pinned(pin)` for a network
-    address, `Loopback`, `Unencrypted` for a plain network address, and `Public` for #145. An
-    `https://` or `wss://` network address with no pin doesn't parse, which is invariant 4's
-    enforcer. A plain one parses only to `Unencrypted`. Only an `--unencrypted` host prints such
-    a link, and every client that holds one has to handle it as unencrypted, since the `when`
-    over the trust is exhaustive.
+    may bump its version) and `bin/bee-up` print `https://…?k=…&ca=…`. `HostAddress` gains a
+    sealed trust: `Pinned(pin)` for a network address, `Loopback`, and `Public` for #145. An
+    `https://` or `wss://` network address with no pin doesn't parse, nor does a plain one,
+    which is invariant 4's enforcer.
 4.  **The bridge pins.** `bee-mcp` dials `wss://` through the pinning trust manager; `bee-join`
-    passes the whole link through. An `Unencrypted` address dials plain `ws://`, and the bridge
-    reports the board as unencrypted. `DEFAULT_HOST` and the loopback `HttpBridges` stay
+    passes the whole link through. `DEFAULT_HOST` and the loopback `HttpBridges` stay
     `ws://127.0.0.1`.
 5.  **A teammate's Claude joins by the bridge.** `McpCommand` stops offering the HTTP MCP line off
-    loopback on a TLS board and offers the bridge instead; an unencrypted board keeps the line. The
-    plugin's `board_url` stays loopback-only until #145's `bee_join(link)` lands.
+    loopback and offers the bridge instead. The plugin's `board_url` stays loopback-only until
+    #145's `bee_join(link)` lands.
 6.  **The browser's trust page.** `/ca.crt`, `/ca.mobileconfig`, and the page that serves them.
     Needs real-iPhone and Android validation.
-7.  **Docs and e2e.** `setup.md`, `try-bee.md`, `plugin.md` and `bin/bee-bundle`'s help, which
-    teach `--unencrypted` for a room whose people already trust each other and the network. A TLS
-    `--lan` e2e project goes beside the loopback one. Today's plain LAN specs become the
-    `--unencrypted` project and check the label. `bee-up` drops its plain-HTTP warning for a TLS board and keeps it under
-    `--unencrypted`.
+7.  **Docs and e2e.** `setup.md`, `try-bee.md`, `plugin.md` and `bin/bee-bundle`'s help teach the
+    `https://` links. Today's plain LAN specs move to a TLS `--lan` e2e project beside the
+    loopback one. `bee-up` drops its plain-HTTP warning.
+
+#### The escape hatch
+
+Discouraged. Iain, 2026-11-09: "No one should be using this mode." `bee-up --unencrypted` serves
+today's plain `http://` and `ws://` on the LAN, with no CA, pin or trust page. A browser joins it
+as it joins a `--lan` board today; the bridge and the app dial only what they can pin. The page's
+status, the host's join line and `bee-up`'s links all say "unencrypted". It's refused beside
+`--local` and on a hosted board (#145). bee's guides and join flow never suggest it.
 
 ### Hosted bee gets its certificate from the platform
 
@@ -246,6 +211,11 @@ URL's `https://` origin.
 - **Unencrypted as the default, with TLS the opt-in.** It's the zero-step path, but a board would be
   readable on the wire unless its owner thought to ask, and "get entirely off http" stands.
   (Iain, 2026-11-09, this PR)
+- **An unencrypted mode bee teaches and builds around: its own slice, client row, e2e project and
+  guide lines.** Iain, 2026-11-09, quoted as said:
+  <!-- vale House.Filler = NO -->"No one should be using this mode. Focus on what's important
+  which is using https everywhere."<!-- vale House.Filler = YES --> The flag stays, as the
+  escape hatch, and keeps its name. (Iain, 2026-11-09, this PR)
 - **`--insecure` as the flag's name.** curl, wget and git use it to mean "encrypt, but don't check
   the certificate", and this mode doesn't encrypt at all. `--unencrypted` says what it does, in
   the word the page shows. (this PR)
