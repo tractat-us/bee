@@ -66,7 +66,7 @@ class SiteGateTest {
             { assertEquals(FORBIDDEN, calls.upgrade(board, evil)) },
             { assertEquals(FORBIDDEN, calls.upgrade(claims, evil)) },
             { assertEquals(FORBIDDEN, calls.get(BoardId.PATH, evil)) },
-            { assertEquals(FORBIDDEN, calls.get(PairingWire.PATH, evil)) },
+            { assertEquals(FORBIDDEN, calls.post(PairingWire.PATH, evil, "").first, "opening a pairing") },
             { assertEquals(FORBIDDEN, calls.upgrade(board, "127.0.0.1:${host.port + 1}"), "the right address, another port") },
         )
     }

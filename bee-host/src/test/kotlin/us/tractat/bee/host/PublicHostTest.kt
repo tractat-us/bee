@@ -100,7 +100,7 @@ class PublicHostTest {
             { assertEquals(FORBIDDEN, calls.upgrade("$board&k=$key", PUBLIC_HOST, "$PUBLIC_ORIGIN:${host.port}", *CLIENT), "the origin at the port the host bound") },
             { assertEquals(FORBIDDEN, calls.upgrade("$board&k=$key", "evil.example", "https://evil.example", *CLIENT), "a rebound name") },
             { assertEquals(FORBIDDEN, calls.upgrade("$board&k=$key", "$PUBLIC_HOST:${host.port}", PUBLIC_ORIGIN, *CLIENT), "the public name at another port than https's") },
-            { assertEquals(FORBIDDEN, calls.get(PAIR, PUBLIC_HOST, *CLIENT, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: image"), "Fetch Metadata still holds") },
+            { assertEquals(FORBIDDEN, calls.post(PAIR, PUBLIC_HOST, "", *CLIENT, CROSS_SITE, "Sec-Fetch-Mode: no-cors", "Sec-Fetch-Dest: empty").first, "Fetch Metadata still holds") },
         )
     }
 
