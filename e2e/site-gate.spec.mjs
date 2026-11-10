@@ -55,15 +55,15 @@ test('a page from another origin cannot open the board socket', async ({ page })
 
 // bee#54: an `<img>` or a no-cors `fetch` sends no `Origin`, so only its Fetch Metadata tells the
 // host another site sent it. Admitted, it would hold a pairing slot and, after the dwell, post its
-// `?screen=` text to the board as a join request. Chromium cuts an image that isn't one short, and
-// may block another origin's event stream itself (ORB), where Safari does neither, so the host's
-// 403 is what this test reads first, and the empty board second.
-test('a page from another origin cannot load a pairing channel', async ({ browser, page }) => {
+// `?screen=` text to the board as a join request. A no-cors `POST`, which opens a pairing, sends
+// its `Origin` too. Chromium may block another origin's answer itself (ORB), where Safari doesn't,
+// so the host's 403 is what this test reads first, and the empty board second.
+test('a page from another origin cannot open a pairing', async ({ browser, page }) => {
   const { context, request } = await watchBoard(browser);
   try {
     /**
      * Runs `load` on `page` with `/pair` for `screen`, and returns the host's status for it, or the
-     * browser's error if the request failed: Chromium's ORB fails an admitted cross-origin stream.
+     * browser's error if the request failed: Chromium's ORB fails an admitted cross-origin answer.
      */
     const status = async (screen, load) => {
       const url = pair(screen);
@@ -84,30 +84,35 @@ test('a page from another origin cannot load a pairing channel', async ({ browse
       }
     };
     const asImage = (src) => document.body.append(Object.assign(new Image(), { src }));
-    // Keeps the response, so the stream stays open past the dwell.
-    const asNoCorsFetch = (url) => {
-      fetch(url, { mode: 'no-cors' }).then((r) => (window.held = r));
+    // Opens a pairing as the board's page does, and keeps asking after it past the dwell (bee#211).
+    const asThePage = (url) => {
+      fetch(url, { method: 'POST' })
+        .then((r) => r.json())
+        .then(({ token }) => (window.polling = setInterval(() => fetch('/pair/poll', { method: 'POST', body: token }), 1_000)));
+    };
+    const asNoCorsPost = (url) => {
+      fetch(url, { method: 'POST', mode: 'no-cors' });
     };
 
-    // The control: the board's own page holds the same channel open, and its request reaches the board.
+    // The control: the board's own page opens a pairing the same way, and its request reaches the board.
     await page.goto('/');
-    expect(await status('own-fetch', asNoCorsFetch)).toBe(200);
-    await expect(request('own-fetch')).toHaveCount(1, { timeout: 15_000 });
+    expect(await status('own-page', asThePage)).toBe(200);
+    await expect(request('own-page')).toHaveCount(1, { timeout: 15_000 });
 
     await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
     expect(await status('elsewhere-image', asImage)).toBe(403);
-    expect(await status('elsewhere-fetch', asNoCorsFetch)).toBe(403);
-    // Well past the dwell, after which an admitted channel posts its request.
+    expect(await status('elsewhere-post', asNoCorsPost)).toBe(403);
+    // Well past the dwell, after which an admitted pairing posts its request.
     await page.waitForTimeout(PAST_THE_DWELL_MS);
     await expect(request('elsewhere-image')).toHaveCount(0);
-    await expect(request('elsewhere-fetch')).toHaveCount(0);
+    await expect(request('elsewhere-post')).toHaveCount(0);
   } finally {
     await context.close();
   }
 });
 
 // bee#55's review: no legitimate caller navigates to `/pair`, so the host takes no navigation
-// there, only the page's own event stream. Another origin's page that sets `location.href` to it
+// there, only the page's own requests. Another origin's page that sets `location.href` to it
 // is a navigation from another site. One that lists it in speculation rules gets a prefetch
 // Chromium marks `Sec-Fetch-Site: none`, as if typed, so only the path tells it from a real one.
 test('a page from another origin cannot navigate to or prefetch a pairing channel', async ({ browser, page }) => {
@@ -153,7 +158,7 @@ test('a page from another origin cannot navigate to or prefetch a pairing channe
   }
 });
 
-/** The 3 s dwell, after which an admitted pairing channel posts its join request, and then some. */
+/** The 3 s dwell, after which an admitted pairing posts its join request, and then some. */
 const PAST_THE_DWELL_MS = 7_000;
 
 /** `/pair` on the host, for a room screen named `screen`. */
@@ -161,7 +166,7 @@ const pair = (screen) => `http://127.0.0.1:${port}/pair?screen=${screen}`;
 
 /**
  * Opens the board on the laptop in a context of its own, and returns it with `request(screen)`:
- * the join request a pairing channel for `screen` posted to the board, if any.
+ * the join request a pairing for `screen` posted to the board, if any.
  */
 async function watchBoard(browser) {
   const context = await browser.newContext();
