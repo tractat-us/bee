@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import us.tractat.bee.a2ui.A2uiBindings
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.BoardState
@@ -181,7 +182,7 @@ class JoinRequestSurface(
             component(CODE_FIELD, "TextField") {
                 put("label", "Code")
                 put("variant", "obscured")
-                putJsonObject("value") { put("path", "/$CODE_KEY") }
+                put("value", A2uiBindings.binding("/$CODE_KEY"))
             },
             component("admit-label", "Text") { put("text", "Admit") },
             component(ADMIT_BUTTON, "Button") {
@@ -189,13 +190,13 @@ class JoinRequestSurface(
                 putJsonObject("action") {
                     putJsonObject("event") {
                         put("name", ADMIT_ACTION)
-                        putJsonObject("context") { putJsonObject(CODE_KEY) { put("path", "/$CODE_KEY") } }
+                        putJsonObject("context") { put(CODE_KEY, A2uiBindings.binding("/$CODE_KEY")) }
                     }
                 }
             },
             component("status", "Text") {
                 put("variant", "caption")
-                putJsonObject("text") { put("path", "/$STATUS_KEY") }
+                put("text", A2uiBindings.binding("/$STATUS_KEY"))
             },
         )
 

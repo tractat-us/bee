@@ -13,7 +13,7 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object SurfaceValidator {
     /**
-     * The component types the Notions catalog renders today: A2UI v0.9.1's basic catalog plus
+     * The component types the Notions catalog renders today: A2UI v1.0's basic catalog plus
      * `Sketch`, `Poll`, `Board` and `Chat` (`bee-notions/src/catalog.js`), so it always matches what the
      * renderer can draw.
      */
@@ -96,7 +96,7 @@ object SurfaceValidator {
 
     private fun unappendedErrors(id: String, type: String?, component: JsonObject, view: SurfaceView): List<String> =
         APPENDED_BINDINGS[type].orEmpty().mapNotNull { binding ->
-            val path = (component[binding] as? JsonObject)?.get("path")?.stringOrNull() ?: return@mapNotNull null
+            val path = A2uiBindings.pathOf(component[binding]) ?: return@mapNotNull null
             val pointer = heldAt(view.data, path) ?: return@mapNotNull null
             if (pointer in view.appended) {
                 null
@@ -114,7 +114,7 @@ object SurfaceValidator {
      */
     private fun messageErrors(id: String, component: JsonObject, data: JsonObject): List<String> {
         if (component["component"]?.stringOrNull() != CHAT) return emptyList()
-        val path = (component["messages"] as? JsonObject)?.get("path")?.stringOrNull() ?: return emptyList()
+        val path = A2uiBindings.pathOf(component["messages"]) ?: return emptyList()
         val messages = valueAt(data, path) as? JsonArray ?: return emptyList()
         val at = SurfaceFormat.pointer(SurfaceFormat.segments(path))
         val firstHeld = mutableMapOf<String, Int>()
@@ -138,7 +138,7 @@ object SurfaceValidator {
      */
     fun chatEntries(view: SurfaceView): Set<JsonElement> = view.components.values
         .filter { it["component"]?.stringOrNull() == CHAT }
-        .mapNotNull { chat -> (chat["messages"] as? JsonObject)?.get("path")?.stringOrNull() }
+        .mapNotNull { chat -> A2uiBindings.pathOf(chat["messages"]) }
         .flatMap { path -> (valueAt(view.data, path) as? JsonArray).orEmpty() }
         .toSet()
 
@@ -151,7 +151,7 @@ object SurfaceValidator {
      */
     private fun cardErrors(id: String, component: JsonObject, data: JsonObject): List<String> {
         if (component["component"]?.stringOrNull() != BOARD) return emptyList()
-        val path = (component["cards"] as? JsonObject)?.get("path")?.stringOrNull() ?: return emptyList()
+        val path = A2uiBindings.pathOf(component["cards"]) ?: return emptyList()
         val items = (valueAt(data, path) as? JsonObject)?.get("items") as? JsonObject ?: return emptyList()
         return items.keys.sorted().flatMap { cardId ->
             val card = items.getValue(cardId) as? JsonObject ?: return@flatMap emptyList()
@@ -200,13 +200,12 @@ object SurfaceValidator {
             SKETCH -> if (component["html"] == null) listOf("Component \"$id\" is a Sketch with no html.") else emptyList()
             else -> BINDINGS[type].orEmpty()
                 .filterNot { isBinding(component[it]) }
-                .map { "Component \"$id\" is a $type whose $it isn't a data binding ({\"path\": \"/…\"})." }
+                .map { "Component \"$id\" is a $type whose $it isn't a data binding ({\"@path\": \"/…\"})." }
         }
     }
 
-    /** A2UI's `DataBinding`: `{"path": "/…"}`, an absolute pointer into the data model. */
-    private fun isBinding(property: JsonElement?): Boolean =
-        (property as? JsonObject)?.get("path")?.stringOrNull()?.startsWith("/") == true
+    /** A2UI's `DataBinding`: `{"@path": "/…"}`, an absolute pointer into the data model. */
+    private fun isBinding(property: JsonElement?): Boolean = A2uiBindings.pathOf(property)?.startsWith("/") == true
 
     /**
      * The component ids [component] names, from every field the basic catalog types as a

@@ -65,13 +65,13 @@ class SurfaceValidatorTest {
     fun pollAndBoardWithTheirBindingsAreValid() {
         val root = component("root", "Column") { put("children", JsonArray(listOf(JsonPrimitive("poll"), JsonPrimitive("board")))) }
         val poll = component("poll", SurfaceValidator.POLL) {
-            putJsonObject("question") { put("path", "/question") }
-            putJsonObject("options") { put("path", "/options") }
-            putJsonObject("answers") { put("path", "/answers") }
+            putJsonObject("question") { put("@path", "/question") }
+            putJsonObject("options") { put("@path", "/options") }
+            putJsonObject("answers") { put("@path", "/answers") }
         }
         val board = component("board", SurfaceValidator.BOARD) {
-            putJsonObject("columns") { put("path", "/columns") }
-            putJsonObject("cards") { put("path", "/cards") }
+            putJsonObject("columns") { put("@path", "/columns") }
+            putJsonObject("cards") { put("@path", "/cards") }
         }
         assertEquals(emptyList(), SurfaceValidator.errors(view(root, poll, board)))
     }
@@ -79,18 +79,18 @@ class SurfaceValidatorTest {
     @Test
     fun aPollOrBoardPropertyThatIsNoDataBindingIsNamed() {
         val poll = component("root", SurfaceValidator.POLL) {
-            putJsonObject("question") { put("path", "/question") }
+            putJsonObject("question") { put("@path", "/question") }
             put("options", JsonArray(listOf(JsonPrimitive("lunch"))))
         }
         val board = component("board", SurfaceValidator.BOARD) {
-            putJsonObject("columns") { put("path", "columns") }
+            putJsonObject("columns") { put("@path", "columns") }
         }
         assertEquals(
             listOf(
-                "Component \"board\" is a Board whose cards isn't a data binding ({\"path\": \"/…\"}).",
-                "Component \"board\" is a Board whose columns isn't a data binding ({\"path\": \"/…\"}).",
-                "Component \"root\" is a Poll whose answers isn't a data binding ({\"path\": \"/…\"}).",
-                "Component \"root\" is a Poll whose options isn't a data binding ({\"path\": \"/…\"}).",
+                "Component \"board\" is a Board whose cards isn't a data binding ({\"@path\": \"/…\"}).",
+                "Component \"board\" is a Board whose columns isn't a data binding ({\"@path\": \"/…\"}).",
+                "Component \"root\" is a Poll whose answers isn't a data binding ({\"@path\": \"/…\"}).",
+                "Component \"root\" is a Poll whose options isn't a data binding ({\"@path\": \"/…\"}).",
             ),
             SurfaceValidator.errors(view(poll, board)),
         )
@@ -140,7 +140,7 @@ class SurfaceValidatorTest {
     @Test
     fun appendErrorsNameAPollBindingWrittenAsData() {
         val poll = component("root", SurfaceValidator.POLL) {
-            listOf("question", "options", "answers").forEach { key -> putJsonObject(key) { put("path", "/$key") } }
+            listOf("question", "options", "answers").forEach { key -> putJsonObject(key) { put("@path", "/$key") } }
         }
         val data = buildJsonObject {
             put("question", "Which cache?")
@@ -169,13 +169,13 @@ class SurfaceValidatorTest {
     /** A Chat binds its messages, and they're appended, never written as data (bee#214). */
     @Test
     fun aChatBindsMessagesThatAreAppended() {
-        val chat = component("root", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/messages") } }
+        val chat = component("root", SurfaceValidator.CHAT) { putJsonObject("messages") { put("@path", "/messages") } }
         val asData = view(chat).copy(data = buildJsonObject { put("messages", JsonArray(listOf(message("m1", "hi")))) })
         assertAll(
             { assertEquals(emptyList(), SurfaceValidator.errors(view(chat))) },
             {
                 assertEquals(
-                    listOf("Component \"root\" is a Chat whose messages isn't a data binding ({\"path\": \"/…\"})."),
+                    listOf("Component \"root\" is a Chat whose messages isn't a data binding ({\"@path\": \"/…\"})."),
                     SurfaceValidator.errors(view(component("root", SurfaceValidator.CHAT))),
                 )
             },
@@ -199,7 +199,7 @@ class SurfaceValidatorTest {
      */
     @Test
     fun appendErrorsNameAMalformedChatMessage() {
-        val chat = component("root", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/messages") } }
+        val chat = component("root", SurfaceValidator.CHAT) { putJsonObject("messages") { put("@path", "/messages") } }
         val messages = listOf(
             message("m1", "fine"),
             message("m2", " "),
@@ -231,8 +231,8 @@ class SurfaceValidatorTest {
     /** What every Chat on a surface shows, whatever its shape, and nothing a Chat doesn't bind. */
     @Test
     fun chatEntriesAreWhatEveryChatShows() {
-        val one = component("one", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/a") } }
-        val two = component("two", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/b") } }
+        val one = component("one", SurfaceValidator.CHAT) { putJsonObject("messages") { put("@path", "/a") } }
+        val two = component("two", SurfaceValidator.CHAT) { putJsonObject("messages") { put("@path", "/b") } }
         val data = buildJsonObject {
             put("a", JsonArray(listOf(message("m1", "hi"))))
             put("b", JsonArray(listOf(JsonPrimitive("raw"))))
@@ -263,8 +263,8 @@ class SurfaceValidatorTest {
     /** A Board as the root, its cards bound at `/cards` and held there, every card in column `todo`. */
     private fun boardWith(vararg cards: Pair<String, JsonObject>): SurfaceView {
         val board = component("root", SurfaceValidator.BOARD) {
-            putJsonObject("columns") { put("path", "/columns") }
-            putJsonObject("cards") { put("path", "/cards") }
+            putJsonObject("columns") { put("@path", "/columns") }
+            putJsonObject("cards") { put("@path", "/cards") }
         }
         val data = buildJsonObject {
             putJsonObject("cards") {

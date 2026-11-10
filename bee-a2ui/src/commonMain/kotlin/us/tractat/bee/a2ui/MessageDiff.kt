@@ -15,8 +15,9 @@ import kotlinx.serialization.json.JsonObject
  * gets one `updateDataModel` at the deepest object both views share. An array is never diffed
  * inside: when it changes, it's replaced whole.
  *
- * A2UI v0.9.1 has no null value, so an object member holding JSON null is shown as absent, in
- * `createSurface`'s model and in every later diff alike: a leaf set to null diffs to a delete.
+ * In A2UI v1.0 a null value deletes, so the renderer's model holds no null. An object member
+ * holding JSON null is shown as absent, in `createSurface`'s model and in every later diff alike:
+ * a leaf set to null diffs to a delete.
  */
 fun diff(prev: SurfaceView?, next: SurfaceView?): List<A2uiMessage> = when {
     next == null -> listOfNotNull(prev?.let { A2uiMessage.DeleteSurface(it.id) })
@@ -58,5 +59,5 @@ private fun withoutNulls(element: JsonElement): JsonElement = when (element) {
     else -> element
 }
 
-/** A2UI v0.9's path for the whole data model. */
+/** A2UI's path for the whole data model. */
 private const val ROOT = "/"

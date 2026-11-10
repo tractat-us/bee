@@ -67,8 +67,8 @@ object WhiteboardGuide {
     private val FIELD = Example(
         name = "A field people type into",
         components = """[{"id":"root","component":"Column","children":["idea","send"]},""" +
-            """{"id":"idea","component":"TextField","label":"Your idea","value":{"path":"/idea"}},""" +
-            """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"submit","context":{"idea":{"path":"/idea"}}}}},""" +
+            """{"id":"idea","component":"TextField","label":"Your idea","value":{"@path":"/idea"}},""" +
+            """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"submit","context":{"idea":{"@path":"/idea"}}}}},""" +
             """{"id":"send-label","component":"Text","text":"Send"}]""",
         data = """{"idea":""}""",
         append = null,
@@ -103,7 +103,7 @@ object WhiteboardGuide {
         ),
         Example(
             name = "Poll",
-            components = """[{"id":"root","component":"Poll","question":{"path":"/question"},"options":{"path":"/options"},"answers":{"path":"/answers"}}]""",
+            components = """[{"id":"root","component":"Poll","question":{"@path":"/question"},"options":{"@path":"/options"},"answers":{"@path":"/answers"}}]""",
             data = """{"answers":{}}""",
             append = """{"/question":["Which first?"],"/options":["SSO","Passkeys"]}""",
             note = "Question revisions and options go in append, never data, so a vote's basis names the options " +
@@ -113,7 +113,7 @@ object WhiteboardGuide {
         ),
         Example(
             name = "Board: cards in columns",
-            components = """[{"id":"root","component":"Board","columns":{"path":"/columns"},"cards":{"path":"/cards"}}]""",
+            components = """[{"id":"root","component":"Board","columns":{"@path":"/columns"},"cards":{"@path":"/cards"}}]""",
             data = """{"columns":{"items":{"todo":{"title":"To do"},"done":{"title":"Done"}},"order":["todo","done"]},""" +
                 """"cards":{"items":{"c1":{"label":"Draft the API","column":"todo",""" +
                 """"href":"https://example.com/api-draft","detail":"Endpoints and errors first"}},"order":["c1"]}}""",
@@ -125,7 +125,7 @@ object WhiteboardGuide {
         ),
         Example(
             name = "Chat: talk with the people on the board",
-            components = """[{"id":"root","component":"Chat","messages":{"path":"/messages"}}]""",
+            components = """[{"id":"root","component":"Chat","messages":{"@path":"/messages"}}]""",
             data = null,
             append = null,
             note = "Each message, a person's Send or another session's post, lands in /messages as {id, author, text, at} " +
@@ -138,7 +138,7 @@ object WhiteboardGuide {
 
     private const val SURFACES =
         "A surface is a flat list of components, one with id \"root\"; containers name their children by id. " +
-            "A property binds to the surface's data with {\"path\": \"/…\"}; bee_surface_update writes data by " +
+            "A property binds to the surface's data with {\"@path\": \"/…\"}; bee_surface_update writes data by " +
             "JSON Pointer, as {\"/idea\": \"new text\"}, and upserts components by id. Each entry opens as it " +
             "stands with bee_surface_open."
 

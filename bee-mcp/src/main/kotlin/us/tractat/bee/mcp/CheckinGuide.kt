@@ -27,8 +27,8 @@ object CheckinGuide {
     /** The card's components: what the session is doing, its progress, the decision it needs, and Done and Pause. */
     const val CARD_COMPONENTS: String =
         """[{"id":"root","component":"Column","children":["now","progress","decision","stop"]},""" +
-            """{"id":"now","component":"Text","text":{"path":"/now"}},""" +
-            """{"id":"progress","component":"Text","text":{"path":"/progress"}},""" +
+            """{"id":"now","component":"Text","text":{"@path":"/now"}},""" +
+            """{"id":"progress","component":"Text","text":{"@path":"/progress"}},""" +
             """{"id":"decision","component":"Column","children":["ask","options","answer","send"]},""" +
             """{"id":"ask","component":"Text","variant":"h5","text":"Squash the fix into one commit?"},""" +
             """{"id":"options","component":"Row","children":["opt-1","opt-2"]},""" +
@@ -36,8 +36,8 @@ object CheckinGuide {
             """{"id":"opt-1-label","component":"Text","text":"Squash"},""" +
             """{"id":"opt-2","component":"Button","child":"opt-2-label","action":{"event":{"name":"decide","context":{"choice":"keep"}}}},""" +
             """{"id":"opt-2-label","component":"Text","text":"Keep the commits"},""" +
-            """{"id":"answer","component":"TextField","label":"Or say something else","value":{"path":"/answer"}},""" +
-            """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"answer","context":{"text":{"path":"/answer"}}}}},""" +
+            """{"id":"answer","component":"TextField","label":"Or say something else","value":{"@path":"/answer"}},""" +
+            """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"answer","context":{"text":{"@path":"/answer"}}}}},""" +
             """{"id":"send-label","component":"Text","text":"Send"},""" +
             """{"id":"stop","component":"Row","children":["done","pause"]},""" +
             """{"id":"done","component":"Button","child":"done-label","action":{"event":{"name":"done","context":{}}}},""" +
