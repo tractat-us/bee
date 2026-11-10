@@ -20,23 +20,23 @@ import kotlin.time.Instant
 private val logger = KotlinLogging.logger {}
 
 /**
- * Pairing by poll (bee#209): the same pairing [desk] serves on the event stream, over plain
- * requests and complete responses, for a device behind a proxy that holds a stream back until it
- * ends. [open] starts a pairing and answers its code with a secret token; [poll] with that token
- * answers the newest message, until the pairing's device stops asking.
+ * Pairing by poll (bee#209), the host's one pairing transport (bee#211): the pairing [desk]
+ * serves, over plain requests and complete responses, so a proxy that holds a stream back until it
+ * ends can't stall it. [open] starts a pairing and answers its code with a secret token; [poll]
+ * with that token answers the newest message, until the pairing's device stops asking.
  *
- * **Not asking is hanging up.** A device that no poll has come from for [idle] has left, as a
- * dropped stream has: its pairing is cancelled, which ends it and withdraws a posted request
- * ([PairingDesk.serve]), and its token stops answering.
+ * **Not asking is hanging up.** A device that no poll has come from for [idle] has left: its
+ * pairing is cancelled, which ends it and withdraws a posted request ([PairingDesk.serve]), and
+ * its token stops answering.
  *
  * **What the host holds is bounded.** A refused open ([PairingPoll.Refused]) holds nothing: no
  * token, no session. A pairing that ended, with a key or without, keeps its last message for
  * [idle] from its end, so a device whose poll was lost still gets its key on the next one; polls
  * don't stretch that.
  *
- * Unlike the stream, a device that opens and never asks again leaves its request up from the dwell
- * until [idle] runs out, since [idle] outlasts [Pairing.DWELL] to ride out a slow or lost poll. The
- * cooldown and the pairing budget bound those as they bound every pairing.
+ * A device that opens and never asks again leaves its request up from the dwell until [idle] runs
+ * out, since [idle] outlasts [Pairing.DWELL] to ride out a slow or lost poll. The cooldown and the
+ * pairing budget bound those as they bound every pairing.
  *
  * **The token is the capability.** The pairing id is on the board, so it fetches nothing here: only
  * the token [open] gave the device does. Sessions are found by the token's SHA-256, so a lookup's
