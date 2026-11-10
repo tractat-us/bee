@@ -241,7 +241,7 @@ items:
     kind: task
     title: "A second screen, joined by LAN pairing (spike 7)"
     status: done
-    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. Pairing runs over SSE at /pair with a join budget; the keyed sockets take a frame bound (kuilt#3145)."
+    summary: "A key, with Bluetooth-style passkey pairing; only human peers admit a device. Pairing runs by poll at /pair with a join budget (SSE until bee#211); the keyed sockets take a frame bound (kuilt#3145)."
     depends_on: [bee-27]
     started: "2026-11-08T02:20Z"
     landed: "2026-11-08T03:51Z"
