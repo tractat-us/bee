@@ -61,11 +61,11 @@ object BeeTools {
         }
         server.addTool(
             name = OPEN,
-            description = "Puts a new surface $SHARED. Takes surfaceId, title, components (A2UI v0.9 components " +
+            description = "Puts a new surface $SHARED. Takes surfaceId, title, components (A2UI v1.0 components " +
                 "from the Notions catalog, one with id \"root\"), an optional data object, and an optional append, " +
                 "which maps a JSON Pointer to the entries appended there, each its own entry a vote can name. A " +
                 "malformed surface is refused, naming the bad id or type, and the board is unchanged. Notions adds " +
-                "Poll, which binds question, options and answers by {\"path\": \"/…\"}: question revisions and " +
+                "Poll, which binds question, options and answers by {\"@path\": \"/…\"}: question revisions and " +
                 "options go in append, never data (options as strings or {id, label}), and answers is an object " +
                 "keyed by peer, which each answer writes. It also adds " +
                 "Board, which binds columns and cards, each {items: {<id>: …}, order: [<id>]}, a column {title, " +

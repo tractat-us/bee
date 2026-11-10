@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import us.tractat.bee.a2ui.A2uiBindings
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
 import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.toSurfaceView
@@ -210,9 +211,9 @@ class OrphanDecisions(
             buildJsonObject {
                 put("id", "root")
                 put("component", "Poll")
-                putJsonObject(QUESTION) { put("path", "/$QUESTION") }
-                putJsonObject(OPTIONS) { put("path", "/$OPTIONS") }
-                putJsonObject(ANSWERS) { put("path", SurfaceFormat.pointer(listOf(ROUNDS, token, ANSWERS))) }
+                put(QUESTION, A2uiBindings.binding("/$QUESTION"))
+                put(OPTIONS, A2uiBindings.binding("/$OPTIONS"))
+                put(ANSWERS, A2uiBindings.binding(SurfaceFormat.pointer(listOf(ROUNDS, token, ANSWERS))))
             },
         )
 
