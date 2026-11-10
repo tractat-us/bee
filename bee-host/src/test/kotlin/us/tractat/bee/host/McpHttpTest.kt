@@ -89,12 +89,34 @@ class McpHttpTest {
         }
     }
 
+    /**
+     * A session is named for the tool its client says it is, in `initialize`'s `clientInfo`:
+     * Claude Code's `-claude`, as before; Codex's `-codex`; any other client's a neutral `-agent`.
+     */
+    @Test
+    fun aSessionIsNamedForTheToolItsClientSaysItIs() = runBlocking {
+        val host = startHost()
+        try {
+            val claude = connect(url(host, "?name=ada"), CLAUDE_CODE)
+            val codex = connect(url(host, "?name=sam"), CODEX)
+            val other = connect(url(host, "?name=lee"), Implementation("some-editor", "1.0"))
+            assertAll(
+                { assertEquals("ada-claude", drawAndLearnWho(claude, host, "ada-surface").name, "Claude Code keeps its name") },
+                { assertEquals("sam-codex", drawAndLearnWho(codex, host, "sam-surface").name, "Codex is named as Codex") },
+                { assertEquals("lee-agent", drawAndLearnWho(other, host, "lee-surface").name, "anything else, a neutral name") },
+            )
+            listOf(claude, codex, other).forEach { it.close() }
+        } finally {
+            host.close()
+        }
+    }
+
     @Test
     fun deletingTheSessionDepartsItsBridgeLeft() = runBlocking {
         val host = startHost()
         try {
             val transport = StreamableHttpClientTransport(http, url(host, "?name=bo"))
-            val claude = Client(Implementation("test", "0")).apply { connect(transport) }
+            val claude = Client(CLAUDE_CODE).apply { connect(transport) }
             val who = drawAndLearnWho(claude, host, "bo-surface")
             transport.terminateSession()
             val departed = withTimeout(TIMEOUT) { departureOf(host, who) }
@@ -250,8 +272,8 @@ class McpHttpTest {
 
     private fun url(host: BeeHost, query: String) = "http://127.0.0.1:${host.port}${BeeHost.MCP_PATH}$query"
 
-    private suspend fun connect(url: String): Client =
-        Client(Implementation("test", "0")).apply { connect(StreamableHttpClientTransport(http, url)) }
+    private suspend fun connect(url: String, client: Implementation = CLAUDE_CODE): Client =
+        Client(client).apply { connect(StreamableHttpClientTransport(http, url)) }
 
     /** Opens [surface] as [claude], and returns who the board says opened it. */
     private suspend fun drawAndLearnWho(claude: Client, host: BeeHost, surface: String): PeerIdentity {
@@ -277,7 +299,7 @@ class McpHttpTest {
         header(HttpHeaders.Accept, "application/json, text/event-stream")
         setBody(
             """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18",""" +
-                """"capabilities":{},"clientInfo":{"name":"raw","version":"0"}}}""",
+                """"capabilities":{},"clientInfo":{"name":"claude-code","version":"2.1.319"}}}""",
         )
     }
 
@@ -306,5 +328,11 @@ class McpHttpTest {
         const val ANOTHER_MACHINE = "192.168.1.20"
         const val SESSION_HEADER = "Mcp-Session-Id"
         const val CAP = 3
+
+        /** The `clientInfo` Claude Code gives in `initialize`. */
+        val CLAUDE_CODE = Implementation("claude-code", "2.1.319")
+
+        /** The `clientInfo` Codex gives in `initialize`. */
+        val CODEX = Implementation("codex-mcp-client", "0.50.0")
     }
 }
