@@ -2,16 +2,12 @@ package us.tractat.bee.host
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
-import io.ktor.http.contentType
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
 import io.ktor.server.engine.embeddedServer
@@ -103,14 +99,15 @@ class PairingChannelTest {
         )
     }
 
-    /** Pairing has one transport (bee#211): a `GET` asking for an event stream, as a browser's `EventSource` does, opens nothing. */
+    /**
+     * Pairing has one transport (bee#211): a `GET` asking for an event stream, as a browser's
+     * `EventSource` does, gets a client error. Only the status line is read, so a stream that
+     * stays open answers `200` here rather than hanging the test.
+     */
     @Test
-    fun aGetOfThePairingPathIsNoStream() = runBlocking {
-        val asked = client.get("http://127.0.0.1:$port${PairingWire.PATH}") { header(HttpHeaders.Accept, "text/event-stream") }
-        assertAll(
-            { assertTrue(asked.status.value in CLIENT_ERRORS, "no route answers it: ${asked.status}") },
-            { assertFalse(asked.contentType()?.match(ContentType.Text.EventStream) == true, "an event stream: ${asked.contentType()}") },
-        )
+    fun aGetOfThePairingPathIsNoStream() {
+        val status = Handshakes(port).get(PairingWire.PATH, "127.0.0.1:$port", "Accept: text/event-stream")
+        assertTrue(status.toInt() in CLIENT_ERRORS, "no route answers it: $status")
     }
 
     @Test
