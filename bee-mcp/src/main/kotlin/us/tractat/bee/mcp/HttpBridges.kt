@@ -1,6 +1,7 @@
 package us.tractat.bee.mcp
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.http.HttpMethod
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
@@ -12,7 +13,6 @@ import io.ktor.server.request.receiveText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
-import io.ktor.http.HttpMethod
 import io.ktor.util.AttributeKey
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
