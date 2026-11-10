@@ -32,9 +32,12 @@ The line is the board's address, then `/mcp`, then who you are:
 any folder, joins the board. It replaces a `bee` it already has, so run the line again for a new
 key or another board.
 
-The first time the session calls each bee tool, Codex asks. Pick **Always allow**, or set the
-server to run without asking, as in [The config file](#the-config-file). Once bee's read-only tools
-say so ([#225](https://github.com/tractat-us/bee/issues/225)), Codex can run those without asking.
+Codex runs the tools that only read the board without asking. The first time the session calls
+each tool that writes, Codex asks. Pick **Allow for this session** and it stops asking for that
+tool until the session ends. **Always allow** stops asking for good: it writes
+`approval_mode = "approve"` for that tool into `~/.codex/config.toml`, so every later session runs
+it unconfirmed, at the cost [The config file](#the-config-file) describes. `bee_wait_action`
+counts as a write, since it claims the click it hands the session.
 
 ## On the board's own machine
 
@@ -48,7 +51,9 @@ codex -c 'mcp_servers.bee.url="http://127.0.0.1:8233/mcp?name=<you>"' -c 'mcp_se
 `bee-up` prints this line, and the panel offers it to the board's owner. Each `-c` lasts for that
 run only, as `claude --mcp-config` does, and writes nothing. A `codex mcp add` here would bring
 every Codex on the machine onto the board, `codex exec` runs included. The second `-c` lets bee's
-tools run without asking, at the cost [The config file](#the-config-file) describes.
+tools run without asking, at the cost [The config file](#the-config-file) describes. Drop it and
+Codex asks only before the tools that write. Here **Always allow** lasts the run only, since
+the config has no `bee` to save it under.
 
 ## The skills
 
@@ -84,15 +89,27 @@ address, so the board comes from your `codex mcp add` line or your config.
 ```toml
 [mcp_servers.bee]
 url = "https://bee.tractat.us/mcp?name=<you>&k=<key>"
-default_tools_approval_mode = "approve"
+default_tools_approval_mode = "auto"
 ```
 
-`default_tools_approval_mode = "approve"` runs bee's tools without asking each time. That has a
-cost: anyone holding the board's key can put words on the board, over plain HTTP on a LAN board,
-and with `approve` the session can post from its context in reply without anyone confirming each
-call. The Claude Code kit's line makes the same trade through `--allowedTools 'mcp__bee__*'`.
-Leave `approve` out to be asked instead. Once bee's read-only tools say so
-([#225](https://github.com/tractat-us/bee/issues/225)), only the writes will ask.
+`default_tools_approval_mode` sets what Codex asks before bee's tools run. Each bee tool tells
+Codex whether it only reads the board:
+
+| Mode | Tools that read | Tools that write |
+|---|---|---|
+| `auto`, the default | Run without asking | Ask, offering **Allow for this session** and **Always allow** |
+| `writes` | Run without asking | Ask every time |
+| `prompt` | Ask every time | Ask every time |
+| `approve` | Run without asking | Run without asking |
+
+Keep `auto`, or pick `writes` to confirm every change to the board. `approve` has a cost: anyone
+holding the board's key can put words on the board, over plain HTTP on a LAN board, and with
+`approve` the session can post from its context in reply without anyone confirming each call. The
+Claude Code kit's line makes the same trade through `--allowedTools 'mcp__bee__*'`.
+
+**Always allow** makes that trade for one tool. It adds a table such as
+`[mcp_servers.bee.tools.bee_surface_update]` holding `approval_mode = "approve"`, to whichever
+config file holds bee's table. Delete that table to have Codex ask again.
 
 Running `codex mcp add bee` again rewrites the table and drops these settings.
 
@@ -110,7 +127,6 @@ and `env` into a table:
 [mcp_servers.bee]
 command = "/path/to/bee-mcp"
 startup_timeout_sec = 30
-default_tools_approval_mode = "approve"
 
 [mcp_servers.bee.env]
 JAVA_HOME = "/path/to/jdk-25"
@@ -124,8 +140,9 @@ what else the bridge takes. The bridge's `/clear` hook is for Claude Code, so Co
 
 ## What's different from Claude Code
 
-- **Codex asks before each tool runs**, unless the config says `approve`, which trades that check
-  for speed: see [The config file](#the-config-file).
+- **Codex asks before a tool that writes**, until you pick **Allow for this session**, or
+  **Always allow**, which saves `approve` for that tool in the config. The config can ask more or
+  less: see [The config file](#the-config-file).
 - **There are no MCP prompts.** Use the skills, or plain words.
 - **The key is in `~/.codex/config.toml`.** Treat that file like the join link.
 - **Plain HTTP on a LAN board.** Anyone who can watch your network can read the board and the

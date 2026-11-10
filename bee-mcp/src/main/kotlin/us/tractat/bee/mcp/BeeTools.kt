@@ -25,8 +25,10 @@ import us.tractat.bee.core.PresenceEntry
 /**
  * The bridge's board, record and claim tools (spec §5.2; the wait tools are [WaitTool]).
  *
- * Every tool that writes to the board says so first: its description starts "Puts … on the
- * shared board, visible to everyone attached", so sharing is always an explicit act (§9).
+ * Every tool that puts what the session asks for on the board says so first: its description
+ * starts "Puts … on the shared board, visible to everyone attached", so sharing is always an
+ * explicit act (§9). `bee_wait_action` writes too, a claim on a record a person made and the
+ * session's waiting mark, but it shares nothing from the session's context, so it isn't one.
  */
 object BeeTools {
     const val BOARD = "bee_board"
@@ -39,7 +41,7 @@ object BeeTools {
     const val RELEASE = "bee_release"
     const val PRESENCE = "bee_presence"
 
-    /** The tools that write to the board, each described as sharing. */
+    /** The tools that put what the session asks for on the board, each described as sharing. */
     val WRITING: Set<String> = setOf(OPEN, UPDATE, CLOSE, CLEAR, DONE, CLAIM, RELEASE, PRESENCE)
 
     /** The phrase every writing tool's description ends its first clause with. */
@@ -48,6 +50,7 @@ object BeeTools {
     fun register(server: Server, bridge: BeeBridge) {
         server.addTool(
             name = BOARD,
+            toolAnnotations = ToolHints.READ,
             description = "Reads the shared board: the open surfaces with their components and data, the closed " +
                 "surface ids (newest first), who is attached, each claim the host has mirrored, and whether this " +
                 "session's claims are online. You is this session's own identity. Attached lists each peer once: " +
@@ -61,6 +64,7 @@ object BeeTools {
         }
         server.addTool(
             name = OPEN,
+            toolAnnotations = ToolHints.write(destructive = false, idempotent = true),
             description = "Puts a new surface $SHARED. Takes surfaceId, title, components (A2UI v0.9 components " +
                 "from the Notions catalog, one with id \"root\"), an optional data object, and an optional append, " +
                 "which maps a JSON Pointer to the entries appended there, each its own entry a vote can name. A " +
@@ -90,6 +94,7 @@ object BeeTools {
         }
         server.addTool(
             name = UPDATE,
+            toolAnnotations = ToolHints.write(destructive = true, idempotent = false),
             description = "Puts changes to a surface $SHARED: components upserted by id, data written at " +
                 "JSON Pointers (data maps each pointer to its value), and entries appended (append maps each pointer " +
                 "to an array of new entries). An appended entry, like a Poll's option, is never rewritten. Refused, " +
@@ -110,6 +115,7 @@ object BeeTools {
         }
         server.addTool(
             name = CLOSE,
+            toolAnnotations = ToolHints.write(destructive = true, idempotent = true),
             description = "Puts a surface's closing $SHARED. A closed surface keeps its content and records.",
             inputSchema = schema(required = listOf("surfaceId")) { putJsonObject("surfaceId") { put("type", "string") } },
         ) { request ->
@@ -121,11 +127,13 @@ object BeeTools {
         }
         server.addTool(
             name = CLEAR,
+            toolAnnotations = ToolHints.write(destructive = true, idempotent = true),
             description = "Puts a cleared board $SHARED: closes every open surface but the host's, and deletes none.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),
         ) { _ -> tool { answer(buildJsonObject { put("closed", JsonArray(bridge.clear().map(::JsonPrimitive))) }) } }
         server.addTool(
             name = DONE,
+            toolAnnotations = ToolHints.write(destructive = false, idempotent = true),
             description = "Puts a handled record $SHARED: completes the claim bee_wait_action returned, under " +
                 "its token. Refused if the token is stale.",
             inputSchema = schema(required = listOf("recordId", "token")) {
@@ -143,12 +151,14 @@ object BeeTools {
         }
         server.addTool(
             name = CLAIM,
+            toolAnnotations = ToolHints.write(destructive = false, idempotent = false),
             description = "Puts a claim $SHARED: takes a target (record:<author>:<seq> or card:<surfaceId>/<cardId>) " +
                 "for this session, through the host. Returns won with a token, lost with the holder, or unavailable.",
             inputSchema = schema(required = listOf("target")) { putJsonObject("target") { put("type", "string") } },
         ) { request -> tool { answer(outcome(bridge.claim(ClaimTarget(request.string("target"))))) } }
         server.addTool(
             name = RELEASE,
+            toolAnnotations = ToolHints.write(destructive = false, idempotent = true),
             description = "Puts a release $SHARED: frees a target this session holds, under its token, or an " +
                 "orphaned target, under the token bee_board's claimViews show for it. Frees nothing once the " +
                 "target is orphaned again under another token: read the board and decide again.",
@@ -164,6 +174,7 @@ object BeeTools {
         }
         server.addTool(
             name = PRESENCE,
+            toolAnnotations = ToolHints.write(destructive = false, idempotent = true),
             description = "Puts this session's \"working on…\" line $SHARED, beside its name. Omit status to clear it.",
             inputSchema = schema(required = emptyList()) { putJsonObject("status") { put("type", "string") } },
         ) { request ->

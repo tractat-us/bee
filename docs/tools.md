@@ -31,7 +31,6 @@ These only read, so nobody else sees them happen:
 |---|---|
 | `bee_board` | Reads the board: the open surfaces with their contents, the closed ones, who is attached, and the claims. |
 | `bee_examples` | Reads the cheat-sheet: one small surface for each kind of component the board can show, ready to put up as it stands. |
-| `bee_wait_action` | Waits up to a minute for the next click, vote, answer or chat message, on one surface or on every surface this session opened. Never one the session wrote itself, such as its own chat message. |
 | `bee_list_actions` | Lists the action records on one surface, or on every surface this session opened, without waiting, leaving out the ones the session wrote itself. |
 
 These write to the board, and everyone attached sees the result:
@@ -43,9 +42,13 @@ These write to the board, and everyone attached sees the result:
 | `bee_surface_close` | Closes a surface. It moves to the history strip with its content and records. |
 | `bee_board_clear` | Closes every open surface except the host's. Nothing is deleted. |
 | `bee_action_done` | Marks an action record handled. |
+| `bee_wait_action` | Waits up to a minute for the next click, vote, answer or chat message, on one surface or on every surface this session opened, and claims it for this session. Never one the session wrote itself, such as its own chat message. While it waits, the session's cards show it's listening. |
 | `bee_claim` | Claims an action record or a card for this session. Exactly one claimer wins. |
 | `bee_release` | Lets go of a claim this session holds, or of one a departed session left behind, under the token the board shows for it. |
 | `bee_presence` | Sets the "working on…" line beside the session's name. |
+
+Each tool tells the session's client whether it changes anything, so Codex can run the readers
+without asking.
 
 ## Where these come from
 
