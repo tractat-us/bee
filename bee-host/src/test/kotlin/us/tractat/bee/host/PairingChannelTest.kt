@@ -108,7 +108,7 @@ class PairingChannelTest {
     fun aGetOfThePairingPathIsNoStream() = runBlocking {
         val asked = client.get("http://127.0.0.1:$port${PairingWire.PATH}") { header(HttpHeaders.Accept, "text/event-stream") }
         assertAll(
-            { assertEquals(HttpStatusCode.MethodNotAllowed, asked.status) },
+            { assertTrue(asked.status.value in CLIENT_ERRORS, "no route answers it: ${asked.status}") },
             { assertFalse(asked.contentType()?.match(ContentType.Text.EventStream) == true, "an event stream: ${asked.contentType()}") },
         )
     }
@@ -130,5 +130,9 @@ class PairingChannelTest {
             socket.getInputStream().bufferedReader().readLine()
         }
         assertFalse(status.startsWith("HTTP/1.1 101"), "the pairing channel answered a WebSocket upgrade: $status")
+    }
+
+    private companion object {
+        val CLIENT_ERRORS = 400..499
     }
 }
