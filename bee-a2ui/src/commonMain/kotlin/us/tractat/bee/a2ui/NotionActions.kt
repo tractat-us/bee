@@ -175,7 +175,7 @@ object NotionActions {
         requireNotNull(boundPath(property)) { "Component \"${this["id"]}\" binds no $property." }
 
     /** The data path [property] binds, or null if it binds none. */
-    private fun JsonObject.boundPath(property: String): String? = ((this[property] as? JsonObject)?.get("path"))?.stringOrNull()
+    private fun JsonObject.boundPath(property: String): String? = A2uiBindings.pathOf(this[property])
 
     private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
