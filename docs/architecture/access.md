@@ -145,9 +145,11 @@ An eviction takes five steps, in this order.
     strip leaves out an `Evicted` departure, so the person and their agents leave it at once.
 
 What they wrote stays on the board. Their page sees its socket drop and a reconnect refused, so it
-goes offline and offers to pair again, as it does today for a forgotten key. The menu on a peer
-who came by the join link says it mints a new link, since that cuts off everyone on it. A
-revocation survives a restart, because only a saved hash admits (invariant 1).
+goes offline and offers to pair again, as it does today for a forgotten key. The menu warns, in
+one line, when Evict reaches past the person. On a peer who came by the join link it says it mints
+a new link, since that cuts off everyone on it. On a peer who came by an invite that's still live,
+it says that invite stops working for everyone who hasn't opened it yet (Iain, 2026-11-09). A revocation survives a
+restart, because only a saved hash admits (invariant 1).
 
 **An evicted person can't redeem a link they still hold (Iain, 2026-11-09).** Evicting a key voids
 every live invite that key minted, which `StoredInvite.mintedBy` already records, and the invite
@@ -155,8 +157,12 @@ the key came in by. For that, an invite records the hash of each key it gave, at
 in the same save as the use; once the invite is forgotten there is nothing left to void, so the
 record never outlives the link. A voided invite admits no one from then on, and a page that opens
 it hears it lapsed, so no new refusal crosses the wire. Everyone already in by it keeps their own
-key. Two ways back stay open, under invariant 3: a link someone else minted that the person never
-used, and a person on the board admitting them again by code or a fresh invite.
+key.
+
+**Anyone on the board may let an evicted person back in (Iain, 2026-11-09).** Eviction voids their
+links, and nothing more: being admitted again, by a code or by a new invite, is an ordinary
+admission under invariant 3, and no host is needed. A link someone else minted that the person
+never used still admits them too.
 
 **Make host** sets the role on every device key the identity was declared on, saves, and updates
 the mirror. When a name is on more than one key, the menu says how many devices it covers. **Not
@@ -172,7 +178,8 @@ host** takes the same slot on a host's bubble and clears the role.
   checks the socket closes and the reconnect is refused, restarts, and checks again.
 - An evicted person can't redeem a link they hold: a test, not yet built, that evicts a key which
   came in by one invite and minted another, then checks both secrets are refused while an invite
-  another key minted still admits.
+  another key minted still admits, and a code typed by a member who isn't a host admits them
+  again.
 - Agents never hold the menu: the bridge exposes no access tool. That's `review`, since a peer's
   kind is self-declared and no new gate may rest on it (spec §5.7).
 
@@ -199,6 +206,9 @@ host** takes the same slot on a host's bubble and clears the role.
   link, and [`product.md`](product.md) invariant 3 holds its rule. ([#215](https://github.com/tractat-us/bee/issues/215), 2026-11-09)
 - **An eviction that leaves the evicted person's invites live.** They could redeem a link they
   still hold for a new key until it lapsed or ran out. (Iain, [#173](https://github.com/tractat-us/bee/pull/173#issuecomment-6755901751), 2026-11-09)
+- **Only a host may let an evicted person back in.** Eviction would become a ban that only a host
+  can lift, and every other admission needs no host (invariant 3). Iain's call: anyone on the board
+  may re-admit, by code or a new invite. (Iain, [#173](https://github.com/tractat-us/bee/pull/173), 2026-11-09)
 - **Finding the invite a key came in by from its device line.** The line would keep that link for
   as long as the key lives, long after the invite stops admitting. The invite records the keys it
   gave instead, and the record goes when the invite is forgotten. ([#173](https://github.com/tractat-us/bee/pull/173), 2026-11-09)

@@ -87,8 +87,9 @@ and building the tool instead of the work is an anti-goal
   - **Hidden until asked for.** The menu adds nothing to the strip. A member's page has no menu,
     so the gesture does what the browser does; an agent's bubble has none either.
   - **It says only what a person must know before pressing.** Evict on someone who came by the
-    join link says it mints a new link. Make host on a name used by more than one device says how
-    many.
+    join link says it mints a new link. Evict on someone who came by a live invite says that invite
+    stops for everyone who hasn't opened it yet. Make host on a name used by more than one device
+    says how many.
   - The strip doesn't mark who is a host ([`access.md`](access.md#open)).
 - **A board-only view for projectors and the app:** [#168](https://github.com/tractat-us/bee/issues/168).
   Removes clutter.
