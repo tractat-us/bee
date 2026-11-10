@@ -34,6 +34,8 @@ dependencies {
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.server.netty)
+    // HttpBridges reads an opening POST's clientInfo before the SDK reads the same body.
+    implementation(libs.ktor.server.double.receive)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlin.logging)
