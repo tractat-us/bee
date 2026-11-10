@@ -34,6 +34,9 @@ These only read, so nobody else sees them happen:
 | `bee_wait_action` | Waits up to a minute for the next click, vote, answer or chat message, on one surface or on every surface this session opened. Never one the session wrote itself, such as its own chat message. |
 | `bee_list_actions` | Lists the action records on one surface, or on every surface this session opened, without waiting, leaving out the ones the session wrote itself. |
 
+Each tool tells the session's client whether it changes anything, so Codex can run the readers
+without asking. `bee_wait_action` says it does: it claims the record it returns.
+
 These write to the board, and everyone attached sees the result:
 
 | Tool | What it does |
