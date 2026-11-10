@@ -347,7 +347,7 @@ class McpHttpRestartTest {
     private fun url(host: BeeHost, query: String) = "http://127.0.0.1:${host.port}${BeeHost.MCP_PATH}$query"
 
     private suspend fun connect(url: String): Client =
-        Client(Implementation("test", "0")).apply { connect(StreamableHttpClientTransport(http, url)) }
+        Client(Implementation("claude-code", "2.1.319")).apply { connect(StreamableHttpClientTransport(http, url)) }
 
     private suspend fun drawAndLearnWho(claude: Client, host: BeeHost, surface: String): PeerIdentity {
         val opened = claude.callTool(BeeTools.OPEN, openArgs(surface))
