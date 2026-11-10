@@ -5,9 +5,14 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.createRouteScopedPlugin
+import io.ktor.server.plugins.doublereceive.DoubleReceive
+import io.ktor.server.request.contentLength
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.receiveText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.http.HttpMethod
 import io.ktor.util.AttributeKey
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
@@ -25,6 +30,10 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.HostAddress
 import us.tractat.bee.core.PairingWire
@@ -125,7 +134,13 @@ class HttpBridges internal constructor(
      * by, so the SDK's own localhost-only check is off.
      */
     fun mount(app: Application) {
-        app.routing { route(PATH) { install(Activity) { sessions = this@HttpBridges } } }
+        app.routing {
+            route(PATH) {
+                // Only an opening POST's body is kept, so Activity can read its clientInfo and the SDK the same body.
+                install(DoubleReceive) { excludeFromCache { call, _ -> !opensSession(call) } }
+                install(Activity) { sessions = this@HttpBridges }
+            }
+        }
         app.mcpStreamableHttp(
             path = PATH,
             enableDnsRebindingProtection = false,
@@ -152,7 +167,8 @@ class HttpBridges internal constructor(
     }
 
     /**
-     * A new MCP session's server, over a bridge named for the call's `?name=`: the identities the
+     * A new MCP session's server, over a bridge named for the call's `?name=` and the tool its
+     * client says it is ([AgentTool], from `initialize`'s `clientInfo`, read by [Activity]): the identities the
      * last host kept for that name and the call's key, if it kept one session's ([KeptIdentities]),
      * else a fresh one. The join link's key, or a name nobody chose ([resumable]), always gets a
      * fresh one. The bridge stays off the board until the session initializes ([bind]): Claude
@@ -161,10 +177,11 @@ class HttpBridges internal constructor(
      */
     private fun open(context: RoutingContext): Server {
         val call = context.call
-        val name = sessionNameFrom(call.request.queryParameters[NAME_PARAM])
+        val person = call.request.queryParameters[NAME_PARAM]
+        val name = sessionNameFrom(person, AgentTool.of(call.attributes.getOrNull(CLIENT_NAME)))
         val key = call.request.queryParameters[KEY_PARAM]
         val caller = Caller.of(key)
-        val canResume = resumable(name, keyKind(key))
+        val canResume = resumable(person, keyKind(key))
         val resumed = if (canResume) kept.pickUp(name, caller) else null
         // The call arrived on the host's own port: the bridge dials it on loopback, with the host's own key.
         val host = HostAddress.parse("ws://127.0.0.1:${call.request.local.localPort}/?${PairingWire.KEY_PARAM}=$dialKey")
@@ -390,18 +407,33 @@ class HttpBridges internal constructor(
         private val HEARTBEAT: Duration = 15.seconds
 
         private const val SESSION_HEADER = "Mcp-Session-Id"
-        private const val DEFAULT_NAME = "claude"
         private val OPENING = AttributeKey<Session>("bee-mcp-opening")
 
+        /** The name an opening POST's client gives in `initialize`'s `clientInfo`, when it gives one. */
+        private val CLIENT_NAME = AttributeKey<String>("bee-mcp-client-name")
+
         /**
-         * The session name for a `?name=` of [raw]: `<name>-claude`, as `bee-up` and `bee-join` name
-         * a person's sessions, or [DEFAULT_NAME] when it names nobody. A peer name can't hold ':' or
-         * '#', so those are dropped.
+         * The most of an opening POST's body [Activity] reads for its `clientInfo`. An `initialize`
+         * is a few hundred bytes; a body longer than this, or of no stated length, is left to the
+         * SDK alone, and its session is named [AgentTool.Other].
          */
-        fun sessionNameFrom(raw: String?): String {
-            val name = raw.orEmpty().filterNot { it == ':' || it == '#' }.trim()
-            return if (name.isEmpty()) DEFAULT_NAME else "$name-claude"
+        private const val OPENING_BODY_MAX: Long = 64L * 1024
+
+        private val json = Json { ignoreUnknownKeys = true }
+
+        /**
+         * The session name for a `?name=` of [raw] from a client that is [tool]: `<name>-<tool>`.
+         * Claude Code's is `<name>-claude`, as `bee-up` and `bee-join` name a person's sessions and
+         * as every session was named before bee#224, so its kept identities still resume. When it
+         * names nobody, the tool's suffix alone. A peer name can't hold ':' or '#', so those are
+         * dropped.
+         */
+        fun sessionNameFrom(raw: String?, tool: AgentTool): String {
+            val person = personFrom(raw)
+            return if (person.isEmpty()) tool.suffix else "$person-${tool.suffix}"
         }
+
+        private fun personFrom(raw: String?): String = raw.orEmpty().filterNot { it == ':' || it == '#' }.trim()
 
         /**
          * The `?name=` the page offers a viewer it can't name: bee-web's `McpCommand.PLACEHOLDER`.
@@ -410,13 +442,36 @@ class HttpBridges internal constructor(
         const val PLACEHOLDER_NAME: String = "you"
 
         /**
-         * Whether a session named [name], presenting [key], may come back as a kept identity
-         * (bee#126): only on a key that is one device's, or none (the host's own machine), and only
-         * under a name someone chose. Everyone holding the join link holds its key, and no name, or
-         * the page's [PLACEHOLDER_NAME], is anybody's.
+         * Whether a session for a `?name=` of [raw], presenting [key], may come back as a kept
+         * identity (bee#126): only on a key that is one device's, or none (the host's own machine),
+         * and only under a name someone chose. Everyone holding the join link holds its key, and no
+         * name, or the page's [PLACEHOLDER_NAME], is anybody's, whichever tool presents it.
          */
-        fun resumable(name: String, key: PresentedKey): Boolean =
-            key != PresentedKey.Join && name != DEFAULT_NAME && name != sessionNameFrom(PLACEHOLDER_NAME)
+        fun resumable(raw: String?, key: PresentedKey): Boolean {
+            val person = personFrom(raw)
+            return key != PresentedKey.Join && person.isNotEmpty() && person != PLACEHOLDER_NAME
+        }
+
+        /** Whether [call] may open a session, so its body is an `initialize` worth reading for its client's name. */
+        private fun opensSession(call: ApplicationCall): Boolean =
+            call.request.httpMethod == HttpMethod.Post &&
+                call.request.headers[SESSION_HEADER] == null &&
+                (call.request.contentLength() ?: Long.MAX_VALUE) <= OPENING_BODY_MAX
+
+        /**
+         * The `clientInfo.name` an `initialize` [body] gives, or null when it gives none or isn't
+         * JSON: the SDK answers a body like that itself.
+         */
+        internal fun clientNameIn(body: String): String? {
+            val message = try {
+                json.parseToJsonElement(body) as? JsonObject
+            } catch (_: SerializationException) {
+                null
+            }
+            val params = message?.get("params") as? JsonObject
+            val clientInfo = params?.get("clientInfo") as? JsonObject
+            return (clientInfo?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content
+        }
 
         /**
          * Counts each call on [PATH] as activity on its session from start to finish: a GET stream
@@ -425,6 +480,8 @@ class HttpBridges internal constructor(
         private val Activity = createRouteScopedPlugin("BeeMcpActivity", ::ActivityConfig) {
             val sessions = requireNotNull(pluginConfig.sessions) { "BeeMcpActivity needs its sessions." }
             requireNotNull(route) { "BeeMcpActivity is installed on a route." }.intercept(ApplicationCallPipeline.Call) {
+                // Before the SDK opens the session and asks for its server, which is named then ([open]).
+                if (opensSession(context)) clientNameIn(context.receiveText())?.let { context.attributes.put(CLIENT_NAME, it) }
                 val session = sessions.sessionOf(context)
                 session?.enter()
                 try {
