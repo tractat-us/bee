@@ -77,6 +77,22 @@ class SurfaceProjectionTest {
         )
     }
 
+    /** A board saved under A2UI v0.9.1 holds `{"path"}` bindings; every reader is shown v1.0's `{"@path"}` (bee#230). */
+    @Test
+    fun aSavedV091BindingProjectsInTheV10Spelling() {
+        val base = surface(a)
+        val saved = buildJsonObject {
+            put("id", "root")
+            put("component", "Text")
+            put("text", buildJsonObject { put("path", "/note") })
+        }
+        val components = (base[SurfaceFormat.COMPONENTS] as JsonNode.Object).map
+        val doc = base.piece(
+            base.set(SurfaceFormat.COMPONENTS, JsonNode.Object(components.put(a, "root", leaf(a, SurfaceFormat.encodeLeaf(saved))).delta)),
+        )
+        assertEquals(A2uiBindings.binding("/note"), doc.toSurfaceView("lunch").components.getValue("root")["text"])
+    }
+
     /** A surface document as bee-core lays it out: meta, one root component, empty data. */
     private fun surface(replica: ReplicaId): JsonCrdt {
         val meta = ORMap.empty<String, JsonNode>().piece {
