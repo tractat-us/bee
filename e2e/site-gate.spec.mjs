@@ -53,11 +53,13 @@ test('a page from another origin cannot open the board socket', async ({ page })
   expect(await dial(page, board)).toBe('refused');
 });
 
-// bee#54: an `<img>` or a no-cors `fetch` sends no `Origin`, so only its Fetch Metadata tells the
-// host another site sent it. Admitted, it would hold a pairing slot and, after the dwell, post its
-// `?screen=` text to the board as a join request. A no-cors `POST`, which opens a pairing, sends
-// its `Origin` too. Chromium may block another origin's answer itself (ORB), where Safari doesn't,
-// so the host's 403 is what this test reads first, and the empty board second.
+// bee#54: an `<img>` sends no `Origin`, so only its Fetch Metadata tells the host another site
+// sent it, and the host's 403 for it is the gate's. A `GET` of `/pair` opens nothing (bee#211), so
+// the image's empty board would hold even if the gate let it by. A no-cors `POST`, which would
+// open a pairing, sends its `Origin`, so its 403 is the `Origin` check's; `SiteGateTest` pins a
+// `POST` refused on Fetch Metadata alone. Chromium may block another origin's answer itself
+// (ORB), where Safari doesn't, so the host's 403 is what this test reads first, and the empty
+// board second.
 test('a page from another origin cannot open a pairing', async ({ browser, page }) => {
   const { context, request } = await watchBoard(browser);
   try {
