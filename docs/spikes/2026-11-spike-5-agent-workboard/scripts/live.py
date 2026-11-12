@@ -41,7 +41,7 @@ ST={'done':   ('#bfeedd','#00744f','',    '✓'),
     'call':   ('#fde2b0','#a86b00','',    '⚠'),
     'next':   ('#faf3a8','#7a6f00','6 3', '●'),
     'blocked':('#e4e6ea','#5b6470','2 3', '⏸')}
-W,H,CX,RY,X0,Y0=150,42,180,54,8,40
+W,H,CX,RY,X0,Y0=176,42,200,54,8,40
 maxrows=max(len(c) for c in cols.values())
 pos={}
 for d,ns in cols.items():
@@ -78,5 +78,5 @@ panel=("<div class='pn'><div><b>Next check-in:</b> "+(f"~{hm(fin[nxt])} ET, when
 done=sum(1 for v in info.values() if v[0]=='done')
 html=("<style>body{margin:0;background:#fff;color:#1f2328;font-family:system-ui,sans-serif}.w{padding:10px 12px}h3{margin:0 0 2px;font-size:15px}p{margin:3px 0 8px;font-size:12.5px;color:#424a53}.pn{font-size:12.5px;background:#f6f8fa;border:1px solid #d0d7de;border-radius:8px;padding:8px 10px;margin:0 0 10px}.cols{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:4px}.cols>div{flex:1 1 200px}ul{margin:2px 0 0;padding-left:18px}li{margin:1px 0}</style>"
       f"<div class='w'><h3>heddle #3173: live dependency map</h3><p><b>{done}/{len(info)}</b> merged. Updated <b>{hm(now)} ET</b>, refreshed every 2 min from GitHub. Rough ETA for the whole chain: <b>{eta.astimezone(ET).strftime('%a %-I:%M %p')}</b>. Estimates are hand-set; the actual times come from the PRs.</p>"+panel+''.join(o)+"</div>")
-u={"name":"bee_surface_update","arguments":{"surfaceId":"heddle-plan","components":[{"id":"root","component":"Sketch","title":"heddle plan","html":html}]}}
+u={"name":"bee_surface_update","arguments":{"surfaceId":"heddle-map","components":[{"id":"root","component":"Sketch","title":"heddle plan","html":html}]}}
 json.dump(u,open(os.path.join(S,'live.json'),'w'))

@@ -51,7 +51,7 @@ All of them live in `scripts/` and expect `zsh`, `python3` and an authenticated 
 | Script | What it does |
 |---|---|
 | `beecall.sh <method> <params-json-or-file>` | One MCP JSON-RPC call. It opens a session on first use and caches its id beside itself. Each request gets a random id, because a fixed id collides with a concurrent long-poll ("Request id is already in use"). |
-| `live.py` + `live-loop.sh` | The live map: reads `live-state.json` (tasks, dependencies, PR numbers, estimates), asks GitHub with one GraphQL query, and redraws the `heddle-plan` Sketch every 120 s. |
+| `live.py` + `live-loop.sh` | The live map: reads `live-state.json` (tasks, dependencies, PR numbers, estimates), asks GitHub with one GraphQL query, and redraws the `heddle-map` Sketch every 120 s. |
 | `mkcalls.py`, `mksurvey.py` | Build the survey from a list of calls: id, title, tradeoff in Markdown, and options. |
 | `decide_ui.py` | Re-renders the survey after an ack, a decision or a dismissal. It keeps `decided.json` beside itself. |
 | `waitdecide.sh` | Waits for the next `decide` click, acknowledges it on the card at once, and exits so the agent's turn picks it up. |
@@ -67,6 +67,13 @@ opening call.
   `Part of #N` in their bodies and matching titles to tasks.
 - **Everything runs inside the agent's session.** The loops stop when the session ends. A
   launchd job, or a host-side notion, would outlive it.
+- **A re-initialised MCP session is a new peer, so the agent's earlier surfaces go grey.** The
+  host expired the first session. Re-initialising gave the agent a new identity
+  (`agent:<name>#<new suffix>`), and the board then showed the surfaces opened under the old one
+  as "gone quiet", desaturated, so Iain saw the coloured map as greys. A surface id is used once,
+  so the only repair was to reopen under new ids (`heddle-map`, `kuilt-board`). The loop now
+  sets presence every cycle to keep the session warm, but the real fix belongs in bee: an agent's
+  identity should survive its own session being re-initialised.
 - **The session id and cursor are cached in files beside the scripts.** A "Session not found"
   after a host restart is handled by re-initialising, but two loops can race to do it.
 - **The Sketch is light-themed only.** It sets its own white background so it reads in either
