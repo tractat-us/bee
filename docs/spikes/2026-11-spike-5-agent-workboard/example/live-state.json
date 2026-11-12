@@ -1,0 +1,124 @@
+{
+ "core": {
+  "label": "#3171 core split",
+  "pr": 3171
+ },
+ "T1": {
+  "label": "1 Topology",
+  "pr": 3182,
+  "deps": [
+   "core"
+  ]
+ },
+ "C": {
+  "label": "C lease evidence",
+  "pr": 3183,
+  "deps": [
+   "core"
+  ],
+  "note": "fix-ups"
+ },
+ "T1b": {
+  "label": "1b index-path problems",
+  "pr": 3186,
+  "deps": [
+   "T1"
+  ]
+ },
+ "T2": {
+  "label": "2 lowering + ids",
+  "pr": 3188,
+  "deps": [
+   "T1"
+  ],
+  "note": "review fix-ups"
+ },
+ "T3": {
+  "label": "3 draft { }",
+  "pr": 3185,
+  "deps": [
+   "T1"
+  ]
+ },
+ "L0": {
+  "label": "L0 edge index",
+  "deps": [
+   "C"
+  ],
+  "est": 75,
+  "started": "2026-11-12T20:44:00Z"
+ },
+ "T4": {
+  "label": "4 diff",
+  "deps": [
+   "T2"
+  ],
+  "est": 60
+ },
+ "L1": {
+  "label": "L1 LocalHeddle",
+  "deps": [
+   "L0"
+  ],
+  "est": 90
+ },
+ "E": {
+  "label": "E explain(leaf)",
+  "deps": [
+   "L1"
+  ],
+  "est": 30
+ },
+ "T5": {
+  "label": "5 runtime kids",
+  "deps": [
+   "T4"
+  ],
+  "est": 45
+ },
+ "L3": {
+  "label": "L3 apply / rehome",
+  "deps": [
+   "T4",
+   "L1"
+  ],
+  "est": 90
+ },
+ "L2": {
+  "label": "L2 supply + reconcile",
+  "deps": [
+   "L1"
+  ],
+  "est": 60
+ },
+ "S1": {
+  "label": "S1 status + health",
+  "deps": [
+   "T5",
+   "L3"
+  ],
+  "est": 45
+ },
+ "P": {
+  "label": "P persistence",
+  "deps": [
+   "L2",
+   "L3"
+  ],
+  "est": 60
+ },
+ "S2": {
+  "label": "S2 preview",
+  "deps": [
+   "S1"
+  ],
+  "est": 30
+ },
+ "O1": {
+  "label": "O1 heddle-otel",
+  "deps": [
+   "S1"
+  ],
+  "est": 60
+ }
+}
