@@ -34,8 +34,13 @@ depth={}
 for n in order: depth[n]=1+max([depth[d] for d in st[n].get('deps',[])], default=-1)
 cols={}
 for n in order: cols.setdefault(depth[n],[]).append(n)
-ST={'done':('#d6f5dd','#1a7f37',''),'review':('#dbeafe','#1d4ed8',''),'merging':('#cffafe','#0e7490',''),
-    'call':('#fff4d6','#b45309',''),'next':('#ffffff','#57606a','4 3'),'blocked':('#f2f3f5','#9aa1a9','')}
+# Okabe-Ito hues (colour-blind safe), plus a glyph and a border style per state, so colour is never the only cue.
+ST={'done':   ('#bfeedd','#00744f','',    '✓'),
+    'review': ('#cfe3f5','#0060a0','',    '▶'),
+    'merging':('#f3d3e6','#a3457c','',    '⇢'),
+    'call':   ('#fde2b0','#a86b00','',    '⚠'),
+    'next':   ('#faf3a8','#7a6f00','6 3', '●'),
+    'blocked':('#e4e6ea','#5b6470','2 3', '⏸')}
 W,H,CX,RY,X0,Y0=150,42,180,54,8,40
 maxrows=max(len(c) for c in cols.values())
 pos={}
@@ -49,14 +54,14 @@ for n in order:
         x1,y1=pos[d]; x2,y2=pos[n]; x1+=W; y1+=H/2; y2+=H/2; mx=(x1+x2)/2
         o.append(f"<path d='M{x1:.0f} {y1:.0f}C{mx:.0f} {y1:.0f} {mx:.0f} {y2:.0f} {x2-2:.0f} {y2:.0f}' fill='none' stroke='#8c959f' stroke-width='1.2' marker-end='url(#a)'/>")
 for n in order:
-    x,y=pos[n]; s,sub=info[n]; f,sk,da=ST[s]; dd=f" stroke-dasharray='{da}'" if da else ''
-    o.append(f"<rect x='{x:.0f}' y='{y:.0f}' width='{W}' height='{H}' rx='8' fill='{f}' stroke='{sk}' stroke-width='1.6'{dd}/>")
+    x,y=pos[n]; s,sub=info[n]; f,sk,da,g=ST[s]; sub=g+' '+sub; dd=f" stroke-dasharray='{da}'" if da else ''
+    o.append(f"<rect x='{x:.0f}' y='{y:.0f}' width='{W}' height='{H}' rx='8' fill='{f}' stroke='{sk}' stroke-width='2.2'{dd}/>")
     o.append(f"<text x='{x+W/2:.0f}' y='{y+17:.0f}' text-anchor='middle' font-size='12.5' font-weight='600' fill='#1f2328'>{st[n]['label'].replace('{','&#123;').replace('}','&#125;')}</text>")
-    o.append(f"<text x='{x+W/2:.0f}' y='{y+33:.0f}' text-anchor='middle' font-size='10.5' fill='{sk}'>{sub}</text>")
+    o.append(f"<text x='{x+W/2:.0f}' y='{y+33:.0f}' text-anchor='middle' font-size='10.5' fill='{sk}' font-weight='600'>{sub}</text>")
 lx=8
 for k,t in [('done','merged'),('review','in flight'),('merging','auto-merge armed'),('call','fix-ups'),('next','ready next'),('blocked','blocked')]:
-    f,sk,da=ST[k]; dd=f" stroke-dasharray='{da}'" if da else ''
-    o.append(f"<rect x='{lx}' y='8' width='14' height='14' rx='3' fill='{f}' stroke='{sk}'{dd}/><text x='{lx+19}' y='19' font-size='11.5' fill='#424a53'>{t}</text>"); lx+=19+len(t)*6.4+16
+    f,sk,da,g=ST[k]; dd=f" stroke-dasharray='{da}'" if da else ''
+    o.append(f"<rect x='{lx}' y='8' width='16' height='16' rx='3' fill='{f}' stroke='{sk}' stroke-width='2'{dd}/><text x='{lx+21}' y='20' font-size='11.5' fill='{sk}' font-weight='600'>{g} {t}</text>"); lx+=21+len(t)*6.6+30
 o.append("</svg>")
 eta=max(fin.values())
 inflight=[n for n in order if info[n][0] in ('review','merging','call')]
