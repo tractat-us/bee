@@ -68,15 +68,19 @@ inflight=[n for n in order if info[n][0] in ('review','merging','call')]
 soon=sorted(inflight,key=lambda n: fin[n])
 nxt=soon[0] if soon else None
 canstart=[st[n]['label'] for n in order if info[n][0]=='next']
+import re as _re
+_order=eval(_re.search(r"order=(\[.*?\])",open(os.path.join(S,'decide_ui.py')).read()).group(1))
+_dec=json.load(open(os.path.join(S,'decided.json'))) if os.path.exists(os.path.join(S,'decided.json')) else {}
+yours=[f"survey call: <i>{c}</i> (on heddle-survey)" for c in _order if c not in _dec]
 def li(xs): return ''.join(f'<li>{x}</li>' for x in xs) or '<li>nothing</li>'
 waiting=[f"{st[n]['label']}: {'auto-merging' if info[n][0]=='merging' else ('worker running' if 'worker' in info[n][1] else 'PR open, review or fix-ups')} (expected ~{hm(fin[n])})" for n in soon]
 panel=("<div class='pn'><div><b>Next check-in:</b> "+(f"~{hm(fin[nxt])} ET, when <i>{st[nxt]['label']}</i> should land" if nxt else 'none scheduled')+
   ". I also act whenever a worker or CI reports, so it may be sooner.</div>"
   "<div class='cols'><div><b>Waiting on</b><ul>"+li(waiting)+"</ul></div>"
   "<div><b>Can start now (unblocked, not dispatched)</b><ul>"+li(canstart)+"</ul></div>"
-  "<div><b>Waiting on you</b><ul><li>nothing: every survey call is answered</li></ul></div></div></div>")
+  "<div><b>Waiting on you</b><ul>"+li(yours)+"</ul></div></div></div>")
 done=sum(1 for v in info.values() if v[0]=='done')
 html=("<style>body{margin:0;background:#fff;color:#1f2328;font-family:system-ui,sans-serif}.w{padding:10px 12px}h3{margin:0 0 2px;font-size:15px}p{margin:3px 0 8px;font-size:12.5px;color:#424a53}.pn{font-size:12.5px;background:#f6f8fa;border:1px solid #d0d7de;border-radius:8px;padding:8px 10px;margin:0 0 10px}.cols{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:4px}.cols>div{flex:1 1 200px}ul{margin:2px 0 0;padding-left:18px}li{margin:1px 0}</style>"
       f"<div class='w'><h3>heddle #3173: live dependency map</h3><p><b>{done}/{len(info)}</b> merged. Updated <b>{hm(now)} ET</b>, refreshed every 2 min from GitHub. Rough ETA for the whole chain: <b>{eta.astimezone(ET).strftime('%a %-I:%M %p')}</b>. Estimates are hand-set; the actual times come from the PRs.</p>"+panel+''.join(o)+"</div>")
-u={"name":"bee_surface_update","arguments":{"surfaceId":"heddle-map","components":[{"id":"root","component":"Sketch","title":"heddle plan","html":html}]}}
+u={"name":"bee_surface_update","arguments":{"surfaceId":"heddle-map-2","components":[{"id":"root","component":"Sketch","title":"heddle plan","html":html}]}}
 json.dump(u,open(os.path.join(S,'live.json'),'w'))

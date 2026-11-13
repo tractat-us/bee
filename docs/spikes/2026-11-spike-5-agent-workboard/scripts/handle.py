@@ -12,6 +12,9 @@ elif r['name']=='drop' and r['surfaceId']=='kuilt-board' and ctx.get('column')==
     j=json.loads(json.loads(b)['result']['content'][0]['text']); s=[x for x in j['open'] if x['surfaceId']=='kuilt-board'][0]
     order=[c for c in s['data']['cards']['order'] if c!=ctx['card']]
     call({"name":"bee_surface_update","arguments":{"surfaceId":"kuilt-inflight","data":{"/cards/order":order}}}); done_msg='dismissed'
+elif r['name']=='decide':
+    out=subprocess.run(['python3',os.path.join(S,'decide_ui.py'),ctx['call'],'ack',ctx.get('label','')],capture_output=True,text=True).stdout
+    call(json.loads(out)); sys.exit(0)
 else:
-    sys.exit(1 if r['name']!='decide' else 0)
+    sys.exit(1)
 if 'token' in r: call({"name":"bee_action_done","arguments":{"recordId":r['recordId'],"token":r['token'],"result":done_msg}})

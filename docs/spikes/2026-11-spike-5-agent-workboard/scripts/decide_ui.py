@@ -1,7 +1,7 @@
 # usage: decide_ui.py <cid> <state: ack|done> <label> [note]  -> prints bee_surface_update JSON
 import json, sys, os
 S=os.path.dirname(os.path.abspath(__file__)); f=os.path.join(S,'decided.json')
-order=['topo','l0','explain','otel','emit']
+order=['underres','r2len','topo','l0','explain','otel','emit','reparent']
 dec=json.load(open(f)) if os.path.exists(f) else {}
 cid,state,label=sys.argv[1],sys.argv[2],sys.argv[3]; note=sys.argv[4] if len(sys.argv)>4 else ''
 if state=='dismiss': dec[cid]['dismissed']=True

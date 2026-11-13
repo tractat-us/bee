@@ -52,13 +52,18 @@ All of them live in `scripts/` and expect `zsh`, `python3` and an authenticated 
 |---|---|
 | `beecall.sh <method> <params-json-or-file>` | One MCP JSON-RPC call. It opens a session on first use and caches its id beside itself. Each request gets a random id, because a fixed id collides with a concurrent long-poll ("Request id is already in use"). |
 | `live.py` + `live-loop.sh` | The live map: reads `live-state.json` (tasks, dependencies, PR numbers, estimates), asks GitHub with one GraphQL query, and redraws the `heddle-map` Sketch every 120 s. |
+| `live-id.py` + `live-id-loop.sh` | A second, self-deriving map (`identity-map`, or `$ID_SURFACE`) for an epic: reads its sub-issues from GitHub, finds each one's PRs by `#N` in the body (only PRs opened after the issue), and projects ETAs from `id-estimates.json` with two workers and one serial slice. `id-overrides.json` marks a worker running before its Draft PR exists. Its dependency edges are a hand-kept `DEPS` table at the top. |
 | `mkcalls.py`, `mksurvey.py` | Build the survey from a list of calls: id, title, tradeoff in Markdown, and options. |
 | `decide_ui.py` | Re-renders the survey after an ack, a decision or a dismissal. It keeps `decided.json` beside itself. |
 | `waitdecide.sh` | Waits for the next `decide` click, acknowledges it on the card at once, and exits so the agent's turn picks it up. |
 | `dismissd.sh` + `handle.py` | Run without the agent: survey dismissals and drops into the Board's dismiss column. Exits on a `decide` so the agent sees it. |
 
-`example/` holds the state the session ended with: `live-state.json` and the in-flight Board's
-opening call.
+`example/` holds the state the session ended with: `live-state.json`, the in-flight Board's
+opening call, and the identity map's `id-estimates.json` and `id-overrides.json`.
+
+`live-loop.sh` skips one refresh when `live.py` fails (an empty `gh` reply once did) and drops
+the session id only when a bee call itself fails. Dropping it on any failure re-initialised the
+session, and so greyed every surface.
 
 ## Known rough edges, next iterations
 
