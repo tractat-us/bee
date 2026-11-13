@@ -61,9 +61,12 @@ All of them live in `scripts/` and expect `zsh`, `python3` and an authenticated 
 `example/` holds the state the session ended with: `live-state.json`, the in-flight Board's
 opening call, and the identity map's `id-estimates.json` and `id-overrides.json`.
 
-`live-loop.sh` skips one refresh when `live.py` fails (an empty `gh` reply once did) and drops
-the session id only when a bee call itself fails. Dropping it on any failure re-initialised the
-session, and so greyed every surface.
+**Why the maps went grey, and the loop that fixes it.** bee closes an MCP session after two minutes
+of quiet, and a 120 s sleep sits right on that edge. `curl` exits 0 on a JSON-RPC "Session not
+found" reply, so `beecall.sh … || rm -f bee-sid` never fired. Both loops (`live-loop.sh`,
+`live-id-loop.sh`, the second from the identity-track session) now send presence every 50 s,
+redraw about every 150 s, and treat a reply without `"result"` as a dead session: re-initialise,
+open the next surface id (`$HEDDLE_SURFACE` / `$ID_SURFACE`), and close the old one.
 
 ## Known rough edges, next iterations
 
