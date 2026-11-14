@@ -2,7 +2,7 @@
  "repo": "tractat-us/kuilt",
  "title": "heddle overflow fix + consumer batch: live dependency map",
  "about": "Top row: the peer's stacked fix (#3313). Below: this session's design docs, implementations and small fixes.",
- "surface": "heddle-overflow-map",
+ "surface": "heddle-overflow-example",
  "overrides": "heddle-overflow.ov.json",
  "nodes": {
   "S1": {"label": "1 :kuilt-math", "branch": "heddle/3313", "deps": [], "est": 30, "owner": "peer", "pos": [0, 0]},
