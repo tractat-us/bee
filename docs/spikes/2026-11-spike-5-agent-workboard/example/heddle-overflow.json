@@ -1,0 +1,28 @@
+{
+ "repo": "tractat-us/kuilt",
+ "title": "heddle overflow fix + consumer batch: live dependency map",
+ "about": "Top row: the peer's stacked fix (#3313). Below: this session's design docs, implementations and small fixes.",
+ "surface": "heddle-overflow-map",
+ "overrides": "heddle-overflow.ov.json",
+ "nodes": {
+  "S1": {"label": "1 :kuilt-math", "branch": "heddle/3313", "deps": [], "est": 30, "owner": "peer", "pos": [0, 0]},
+  "S2": {"label": "2 Rational wide/gcd", "branch": "heddle/3313", "deps": ["S1"], "est": 60, "owner": "peer", "pos": [1, 0]},
+  "S3": {"label": "3 tick positions", "branch": "heddle/3313", "deps": ["S2"], "est": 240, "owner": "peer", "pos": [2, 0]},
+  "S4": {"label": "4 ceiling refusal", "branch": "heddle/3313", "deps": ["S3"], "est": 90, "owner": "peer", "pos": [3, 0]},
+  "S5": {"label": "5 rebase #3329", "branch": "heddle/3313", "deps": ["S4"], "est": 240, "owner": "peer", "pos": [4, 0]},
+  "D3192": {"label": "doc: compaction", "issue": 3192, "deps": [], "est": 40, "pos": [0, 1]},
+  "D3324": {"label": "doc: ceiling", "issue": 3324, "deps": [], "est": 40, "pos": [0, 2]},
+  "D3321": {"label": "doc: preview", "issue": 3321, "deps": [], "est": 40, "pos": [0, 3]},
+  "I3192": {"label": "impl: compaction", "deps": ["D3192", "S4"], "est": 180, "pos": [4, 1]},
+  "I3324": {"label": "impl: ceiling", "deps": ["D3324", "S4"], "est": 180, "pos": [4, 2]},
+  "I3321": {"label": "impl: preview", "deps": ["D3321", "S4"], "est": 120, "pos": [4, 3]},
+  "I3320": {"label": "admit waiting", "issue": 3320, "deps": ["S3"], "est": 60, "pos": [3, 4]},
+  "I3319": {"label": "boundMetrics", "issue": 3319, "deps": ["S3"], "est": 60, "pos": [3, 5]},
+  "I3318": {"label": "GCounter wrap", "issue": 3318, "deps": ["S1"], "est": 60, "pos": [2, 6]},
+  "I3322": {"label": "path lookup", "issue": 3322, "deps": [], "est": 60, "pos": [0, 4]},
+  "I3323": {"label": "version const", "issue": 3323, "deps": [], "est": 45, "pos": [0, 6]},
+  "I3325": {"label": "problem kind", "issue": 3325, "deps": [], "est": 60, "pos": [0, 5]},
+  "I3317": {"label": "otel seg wrap", "issue": 3317, "deps": [], "est": 60, "pos": [0, 7]},
+  "REL": {"label": "release (by hand)", "aggregate": true, "owner": "you", "est": 0, "pos": [5, 3]}
+ }
+}
