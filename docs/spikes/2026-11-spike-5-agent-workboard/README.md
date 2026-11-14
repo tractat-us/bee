@@ -50,40 +50,85 @@ All of them live in `scripts/` and expect `zsh`, `python3` and an authenticated 
 
 | Script | What it does |
 |---|---|
-| `beecall.sh <method> <params-json-or-file>` | One MCP JSON-RPC call. It opens a session on first use and caches its id beside itself. Each request gets a random id, because a fixed id collides with a concurrent long-poll ("Request id is already in use"). |
-| `live.py` + `live-loop.sh` | The live map: reads `live-state.json` (tasks, dependencies, PR numbers, estimates), asks GitHub with one GraphQL query, and redraws the `heddle-map` Sketch every 120 s. |
-| `live-id.py` + `live-id-loop.sh` | A second, self-deriving map (`identity-map`, or `$ID_SURFACE`) for an epic: reads its sub-issues from GitHub, finds each one's PRs by `#N` in the body (only PRs opened after the issue), and projects ETAs from `id-estimates.json` with two workers and one serial slice. `id-overrides.json` marks a worker running before its Draft PR exists. Its dependency edges are a hand-kept `DEPS` table at the top. |
+| `beecall.sh <method> <params-json-or-file>` | One MCP JSON-RPC call. It opens a session on first use and caches its id in `$BEE_SID_FILE` (default: beside itself). It exits 3 when the host answers 404 (the session is gone), 2 on any other reply without a `"result"`. Each request gets a random id, because a fixed id collides with a concurrent long-poll ("Request id is already in use"). |
+| `livemap.py SPEC.json` | The live dependency map, for any plan. Reads a graph spec, asks GitHub with one GraphQL query, and prints the `bee_surface_update` call (`--open TITLE` for `bee_surface_open`). Exits non-zero, printing nothing, when GitHub can't be read. |
+| `livemap-loop.sh SPEC.json` | Keeps that map live: redraws every 60 s, and heals a lost session (below). `livemap-loop.sh SPEC.json close` closes its surface, as does Ctrl-C. |
 | `mkcalls.py`, `mksurvey.py` | Build the survey from a list of calls: id, title, tradeoff in Markdown, and options. |
 | `decide_ui.py` | Re-renders the survey after an ack, a decision or a dismissal. It keeps `decided.json` beside itself. |
 | `waitdecide.sh` | Waits for the next `decide` click, acknowledges it on the card at once, and exits so the agent's turn picks it up. |
 | `dismissd.sh` + `handle.py` | Run without the agent: survey dismissals and drops into the Board's dismiss column. Exits on a `decide` so the agent sees it. |
 
-`example/` holds the state the session ended with: `live-state.json`, the in-flight Board's
-opening call, and the identity map's `id-estimates.json` and `id-overrides.json`.
+`example/` holds the in-flight Board's opening call, and `heddle-overflow.json` with its
+overrides `heddle-overflow.ov.json`: the spec for the map a kuilt session kept on 2026-11-13.
+The two per-plan maps this replaced (`live.py`, `live-id.py` and their loops, each with the plan
+written into its Python) are in this branch's history at `615e5399`.
 
-**Why the maps went grey, and the loop that fixes it.** bee closes an MCP session after two minutes
-of quiet, and a 120 s sleep sits right on that edge. `curl` exits 0 on a JSON-RPC "Session not
-found" reply, so `beecall.sh … || rm -f bee-sid` never fired. Both loops (`live-loop.sh`,
-`live-id-loop.sh`, the second from the identity-track session) now send presence every 50 s,
-redraw about every 150 s, and treat a reply without `"result"` as a dead session: re-initialise,
-open the next surface id (`$HEDDLE_SURFACE` / `$ID_SURFACE`), and close the old one.
+## A live map for your plan
+
+Write a spec. Each node is one box: a `label`, and how to find its PR, which is one of an `issue`
+(the newest PR whose body cites `#N`, opened after the issue), a `pr`, or a `branch` prefix.
+Nodes sharing a prefix are a stack, and its PRs go to them oldest first. Then its `deps`, an `est`
+in minutes, an `owner` (anyone but `self` and `you` shows on the box), and an optional `pos`
+`[column, row]`. A node with `"aggregate": true`, such as a release, waits on every other node
+unless given `deps`. The full field list is at the top of `livemap.py`.
+
+```json
+{"repo": "tractat-us/kuilt", "title": "my plan: live dependency map", "surface": "my-map",
+ "overrides": "my-plan.ov.json",
+ "nodes": {
+  "doc": {"label": "doc: design", "issue": 3192, "est": 40},
+  "s1":  {"label": "1 core", "branch": "feat/3313", "owner": "peer", "est": 90},
+  "s2":  {"label": "2 wire", "branch": "feat/3313", "owner": "peer", "deps": ["s1"]},
+  "impl": {"label": "impl", "deps": ["doc", "s2"], "est": 180},
+  "rel": {"label": "release (by hand)", "aggregate": true, "owner": "you"}}}
+```
+
+The overrides file holds what changes as the run goes. `note` marks a worker running before it has
+a PR (`{"impl": {"note": "worker A", "started": "2026-11-14T03:38:00Z"}}`), so dispatched work never
+reads "ready". `tag` is a remark that leaves the state alone (`{"impl": {"tag": "plan being
+written"}}`). `pr` pins a PR the discovery got wrong, and `"_asks": [...]` adds lines to the panel's
+"Waiting on you". Edit it while the loop runs; the next redraw picks it up. Then:
+
+```sh
+BEE_URL='http://127.0.0.1:8233/mcp?name=me' scripts/livemap-loop.sh my-plan.json
+```
+
+The loop keeps its session id, surface counter and log in `my-plan.state/` beside the spec.
+
+**What the map promises.** Boxes sit one per cell of a grid, so none hides another, whatever the
+graph: a pinned cell already taken moves down a row, with a warning. Boxes widen to fit their text,
+up to a cap, past which it is cut with an ellipsis. Edges into an aggregate are not drawn: from every
+sink they crossed every row and read as false dependencies. The header says what feeds it instead.
+A box is "in flight" only with a PR or a `note`. Above the map, a panel shows **Next check-in**,
+**Waiting on**, **Can start now** (unblocked, not dispatched, owned by `self`) and **Waiting on
+you**.
+
+**Why the maps went grey, and how the loop heals.** The host closes an MCP session quiet for two
+minutes, and the first loop slept 120 s, right on that edge. From then on every update got a 404
+with `"Session not found"`, but `curl` exits 0 on that, so nothing noticed and the map froze for an
+evening. A new session is a new peer, and the board greys the surfaces of the old one, so a surface
+id can't simply be reused. `livemap-loop.sh` redraws every 60 s, well inside the timeout. When a call
+fails anyway, it opens a new session, reopens the map under the next surface id, and closes the
+stale one.
 
 ## Known rough edges, next iterations
 
-- **The map's skeleton is hand-kept.** Which PR is which task, worker start times and estimates
-  live in `live-state.json`, edited by the agent. The next step is discovering PRs by
-  `Part of #N` in their bodies and matching titles to tasks.
+- **The plan's shape is still hand-written.** The spec names every node and edge; only PRs and
+  their states are discovered. The identity map derived its nodes from an epic's sub-issues, and
+  `livemap.py` doesn't yet. A spec field naming the epic would bring that back.
+- **ETAs assume unlimited workers.** A pending box starts when its last dependency ends. The
+  identity map modelled two workers and a serial slice; the generator dropped that.
+- **A stack's PRs are matched by age.** The oldest open-or-merged PR on the prefix goes to the
+  stack's first node. A slice that is reopened as a new PR shifts the rest; pin it with `pr`.
+- **Edges can cross boxes.** The grid stops boxes overlapping each other, not lines running behind
+  them. A pinned layout fixes it by hand.
 - **Everything runs inside the agent's session.** The loops stop when the session ends. A
   launchd job, or a host-side notion, would outlive it.
-- **A re-initialised MCP session is a new peer, so the agent's earlier surfaces go grey.** The
-  host expired the first session. Re-initialising gave the agent a new identity
-  (`agent:<name>#<new suffix>`), and the board then showed the surfaces opened under the old one
-  as "gone quiet", desaturated, so Iain saw the coloured map as greys. A surface id is used once,
-  so the only repair was to reopen under new ids (`heddle-map`, `kuilt-board`). The loop now
-  sets presence every cycle to keep the session warm, but the real fix belongs in bee: an agent's
-  identity should survive its own session being re-initialised.
-- **The session id and cursor are cached in files beside the scripts.** A "Session not found"
-  after a host restart is handled by re-initialising, but two loops can race to do it.
+- **Every lapse costs a surface.** Healing works, but each one opens a new surface id and greys
+  the old one until it closes. The host's side is filed: a long-lived script should be able to keep
+  its session or rebind its surfaces ([bee#237](https://github.com/tractat-us/bee/issues/237)), and
+  an expired session's 404 should say it expired and what it stranded
+  ([bee#238](https://github.com/tractat-us/bee/issues/238)).
 - **The Sketch is light-themed only.** It sets its own white background so it reads in either
   theme, but it does not follow dark mode.
 - **Several of these belong in bee itself.** Candidates are a survey Notion with optional depth
