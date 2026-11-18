@@ -85,6 +85,7 @@ import kotlin.time.Instant
  *
  * @param author the [client]'s CRDT author (`mcp-<uuid>`), which every write names.
  * @param scope runs the sweep, for the bridge's lifetime.
+ * @param syncWait how long a read waits for a fresh replica's first sync with the host ([awaitSynced]).
  */
 @Suppress("TooManyFunctions")
 class BeeBridge(
@@ -95,6 +96,7 @@ class BeeBridge(
     private val presence: Presence,
     private val clock: () -> Instant,
     private val scope: CoroutineScope,
+    private val syncWait: Duration = SYNC_WAIT,
 ) {
     private val retiring = Mutex()
 
@@ -146,6 +148,15 @@ class BeeBridge(
 
     /** The board as this bridge holds it. */
     val board: StateFlow<BoardState> get() = client.state
+
+    /**
+     * Waits up to [syncWait] for this bridge's replica to hold the board the host holds
+     * ([BoardClient.synced]), so a read made the moment a session connects isn't of the empty
+     * board its replica started with (bee#240). Answers at once once it has synced.
+     *
+     * @return whether it has synced; a read that goes on without says so
+     */
+    suspend fun awaitSynced(): Boolean = client.awaitSynced(syncWait)
 
     /** The identity the bridge acts as now. */
     val self: PeerIdentity get() = identity.current.value
@@ -604,6 +615,13 @@ internal sealed interface OwnClaim {
 
 /** How long [BeeBridge.release] waits for its link's table to fold the entry of the token it is given. */
 private val RELEASE_CATCH_UP: Duration = 5.seconds
+
+/**
+ * How long a read waits for a fresh replica's first sync ([BeeBridge.awaitSynced]). The host's
+ * own bridges sync over loopback in tens of milliseconds, and a laptop's within a round trip or
+ * two plus the board's size on the wire; past this the read answers with what it has.
+ */
+val SYNC_WAIT: Duration = 3.seconds
 
 /** A write the bridge refused, with a message for the agent that names why. */
 open class BridgeRefusal(message: String) : Exception(message)
