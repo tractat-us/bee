@@ -9,6 +9,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
@@ -17,8 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -152,8 +152,11 @@ class BoardClient(
         val quilter: Quilter<BoardState>,
         val job: Job,
         val scope: CoroutineScope,
-        /** The board in the first `FullState` the relay sent over this connection, or null before one arrives. */
-        val relayBoard: StateFlow<BoardState?>,
+        /**
+         * Where the board in the first `FullState` the relay sends over this connection arrives, once;
+         * null for a connection made once the client had synced, which nothing watches.
+         */
+        val relayBoard: ReceiveChannel<BoardState>?,
     ) {
         /** Completes when the connection is over: its seam tore, a pump failed, or its Quilter closed. */
         val ended = CompletableDeferred<Unit>()
@@ -373,10 +376,12 @@ class BoardClient(
         connection.seam.state.pumpIn(connection, "tear") { if (it is SeamState.Torn) connection.ended.complete(Unit) }
         // Synchronous with the refusal, so neither a cancelled scope nor [settle] can come between.
         connection.seam.refused.invokeOnCompletion { connection.ended.complete(Unit) }
-        if (!_synced.value) {
+        connection.relayBoard?.let { relayBoard ->
             connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-synced")) {
-                // Joining the relay's board again changes nothing once the held board holds it.
-                combine(held, connection.relayBoard.filterNotNull()) { board, relay -> board.piece(relay) == board }.first { it }
+                val relay = relayBoard.receive()
+                // The held board, not the FullState's arrival: kuilt promises no order between noting
+                // the frame and the Quilter's merge of it, which a big board can make slow ([holds]).
+                held.first { it.holds(relay) }
                 _synced.value = true
             }
         }
@@ -423,16 +428,17 @@ class BoardClient(
         val job = SupervisorJob(scope.coroutineContext[Job])
         val connectionScope = scope + job
         try {
-            val watched = FirstContactSeam(seam)
+            // Watched only until the client has synced: from then on a connection costs nothing more.
+            val relayBoard = if (_synced.value) null else Channel<BoardState>(Channel.CONFLATED)
             val quilter = Quilter(
                 replica = ReplicaId("${author.value}#c$n"),
-                seam = watched,
+                seam = relayBoard?.let { relay -> FirstContactSeam(seam) { relay.trySend(it) } } ?: seam,
                 initial = held.value,
                 messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
                 scope = connectionScope,
                 config = config,
             )
-            return Connection(seam, quilter, job, connectionScope, watched.relayBoard)
+            return Connection(seam, quilter, job, connectionScope, relayBoard)
         } catch (failure: Throwable) {
             job.cancel()
             throw failure
