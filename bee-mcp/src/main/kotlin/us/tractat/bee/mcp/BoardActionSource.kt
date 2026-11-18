@@ -193,15 +193,17 @@ class BoardActionSource internal constructor(
         }
     }
 
-    override fun list(scope: ActionScope, since: String?): ActionPage {
+    override suspend fun list(scope: ActionScope, since: String?): ActionPage {
         bridge.touch()
         val passed = decode(since)
+        val synced = bridge.awaitSynced()
         val state = bridge.board.value
         refuseJoinRequests(state, scope)
         val fresh = recordsIn(state, scope, granted = emptySet()).filter { (id, _) -> id.dot !in passed }
         return ActionPage(
             records = fresh.map { (id, record) -> json(id, record, token = null, basisComplete = record.basis.completeIn(state, record.surfaceId)) },
             cursor = encode(passed + fresh.map { it.first.dot }),
+            synced = synced,
         )
     }
 

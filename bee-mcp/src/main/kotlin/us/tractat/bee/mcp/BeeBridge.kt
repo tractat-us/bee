@@ -85,6 +85,7 @@ import kotlin.time.Instant
  *
  * @param author the [client]'s CRDT author (`mcp-<uuid>`), which every write names.
  * @param scope runs the sweep, for the bridge's lifetime.
+ * @param syncWait how long a read waits for a fresh replica's first sync with the host ([awaitSynced]).
  */
 @Suppress("TooManyFunctions")
 class BeeBridge(
@@ -95,6 +96,7 @@ class BeeBridge(
     private val presence: Presence,
     private val clock: () -> Instant,
     private val scope: CoroutineScope,
+    private val syncWait: Duration = SYNC_WAIT,
 ) {
     private val retiring = Mutex()
 
@@ -146,6 +148,28 @@ class BeeBridge(
 
     /** The board as this bridge holds it. */
     val board: StateFlow<BoardState> get() = client.state
+
+    /**
+     * Waits up to [syncWait] for this bridge's replica to hold the board the host holds
+     * ([BoardClient.synced]), so a read made the moment a session connects isn't of the empty
+     * board its replica started with (bee#240). Answers at once once it has synced.
+     *
+     * @return whether it has synced; a read that goes on without says so
+     */
+    suspend fun awaitSynced(): Boolean = client.awaitSynced(syncWait)
+
+    /**
+     * The board, once this bridge's replica has synced with the host ([awaitSynced]). Every write
+     * reads it first ([beforeWrite]): a write decided against the empty board a fresh replica
+     * starts with would open a second copy of a surface that is there, refuse an update to one,
+     * clear nothing, or miss this session's own departure (bee#240).
+     *
+     * @throws BoardNotSyncedRefusal if the board hasn't arrived within [syncWait]
+     */
+    private suspend fun syncedBoard(): BoardState {
+        if (!awaitSynced()) throw BoardNotSyncedRefusal()
+        return board.value
+    }
 
     /** The identity the bridge acts as now. */
     val self: PeerIdentity get() = identity.current.value
@@ -308,10 +332,14 @@ class BeeBridge(
      */
     suspend fun clear(): List<String> {
         beforeWrite()
-        val state = board.value
-        val open = state.openSurfaces().filter { requireNotNull(state.meta(it)) { "Open surface $it has no meta." }.openedBy.kind != PeerKind.Host }
-        open.forEach { id -> client.mutate { it.closeSurface(author, id, clock()) } }
-        return open
+        var closed = emptyList<String>()
+        // Decided against the very state the closes land on, as [close] is: a surface closed
+        // meanwhile keeps its first closing.
+        client.mutateOrSkip { state ->
+            closed = state.openSurfaces().filter { requireNotNull(state.meta(it)) { "Open surface $it has no meta." }.openedBy.kind != PeerKind.Host }
+            if (closed.isEmpty()) null else joined(state, closed.map { id -> { s: BoardState -> s.closeSurface(author, id, clock()) } })
+        }
+        return closed
     }
 
     /** Claims [target] for the caller to keep, as `bee_claim` does: a win is recorded as handed over. */
@@ -513,16 +541,24 @@ class BeeBridge(
 
     /**
      * The identity to write as, after the retirement check. If the host retired the current
-     * identity, a fresh one takes its place (the `/clear` path) and the write is refused.
+     * identity, a fresh one takes its place (the `/clear` path) and the write is refused. A write
+     * on a replica that hasn't yet synced is refused too ([syncedBoard]).
      */
-    private suspend fun beforeWrite(): PeerIdentity = retiring.withLock {
+    private suspend fun beforeWrite(): PeerIdentity {
+        // Outside the lock: a write waiting for the board holds up no other write's check.
+        syncedBoard()
+        return retiring.withLock { retirementCheck() }
+    }
+
+    private suspend fun retirementCheck(): PeerIdentity {
         val who = self
         val table = claims.link.value?.client?.table?.value
+        // Synced: [beforeWrite] waited for it, and a replica never stops being synced.
         val mirrored = board.value
         val reason = table?.departReason(who) ?: mirrored.departures().firstOrNull { it.identity == who }?.reason
         if (reason == null) {
             presence.update(who, statusLine, clock())
-            return@withLock who
+            return who
         }
         val orphaned = orphanedBy(who, table, mirrored)
         identity.retire(reason)
@@ -609,11 +645,25 @@ internal sealed interface OwnClaim {
 /** How long [BeeBridge.release] waits for its link's table to fold the entry of the token it is given. */
 private val RELEASE_CATCH_UP: Duration = 5.seconds
 
+/**
+ * How long a read waits for a fresh replica's first sync ([BeeBridge.awaitSynced]). The host's
+ * own bridges sync over loopback in tens of milliseconds, and a laptop's within a round trip or
+ * two plus the board's size on the wire; past this the read answers with what it has.
+ */
+val SYNC_WAIT: Duration = 3.seconds
+
 /** A write the bridge refused, with a message for the agent that names why. */
 open class BridgeRefusal(message: String) : Exception(message)
 
 /** A claim operation refused because no claims link is up: [CLAIMS_OFFLINE]. */
 class ClaimsOfflineRefusal : BridgeRefusal(CLAIMS_OFFLINE)
+
+/** A write refused because this bridge's replica hasn't synced with the host yet: [BOARD_NOT_SYNCED]. */
+class BoardNotSyncedRefusal : BridgeRefusal(BOARD_NOT_SYNCED)
+
+/** What a write answers while the board hasn't arrived from the host. */
+const val BOARD_NOT_SYNCED: String =
+    "The board hasn't arrived from the host yet, so nothing was written: a write made now could miss what is on it. Try again shortly."
 
 /** What a claim operation answers while no claims link is up. */
 const val CLAIMS_OFFLINE: String =

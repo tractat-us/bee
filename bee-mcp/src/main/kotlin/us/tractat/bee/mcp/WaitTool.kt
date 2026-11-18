@@ -79,7 +79,8 @@ object WaitTool {
                 "Omit surfaceId to list the records on all of your own surfaces, the ones this session opened; pass it to list that one surface's. " +
                 "Returns {records, cursor}; each record names its surfaceId. Pass a cursor a previous call returned as since " +
                 "to list only the records after it. Records this session wrote itself are left out, and a pairing surface " +
-                "the host opened is refused, as bee_wait_action does both.",
+                "the host opened is refused, as bee_wait_action does both. Just after connecting it waits a moment for the " +
+                "board to arrive; synced false means it hadn't, and records may be missing.",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("surfaceId") {
@@ -138,11 +139,13 @@ object WaitTool {
         }
     }
 
-    private fun listActions(request: CallToolRequest, source: ActionSource): CallToolResult = refusing {
+    private suspend fun listActions(request: CallToolRequest, source: ActionSource): CallToolResult = refusing {
         val page = source.list(request.scope(), request.optionalString("since"))
         val json = buildJsonObject {
             put("records", JsonArray(page.records))
             put("cursor", page.cursor)
+            // Only when it isn't, as bee_board says it (bee#240).
+            if (!page.synced) put("synced", false)
         }
         CallToolResult(content = listOf(TextContent(json.toString())), structuredContent = json)
     }
