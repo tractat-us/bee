@@ -67,7 +67,7 @@ class OrphanDecisionsTest {
         /** The data path the decision's `Poll` binds its answers to now. */
         fun answersPath(): String = requireNotNull(board.surfaceDoc(OrphanDecision.surfaceId(TARGET)))
             .toSurfaceView(OrphanDecision.surfaceId(TARGET)).components.getValue("root")
-            .getValue("answers").jsonObject.getValue("path").jsonPrimitive.content
+            .getValue("answers").jsonObject.getValue("@path").jsonPrimitive.content
 
         /** The value at [pointer] in the decision's data. */
         fun at(pointer: String): JsonElement? =

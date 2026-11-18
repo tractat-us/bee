@@ -108,7 +108,7 @@ test('two people chat, a simultaneous send keeps both, and an agent hears a mess
   await agent.call('bee_surface_open', {
     surfaceId: SURFACE,
     title: 'Talk to the board',
-    components: [{ id: 'root', component: 'Chat', messages: { path: '/messages' } }],
+    components: [{ id: 'root', component: 'Chat', messages: { '@path': '/messages' } }],
   });
   const alex = await openPeer(browser, 'alex');
   const sam = await openPeer(browser, 'sam');

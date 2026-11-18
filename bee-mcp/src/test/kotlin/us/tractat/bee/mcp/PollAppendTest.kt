@@ -126,7 +126,7 @@ class PollAppendTest {
     private fun poll(): JsonObject = buildJsonObject {
         put("id", "root")
         put("component", "Poll")
-        listOf("question", "options", "answers").forEach { key -> put(key, buildJsonObject { put("path", "/$key") }) }
+        listOf("question", "options", "answers").forEach { key -> put(key, buildJsonObject { put("@path", "/$key") }) }
     }
 
     /** The dots of the append-only array at [pointer] in surface [id]'s data; empty if it isn't one. */

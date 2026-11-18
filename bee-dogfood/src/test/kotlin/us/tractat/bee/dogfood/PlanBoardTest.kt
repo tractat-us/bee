@@ -45,7 +45,7 @@ class PlanBoardTest {
             { assertEquals(first, again, "a re-seed of an unchanged plan changes nothing") },
             { assertNotEquals(first.data.keys, without.data.keys, "a dropped card writes under a new key") },
             { assertTrue(dropped !in board(without).obj("cards").obj("items"), "a dropped item has no card") },
-            { assertEquals("/${without.data.keys.single()}/cards", without.components.single().obj("cards").string("path"), "the Board binds the new key") },
+            { assertEquals("/${without.data.keys.single()}/cards", without.components.single().obj("cards").string("@path"), "the Board binds the new key") },
         )
     }
 

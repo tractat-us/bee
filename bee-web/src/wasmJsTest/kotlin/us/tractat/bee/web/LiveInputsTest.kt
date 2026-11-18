@@ -239,7 +239,7 @@ class LiveInputsTest {
             put("id", "root")
             put("component", "TextField")
             put("label", "Name")
-            putJsonObject("value") { put("path", "/name") }
+            putJsonObject("value") { put("@path", "/name") }
         }
     }
 }

@@ -170,7 +170,8 @@ object SurfaceFormat {
  * its pointer. An append-only array shows its entries in sequence order, and its pointer is in
  * [SurfaceView.appended]. A whole array shows as
  * its writer wrote it: it's one leaf, so a merge can't put an id in it twice, and nothing is
- * deduped.
+ * deduped. Each component shows in A2UI v1.0's spelling, even one saved under v0.9.1
+ * ([A2uiBindings.upgrade]).
  */
 fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     val meta = requireNotNull(this[SurfaceFormat.META] as? JsonNode.Object) { "Surface $id has no meta." }
@@ -180,7 +181,7 @@ fun JsonCrdt.toSurfaceView(id: String): SurfaceView {
     val componentMap =
         requireNotNull(this[SurfaceFormat.COMPONENTS] as? JsonNode.Object) { "Surface $id has no components." }.map
     val components = componentMap.keys.sorted().associateWith { key ->
-        SurfaceFormat.winner(componentMap[key] as JsonNode.Leaf).jsonObject
+        A2uiBindings.upgrade(SurfaceFormat.winner(componentMap[key] as JsonNode.Leaf).jsonObject)
     }
     val conflicts = mutableMapOf<String, List<JsonElement>>()
     val appended = mutableSetOf<String>()

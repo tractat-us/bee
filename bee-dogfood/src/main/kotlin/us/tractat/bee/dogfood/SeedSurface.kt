@@ -27,7 +27,7 @@ data class SeedSurface(
     }
 }
 
-/** A2UI v0.9 components from the basic catalog, as the seeder uses them. */
+/** A2UI v1.0 components from the basic catalog, as the seeder uses them. */
 internal object Components {
     /** Body text, whose Markdown the page renders (sanitized), links included. */
     fun text(id: String, markdown: String): JsonObject = buildJsonObject {
@@ -48,5 +48,5 @@ internal object Components {
         put("child", child)
     }
 
-    fun binding(path: String): JsonElement = buildJsonObject { put("path", path) }
+    fun binding(path: String): JsonElement = buildJsonObject { put("@path", path) }
 }

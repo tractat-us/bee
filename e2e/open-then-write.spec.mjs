@@ -26,7 +26,7 @@ test('a surface opened then written at once shows on pages already open', async 
     await agent.call('bee_surface_open', {
       surfaceId: id,
       title: 'Open then write',
-      components: [{ id: 'root', component: 'Text', text: { path: '/note' } }],
+      components: [{ id: 'root', component: 'Text', text: { '@path': '/note' } }],
     });
     await agent.call('bee_surface_update', { surfaceId: id, data: { '/note': 'written' } });
     for (const { page } of [a, b]) {
@@ -54,7 +54,7 @@ test('a poll opened then answered at once from one page shows on another', async
     await agent.call('bee_surface_open', {
       surfaceId: id,
       title: 'Open then answer',
-      components: [{ id: 'root', component: 'Poll', question: { path: '/question' }, options: { path: '/options' }, answers: { path: '/answers' } }],
+      components: [{ id: 'root', component: 'Poll', question: { '@path': '/question' }, options: { '@path': '/options' }, answers: { '@path': '/answers' } }],
       append: { '/question': ['Which?'], '/options': ['SSO', 'Passkeys'] },
     });
     const option = (page, label) => page.locator(`a2ui-surface[data-surface-id="${id}"] bee-poll button`, { hasText: label });

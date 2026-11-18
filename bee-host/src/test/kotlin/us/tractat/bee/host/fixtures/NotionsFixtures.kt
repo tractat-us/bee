@@ -127,16 +127,16 @@ private fun markup() = Fixture(
 private fun pollComponent(id: String) = buildJsonObject {
     put("id", id)
     put("component", SurfaceValidator.POLL)
-    putJsonObject("question") { put("path", "/question") }
-    putJsonObject("options") { put("path", "/options") }
-    putJsonObject("answers") { put("path", "/answers") }
+    putJsonObject("question") { put("@path", "/question") }
+    putJsonObject("options") { put("@path", "/options") }
+    putJsonObject("answers") { put("@path", "/answers") }
 }
 
 private fun boardComponent(id: String) = buildJsonObject {
     put("id", id)
     put("component", SurfaceValidator.BOARD)
-    putJsonObject("columns") { put("path", "/columns") }
-    putJsonObject("cards") { put("path", "/cards") }
+    putJsonObject("columns") { put("@path", "/columns") }
+    putJsonObject("cards") { put("@path", "/cards") }
 }
 
 /** Columns and cards as ordered collections; every card starts in the first column. */

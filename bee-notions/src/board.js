@@ -9,8 +9,8 @@
 // `column` leaf from the register it read and appends the record. Two concurrent drops of one
 // card leave two values in that leaf, and the projection shows one (the greater column id), so a
 // card never shows twice.
-import { A2uiLitElement } from '@a2ui/lit/v0_9';
-import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v0_9';
+import { A2uiLitElement } from '@a2ui/lit';
+import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v1_0';
 import { html, nothing } from 'lit';
 import { BoundData } from './bound-data.js';
 

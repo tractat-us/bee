@@ -13,7 +13,7 @@ class A2uiJsonTest {
     @Test
     fun createSurfaceEncodesTheEnvelope() {
         assertEquals(
-            """[{"version":"v0.9","createSurface":{"surfaceId":"s1",""" +
+            """[{"version":"1.0","createSurface":{"surfaceId":"s1",""" +
                 """"catalogId":"https://tractat.us/bee/catalogs/notions/v1.json","sendDataModel":false}}]""",
             A2uiJson.encode(listOf(A2uiMessage.CreateSurface("s1", NOTIONS_CATALOG_ID))),
         )
@@ -27,9 +27,9 @@ class A2uiJsonTest {
             put("text", "hi")
         }
         assertEquals(
-            """[{"version":"v0.9","updateComponents":{"surfaceId":"s1","components":""" +
+            """[{"version":"1.0","updateComponents":{"surfaceId":"s1","components":""" +
                 """[{"id":"root","component":"Text","text":"hi"}]}},""" +
-                """{"version":"v0.9","updateDataModel":{"surfaceId":"s1","path":"/n","value":3}}]""",
+                """{"version":"1.0","updateDataModel":{"surfaceId":"s1","path":"/n","value":3}}]""",
             A2uiJson.encode(
                 listOf(
                     A2uiMessage.UpdateComponents("s1", listOf(text)),
@@ -41,17 +41,17 @@ class A2uiJsonTest {
 
     @Test
     fun deleteEncodesInThePinnedForm() {
-        // A2UI v0.9.1 deletes the value at a path when `value` is omitted.
+        // A2UI v1.0 requires `value`, and deletes the value at a path when it is null.
         assertAll(
             {
                 assertEquals(
-                    """[{"version":"v0.9","updateDataModel":{"surfaceId":"s1","path":"/n"}}]""",
+                    """[{"version":"1.0","updateDataModel":{"surfaceId":"s1","path":"/n","value":null}}]""",
                     A2uiJson.encode(listOf(A2uiMessage.UpdateDataModel("s1", "/n", null))),
                 )
             },
             {
                 assertEquals(
-                    """[{"version":"v0.9","deleteSurface":{"surfaceId":"s1"}}]""",
+                    """[{"version":"1.0","deleteSurface":{"surfaceId":"s1"}}]""",
                     A2uiJson.encode(listOf(A2uiMessage.DeleteSurface("s1"))),
                 )
             },

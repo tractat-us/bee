@@ -104,7 +104,7 @@ test('a focused field keeps its focus, and a Sketch its frame, when a card is re
     title: 'Field',
     components: [
       { id: 'root', component: 'Column', children: ['note', 'sketch'] },
-      { id: 'note', component: 'TextField', label: 'Note', value: { path: '/note' } },
+      { id: 'note', component: 'TextField', label: 'Note', value: { '@path': '/note' } },
       { id: 'sketch', component: 'Sketch', html: '<p id="drawn">drawn</p>' },
     ],
     data: { note: '' },

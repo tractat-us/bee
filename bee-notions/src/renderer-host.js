@@ -2,11 +2,13 @@
 // one <a2ui-surface> per surface. The reference host is A2UI's
 // samples/client/lit/shell/app.ts. Only JSON strings cross to and from Kotlin/wasm.
 //
-// Pinned: @a2ui/lit 0.15.0 and @a2ui/web_core 0.15.0, speaking A2UI v0.9.1
-// (`version: "v0.9"`). See docs/spikes/2026-11-spike-1-renderer-glue.md.
-import { MessageProcessor, injectBasicCatalogStyles } from '@a2ui/web_core/v0_9';
+// Pinned: @a2ui/lit 0.15.0 and @a2ui/web_core 0.15.0, speaking A2UI v1.0 (`version: "1.0"`,
+// bee#230). web_core exports `v1_0`; lit has no `v1_0` entry, but its root `<a2ui-surface>`
+// doesn't depend on the version, so bee renders v1.0 through it (plan amendment A9).
+import { MessageProcessor } from '@a2ui/web_core/v1_0';
+import { injectBasicCatalogStyles } from '@a2ui/web_core/catalogs/basic/v1';
 // Registers <a2ui-surface>, as a side effect of importing the Lit entry point.
-import { Context } from '@a2ui/lit/v0_9';
+import { Context } from '@a2ui/lit';
 import { renderMarkdown } from '@a2ui/markdown-it';
 import { NOTIONS_CATALOG_ID, notionsCatalog } from './catalog.js';
 

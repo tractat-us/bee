@@ -23,8 +23,8 @@
 // `RTCPeerConnection`, and a closed declarative shadow root hides that frame from even a helper
 // that removes nested frames. WebKit also opens a TCP connection for `<link rel=preconnect>`, and
 // the browser may resolve a DNS name a sketch hints at (bee#49).
-import { A2uiLitElement } from '@a2ui/lit/v0_9';
-import { DynamicStringSchema, TextApi } from '@a2ui/web_core/v0_9';
+import { A2uiLitElement } from '@a2ui/lit';
+import { DynamicStringSchema, TextApi } from '@a2ui/web_core/v1_0';
 import { sketchHelper } from './sketch-helper.js';
 
 /**

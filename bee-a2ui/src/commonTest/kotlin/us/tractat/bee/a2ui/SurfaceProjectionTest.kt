@@ -2,6 +2,7 @@ package us.tractat.bee.a2ui
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -77,15 +78,28 @@ class SurfaceProjectionTest {
         )
     }
 
-    /** A surface document as bee-core lays it out: meta, one root component, empty data. */
-    private fun surface(replica: ReplicaId): JsonCrdt {
-        val meta = ORMap.empty<String, JsonNode>().piece {
-            it.put(replica, SurfaceFormat.META_CATALOG_ID, leaf(replica, JsonValue.Str(NOTIONS_CATALOG_ID)))
+    /** A board saved under A2UI v0.9.1 holds `{"path"}` bindings; every reader is shown v1.0's `{"@path"}` (bee#230). */
+    @Test
+    fun aSavedV091BindingProjectsInTheV10Spelling() {
+        val saved = buildJsonObject {
+            put("id", "root")
+            put("component", "Text")
+            put("text", buildJsonObject { put("path", "/note") })
         }
-        val root = buildJsonObject {
+        assertEquals(A2uiBindings.binding("/note"), surface(a, saved).toSurfaceView("lunch").components.getValue("root")["text"])
+    }
+
+    /** A surface document as bee-core lays it out: meta, one root component, empty data. */
+    private fun surface(
+        replica: ReplicaId,
+        root: JsonObject = buildJsonObject {
             put("id", "root")
             put("component", "Text")
             put("text", "Lunch?")
+        },
+    ): JsonCrdt {
+        val meta = ORMap.empty<String, JsonNode>().piece {
+            it.put(replica, SurfaceFormat.META_CATALOG_ID, leaf(replica, JsonValue.Str(NOTIONS_CATALOG_ID)))
         }
         val components = ORMap.empty<String, JsonNode>().piece {
             it.put(replica, "root", leaf(replica, SurfaceFormat.encodeLeaf(root)))

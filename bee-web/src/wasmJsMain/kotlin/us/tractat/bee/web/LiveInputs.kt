@@ -15,6 +15,7 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.w3c.dom.Element
+import us.tractat.bee.a2ui.A2uiBindings
 import us.tractat.bee.a2ui.ComponentIds
 import us.tractat.bee.a2ui.SurfaceView
 import us.tractat.bee.core.BoardClient
@@ -38,7 +39,7 @@ external object NotionsLive : JsAny {
 }
 
 /**
- * Live shared typing (spec §5.3). In A2UI v0.9 a bound `TextField` writes only the renderer's local
+ * Live shared typing (spec §5.3). In A2UI a bound `TextField` writes only the renderer's local
  * data model, so this subscribes to that model for every path a `TextField` binds, and writes each
  * change into the replica through `updateData`, debounced to [debounce].
  *
@@ -54,7 +55,7 @@ external object NotionsLive : JsAny {
  * is typed (§5.7). Typing leaves the board's value at its path as it was, so [BoardDriver]'s diff
  * doesn't resend it, and the typed value stays until a writer changes the board's.
  *
- * Only absolute bindings are tracked (`{"path": "/…"}`). A `TextField` inside a list template binds
+ * Only absolute bindings are tracked (`{"@path": "/…"}`). A `TextField` inside a list template binds
  * a relative path, and v1 has none; one that turns up is reported through [onProblem], as is a
  * surface the renderer can't be watched on, so a field that loses live typing or its hold says so.
  *
@@ -203,7 +204,7 @@ class LiveInputs(
          */
         fun boundPath(component: JsonObject): String? {
             if ((component["component"] as? JsonPrimitive)?.content != "TextField" || component.isObscured()) return null
-            return ((component["value"] as? JsonObject)?.get("path") as? JsonPrimitive)?.content
+            return A2uiBindings.pathOf(component["value"])
         }
 
         /**

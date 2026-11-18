@@ -193,9 +193,9 @@ class NotionActionsTest {
         catalogId = NOTIONS_CATALOG_ID,
         components = mapOf(
             "poll" to component("poll", SurfaceValidator.POLL) {
-                putJsonObject("question") { put("path", "/question") }
-                putJsonObject("options") { put("path", "/options") }
-                putJsonObject("answers") { put("path", "/answers") }
+                putJsonObject("question") { put("@path", "/question") }
+                putJsonObject("options") { put("@path", "/options") }
+                putJsonObject("answers") { put("@path", "/answers") }
             },
         ),
         data = buildJsonObject {
@@ -211,7 +211,7 @@ class NotionActionsTest {
         id = "s",
         catalogId = NOTIONS_CATALOG_ID,
         components = mapOf(
-            "chat" to component("chat", SurfaceValidator.CHAT) { putJsonObject("messages") { put("path", "/talk/messages") } },
+            "chat" to component("chat", SurfaceValidator.CHAT) { putJsonObject("messages") { put("@path", "/talk/messages") } },
         ),
         data = buildJsonObject {
             putJsonObject("talk") {
@@ -227,8 +227,8 @@ class NotionActionsTest {
         catalogId = NOTIONS_CATALOG_ID,
         components = mapOf(
             "board" to component("board", SurfaceValidator.BOARD) {
-                putJsonObject("columns") { put("path", "/work/columns") }
-                putJsonObject("cards") { put("path", "/work/cards") }
+                putJsonObject("columns") { put("@path", "/work/columns") }
+                putJsonObject("cards") { put("@path", "/work/cards") }
             },
         ),
         data = buildJsonObject {
