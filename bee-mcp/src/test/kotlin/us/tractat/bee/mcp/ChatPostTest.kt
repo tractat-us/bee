@@ -187,14 +187,14 @@ class ChatPostTest {
     private fun chat(id: String, path: String) = buildJsonObject {
         put("id", id)
         put("component", "Chat")
-        put("messages", buildJsonObject { put("path", path) })
+        put("messages", buildJsonObject { put("@path", path) })
     }
 
     /** The authors of every message any Chat on surface [id] shows, read straight from its components and data. */
     private fun shownAuthors(state: BoardState, id: String): List<String> {
         val view = state.surfaceDoc(id)!!.toSurfaceView(id)
         return view.components.values.filter { it["component"]?.jsonPrimitive?.content == "Chat" }.flatMap { chat ->
-            val key = chat.getValue("messages").jsonObject.getValue("path").jsonPrimitive.content.removePrefix("/")
+            val key = chat.getValue("messages").jsonObject.getValue("@path").jsonPrimitive.content.removePrefix("/")
             (view.data[key] as? JsonArray).orEmpty().map { it.jsonObject.getValue("author").jsonPrimitive.content }
         }
     }
@@ -213,7 +213,7 @@ class ChatPostTest {
                 buildJsonObject {
                     put("id", "root")
                     put("component", "Chat")
-                    put("messages", buildJsonObject { put("path", "/messages") })
+                    put("messages", buildJsonObject { put("@path", "/messages") })
                 },
             ),
         ),

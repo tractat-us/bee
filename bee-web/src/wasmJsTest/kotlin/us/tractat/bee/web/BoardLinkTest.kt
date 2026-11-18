@@ -77,8 +77,8 @@ class BoardLinkTest {
                 buildJsonObject {
                     put("id", "root")
                     put("component", SurfaceValidator.BOARD)
-                    putJsonObject("columns") { put("path", "/columns") }
-                    putJsonObject("cards") { put("path", "/cards") }
+                    putJsonObject("columns") { put("@path", "/columns") }
+                    putJsonObject("cards") { put("@path", "/cards") }
                 },
             ),
         ),

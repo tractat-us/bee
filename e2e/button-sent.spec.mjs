@@ -42,7 +42,7 @@ async function openAsk(surfaceId) {
       { id: 'root', component: 'Column', children: ['file', 'note'] },
       { id: 'file', component: 'Button', child: 'file_label', action: { event: { name: 'file' } } },
       { id: 'file_label', component: 'Text', text: 'Yes, file it' },
-      { id: 'note', component: 'Text', text: { path: '/note' } },
+      { id: 'note', component: 'Text', text: { '@path': '/note' } },
     ],
     data: { note: 'waiting' },
   });
@@ -136,8 +136,8 @@ test('each row of a templated list is its own button: pressing one leaves the ot
       // identifiers (bee#230): the renderer is shown `_bee_approve_2d_row`, and the page still
       // marks the row it pressed and records the id the agent wrote.
       { id: 'root', component: 'Column', children: { componentId: 'approve-row', path: '/items' } },
-      { id: 'approve-row', component: 'Button', child: 'row_label', action: { event: { name: 'approve', context: { item: { path: 'name' } } } } },
-      { id: 'row_label', component: 'Text', text: { path: 'name' } },
+      { id: 'approve-row', component: 'Button', child: 'row_label', action: { event: { name: 'approve', context: { item: { '@path': 'name' } } } } },
+      { id: 'row_label', component: 'Text', text: { '@path': 'name' } },
     ],
     data: { items: [{ name: 'Alpha' }, { name: 'Beta' }] },
   });

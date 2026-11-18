@@ -23,8 +23,8 @@
 // `RTCPeerConnection`, and a closed declarative shadow root hides that frame from even a helper
 // that removes nested frames. WebKit also opens a TCP connection for `<link rel=preconnect>`, and
 // the browser may resolve a DNS name a sketch hints at (bee#49).
-import { A2uiLitElement } from '@a2ui/lit/v0_9';
-import { DynamicStringSchema, TextApi } from '@a2ui/web_core/v0_9';
+import { A2uiLitElement } from '@a2ui/lit';
+import { DynamicStringSchema, TextApi } from '@a2ui/web_core/v1_0';
 import { sketchHelper } from './sketch-helper.js';
 
 /**
@@ -86,8 +86,10 @@ const sameBox = (a, b) =>
   !!a && !!b && ['x', 'y', 'width', 'height', 'left', 'top', 'scale'].every((key) => a[key] === b[key]);
 
 /**
- * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
- * common properties (`weight`, `accessibility`) come from `Text`'s schema, without its text.
+ * Sketch's properties: `html`, and an optional `title` for the frame. `weight` comes from
+ * `Text`'s schema, without its text. `accessibility` and `metadata` are in no v1.0 component
+ * schema: web_core checks them as the common envelope (`validateCommonEnvelopeFields`) before
+ * it parses the strict schema.
  */
 export const SketchApi = {
   name: 'Sketch',

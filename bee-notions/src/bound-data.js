@@ -25,7 +25,8 @@ export class BoundData {
   values() {
     const model = this.host.context?.dataContext?.dataModel;
     const properties = this.host.context?.componentModel?.properties ?? {};
-    const paths = this.keys.map((key) => (typeof properties[key]?.path === 'string' ? properties[key].path : null));
+    // A2UI v1.0's binding, `{"@path": "/…"}`; bee-a2ui upgrades a saved v0.9.1 `{"path"}` before it gets here.
+    const paths = this.keys.map((key) => (typeof properties[key]?.['@path'] === 'string' ? properties[key]['@path'] : null));
     const watched = paths.join('\n');
     if (model && this.host.isConnected && watched !== this.watched) {
       this.unsubscribe();

@@ -316,10 +316,13 @@ Claude session ── bee-mcp                                           ┘     
 
 - **Pinned protocol and renderer (design call):** the official **Lit** (Web Components) renderer,
   `@a2ui/lit` with `@a2ui/web_core`, framework-free. **The pin is a spec version.** Spike 1 pins
-  exact package versions and records which spec version they implement, and uses v1.0 only if
-  **both** packages export it. On 2026-11-06, `@a2ui/web_core@0.15.0` exports `./v1_0`, but
-  `@a2ui/lit@0.15.0` exports only `.`, `./ui`, `./0.8`, `./v0_8` and `./v0_9`, so today it's
-  **v0.9.1** (`version: "v0.9"`).
+  exact package versions and records which spec version they implement. bee speaks **v1.0**
+  (`version: "1.0"`, [bee#230](https://github.com/tractat-us/bee/issues/230)), through
+  `@a2ui/web_core@0.15.0`'s `./v1_0` and `./catalogs/basic/v1` and the version-agnostic
+  `<a2ui-surface>` at `@a2ui/lit@0.15.0`'s root, which has no `./v1_0` entry (Iain,
+  2026-11-10). A board saved under v0.9.1 still renders: its `{"path"}` and `{"call"}` are read
+  as v1.0's `{"@path"}` and `{"@call"}`, and nothing stored is rewritten. Notions keeps Text's
+  `h1`–`h5` variants, which v1.0's basic catalog dropped.
 - The in-page driver plays the A2UI server's part. It feeds the renderer `createSurface`,
   `updateComponents`, `updateDataModel` and `deleteSurface`, and receives `action`. The renderer is
   stock and never sees a CRDT.
@@ -361,7 +364,7 @@ Claude session ── bee-mcp                                           ┘     
   and a write from an older skill both render, and nothing stored changes. bee's own surfaces,
   guides and skills write `snake_case` ids, which need no escape. `SurfaceValidator` still
   accepts any id.
-- **Live shared typing.** In v0.9, bound inputs such as a `TextField` update the renderer's *local*
+- **Live shared typing.** In A2UI, bound inputs such as a `TextField` update the renderer's *local*
   model, and send it only on an action with `sendDataModel`. So the driver subscribes to
   `@a2ui/web_core`'s data model for every bound path and writes changes into the replica,
   debounced. It holds remote changes to a path the person has focused or left dirty until they

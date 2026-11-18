@@ -29,7 +29,7 @@ test('an agent card reads listening while its bridge waits, and mutes its action
     await agent.call('bee_surface_open', {
       surfaceId: SURFACE,
       title: 'Which first?',
-      components: [{ id: 'root', component: 'Poll', question: { path: '/question' }, options: { path: '/options' }, answers: { path: '/answers' } }],
+      components: [{ id: 'root', component: 'Poll', question: { '@path': '/question' }, options: { '@path': '/options' }, answers: { '@path': '/answers' } }],
       data: { answers: {} },
       append: { '/question': ['Which first?'], '/options': ['SSO', 'Passkeys'] },
     });

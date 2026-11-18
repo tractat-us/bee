@@ -10,8 +10,8 @@
 //
 // The field is this element's own `<input>`, not a bound TextField: what a person is typing stays
 // on their page until they send it.
-import { A2uiLitElement } from '@a2ui/lit/v0_9';
-import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v0_9';
+import { A2uiLitElement } from '@a2ui/lit';
+import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v1_0';
 import { html, nothing } from 'lit';
 import { BoundData } from './bound-data.js';
 import { peerName } from './poll.js';

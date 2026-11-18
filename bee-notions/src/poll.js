@@ -4,8 +4,8 @@
 // Answering dispatches the A2UI action `answer` with context `{option}`. The page's driver
 // (bee-a2ui's NotionActions) writes `answers/<peer>` from the register it read and appends the
 // record, so one person counts once however many tabs they answer from.
-import { A2uiLitElement } from '@a2ui/lit/v0_9';
-import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v0_9';
+import { A2uiLitElement } from '@a2ui/lit';
+import { DynamicValueSchema, TextApi } from '@a2ui/web_core/v1_0';
 import { html, nothing } from 'lit';
 import { BoundData } from './bound-data.js';
 

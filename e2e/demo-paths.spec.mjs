@@ -238,14 +238,14 @@ test('the demo, beat by beat', async ({ browser }) => {
     await rig.teammate.call('bee_surface_open', {
       surfaceId: POLL,
       title: 'Who picks the reviewer?',
-      components: [{ id: 'root', component: 'Poll', question: { path: '/question' }, options: { path: '/options' }, answers: { path: '/answers' } }],
+      components: [{ id: 'root', component: 'Poll', question: { '@path': '/question' }, options: { '@path': '/options' }, answers: { '@path': '/answers' } }],
       data: { answers: {} },
       append: { '/question': ['Who picks the reviewer?'], '/options': ['the author', 'round-robin', 'CODEOWNERS'] },
     });
     await rig.teammate.call('bee_surface_open', {
       surfaceId: NEXT,
       title: 'Next steps',
-      components: [{ id: 'root', component: 'Board', columns: { path: '/columns' }, cards: { path: '/cards' } }],
+      components: [{ id: 'root', component: 'Board', columns: { '@path': '/columns' }, cards: { '@path': '/cards' } }],
       data: {
         columns: { items: { todo: { title: 'To do' }, doing: { title: 'Doing' }, done: { title: 'Done' } }, order: ['todo', 'doing', 'done'] },
         cards: { items: { checks: { label: 'Automated checks', column: 'todo' } }, order: ['checks'] },

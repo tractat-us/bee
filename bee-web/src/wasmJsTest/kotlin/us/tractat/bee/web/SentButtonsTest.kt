@@ -159,7 +159,7 @@ class SentButtonsTest {
             buildJsonObject {
                 put("id", "note")
                 put("component", "Text")
-                putJsonObject("text") { put("path", "/note") }
+                putJsonObject("text") { put("@path", "/note") }
             },
         )
 

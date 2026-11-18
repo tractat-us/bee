@@ -151,20 +151,20 @@ private fun components(): List<JsonObject> = listOf(
         put("id", "note-field")
         put("component", "TextField")
         put("label", "Note")
-        putJsonObject("value") { put("path", "/note") }
+        putJsonObject("value") { put("@path", "/note") }
     },
     buildJsonObject {
         put("id", "note-echo")
         put("component", "Text")
         put("variant", "h5")
-        putJsonObject("text") { put("path", "/note") }
+        putJsonObject("text") { put("@path", "/note") }
     },
     buildJsonObject {
         put("id", "note-conflicts")
         put("component", "Text")
         put("variant", "caption")
         // The conflict set for /note, published by the driver under its raw pointer, escaped once.
-        putJsonObject("text") { put("path", "/_bee/conflicts/~1note") }
+        putJsonObject("text") { put("@path", "/_bee/conflicts/~1note") }
     },
     buildJsonObject {
         put("id", "press-label")

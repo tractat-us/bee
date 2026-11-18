@@ -113,6 +113,30 @@ class RendererSeamTest {
         awaitTrue("the Text renders") { deepText(root).contains("Hello from Kotlin") }
     }
 
+    /**
+     * Notions keeps Text's `h1`–`h5`, which A2UI v1.0's basic catalog refuses (bee#230): join
+     * requests, guides, the checkin skill and saved boards draw headings.
+     */
+    @Test
+    fun aHeadingRendersUnderTheNotionsCatalog() = onEventLoop {
+        A2uiRenderer(root).render(
+            listOf(
+                A2uiMessage.CreateSurface("heading", NOTIONS_CATALOG_ID),
+                A2uiMessage.UpdateComponents(
+                    "heading",
+                    listOf(
+                        component("root", "Text") {
+                            put("variant", "h4")
+                            put("text", "A heading")
+                        },
+                    ),
+                ),
+            ),
+        )
+
+        awaitTrue("the h4 renders") { deepQuery(root, "a2ui-basic-text h4")?.textContent == "A heading" }
+    }
+
     @Test
     fun createOnAnExistingIdIsAnIntegrityError() = onEventLoop {
         // What the stock processor reports when a surface id is created twice. A2uiRenderer
@@ -165,7 +189,7 @@ class RendererSeamTest {
         val bound = buildJsonObject {
             put("id", "root")
             put("component", "Text")
-            putJsonObject("text") { put("path", "/greeting") }
+            putJsonObject("text") { put("@path", "/greeting") }
         }
         renderer.render(
             listOf(
