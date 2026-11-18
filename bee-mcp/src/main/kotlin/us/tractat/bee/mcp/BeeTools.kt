@@ -95,12 +95,14 @@ object BeeTools {
         server.addTool(
             name = UPDATE,
             toolAnnotations = ToolHints.write(destructive = true, idempotent = false),
-            description = "Puts changes to a surface $SHARED: components upserted by id, data written at " +
+            description = "Puts changes to a surface $SHARED: a title, which retitles it in place, keeping its id and its place on the board, " +
+                "components upserted by id, data written at " +
                 "JSON Pointers (data maps each pointer to its value), and entries appended (append maps each pointer " +
                 "to an array of new entries). An appended entry, like a Poll's option, is never rewritten. Refused, " +
                 "with the board unchanged, if the result would be malformed.",
             inputSchema = schema(required = listOf("surfaceId")) {
                 putJsonObject("surfaceId") { put("type", "string") }
+                putJsonObject("title") { put("type", "string") }
                 putJsonObject("components") { put("type", "array"); putJsonObject("items") { put("type", "object") } }
                 putJsonObject("data") { put("type", "object"); put("description", "Pointer to value, e.g. {\"/count\": 2}.") }
                 appendProperty()
@@ -109,7 +111,7 @@ object BeeTools {
             tool {
                 val id = request.string("surfaceId")
                 val data = request.objectOrEmpty("data").entries.map { it.key to it.value }
-                bridge.update(id, request.objectsOrEmpty("components"), data, request.appends())
+                bridge.update(id, request.optional("title"), request.objectsOrEmpty("components"), data, request.appends())
                 answer(buildJsonObject { put("updated", id) })
             }
         }
