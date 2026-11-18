@@ -65,6 +65,27 @@ class RendererSeamTest {
     }
 
     /**
+     * A component id that isn't an identifier crosses escaped (bee#230): the renderer is shown
+     * `_bee_press_2d_button`, a v1.0 identifier, and the action names `press-button`, as stored.
+     */
+    @Test
+    fun theRendererIsShownAnIdentifierAndTheActionNamesTheStoredId() = onEventLoop {
+        val renderer = A2uiRenderer(root)
+        val actions = renderer.actions { }
+        renderer.render(helloSurface("escaped"))
+
+        val button = awaitElement { deepQuery(root, "button") }
+        val shown = shownComponentId(button)
+        button.click()
+        val action = withTimeout(UNTIL) { actions.first().action }
+
+        assertAll(
+            { assertEquals("_bee_press_2d_button", shown) },
+            { assertEquals("press-button", action.sourceComponentId) },
+        )
+    }
+
+    /**
      * An action's witness reads what was on screen as the person acted, not what is there when the
      * action is collected (bee#83): what it reads changes right after the click, before collection.
      */
@@ -218,6 +239,10 @@ class RendererSeamTest {
 }
 
 /** The first element matching [selector] under [scope], looking inside shadow roots too. */
+/** The component id the renderer was shown for the Button holding [button]. */
+private fun shownComponentId(button: HTMLElement): String? =
+    js("button.closest('a2ui-basic-button')?.context?.componentModel?.id ?? null")
+
 internal fun deepQuery(scope: ParentNode, selector: String): HTMLElement? {
     scope.querySelector(selector)?.let { return it as HTMLElement }
     return shadowRoots(scope).firstNotNullOfOrNull { deepQuery(it, selector) }
