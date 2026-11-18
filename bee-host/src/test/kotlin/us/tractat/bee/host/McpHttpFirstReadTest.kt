@@ -91,11 +91,14 @@ class McpHttpFirstReadTest {
                 },
             ),
         ),
+        // A board worth a few MiB, as a board in use for a while is: its first-contact sync takes a while.
+        "data" to buildJsonObject { put("notes", "n".repeat(BOARD_BYTES)) },
     )
 
     private companion object {
         val TIMEOUT = 20.seconds
         const val SURFACE = "already-open"
         const val SESSIONS = 10
+        const val BOARD_BYTES = 3 * 1024 * 1024
     }
 }
