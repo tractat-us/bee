@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
@@ -158,6 +159,38 @@ class BeeToolsTest {
             { assertEquals(null, again.isError, "closing again: ${again.text()}") },
             { assertEquals(firstClose, after.meta("one")!!.closedAt, "the first close's time stays") },
             { assertEquals(before, after.closedSurfaces(), "the history strip keeps its order") },
+        )
+        rig.close()
+    }
+
+    /**
+     * `bee_surface_update` retitles a live surface in place (bee#242): its new title is what the
+     * board and every session's `bee_board` show, and an update that names no title leaves it. The
+     * other peers are read once the later, data-only update reaches them, which kuilt delivers after
+     * the retitle, so a missing retitle shows as the old title, not as a wait that never ends.
+     */
+    @Test
+    fun updateRetitlesASurfaceAndAnUpdateWithoutATitleLeavesIt() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val bo = rig.session("bo")
+        val browser = rig.browser()
+        ada.call(BeeTools.OPEN, openArgs("api") + ("title" to "api · DEPLOYING"))
+        val before = ada.client.state.value.meta("api")?.title
+
+        val retitled = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "title" to "api · UP"))
+        val untitled = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "data" to buildJsonObject { put("/now", "green") }))
+        fun reached(state: BoardState) = state.surfaceDoc("api")?.toSurfaceView("api")?.data?.get("now") != null
+        val seen = browser.state.first(::reached)
+        bo.client.state.first(::reached)
+        val listed = bo.call(BeeTools.BOARD, emptyMap()).json().getValue("open").jsonArray.single().jsonObject
+        assertAll(
+            { assertEquals("api · DEPLOYING", before, "rig: it opened under its first title") },
+            { assertEquals(null, retitled.isError, "retitled: ${retitled.text()}") },
+            { assertEquals(null, untitled.isError, "untitled: ${untitled.text()}") },
+            { assertEquals("api · UP", seen.meta("api")?.title, "the board shows the new title") },
+            { assertEquals("api · UP", listed.getValue("title").jsonPrimitive.content, "the other session's bee_board reports it") },
+            { assertEquals("api", listed.getValue("surfaceId").jsonPrimitive.content, "under the same id") },
         )
         rig.close()
     }
