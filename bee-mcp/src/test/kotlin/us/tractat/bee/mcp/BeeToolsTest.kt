@@ -207,9 +207,11 @@ class BeeToolsTest {
     fun updateRefusesASurfaceWhoseOpenHasNotArrived() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
+        // The opener and the early writer differ: a replica's own put carries its earlier
+        // contributions to the surface, its open among them (kuilt's ORMap.put).
         val early = ReplicaId("web-early")
         val meta = SurfaceMeta("api", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), kotlin.time.Instant.fromEpochMilliseconds(0))
-        val opened = BoardState.EMPTY.piece { it.openSurface(early, "api", meta, validSurface(), JsonObject(emptyMap())) }
+        val opened = BoardState.EMPTY.piece { it.openSurface(ReplicaId("web-opener"), "api", meta, validSurface(), JsonObject(emptyMap())) }
         val dataOnly = opened.updateData(early, "api", "/now", JsonPrimitive("green")).delta
         rig.browser(early.value).mutate { Patch(dataOnly) }
         ada.client.state.first { it.surfaceDoc("api") != null }
