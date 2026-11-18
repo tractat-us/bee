@@ -58,7 +58,7 @@ class McpCommandTest {
         assertAll(
             {
                 assertEquals(
-                    "codex -c 'mcp_servers.bee.url=\"http://127.0.0.1:8233/mcp?name=sam\"' -c 'mcp_servers.bee.default_tools_approval_mode=\"approve\"'",
+                    "codex -c 'mcp_servers.bee.url=\"http://127.0.0.1:8233/mcp?name=sam\"'",
                     line,
                 )
             },
@@ -70,7 +70,7 @@ class McpCommandTest {
     @Test
     fun anOriginCanNotBreakTheOwnersCodexLine() {
         assertEquals(
-            "codex -c 'mcp_servers.bee.url=\"http://a'\\''\\\"\\\\.example:8233/mcp?name=alex\"' -c 'mcp_servers.bee.default_tools_approval_mode=\"approve\"'",
+            "codex -c 'mcp_servers.bee.url=\"http://a'\\''\\\"\\\\.example:8233/mcp?name=alex\"'",
             McpCommand.Owner("http://a'\"\\.example:8233", Viewer.Named("alex")).codexLine,
         )
     }

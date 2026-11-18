@@ -45,15 +45,14 @@ On the machine that runs the board, start one Codex session with the board, rath
 for every folder:
 
 ```sh
-codex -c 'mcp_servers.bee.url="http://127.0.0.1:8233/mcp?name=<you>"' -c 'mcp_servers.bee.default_tools_approval_mode="approve"'
+codex -c 'mcp_servers.bee.url="http://127.0.0.1:8233/mcp?name=<you>"'
 ```
 
-`bee-up` prints this line, and the panel offers it to the board's owner. Each `-c` lasts for that
+`bee-up` prints this line, and the panel offers it to the board's owner. Its `-c` lasts for that
 run only, as `claude --mcp-config` does, and writes nothing. A `codex mcp add` here would bring
-every Codex on the machine onto the board, `codex exec` runs included. The second `-c` lets bee's
-tools run without asking, at the cost [The config file](#the-config-file) describes. Drop it and
-Codex asks only before the tools that write. Here **Always allow** lasts the run only, since
-the config has no `bee` to save it under.
+every Codex on the machine onto the board, `codex exec` runs included. Codex asks only before the
+tools that write. Here **Always allow** lasts the run only, since the config has no `bee` to save
+it under.
 
 ## The skills
 
