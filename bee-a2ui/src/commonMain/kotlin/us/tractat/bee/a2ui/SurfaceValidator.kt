@@ -71,7 +71,7 @@ object SurfaceValidator {
             val component = view.components.getValue(id)
             addAll(typeErrors(id, component))
             addAll(cardErrors(id, component, view.data))
-            references(component)
+            ComponentIds.references(component)
                 .filter { it !in view.components }
                 .forEach { add("Component \"$id\" names child \"$it\", which no component has as its id.") }
         }
@@ -207,23 +207,6 @@ object SurfaceValidator {
     /** A2UI's `DataBinding`: `{"path": "/…"}`, an absolute pointer into the data model. */
     private fun isBinding(property: JsonElement?): Boolean =
         (property as? JsonObject)?.get("path")?.stringOrNull()?.startsWith("/") == true
-
-    /**
-     * The component ids [component] names, from every field the basic catalog types as a
-     * `ComponentId` or `ChildList`: `child`, `trigger`, `content`, `children` (a list, or a
-     * template's `componentId`) and each of `tabs`' `child`.
-     */
-    private fun references(component: JsonObject): List<String> {
-        val single = listOf("child", "trigger", "content").mapNotNull { component[it]?.stringOrNull() }
-        val children = when (val c = component["children"]) {
-            is JsonArray -> c.mapNotNull { it.stringOrNull() }
-            is JsonObject -> listOfNotNull(c["componentId"]?.stringOrNull())
-            else -> emptyList()
-        }
-        val tabs = (component["tabs"] as? JsonArray).orEmpty()
-            .mapNotNull { (it as? JsonObject)?.get("child")?.stringOrNull() }
-        return single + children + tabs
-    }
 
     private fun JsonElement.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
