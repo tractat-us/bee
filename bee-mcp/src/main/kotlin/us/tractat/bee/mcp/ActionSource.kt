@@ -23,8 +23,11 @@ interface ActionSource {
      */
     suspend fun next(scope: ActionScope, cursor: String?, timeout: Duration): WaitResult
 
-    /** The records in [scope] after [since] (all of them when `null`), without blocking. */
-    fun list(scope: ActionScope, since: String?): ActionPage
+    /**
+     * The records in [scope] after [since] (all of them when `null`), without waiting for any. A
+     * source whose board hasn't arrived yet may wait for it, briefly ([ActionPage.synced]).
+     */
+    suspend fun list(scope: ActionScope, since: String?): ActionPage
 }
 
 /** [ActionSource.next] on the one surface [surfaceId]. */
@@ -32,7 +35,7 @@ suspend fun ActionSource.next(surfaceId: String, cursor: String?, timeout: Durat
     next(ActionScope.Surface(surfaceId), cursor, timeout)
 
 /** [ActionSource.list] on the one surface [surfaceId]. */
-fun ActionSource.list(surfaceId: String, since: String?): ActionPage = list(ActionScope.Surface(surfaceId), since)
+suspend fun ActionSource.list(surfaceId: String, since: String?): ActionPage = list(ActionScope.Surface(surfaceId), since)
 
 /** Which records a wait or a list reads. */
 sealed interface ActionScope {
@@ -60,8 +63,11 @@ data class WaitResult(val record: JsonObject?, val timedOut: Boolean, val cursor
     }
 }
 
-/** The records one `list` read, and the cursor to read on from. */
-data class ActionPage(val records: List<JsonObject>, val cursor: String)
+/**
+ * The records one `list` read, and the cursor to read on from. [synced] is false when the board
+ * they were read from hadn't yet arrived from the host, so records may be missing (bee#240).
+ */
+data class ActionPage(val records: List<JsonObject>, val cursor: String, val synced: Boolean = true)
 
 /**
  * The source the bridge runs with until Task 7 joins it to the board: no scope ever has a record,
@@ -73,7 +79,7 @@ object NoActions : ActionSource {
         return WaitResult(record = null, timedOut = true, cursor = cursor ?: START)
     }
 
-    override fun list(scope: ActionScope, since: String?): ActionPage = ActionPage(emptyList(), since ?: START)
+    override suspend fun list(scope: ActionScope, since: String?): ActionPage = ActionPage(emptyList(), since ?: START)
 
     /** The cursor of a caller that has seen nothing yet. */
     const val START = "0"

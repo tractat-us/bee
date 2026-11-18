@@ -277,7 +277,7 @@ private class FakeActionSource : ActionSource {
         }
     }
 
-    override fun list(scope: ActionScope, since: String?): ActionPage {
+    override suspend fun list(scope: ActionScope, since: String?): ActionPage {
         scopes += scope
         val all = records.value.inScope(scope)
         return ActionPage(all.drop(since?.toInt() ?: 0), cursor = all.size.toString())
