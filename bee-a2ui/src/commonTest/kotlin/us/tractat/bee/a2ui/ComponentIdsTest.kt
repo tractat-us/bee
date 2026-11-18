@@ -30,11 +30,8 @@ class ComponentIdsTest {
 
     @Test
     fun aPlainIdCrossesAsItself() {
-        assertAll(
-            listOf("root", "admit_button", "opt_1_label", "_", "_bee", "A9", "x__y").map { id ->
-                { assertEquals(id, ComponentIds.rendered(id), id) }
-            },
-        )
+        val plain = listOf("root", "admit_button", "opt_1_label", "_", "_bee", "A9", "x__y")
+        assertAll(*plain.map { id -> { assertEquals(id, ComponentIds.rendered(id), id) } }.toTypedArray())
     }
 
     @Test
@@ -79,11 +76,8 @@ class ComponentIdsTest {
 
     @Test
     fun anIdBeeNeverRendersIsRefused() {
-        assertAll(
-            listOf("_bee_a_2d", "_bee__2D_", "_bee__02d_", "_bee__-2d_", "_bee___", "_bee__zz_", "_bee__110000_").map { id ->
-                { assertFailsWith<IllegalArgumentException>(id) { ComponentIds.stored(id) } }
-            },
-        )
+        val never = listOf("_bee_a_2d", "_bee__2D_", "_bee__02d_", "_bee__-2d_", "_bee___", "_bee__zz_", "_bee__110000_")
+        assertAll(*never.map { id -> { assertFailsWith<IllegalArgumentException>(id) { ComponentIds.stored(id) }; Unit } }.toTypedArray())
     }
 
     @Test
