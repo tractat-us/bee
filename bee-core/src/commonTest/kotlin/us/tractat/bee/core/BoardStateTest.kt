@@ -194,12 +194,17 @@ class BoardStateTest {
         val deltas = deltasOf(
             base,
             listOf({ it.updateData(A, SURFACE, "/answer", str("x")) }, { it.appendEntry(A, SURFACE, "/options", str("Pizza")) }),
-            listOf({ it.appendRecord(A, BoardFixtures.record(it)) }, { it.updateData(A, SURFACE, "/cards", cards) }),
+            listOf(
+                { it.appendRecord(A, BoardFixtures.record(it)) },
+                { it.updateData(A, SURFACE, "/cards", cards) },
+                { it.retitleSurface(A, SURFACE, "Retitled by a") },
+            ),
         ) + deltasOf(
             base,
             listOf(
                 { it.updateComponents(B, SURFACE, listOf(BoardFixtures.root, button)) },
                 { it.updateData(B, SURFACE, "/answer", str("y")) },
+                { it.retitleSurface(B, SURFACE, "Retitled by b") },
             ),
             listOf({ it.closeSurface(B, SURFACE, Instant.parse("2026-11-06T13:00:00Z")) }),
         ) + deltasOf(
@@ -217,8 +222,12 @@ class BoardStateTest {
             { assertEquals(720, outcomes.size) },
             { assertTrue(outcomes.all { it == expected }) },
             { assertTrue(outcomes.all { views(it) == views(expected) }) },
-            // The race between B's close and C's reopen resolves to closed.
+            // The race between B's close and C's reopen resolves to closed, and A's retitle racing
+            // both leaves it closed.
             { assertEquals(listOf(SURFACE), expected.closedSurfaces()) },
+            // A's and B's concurrent retitles resolve to the greater title, whatever the order.
+            { assertEquals("Retitled by b", expected.meta(SURFACE)?.title) },
+            { assertTrue(outcomes.all { it.meta(SURFACE)?.title == "Retitled by b" }) },
             { assertEquals(listOf("x", "y").map(::str), views(expected).getValue(SURFACE).conflicts["/answer"]) },
         )
     }
