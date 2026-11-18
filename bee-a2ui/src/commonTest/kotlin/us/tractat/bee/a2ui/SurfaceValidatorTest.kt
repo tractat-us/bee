@@ -50,6 +50,17 @@ class SurfaceValidatorTest {
         assertEquals(emptyList(), SurfaceValidator.errors(view(root, tabs, go, component("label", "Text"))))
     }
 
+    /**
+     * An id that isn't a v1.0 identifier is still accepted (bee#230): the renderer is shown it
+     * through [ComponentIds], so a board saved with one, or an agent with an older skill, keeps working.
+     */
+    @Test
+    fun anIdThatIsNotAnIdentifierIsAccepted() {
+        val root = component("root", "Column") { put("children", JsonArray(listOf(JsonPrimitive("opt-1")))) }
+        val go = component("opt-1", "Button") { put("child", "9-label") }
+        assertEquals(emptyList(), SurfaceValidator.errors(view(root, go, component("9-label", "Text"))))
+    }
+
     /** `Sketch` is in the Notions catalog (Task 8), and its `html` is required. */
     @Test
     fun sketchIsInTheCatalogAndNeedsItsHtml() {
