@@ -29,7 +29,6 @@ import us.tractat.kuilt.test.fabric.InMemoryConnectionSource
 import us.tractat.kuilt.test.fabric.connectionPair
 import kotlin.random.Random
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -128,10 +127,11 @@ class BoardClientSyncedTest {
         runCurrent()
         val timedOut = early.isCompleted && !early.await()
         val later = sam.awaitSynced(SLOW_DOWNLINK * 3)
+        val atOnce = sam.awaitSynced(Duration.ZERO)
         assertAll(
             { assertTrue(timedOut, "short of the hub's board, the wait answers false at its bound") },
             { assertTrue(later, "a longer wait sees the board land") },
-            { assertEquals(true, sam.awaitSynced(Duration.ZERO), "synced for good: no wait at all") },
+            { assertTrue(atOnce, "synced for good: no wait at all") },
         )
     }
 }
