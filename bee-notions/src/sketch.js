@@ -86,8 +86,10 @@ const sameBox = (a, b) =>
   !!a && !!b && ['x', 'y', 'width', 'height', 'left', 'top', 'scale'].every((key) => a[key] === b[key]);
 
 /**
- * Sketch's properties: `html`, and an optional `title` for the frame. The basic catalog's
- * common properties (`weight`, `accessibility`) come from `Text`'s schema, without its text.
+ * Sketch's properties: `html`, and an optional `title` for the frame. `weight` comes from
+ * `Text`'s schema, without its text. `accessibility` and `metadata` are in no v1.0 component
+ * schema: web_core checks them as the common envelope (`validateCommonEnvelopeFields`) before
+ * it parses the strict schema.
  */
 export const SketchApi = {
   name: 'Sketch',
