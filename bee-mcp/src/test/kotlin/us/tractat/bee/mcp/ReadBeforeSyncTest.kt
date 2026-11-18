@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package us.tractat.bee.mcp
 
 import kotlinx.coroutines.flow.first
@@ -24,8 +26,9 @@ import kotlin.time.Instant
 /**
  * A read the moment a session connects is of the board the host holds, or says it isn't
  * (bee#240): `bee_board` and `bee_list_actions` wait up to [SYNC_WAIT] for the replica's first sync
- * ([BeeBridge.awaitSynced]), and answer `"synced": false` only when it hasn't come. The wait runs
- * on the test's virtual clock.
+ * ([BeeBridge.awaitSynced]), and answer `"synced": false` only when it hasn't come. A write waits
+ * the same, and is refused when the board hasn't come, since what it does depends on what is on the
+ * board. The wait runs on the test's virtual clock.
  */
 class ReadBeforeSyncTest {
     @Test
@@ -40,6 +43,42 @@ class ReadBeforeSyncTest {
             { assertEquals(JsonPrimitive(false), board["synced"], "bee_board says it hasn't synced: $board") },
             { assertTrue(waited >= SYNC_WAIT, "it waited its bound first: $waited") },
             { assertEquals(JsonPrimitive(false), listed["synced"], "bee_list_actions says so too: $listed") },
+        )
+        rig.close()
+    }
+
+    /**
+     * Every write on a replica that hasn't synced is refused, once its wait runs out, saying so,
+     * and writes nothing: an open would add a second copy of a surface already there, an update
+     * would be refused, a clear would close nothing, and the retirement check would miss a
+     * departure.
+     */
+    @Test
+    fun everyWriteOnAReplicaThatHasntSyncedIsRefused() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada", online = false)
+        val writes = mapOf(
+            BeeTools.OPEN to openArgs("lunch"),
+            BeeTools.UPDATE to mapOf("surfaceId" to "lunch", "data" to mapOf("/note" to "hi").toJson()),
+            BeeTools.CLOSE to mapOf("surfaceId" to "lunch"),
+            BeeTools.CLEAR to emptyMap(),
+            BeeTools.DONE to mapOf("recordId" to "web-iain:1", "token" to "1:1"),
+            BeeTools.CLAIM to mapOf("target" to "card:lunch/a"),
+            BeeTools.RELEASE to mapOf("target" to "card:lunch/a", "token" to "1:1"),
+            BeeTools.PRESENCE to mapOf("status" to "thinking"),
+        )
+        val answers = writes.mapValues { (tool, args) ->
+            val before = testScheduler.currentTime
+            val result = ada.call(tool, args)
+            Triple(result.isError == true, result.text(), (testScheduler.currentTime - before).milliseconds)
+        }
+        val board = ada.client.state.value
+        assertAll(
+            { assertEquals(BeeTools.WRITING, writes.keys, "every writing tool is tried") },
+            *answers.map { (tool, answer) ->
+                { assertTrue(answer.first && answer.second == BOARD_NOT_SYNCED && answer.third >= SYNC_WAIT, "$tool: $answer") }
+            }.toTypedArray(),
+            { assertTrue(board.openSurfaces().isEmpty() && board.closedSurfaces().isEmpty(), "nothing was written") },
         )
         rig.close()
     }
@@ -64,3 +103,5 @@ class ReadBeforeSyncTest {
         rig.close()
     }
 }
+
+private fun Map<String, String>.toJson() = JsonObject(mapValues { JsonPrimitive(it.value) })
