@@ -238,11 +238,11 @@ class RendererSeamTest {
     }
 }
 
-/** The first element matching [selector] under [scope], looking inside shadow roots too. */
 /** The component id the renderer was shown for the Button holding [button]. */
 private fun shownComponentId(button: HTMLElement): String? =
     js("button.closest('a2ui-basic-button')?.context?.componentModel?.id ?? null")
 
+/** The first element matching [selector] under [scope], looking inside shadow roots too. */
 internal fun deepQuery(scope: ParentNode, selector: String): HTMLElement? {
     scope.querySelector(selector)?.let { return it as HTMLElement }
     return shadowRoots(scope).firstNotNullOfOrNull { deepQuery(it, selector) }

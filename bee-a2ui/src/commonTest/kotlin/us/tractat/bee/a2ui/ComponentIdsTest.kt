@@ -25,7 +25,8 @@ class ComponentIdsTest {
     private val samples: List<String> = buildList {
         addAll(listOf("", "_", "-", "0", "9lives", "root", "admit-button", "admit_button", "admit_2d_button"))
         addAll(listOf("_bee", "_bee_", "_bee_admit_2d_button", "_bee__2d_", "a--b", "a_-b", "a-_b", "é", "😀"))
-        // An escape that kept `_` as itself would render each of these pairs alike.
+        // An escape that kept `_` as itself would render `x--` and `x_2d_-` alike, and couldn't
+        // invert the other pairs, which storedInvertsRendered then catches.
         addAll(listOf("x--", "x_2d_-", "-_", "_2d__5f_", "9_", "9_5f_"))
         repeat(2_000) { add(CharArray(random.nextInt(0, 9)) { alphabet[random.nextInt(alphabet.length)] }.concatToString()) }
     }
@@ -66,7 +67,8 @@ class ComponentIdsTest {
         val byRendered = distinct.groupBy(ComponentIds::rendered).filterValues { it.size > 1 }
         assertAll(
             { assertEquals(emptyMap(), byRendered) },
-            // The collisions a looser escape would make: `-` as `_`, or as the hex an agent might write.
+            // The ids a looser escape would confuse: `-` as `_`, or as the hex an agent might write.
+            // Under the prefix they needn't collide here; storedInvertsRendered is what kills that escape.
             {
                 assertEquals(
                     4,
