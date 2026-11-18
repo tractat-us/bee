@@ -158,6 +158,19 @@ class BeeBridge(
      */
     suspend fun awaitSynced(): Boolean = client.awaitSynced(syncWait)
 
+    /**
+     * The board, once this bridge's replica has synced with the host ([awaitSynced]). Every write
+     * reads it first ([beforeWrite]): a write decided against the empty board a fresh replica
+     * starts with would open a second copy of a surface that is there, refuse an update to one,
+     * clear nothing, or miss this session's own departure (bee#240).
+     *
+     * @throws BoardNotSyncedRefusal if the board hasn't arrived within [syncWait]
+     */
+    private suspend fun syncedBoard(): BoardState {
+        if (!awaitSynced()) throw BoardNotSyncedRefusal()
+        return board.value
+    }
+
     /** The identity the bridge acts as now. */
     val self: PeerIdentity get() = identity.current.value
 
@@ -315,7 +328,7 @@ class BeeBridge(
      */
     suspend fun clear(): List<String> {
         beforeWrite()
-        val state = board.value
+        val state = syncedBoard()
         val open = state.openSurfaces().filter { requireNotNull(state.meta(it)) { "Open surface $it has no meta." }.openedBy.kind != PeerKind.Host }
         open.forEach { id -> client.mutate { it.closeSurface(author, id, clock()) } }
         return open
@@ -520,16 +533,23 @@ class BeeBridge(
 
     /**
      * The identity to write as, after the retirement check. If the host retired the current
-     * identity, a fresh one takes its place (the `/clear` path) and the write is refused.
+     * identity, a fresh one takes its place (the `/clear` path) and the write is refused. A write
+     * on a replica that hasn't yet synced is refused too ([syncedBoard]).
      */
-    private suspend fun beforeWrite(): PeerIdentity = retiring.withLock {
+    private suspend fun beforeWrite(): PeerIdentity {
+        // Outside the lock: a write waiting for the board holds up no other write's check.
+        syncedBoard()
+        return retiring.withLock { retirementCheck() }
+    }
+
+    private suspend fun retirementCheck(): PeerIdentity {
         val who = self
         val table = claims.link.value?.client?.table?.value
-        val mirrored = board.value
+        val mirrored = syncedBoard()
         val reason = table?.departReason(who) ?: mirrored.departures().firstOrNull { it.identity == who }?.reason
         if (reason == null) {
             presence.update(who, statusLine, clock())
-            return@withLock who
+            return who
         }
         val orphaned = orphanedBy(who, table, mirrored)
         identity.retire(reason)
@@ -628,6 +648,13 @@ open class BridgeRefusal(message: String) : Exception(message)
 
 /** A claim operation refused because no claims link is up: [CLAIMS_OFFLINE]. */
 class ClaimsOfflineRefusal : BridgeRefusal(CLAIMS_OFFLINE)
+
+/** A write refused because this bridge's replica hasn't synced with the host yet: [BOARD_NOT_SYNCED]. */
+class BoardNotSyncedRefusal : BridgeRefusal(BOARD_NOT_SYNCED)
+
+/** What a write answers while the board hasn't arrived from the host. */
+const val BOARD_NOT_SYNCED: String =
+    "The board hasn't arrived from the host yet, so nothing was written: a write made now could miss what is on it. Try again shortly."
 
 /** What a claim operation answers while no claims link is up. */
 const val CLAIMS_OFFLINE: String =
