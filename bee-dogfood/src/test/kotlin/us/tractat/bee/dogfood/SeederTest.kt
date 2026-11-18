@@ -22,7 +22,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * [Seeder]'s decisions against a [FakeBoard], in virtual time: what it does when the session's
- * replica lags (kuilt#3142), when an open is refused, and when a surface's data has drifted.
+ * replica hasn't synced with the host (`BoardClient.synced`, tractat-us/kuilt#3142), when an open
+ * is refused, and when a surface's data has drifted.
  */
 class SeederTest {
     private val surface = SeedSurface(
@@ -33,23 +34,35 @@ class SeederTest {
     )
 
     @Test
-    fun aSurfaceTheFirstReadsMissIsWaitedForNotOpenedAgain() = runTest {
-        val board = FakeBoard(lagReads = 3).apply { put(surface) }
-        val outcomes = Seeder(board, settle = 2.seconds, retryAfter = 250.milliseconds).seed(listOf(surface))
+    fun aSurfaceTheUnsyncedReadsMissIsWaitedForNotOpenedAgain() = runTest {
+        val board = FakeBoard(unsyncedReads = 3).apply { put(surface) }
+        val outcomes = Seeder(board, syncWait = 2.seconds, retryAfter = 250.milliseconds).seed(listOf(surface))
         assertAll(
-            { assertEquals(mapOf("s" to Outcome.Unchanged), outcomes, "the surface arrived within the settle bound") },
+            { assertEquals(mapOf("s" to Outcome.Unchanged), outcomes, "the board synced within the bound") },
             { assertEquals(emptyList(), board.writes, "no second open of a surface that is there") },
         )
     }
 
+    /** A replica that never syncs fails the seed at its bound, before a write decided against a board missing surfaces. */
     @Test
-    fun aSurfaceStillMissingAfterTheSettleBoundIsOpened() = runTest {
+    fun aBoardThatNeverSyncsFailsTheSeedBeforeAnyWrite() = runTest {
+        val board = FakeBoard(unsyncedReads = Int.MAX_VALUE).apply { put(surface) }
+        assertFailsWith<BoardNotSynced> { Seeder(board, syncWait = 2.seconds, retryAfter = 250.milliseconds).seed(listOf(surface)) }
+        assertAll(
+            { assertEquals(emptyList(), board.writes, "nothing written") },
+            { assertTrue(currentTime >= 2.seconds.inWholeMilliseconds, "it waited its bound first, at ${currentTime}ms") },
+        )
+    }
+
+    /** Synced, the board is the host's: a surface missing from it isn't there, so it opens without waiting. */
+    @Test
+    fun aSurfaceMissingFromASyncedBoardIsOpenedAtOnce() = runTest {
         val board = FakeBoard()
-        val outcomes = Seeder(board, settle = 2.seconds, retryAfter = 250.milliseconds).seed(listOf(surface))
+        val outcomes = Seeder(board, syncWait = 2.seconds, retryAfter = 250.milliseconds).seed(listOf(surface))
         assertAll(
             { assertEquals(mapOf("s" to Outcome.Opened), outcomes) },
             { assertEquals(listOf(Seeder.OPEN), board.writes) },
-            { assertTrue(currentTime >= 2.seconds.inWholeMilliseconds, "it waited the settle bound first, at ${currentTime}ms") },
+            { assertEquals(0L, currentTime, "no settle wait") },
         )
     }
 
@@ -57,7 +70,7 @@ class SeederTest {
     fun anOpenRefusedAsAlreadyThereRereadsTheBoard() = runTest {
         val board = FakeBoard(refuseOpens = 1, refusal = "Surface s is already on the board; update or reopen it.")
         board.onRefuse = { board.put(surface) }
-        val outcomes = Seeder(board, settle = 0.seconds, retryAfter = 250.milliseconds).seed(listOf(surface))
+        val outcomes = Seeder(board, retryAfter = 250.milliseconds).seed(listOf(surface))
         assertAll(
             { assertEquals(mapOf("s" to Outcome.Unchanged), outcomes, "the retry found it drawn") },
             { assertEquals(listOf(Seeder.OPEN), board.writes, "one refused open, no second") },
@@ -67,7 +80,7 @@ class SeederTest {
     @Test
     fun anOpenRefusedForAnotherReasonIsRethrown() = runTest {
         val board = FakeBoard(refuseOpens = Int.MAX_VALUE, refusal = "Component root is not in the catalog.")
-        val refused = assertFailsWith<ToolRefused> { Seeder(board, settle = 0.seconds).seed(listOf(surface)) }
+        val refused = assertFailsWith<ToolRefused> { Seeder(board).seed(listOf(surface)) }
         assertAll(
             { assertEquals(Seeder.OPEN, refused.tool) },
             { assertEquals(1, board.writes.size, "no retry") },
@@ -77,18 +90,18 @@ class SeederTest {
     @Test
     fun anOpenAlwaysRefusedAsAlreadyThereGivesUpAfterItsAttempts() = runTest {
         val board = FakeBoard(refuseOpens = Int.MAX_VALUE, refusal = "Surface s is already on the board; update or reopen it.")
-        assertFailsWith<ToolRefused> { Seeder(board, settle = 0.seconds, attempts = 4).seed(listOf(surface)) }
+        assertFailsWith<ToolRefused> { Seeder(board, attempts = 4).seed(listOf(surface)) }
         assertEquals(4, board.writes.size, "one open per attempt, then the last refusal propagates")
     }
 
     @Test
     fun aClosedSurfaceIsRedrawnInPlace() = runTest {
         val board = FakeBoard().apply { closed += "s" }
-        val outcomes = Seeder(board, settle = 2.seconds).seed(listOf(surface))
+        val outcomes = Seeder(board).seed(listOf(surface))
         assertAll(
             { assertEquals(mapOf("s" to Outcome.UpdatedClosed), outcomes) },
             { assertEquals(listOf(Seeder.UPDATE), board.writes) },
-            { assertEquals(0L, currentTime, "a closed surface is on the board: no settle wait") },
+            { assertEquals(0L, currentTime, "a closed surface is on the board: no wait") },
         )
     }
 
@@ -115,12 +128,13 @@ class SeederTest {
 
 /**
  * A board as `bee_board`, `bee_surface_open` and `bee_surface_update` answer, kept in memory. Its
- * first [lagReads] reads show an empty board, as a just-joined session's replica can (kuilt#3142),
- * and an open of a surface that is there succeeds, as a lagging replica's does. Its first
- * [refuseOpens] opens are refused with [refusal], after [onRefuse] runs.
+ * first [unsyncedReads] reads show an empty board and say `"synced": false`, as a just-joined
+ * session's replica can, and an open of a surface that is there succeeds, as a replica that is
+ * behind would take it: the hazard the seeder's wait exists for. Its first [refuseOpens] opens are
+ * refused with [refusal], after [onRefuse] runs.
  */
 private class FakeBoard(
-    private var lagReads: Int = 0,
+    private var unsyncedReads: Int = 0,
     private var refuseOpens: Int = 0,
     private val refusal: String = "",
 ) : BoardTools {
@@ -155,13 +169,13 @@ private class FakeBoard(
     }
 
     private fun read(): JsonObject {
-        val lagging = lagReads > 0
-        if (lagging) lagReads--
+        val unsynced = unsyncedReads > 0
+        if (unsynced) unsyncedReads--
         return buildJsonObject {
             put(
                 "open",
                 buildJsonArray {
-                    if (!lagging) {
+                    if (!unsynced) {
                         open.forEach { (id, surface) ->
                             add(
                                 buildJsonObject {
@@ -174,7 +188,9 @@ private class FakeBoard(
                     }
                 },
             )
-            put("closed", JsonArray(if (lagging) emptyList() else closed.map(::JsonPrimitive)))
+            put("closed", JsonArray(if (unsynced) emptyList() else closed.map(::JsonPrimitive)))
+            // As bee_board says it: only when it hasn't synced.
+            if (unsynced) put("synced", false)
         }
     }
 

@@ -48,36 +48,38 @@ enum class Outcome {
  * Draws [SeedSurface]s on a board through its MCP tools, each whole: one it doesn't find is opened,
  * one it finds is redrawn in place under the same id, so re-seeding never duplicates a surface.
  *
- * A session that has just joined reads its own replica of the board, which may not have caught up
- * yet: its first `bee_board` can miss a surface that is there. Opening it then isn't always
- * refused. A replica that is behind takes the open, and the board gets a second, concurrent open
- * of the surface (tractat-us/kuilt#3142, which would give a caught-up signal to wait on instead).
- * So before it opens anything, the seeder re-reads the board every [retryAfter] until every
- * surface it draws is there, open or closed, or [settle] runs out: a bound, not a proof. An open
- * that is still refused as already there reads the board again after [retryAfter] and decides
- * afresh, up to [attempts] times.
+ * A session that has just joined reads its own replica of the board, which may not have synced
+ * with the host yet: a read of it can miss a surface that is there, and a write decided against it
+ * could open a second, concurrent copy of one. So before it decides anything, the seeder reads
+ * `bee_board` every [retryAfter] until it says the replica has synced (bee's `BoardClient.synced`,
+ * a workaround for tractat-us/kuilt#3142), for at most [syncWait]. A replica that hasn't synced by
+ * then fails the seed with [BoardNotSynced], before any write. Once synced, a surface missing from
+ * the board isn't there, so it opens at once. An open refused as already there, because another
+ * session opened it meanwhile, reads the board again after [retryAfter] and decides afresh, up to
+ * [attempts] times.
  */
 class Seeder(
     private val tools: BoardTools,
-    private val settle: Duration = 2.seconds,
+    private val syncWait: Duration = 30.seconds,
     private val retryAfter: Duration = 250.milliseconds,
     private val attempts: Int = 40,
 ) {
+    /** @throws BoardNotSynced if the session's replica doesn't sync within [syncWait]: nothing is written */
     suspend fun seed(surfaces: List<SeedSurface>): Map<String, Outcome> {
-        awaitOnBoard(surfaces.map { it.id }.toSet())
+        awaitSynced()
         return surfaces.associate { it.id to draw(it) }
     }
 
-    /** Waits up to [settle] for every one of [ids] to show on the board (kuilt#3142). */
-    private suspend fun awaitOnBoard(ids: Set<String>) {
-        withTimeoutOrNull(settle) {
-            while (!onBoard(tools.call(BOARD, emptyMap())).containsAll(ids)) delay(retryAfter)
-        }
+    /**
+     * Reads the board until it says it has synced, for at most [syncWait]. Each `bee_board` waits a
+     * moment for the sync host-side, then answers `"synced": false` if it hasn't come. A replica
+     * that has synced stays so, so every later read is of the board the host holds.
+     */
+    private suspend fun awaitSynced() {
+        withTimeoutOrNull(syncWait) {
+            while (tools.call(BOARD, emptyMap())[SYNCED] == JsonPrimitive(false)) delay(retryAfter)
+        } ?: throw BoardNotSynced(syncWait)
     }
-
-    private fun onBoard(board: JsonObject): Set<String> =
-        board.getValue("open").jsonArray.map { it.jsonObject.string("surfaceId") }.toSet() +
-            board.getValue("closed").jsonArray.map { it.jsonPrimitive.content }
 
     private suspend fun draw(surface: SeedSurface): Outcome {
         repeat(attempts - 1) {
@@ -144,10 +146,20 @@ class Seeder(
         const val OPEN = "bee_surface_open"
         const val UPDATE = "bee_surface_update"
 
+        /** The `bee_board` field that is `false` while the session's replica hasn't synced, and absent once it has. */
+        private const val SYNCED = "synced"
+
         /** What `bee_surface_open` says of a surface already on the board (BeeBridge.open). */
         const val ALREADY = "is already on the board"
     }
 }
+
+/**
+ * The session's replica hadn't synced with the host within [within], so the seed wrote nothing: a
+ * seed decided against a board still missing surfaces could open second copies of them.
+ */
+class BoardNotSynced(within: Duration) :
+    IllegalStateException("The board hadn't arrived from the host within $within, so nothing was seeded; try again shortly.")
 
 /** A tool's error answer: [tool] refused, saying [reason]. */
 class ToolRefused(val tool: String, val reason: String) : IllegalStateException("$tool was refused: $reason")

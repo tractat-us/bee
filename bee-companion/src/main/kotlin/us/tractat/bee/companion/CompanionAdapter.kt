@@ -100,10 +100,11 @@ private val logger = KotlinLogging.logger {}
  *   `screen-shown`, `screen-closed`, `screen-refused` (with its `reason`) and `click-dropped`.
  * @param board the board the host serves ([BoardId.PATH]).
  * @param random mints this companion's surface id, when `bee-companion.json` has none for [board].
- * @param settle how long a companion that never saw the surface waits, once online, for an
- *   existing one to arrive before opening a new one. kuilt has no "caught up with the relay"
- *   signal (tractat-us/kuilt#3142), so it's a bound, not a proof.
- * @param surfaceWait how long a companion whose state says the board had its surface waits for it.
+ * @param syncWait how long a companion waits, once online, for its board to sync with the host
+ *   ([BoardClient.synced], bee's workaround for tractat-us/kuilt#3142) before it writes anything.
+ *   One that hasn't synced by then fails with [BoardNotSynced].
+ * @param surfaceWait how long a companion whose state says the board had its surface waits for it,
+ *   once the board has synced.
  */
 @Suppress("LongParameterList")
 class CompanionAdapter(
@@ -119,7 +120,7 @@ class CompanionAdapter(
     private val board: BoardId,
     random: Random,
     private val pollEvery: Duration = 250.milliseconds,
-    private val settle: Duration = 2.seconds,
+    private val syncWait: Duration = SYNC_WAIT,
     private val surfaceWait: Duration = 60.seconds,
 ) {
     private val template = frameTemplate.readText()
@@ -149,19 +150,20 @@ class CompanionAdapter(
     }
 
     /**
-     * Waits for [surface]. A companion whose state says the board had it waits up to [surfaceWait],
-     * because opening it again would race the one on the board, then fails. One that never saw it
-     * can only wait [settle] (tractat-us/kuilt#3142).
+     * Waits up to [syncWait] for the board to sync with the host ([BoardClient.synced]), so no
+     * write is decided against the empty board a fresh replica starts with. Synced, a companion
+     * that never saw [surface] opens it when it shows its first screen. One whose state says the
+     * board had it then waits up to [surfaceWait] for it, because opening it again would race a
+     * copy still on its way, then fails.
      *
+     * @throws BoardNotSynced if the board hasn't synced within [syncWait]
      * @throws SurfaceMissing if the board said to have it still lacks it after [surfaceWait]
      */
     private suspend fun awaitSurface() {
-        val held = { state: BoardState -> state.surfaceDoc(surface) != null }
+        if (!client.awaitSynced(syncWait)) throw BoardNotSynced(board, syncWait)
         if (kept.shown?.hadSurface == true) {
             logger.info { "$KEPT says $board has surface $surface: waiting up to $surfaceWait for it to arrive." }
-            withTimeoutOrNull(surfaceWait) { client.state.first(held) } ?: throw SurfaceMissing(board, surface)
-        } else {
-            withTimeoutOrNull(settle) { client.state.first(held) }
+            withTimeoutOrNull(surfaceWait) { client.state.first { it.surfaceDoc(surface) != null } } ?: throw SurfaceMissing(board, surface)
         }
     }
 
@@ -401,6 +403,13 @@ class CompanionAdapter(
     class SurfaceMissing(board: BoardId, surface: String) :
         Exception("$board lacks the surface $surface that $KEPT says it had; delete the file to reopen")
 
+    /**
+     * The board hadn't synced with the host within the wait, so the companion wrote nothing: a
+     * screen written onto a board that hasn't arrived could open a second copy of its surface.
+     */
+    class BoardNotSynced(board: BoardId, within: Duration) :
+        Exception("$board hadn't arrived from the host within $within, so the companion wrote nothing. Restart it to try again; if it keeps failing, the board may be too large for the host to send (tractat-us/kuilt#3144)")
+
     companion object {
         /** Every companion's surface id starts so; a random id follows, one per companion. */
         const val SURFACE_PREFIX = CompanionSurfaces.PREFIX
@@ -418,6 +427,12 @@ class CompanionAdapter(
         private const val CONTENT = "<!-- CONTENT -->"
         private const val BRANDING = "<!-- BRANDING -->"
         private val WAIT = 45.seconds
+
+        /**
+         * How long a companion waits for its board's first sync: a few MiB over a laptop's link
+         * takes seconds, so this is generous. A companion past it fails, and its process ends.
+         */
+        val SYNC_WAIT: Duration = 30.seconds
 
         /** How many screens have been pushed to companion [surface] on [state]. */
         fun screensShown(state: BoardState, surface: String): Int = screens(state, surface).size

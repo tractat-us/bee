@@ -124,13 +124,13 @@ class CompanionAdapterTest {
     }
 
     /**
-     * A restarted companion whose board arrives after the settle bound never opens the surface a
-     * second time: it waits for the board's surface and writes the next screen onto it. A second
-     * open would race the first, leaving two concurrent writes of the Sketch for the projection to
-     * pick between, so the board could show the older screen.
+     * A restarted companion whose board arrives late never opens the surface a second time: it
+     * waits for the board to sync and its surface to show, and writes the next screen onto it. A
+     * second open would race the first, leaving two concurrent writes of the Sketch for the
+     * projection to pick between, so the board could show the older screen.
      *
      * The rig loses every large hub frame to the new companion until it's released, so its
-     * replica is online and empty for longer than the settle bound.
+     * replica is online and empty for a while.
      */
     @Test
     fun restartWaitsForTheSurfaceItOpened() = runTest(timeout = 120.seconds) {
@@ -145,7 +145,7 @@ class CompanionAdapterTest {
         rig.screen("second.html", "<p>second</p>")
         rig.holdBoardBack("companion-2")
         val second = rig.companion()
-        // Long past the settle bound: a companion that opens a surface has done it by now.
+        // A companion that opens a surface before its board arrives has done it by now.
         withTimeoutOrNull(10.seconds) { while (second.reports.isEmpty()) delay(100) }
         rig.releaseBoard("companion-2")
 
@@ -154,6 +154,68 @@ class CompanionAdapterTest {
             { assertEquals(1, rootWrites(state, rig.surface), "one write of the Sketch, not two concurrent ones") },
             { assertEquals(2, CompanionAdapter.screensShown(state, rig.surface), "both screens in /screens") },
             { assertEquals(listOf(rig.surface), state.openSurfaces()) },
+        )
+        rig.close()
+    }
+
+    /**
+     * A fresh companion writes nothing until its board has synced with the host, however long
+     * past the 2 s it used to guess at that takes: its first screen lands on the board the host
+     * holds, not the empty one its replica started with.
+     *
+     * Another companion's large screen makes the board's FullState a large frame, which the rig
+     * holds back from the fresh one, so its replica is online and empty until it's released.
+     */
+    @Test
+    fun aFreshCompanionWritesNothingUntilItsBoardHasSynced() = runTest(timeout = 120.seconds) {
+        val rig = rig(this).apply { start() }
+        val big = rig.dirs("big")
+        rig.screen("big.html", "<p>big</p>" + "<!-- ${"x".repeat(3 * CompanionRig.LATE_FRAME_BYTES)} -->", big)
+        val other = rig.companion(big)
+        val browser = rig.browser()
+        rig.shows(browser) { "big" in it }
+
+        rig.screen("layout.html", "<p>layout</p>")
+        rig.holdBoardBack("companion-2")
+        val fresh = rig.companion()
+        withTimeoutOrNull(10.seconds) { while (fresh.reports.isEmpty()) delay(100) }
+        val reportsHeld = fresh.reports.toList()
+        val boardHeld = browser.client.state.value
+        rig.releaseBoard("companion-2")
+
+        val state = rig.shows(browser, fresh.surface) { "layout" in it }
+        assertAll(
+            { assertEquals(emptyList(), reportsHeld, "no screen shown before the board arrived") },
+            { assertEquals(null, boardHeld.surfaceDoc(fresh.surface), "nor any write of its surface") },
+            { assertEquals(setOf(other.surface, fresh.surface), state.openSurfaces().toSet(), "synced, it opens its own") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A companion whose board never syncs fails at its bound, saying so, and writes nothing: a
+     * write decided against a board that hasn't arrived could open a second copy of a surface.
+     */
+    @Test
+    fun aBoardThatNeverSyncsFailsTheCompanionAtItsBound() = runTest(timeout = 240.seconds) {
+        val rig = rig(this).apply { start() }
+        val big = rig.dirs("big")
+        rig.screen("big.html", "<p>big</p>" + "<!-- ${"x".repeat(3 * CompanionRig.LATE_FRAME_BYTES)} -->", big)
+        val other = rig.companion(big)
+        val browser = rig.browser()
+        rig.shows(browser) { "big" in it }
+
+        rig.screen("layout.html", "<p>layout</p>")
+        rig.holdBoardBack("companion-2")
+        val fresh = rig.companion()
+        val startedAt = testScheduler.currentTime
+        val failure = withTimeoutOrNull(WAIT * 2) { fresh.awaitFailure() }
+        val waited = (testScheduler.currentTime - startedAt).milliseconds
+        assertAll(
+            { assertTrue(failure is CompanionAdapter.BoardNotSynced, "it fails for the board that never arrived: $failure") },
+            { assertTrue(waited >= CompanionAdapter.SYNC_WAIT, "it waited its bound first, not $waited") },
+            { assertEquals(listOf(other.surface), browser.client.state.value.openSurfaces(), "it opened no surface") },
+            { assertEquals(emptyList(), fresh.reports, "nor showed a screen") },
         )
         rig.close()
     }
