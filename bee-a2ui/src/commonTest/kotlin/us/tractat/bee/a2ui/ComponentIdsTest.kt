@@ -25,6 +25,8 @@ class ComponentIdsTest {
     private val samples: List<String> = buildList {
         addAll(listOf("", "_", "-", "0", "9lives", "root", "admit-button", "admit_button", "admit_2d_button"))
         addAll(listOf("_bee", "_bee_", "_bee_admit_2d_button", "_bee__2d_", "a--b", "a_-b", "a-_b", "é", "😀"))
+        // An escape that kept `_` as itself would render each of these pairs alike.
+        addAll(listOf("x--", "x_2d_-", "-_", "_2d__5f_", "9_", "9_5f_"))
         repeat(2_000) { add(String(CharArray(random.nextInt(0, 9)) { alphabet[random.nextInt(alphabet.length)] })) }
     }
 
