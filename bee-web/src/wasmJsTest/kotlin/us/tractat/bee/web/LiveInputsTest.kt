@@ -11,7 +11,9 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -135,6 +137,25 @@ class LiveInputsTest {
         )
     }
 
+    /**
+     * A field whose id isn't an identifier, as an agent with an older skill writes one (bee#230): the
+     * renderer is shown `_bee_name_2d_field` and reports focus on it, and the hold still finds the
+     * field. Written while focused, the path stays held only if the focus report reached it.
+     */
+    @Test
+    fun aFieldWhoseIdTheRendererIsShownEscapedIsHeldWhileFocused() = runTest {
+        val field = mount(listOf(column("name-field"), TEXT_FIELD.withId("name-field")))
+        field.focus()
+        field.type("alpha")
+        advanceTimeBy(DEBOUNCE)
+        runCurrent()
+
+        assertAll(
+            { assertEquals(JsonPrimitive("alpha"), field.written(), "rig: the edit was written") },
+            { assertEquals(mapOf("/name" to JsonPrimitive("alpha")), field.held(), "focus holds the path") },
+        )
+    }
+
     /** One surface's `TextField`, rendered and tracked, with [LiveInputs] on the test's virtual time. */
     private class Field(
         private val inputs: LiveInputs,
@@ -158,9 +179,9 @@ class LiveInputsTest {
         fun releases(): Int = inputs.releases.value
     }
 
-    private suspend fun TestScope.mount(): Field {
+    private suspend fun TestScope.mount(components: List<JsonObject> = listOf(TEXT_FIELD)): Field {
         val board = BoardState.EMPTY.piece {
-            it.openSurface(AUTHOR, SURFACE, META, listOf(TEXT_FIELD), buildJsonObject { put("name", "draft") })
+            it.openSurface(AUTHOR, SURFACE, META, components, buildJsonObject { put("name", "draft") })
         }
         val client = BoardClient(
             author = AUTHOR,
@@ -199,6 +220,14 @@ class LiveInputsTest {
     private object Offline : Loom {
         override suspend fun weave(rendezvous: Rendezvous): Seam = error("These tests never dial.")
     }
+
+    private fun column(child: String): JsonObject = buildJsonObject {
+        put("id", "root")
+        put("component", "Column")
+        put("children", JsonArray(listOf(JsonPrimitive(child))))
+    }
+
+    private fun JsonObject.withId(id: String): JsonObject = JsonObject(this + ("id" to JsonPrimitive(id)))
 
     private companion object {
         val DEBOUNCE = 150.milliseconds

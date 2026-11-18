@@ -11,6 +11,7 @@ import org.w3c.dom.Element
 import us.tractat.bee.a2ui.A2uiAction
 import us.tractat.bee.a2ui.A2uiJson
 import us.tractat.bee.a2ui.A2uiMessage
+import us.tractat.bee.a2ui.ComponentIds
 
 /** bee-notions' renderer host (bee-notions/src/renderer-host.js). Only strings cross. */
 external interface RendererHost : JsAny {
@@ -42,6 +43,10 @@ external object Notions : JsAny {
  *
  * It tracks which surface ids exist, so creating one that is already open becomes
  * delete + create; the stock processor would refuse it as an integrity error.
+ *
+ * Component ids cross it through [ComponentIds] (bee#230): the renderer is shown each one
+ * [rendered][ComponentIds.rendered], a v1.0 identifier, and an action names the id the board
+ * stores. A caller always speaks stored ids.
  */
 class A2uiRenderer(root: Element, place: (surfaceId: String, element: Element) -> Unit = { _, element -> root.appendChild(element) }) {
     private val host = Notions.createPlacedRendererHost(root, place)
@@ -56,7 +61,8 @@ class A2uiRenderer(root: Element, place: (surfaceId: String, element: Element) -
     fun <T> actions(witness: (A2uiAction) -> T): Flow<Witnessed<T>> {
         val received = Channel<Witnessed<T>>(Channel.UNLIMITED)
         host.onAction { json, instance ->
-            val action = A2uiJson.decodeAction(json)
+            val reported = A2uiJson.decodeAction(json)
+            val action = reported.copy(sourceComponentId = ComponentIds.stored(reported.sourceComponentId))
             received.trySend(Witnessed(action, witness(action), instance))
         }
         return received.receiveAsFlow()
@@ -77,9 +83,14 @@ class A2uiRenderer(root: Element, place: (surfaceId: String, element: Element) -
      *   still land; the errors are never dropped.
      */
     fun render(messages: List<A2uiMessage>) {
-        val sent = messages.flatMap(::withReopen)
+        val sent = messages.map(::withRenderedIds).flatMap(::withReopen)
         val errors = Json.parseToJsonElement(host.process(A2uiJson.encode(sent))).jsonArray.map { it.jsonObject }
         if (errors.isNotEmpty()) throw A2uiRenderException(errors)
+    }
+
+    private fun withRenderedIds(message: A2uiMessage): A2uiMessage = when (message) {
+        is A2uiMessage.UpdateComponents -> message.copy(components = message.components.map(ComponentIds::rendered))
+        else -> message
     }
 
     private fun withReopen(message: A2uiMessage): List<A2uiMessage> = when (message) {

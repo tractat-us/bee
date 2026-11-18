@@ -139,8 +139,8 @@ class JoinRequestSurface(
         val HOST: PeerIdentity = PeerIdentity.host("bee-host")
 
         const val ADMIT_ACTION: String = "admit"
-        const val ADMIT_BUTTON: String = "admit-button"
-        const val CODE_FIELD: String = "code-field"
+        const val ADMIT_BUTTON: String = "admit_button"
+        const val CODE_FIELD: String = "code_field"
 
         private const val PREFIX = PairingSurfaces.PREFIX
         private const val TITLE = "A device wants to join"
@@ -183,9 +183,9 @@ class JoinRequestSurface(
                 put("variant", "obscured")
                 putJsonObject("value") { put("path", "/$CODE_KEY") }
             },
-            component("admit-label", "Text") { put("text", "Admit") },
+            component("admit_label", "Text") { put("text", "Admit") },
             component(ADMIT_BUTTON, "Button") {
-                put("child", "admit-label")
+                put("child", "admit_label")
                 putJsonObject("action") {
                     putJsonObject("event") {
                         put("name", ADMIT_ACTION)

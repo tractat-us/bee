@@ -10,7 +10,10 @@ import us.tractat.bee.core.RecordId
 /** bee-notions' sent-button hook (bee-notions/src/renderer-host.js). Only strings cross. */
 @JsModule("@bee/notions")
 external object NotionsSent : JsAny {
-    /** Shows Button [componentId]'s [instance] (every instance if null) on [surfaceId] as sent (`aria-disabled`), or not. */
+    /**
+     * Shows Button [componentId]'s [instance] (every instance if null) on [surfaceId] as sent
+     * (`aria-disabled`), or not. [componentId] is the id the renderer was shown, not the stored one (`ComponentIds.rendered`).
+     */
     fun markSent(rootElement: Element, surfaceId: String, componentId: String, instance: String?, sent: Boolean)
 }
 

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.w3c.dom.Element
+import us.tractat.bee.a2ui.ComponentIds
 import us.tractat.bee.a2ui.SurfaceView
 import us.tractat.bee.core.BoardClient
 import us.tractat.kuilt.crdt.ReplicaId
@@ -177,7 +178,9 @@ class LiveInputs(
     private fun onFocus(event: JsonObject) {
         event["error"]?.let { return onProblem("The hold is off for a field: ${it.jsonPrimitive.content}") }
         val surfaceId = event.getValue("surfaceId").jsonPrimitive.content
-        val path = fieldPaths[surfaceId to event.getValue("componentId").jsonPrimitive.content] ?: return
+        // The renderer reports the id it was shown; the fields are tracked by the id the board stores.
+        val componentId = ComponentIds.stored(event.getValue("componentId").jsonPrimitive.content)
+        val path = fieldPaths[surfaceId to componentId] ?: return
         val bound = Bound(surfaceId, path)
         if (event.getValue("focused").jsonPrimitive.boolean) {
             focused += bound

@@ -186,10 +186,10 @@ test('the demo, beat by beat', async ({ browser }) => {
       components: [
         { id: 'root', component: 'Column', children: ['ask', 'checks', 'done'] },
         { id: 'ask', component: 'Text', variant: 'h4', text: 'What comes before human review?' },
-        { id: 'checks', component: 'Button', child: 'checks-label', action: { event: { name: 'answer', context: { choice: 'checks' } } } },
-        { id: 'checks-label', component: 'Text', text: 'Automated checks' },
-        { id: 'done', component: 'Button', child: 'done-label', action: { event: { name: 'done', context: {} } } },
-        { id: 'done-label', component: 'Text', text: 'Done' },
+        { id: 'checks', component: 'Button', child: 'checks_label', action: { event: { name: 'answer', context: { choice: 'checks' } } } },
+        { id: 'checks_label', component: 'Text', text: 'Automated checks' },
+        { id: 'done', component: 'Button', child: 'done_label', action: { event: { name: 'done', context: {} } } },
+        { id: 'done_label', component: 'Text', text: 'Done' },
       ],
     });
     await expect(surface(rig.ownerPage, MAIN)).toContainText('What comes before human review?', { timeout: 15_000 });

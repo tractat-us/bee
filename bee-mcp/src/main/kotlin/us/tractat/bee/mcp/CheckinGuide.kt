@@ -31,19 +31,19 @@ object CheckinGuide {
             """{"id":"progress","component":"Text","text":{"path":"/progress"}},""" +
             """{"id":"decision","component":"Column","children":["ask","options","answer","send"]},""" +
             """{"id":"ask","component":"Text","variant":"h5","text":"Squash the fix into one commit?"},""" +
-            """{"id":"options","component":"Row","children":["opt-1","opt-2"]},""" +
-            """{"id":"opt-1","component":"Button","child":"opt-1-label","action":{"event":{"name":"decide","context":{"choice":"squash"}}}},""" +
-            """{"id":"opt-1-label","component":"Text","text":"Squash"},""" +
-            """{"id":"opt-2","component":"Button","child":"opt-2-label","action":{"event":{"name":"decide","context":{"choice":"keep"}}}},""" +
-            """{"id":"opt-2-label","component":"Text","text":"Keep the commits"},""" +
+            """{"id":"options","component":"Row","children":["opt_1","opt_2"]},""" +
+            """{"id":"opt_1","component":"Button","child":"opt_1_label","action":{"event":{"name":"decide","context":{"choice":"squash"}}}},""" +
+            """{"id":"opt_1_label","component":"Text","text":"Squash"},""" +
+            """{"id":"opt_2","component":"Button","child":"opt_2_label","action":{"event":{"name":"decide","context":{"choice":"keep"}}}},""" +
+            """{"id":"opt_2_label","component":"Text","text":"Keep the commits"},""" +
             """{"id":"answer","component":"TextField","label":"Or say something else","value":{"path":"/answer"}},""" +
-            """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"answer","context":{"text":{"path":"/answer"}}}}},""" +
-            """{"id":"send-label","component":"Text","text":"Send"},""" +
+            """{"id":"send","component":"Button","child":"send_label","action":{"event":{"name":"answer","context":{"text":{"path":"/answer"}}}}},""" +
+            """{"id":"send_label","component":"Text","text":"Send"},""" +
             """{"id":"stop","component":"Row","children":["done","pause"]},""" +
-            """{"id":"done","component":"Button","child":"done-label","action":{"event":{"name":"done","context":{}}}},""" +
-            """{"id":"done-label","component":"Text","text":"Done"},""" +
-            """{"id":"pause","component":"Button","child":"pause-label","action":{"event":{"name":"pause","context":{}}}},""" +
-            """{"id":"pause-label","component":"Text","text":"Pause"}]"""
+            """{"id":"done","component":"Button","child":"done_label","action":{"event":{"name":"done","context":{}}}},""" +
+            """{"id":"done_label","component":"Text","text":"Done"},""" +
+            """{"id":"pause","component":"Button","child":"pause_label","action":{"event":{"name":"pause","context":{}}}},""" +
+            """{"id":"pause_label","component":"Text","text":"Pause"}]"""
 
     /** The card's data: the lines a checkpoint rewrites by pointer, and the field's text. */
     const val CARD_DATA: String =

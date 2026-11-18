@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import org.w3c.dom.Element
 import us.tractat.bee.a2ui.A2uiAction
 import us.tractat.bee.a2ui.A2uiMessage
+import us.tractat.bee.a2ui.ComponentIds
 import us.tractat.bee.a2ui.NotionActions
 import us.tractat.bee.a2ui.NotionEdit
 import us.tractat.bee.a2ui.SurfaceFormat
@@ -69,7 +70,9 @@ class BoardDriver(
     /** What the renderer shows for each surface: the last view rendered, held paths included. */
     private val rendered = mutableMapOf<String, SurfaceView>()
     private val placeholders = mutableMapOf<String, Element>()
-    private val sent = SentButtons { press, isSent -> NotionsSent.markSent(root, press.surfaceId, press.componentId, press.instance, isSent) }
+    private val sent = SentButtons { press, isSent ->
+        NotionsSent.markSent(root, press.surfaceId, ComponentIds.rendered(press.componentId), press.instance, isSent)
+    }
 
     /** Renders the board as it changes, and records every action, until [scope] ends. */
     fun start(scope: CoroutineScope): Job {

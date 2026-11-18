@@ -347,6 +347,20 @@ Claude session ── bee-mcp                                           ┘     
     `Null` < `Bool` < `Num` < `Str`, then by value, with strings compared by UTF-16 code unit.
     It's the same on every peer, never arrival order. The full set of values is published at
     `/_bee/conflicts/<escaped pointer>`.
+- **Component ids cross the renderer as identifiers (Iain, 2026-11-17, bee#230).** A2UI v1.0
+  refuses a component id that isn't a UAX #31 identifier, and boards hold ids such as
+  `admit-button`. A board keeps its ids as written, and an agent only ever sees its own. The page
+  shows the renderer each id through `ComponentIds.rendered`: a plain id (ASCII letters, digits and
+  `_`, not starting with a digit or `_bee_`) as itself, any other escaped behind `_bee_`, each
+  character but an ASCII letter or digit as `_<hex>_`, so `admit-button` is `_bee_admit_2d_button`.
+  The escape is injective, so it never lands on an id someone wrote. It rewrites the component's
+  `id` and every id it names: `child`, `trigger`, `content`, `children` (a list, or a template's
+  `componentId`) and each of `tabs`' `child`. Every id the renderer reports goes back through
+  `ComponentIds.stored`: an action's `sourceComponentId` and a `TextField`'s focus. A sent mark goes
+  out through `rendered`. The mapping runs at the renderer, in `A2uiRenderer`, so a saved board
+  and a write from an older skill both render, and nothing stored changes. bee's own surfaces,
+  guides and skills write `snake_case` ids, which need no escape. `SurfaceValidator` still
+  accepts any id.
 - **Live shared typing.** In v0.9, bound inputs such as a `TextField` update the renderer's *local*
   model, and send it only on an action with `sendDataModel`. So the driver subscribes to
   `@a2ui/web_core`'s data model for every bound path and writes changes into the replica,
