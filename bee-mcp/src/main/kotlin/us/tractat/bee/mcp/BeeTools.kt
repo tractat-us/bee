@@ -79,7 +79,8 @@ object BeeTools {
                 "a link, and detail is one short line under it; an empty href or detail clears it. A drop moves a card to another column. " +
                 "Chat binds messages, appended {id, author, text, at}: post one with append {\"/messages\": " +
                 "[{\"text\": \"…\"}]}, text only (plain, at most ${NotionActions.MAX_MESSAGE_LENGTH} characters), and " +
-                "the bridge stamps your identity, id and time. Each answer, drop or message is also an action record.",
+                "the bridge stamps your identity, id and time. Each answer, drop or message is also an action record. " +
+                "A Sketch frame is at most min(80vh, 720px) tall and scrolls inside past that: put long prose in a Text surface.",
             inputSchema = schema(required = listOf("surfaceId", "title", "components")) {
                 putJsonObject("surfaceId") { put("type", "string") }
                 putJsonObject("title") { put("type", "string") }
