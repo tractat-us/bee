@@ -230,7 +230,8 @@ class BeeBridge(
         beforeWrite()
         val posted = mutableSetOf<JsonElement>()
         write(surfaceId, posted) { state ->
-            requireNotNull(state.surfaceDoc(surfaceId)) { "No surface $surfaceId on the board." }
+            // A doc whose open hasn't arrived (bee#171) is no surface yet, so it's refused, not written.
+            requireNotNull(state.meta(surfaceId)) { "No surface $surfaceId on the board." }
             val writes = buildList<(BoardState) -> Patch<BoardState>> {
                 title?.let { add { s -> s.retitleSurface(author, surfaceId, it) } }
                 if (components.isNotEmpty()) add { it.updateComponents(author, surfaceId, components) }

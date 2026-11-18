@@ -61,12 +61,15 @@ internal object SurfaceDoc {
     fun setClosedAt(doc: JsonCrdt, replica: ReplicaId, at: Instant?): Patch<JsonCrdt> =
         setMeta(doc, replica, SurfaceFormat.META_CLOSED_AT, at?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null)
 
-    /** Rewrites the title from the register just read (A13), so the last retitle a peer saw wins. */
+    /**
+     * Rewrites the title from the register just read (A13), so a retitle supersedes every title its
+     * writer saw. Concurrent retitles resolve to the greatest string, the same on every peer.
+     */
     fun setTitle(doc: JsonCrdt, replica: ReplicaId, title: String): Patch<JsonCrdt> =
         setMeta(doc, replica, SurfaceFormat.META_TITLE, JsonValue.Str(title))
 
     private fun setMeta(doc: JsonCrdt, replica: ReplicaId, key: String, value: JsonValue): Patch<JsonCrdt> {
-        val meta = doc[SurfaceFormat.META] as JsonNode.Object
+        val meta = requireNotNull(doc[SurfaceFormat.META] as? JsonNode.Object) { "The surface's open hasn't arrived; it has no meta." }
         val leaf = leafFrom(meta.map[key], replica, value)
         return doc.set(SurfaceFormat.META, JsonNode.Object(meta.map.put(replica, key, leaf).delta))
     }
