@@ -5,6 +5,7 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.sse.SSE
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import us.tractat.bee.mcp.BeeTools
+import us.tractat.kuilt.test.assertAll
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -37,6 +39,9 @@ import kotlin.time.Duration.Companion.seconds
  * loopback, so one session may miss it by luck: the test opens [SESSIONS] in turn and counts the
  * first reads that came back without the surface. bee-core's `BoardClientSyncedTest` forces the
  * window deterministically; this pins the whole path, MCP to replica.
+ *
+ * A first write is decided against the same board: a session that opens a surface already there,
+ * the moment it connects, is refused, never given a second, concurrent open of it.
  */
 class McpHttpFirstReadTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -64,7 +69,16 @@ class McpHttpFirstReadTest {
                 late.close()
                 board.jsonObject.getValue("open").jsonArray.none { it.jsonObject.getValue("surfaceId").jsonPrimitive.content == SURFACE }
             }.count { it }
-            assertEquals(0, missed, "of $SESSIONS sessions' first bee_board, these came back without $SURFACE")
+            val reopened = (1..SESSIONS).count { n ->
+                val late = connect(host, "eager$n")
+                val again = late.callTool(BeeTools.OPEN, openArgs(SURFACE, data = false))
+                late.close()
+                again.isError != true
+            }
+            assertAll(
+                { assertEquals(0, missed, "of $SESSIONS sessions' first bee_board, these came back without $SURFACE") },
+                { assertEquals(0, reopened, "of $SESSIONS sessions' first bee_surface_open of $SURFACE, these opened it again") },
+            )
             opener.close()
         } finally {
             host.close()
@@ -76,10 +90,11 @@ class McpHttpFirstReadTest {
             connect(StreamableHttpClientTransport(http, "http://127.0.0.1:${host.port}${BeeHost.MCP_PATH}?name=$name"))
         }
 
-    private fun text(result: io.modelcontextprotocol.kotlin.sdk.types.CallToolResult): String =
+    private fun text(result: CallToolResult): String =
         result.content.filterIsInstance<TextContent>().single().text
 
-    private fun openArgs(id: String) = mapOf(
+    /** [id]'s open, carrying the few MiB of [data] that slow the first-contact sync, or none. */
+    private fun openArgs(id: String, data: Boolean = true) = mapOf(
         "surfaceId" to id,
         "title" to "Surface $id",
         "components" to JsonArray(
@@ -92,7 +107,7 @@ class McpHttpFirstReadTest {
             ),
         ),
         // A board worth a few MiB, as a board in use for a while is: its first-contact sync takes a while.
-        "data" to buildJsonObject { put("notes", "n".repeat(BOARD_BYTES)) },
+        "data" to buildJsonObject { if (data) put("notes", "n".repeat(BOARD_BYTES)) },
     )
 
     private companion object {
