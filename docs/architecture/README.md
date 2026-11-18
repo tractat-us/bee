@@ -15,6 +15,7 @@ The spec under `docs/superpowers/specs/` is a plan. As it ships, what it decided
 | Doc | Truth for |
 |---|---|
 | [`product.md`](product.md) | what a person meets: the board, what they do on it, and what it takes to get onto it |
+| [`transport.md`](transport.md) | how every peer reaches a host: the URLs, their schemes, and what a client trusts to join |
 
 ## Census
 
