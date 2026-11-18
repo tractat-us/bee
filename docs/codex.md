@@ -48,7 +48,7 @@ for every folder:
 codex -c 'mcp_servers.bee.url="http://127.0.0.1:8233/mcp?name=<you>"'
 ```
 
-`bee-up` prints this line, and the panel offers it to the board's owner. Each `-c` lasts for that
+`bee-up` prints this line, and the panel offers it to the board's owner. Its `-c` lasts for that
 run only, as `claude --mcp-config` does, and writes nothing. A `codex mcp add` here would bring
 every Codex on the machine onto the board, `codex exec` runs included. Codex asks only before the
 tools that write. Here **Always allow** lasts the run only, since the config has no `bee` to save

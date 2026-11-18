@@ -62,10 +62,10 @@ internal sealed interface McpCommand {
      * `claude` started on this machine, dispatched workers too, would join the board and stay on
      * it as a ghost for two minutes after it exits.
      *
-     * [codexLine] starts one Codex session with bee and writes nothing: each `-c` sets config for
+     * [codexLine] starts one Codex session with bee and writes nothing: its `-c` sets config for
      * that run only, as `--mcp-config` does. `codex mcp add` would be user-wide: every Codex on
-     * this machine, `codex exec` runs too, would join the board. The second `-c` runs bee's tools
-     * without asking each time, as `--allowedTools` does.
+     * this machine, `codex exec` runs too, would join the board. Codex's default mode runs bee's
+     * read-only tools and asks before the ones that write.
      */
     class Owner(origin: String, override val viewer: Viewer) : McpCommand {
         override val line = KIT_LINE
