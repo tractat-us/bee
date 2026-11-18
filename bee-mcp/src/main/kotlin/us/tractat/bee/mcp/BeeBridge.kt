@@ -328,10 +328,14 @@ class BeeBridge(
      */
     suspend fun clear(): List<String> {
         beforeWrite()
-        val state = syncedBoard()
-        val open = state.openSurfaces().filter { requireNotNull(state.meta(it)) { "Open surface $it has no meta." }.openedBy.kind != PeerKind.Host }
-        open.forEach { id -> client.mutate { it.closeSurface(author, id, clock()) } }
-        return open
+        var closed = emptyList<String>()
+        // Decided against the very state the closes land on, as [close] is: a surface closed
+        // meanwhile keeps its first closing.
+        client.mutateOrSkip { state ->
+            closed = state.openSurfaces().filter { requireNotNull(state.meta(it)) { "Open surface $it has no meta." }.openedBy.kind != PeerKind.Host }
+            if (closed.isEmpty()) null else joined(state, closed.map { id -> { s: BoardState -> s.closeSurface(author, id, clock()) } })
+        }
+        return closed
     }
 
     /** Claims [target] for the caller to keep, as `bee_claim` does: a win is recorded as handed over. */
@@ -545,7 +549,8 @@ class BeeBridge(
     private suspend fun retirementCheck(): PeerIdentity {
         val who = self
         val table = claims.link.value?.client?.table?.value
-        val mirrored = syncedBoard()
+        // Synced: [beforeWrite] waited for it, and a replica never stops being synced.
+        val mirrored = board.value
         val reason = table?.departReason(who) ?: mirrored.departures().firstOrNull { it.identity == who }?.reason
         if (reason == null) {
             presence.update(who, statusLine, clock())
