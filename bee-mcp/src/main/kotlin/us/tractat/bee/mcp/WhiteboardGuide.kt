@@ -138,6 +138,7 @@ object WhiteboardGuide {
 
     private const val SURFACES =
         "A surface is a flat list of components, one with id \"root\"; containers name their children by id. " +
+            "An id is letters, digits and _, as send_label. " +
             "A property binds to the surface's data with {\"path\": \"/…\"}; bee_surface_update writes data by " +
             "JSON Pointer, as {\"/idea\": \"new text\"}, and upserts components by id. Each entry opens as it " +
             "stands with bee_surface_open."
