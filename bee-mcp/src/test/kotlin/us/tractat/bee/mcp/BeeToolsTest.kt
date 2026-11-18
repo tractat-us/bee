@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -26,6 +27,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.ActionRecord
 import us.tractat.bee.core.Basis
 import us.tractat.bee.core.BoardClient
@@ -55,7 +57,9 @@ import us.tractat.bee.host.boardMirror
 import us.tractat.bee.host.memoryKeys
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.InMemoryTag
+import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
@@ -158,6 +162,66 @@ class BeeToolsTest {
             { assertEquals(null, again.isError, "closing again: ${again.text()}") },
             { assertEquals(firstClose, after.meta("one")!!.closedAt, "the first close's time stays") },
             { assertEquals(before, after.closedSurfaces(), "the history strip keeps its order") },
+        )
+        rig.close()
+    }
+
+    /**
+     * `bee_surface_update` retitles a live surface in place (bee#242): its new title is what the
+     * board and every session's `bee_board` show, and an update that names no title leaves it. The
+     * other peers are read once the later, data-only update reaches them, which kuilt delivers after
+     * the retitle, so a missing retitle shows as the old title, not as a wait that never ends.
+     */
+    @Test
+    fun updateRetitlesASurfaceAndAnUpdateWithoutATitleLeavesIt() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val bo = rig.session("bo")
+        val browser = rig.browser()
+        ada.call(BeeTools.OPEN, openArgs("api") + ("title" to "api · DEPLOYING"))
+        val before = ada.client.state.value.meta("api")?.title
+
+        val retitled = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "title" to "api · UP"))
+        val untitled = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "data" to buildJsonObject { put("/now", "green") }))
+        fun reached(state: BoardState) = state.surfaceDoc("api")?.toSurfaceView("api")?.data?.get("now") != null
+        val seen = browser.state.first(::reached)
+        bo.client.state.first(::reached)
+        val listed = bo.call(BeeTools.BOARD, emptyMap()).json().getValue("open").jsonArray.single().jsonObject
+        assertAll(
+            { assertEquals("api · DEPLOYING", before, "rig: it opened under its first title") },
+            { assertEquals(null, retitled.isError, "retitled: ${retitled.text()}") },
+            { assertEquals(null, untitled.isError, "untitled: ${untitled.text()}") },
+            { assertEquals("api · UP", seen.meta("api")?.title, "the board shows the new title") },
+            { assertEquals("api · UP", listed.getValue("title").jsonPrimitive.content, "the other session's bee_board reports it") },
+            { assertEquals("api", listed.getValue("surfaceId").jsonPrimitive.content, "under the same id") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A surface whose data reached the session before its open (bee#171) is no surface yet: an
+     * update to it, retitling or not, is refused by name, as an update to a missing surface is,
+     * and the session's replica keeps it without meta.
+     */
+    @Test
+    fun updateRefusesASurfaceWhoseOpenHasNotArrived() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        // The opener and the early writer differ: a replica's own put carries its earlier
+        // contributions to the surface, its open among them (kuilt's ORMap.put).
+        val early = ReplicaId("web-early")
+        val meta = SurfaceMeta("api", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), kotlin.time.Instant.fromEpochMilliseconds(0))
+        val opened = BoardState.EMPTY.piece { it.openSurface(ReplicaId("web-opener"), "api", meta, validSurface(), JsonObject(emptyMap())) }
+        val dataOnly = opened.updateData(early, "api", "/now", JsonPrimitive("green")).delta
+        rig.browser(early.value).mutate { Patch(dataOnly) }
+        ada.client.state.first { it.surfaceDoc("api") != null }
+
+        val retitle = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "title" to "api · UP"))
+        val write = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "data" to buildJsonObject { put("/now", "red") }))
+        assertAll(
+            { assertTrue(retitle.isError == true && "No surface api" in retitle.text(), "retitle: ${retitle.text()}") },
+            { assertTrue(write.isError == true && "No surface api" in write.text(), "data write: ${write.text()}") },
+            { assertEquals(null, ada.client.state.value.meta("api"), "still no surface") },
         )
         rig.close()
     }
