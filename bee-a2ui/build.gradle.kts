@@ -12,6 +12,8 @@ kotlin {
     jvm()
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs { nodejs() }
+    // SPIKE (docs/spikes/2026-11-bee-app.md): does the shared code compile for iOS? -PspikeIos
+    if (providers.gradleProperty("spikeIos").isPresent) iosSimulatorArm64()
 
     sourceSets {
         commonMain.dependencies {

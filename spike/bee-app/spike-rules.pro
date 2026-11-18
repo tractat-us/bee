@@ -1,0 +1,12 @@
+# SPIKE, throwaway: generous keeps, to see whether a shrunk APK still hosts. Not tuned.
+-dontobfuscate
+-dontwarn **
+-keep class io.netty.** { *; }
+-keep class ch.qos.logback.** { *; }
+-keep class org.slf4j.** { *; }
+-keep class io.ktor.server.netty.** { *; }
+-keep class io.ktor.server.engine.** { *; }
+-keep class io.ktor.server.config.** { *; }
+-keep class kotlin.reflect.** { *; }
+-keep class us.tractat.** { *; }
+-keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
