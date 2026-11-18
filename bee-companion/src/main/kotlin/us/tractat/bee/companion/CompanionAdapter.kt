@@ -408,7 +408,7 @@ class CompanionAdapter(
      * screen written onto a board that hasn't arrived could open a second copy of its surface.
      */
     class BoardNotSynced(board: BoardId, within: Duration) :
-        Exception("$board hadn't arrived from the host within $within, so the companion wrote nothing; restart it to try again")
+        Exception("$board hadn't arrived from the host within $within, so the companion wrote nothing. Restart it to try again; if it keeps failing, the board may be too large for the host to send (tractat-us/kuilt#3144)")
 
     companion object {
         /** Every companion's surface id starts so; a random id follows, one per companion. */
