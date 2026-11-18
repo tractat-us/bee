@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -56,7 +57,9 @@ import us.tractat.bee.host.boardMirror
 import us.tractat.bee.host.memoryKeys
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.core.InMemoryTag
+import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
@@ -191,6 +194,32 @@ class BeeToolsTest {
             { assertEquals("api · UP", seen.meta("api")?.title, "the board shows the new title") },
             { assertEquals("api · UP", listed.getValue("title").jsonPrimitive.content, "the other session's bee_board reports it") },
             { assertEquals("api", listed.getValue("surfaceId").jsonPrimitive.content, "under the same id") },
+        )
+        rig.close()
+    }
+
+    /**
+     * A surface whose data reached the session before its open (bee#171) is no surface yet: an
+     * update to it, retitling or not, is refused by name, as an update to a missing surface is,
+     * and the session's replica keeps it without meta.
+     */
+    @Test
+    fun updateRefusesASurfaceWhoseOpenHasNotArrived() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val early = ReplicaId("web-early")
+        val meta = SurfaceMeta("api", NOTIONS_CATALOG_ID, PeerIdentity.human("iain"), kotlin.time.Instant.fromEpochMilliseconds(0))
+        val opened = BoardState.EMPTY.piece { it.openSurface(early, "api", meta, validSurface(), JsonObject(emptyMap())) }
+        val dataOnly = opened.updateData(early, "api", "/now", JsonPrimitive("green")).delta
+        rig.browser(early.value).mutate { Patch(dataOnly) }
+        ada.client.state.first { it.surfaceDoc("api") != null }
+
+        val retitle = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "title" to "api · UP"))
+        val write = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "api", "data" to buildJsonObject { put("/now", "red") }))
+        assertAll(
+            { assertTrue(retitle.isError == true && "No surface api" in retitle.text(), "retitle: ${retitle.text()}") },
+            { assertTrue(write.isError == true && "No surface api" in write.text(), "data write: ${write.text()}") },
+            { assertEquals(null, ada.client.state.value.meta("api"), "still no surface") },
         )
         rig.close()
     }
