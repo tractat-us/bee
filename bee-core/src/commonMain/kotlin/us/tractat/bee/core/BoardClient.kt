@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -103,6 +105,11 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.se
  * [lastFailure], and a failed pump also ends its connection, so a broken mirror can't let the held
  * board drift from the replica. The next connection to go live clears it.
  *
+ * **A client is synced once its board holds the relay's** ([synced]): once the held board has
+ * joined the first `FullState` the relay sent it, on any connection. Until then a fresh client's
+ * board is the empty one it started with, which a reader can't tell from an empty board
+ * (bee#240). It stays synced from then on: the held board keeps what the relay sent it.
+ *
  * **Locking.** The held board, the live connection, [online] and [link] change together under
  * one [Mutex], which is never held across a suspension: weaving and closing happen outside it.
  * [lastFailure] is written from pump callbacks, which can't suspend, so it stands alone.
@@ -145,6 +152,8 @@ class BoardClient(
         val quilter: Quilter<BoardState>,
         val job: Job,
         val scope: CoroutineScope,
+        /** The board in the first `FullState` the relay sent over this connection, or null before one arrives. */
+        val relayBoard: StateFlow<BoardState?>,
     ) {
         /** Completes when the connection is over: its seam tore, a pump failed, or its Quilter closed. */
         val ended = CompletableDeferred<Unit>()
@@ -169,6 +178,7 @@ class BoardClient(
     private val _link = MutableStateFlow<String?>(null)
     private val _lastFailure = MutableStateFlow<Throwable?>(null)
     private val _tooLarge = MutableStateFlow<BoardSyncTooLarge?>(null)
+    private val _synced = MutableStateFlow(false)
     private val wanted = MutableStateFlow(false)
     private var live: Connection? = null
     private var connections = 0
@@ -188,6 +198,19 @@ class BoardClient(
 
     /** Why the board can't sync, if it can't: a frame it would send is over the link's bound. */
     val tooLarge: StateFlow<BoardSyncTooLarge?> = _tooLarge.asStateFlow()
+
+    /**
+     * Whether the held board has joined the relay's first-contact `FullState`, on any connection:
+     * false until it has, then true for good.
+     */
+    val synced: StateFlow<Boolean> = _synced.asStateFlow()
+
+    /**
+     * Suspends until the client is [synced], for at most [within].
+     *
+     * @return whether it is synced
+     */
+    suspend fun awaitSynced(within: Duration): Boolean = synced.value || withTimeoutOrNull(within) { synced.first { it } } != null
 
     private val driver: Job = scope.launch(CoroutineName("board-client-${author.value}")) {
         wanted.collectLatest { if (it) stayConnected() }
@@ -350,6 +373,13 @@ class BoardClient(
         connection.seam.state.pumpIn(connection, "tear") { if (it is SeamState.Torn) connection.ended.complete(Unit) }
         // Synchronous with the refusal, so neither a cancelled scope nor [settle] can come between.
         connection.seam.refused.invokeOnCompletion { connection.ended.complete(Unit) }
+        if (!_synced.value) {
+            connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-synced")) {
+                // Joining the relay's board again changes nothing once the held board holds it.
+                combine(held, connection.relayBoard.filterNotNull()) { board, relay -> board.piece(relay) == board }.first { it }
+                _synced.value = true
+            }
+        }
         connection.scope.launch(CoroutineName("${connection.quilter.replica.value}-settle")) {
             delay(settleAfter)
             settle(connection)
@@ -393,15 +423,16 @@ class BoardClient(
         val job = SupervisorJob(scope.coroutineContext[Job])
         val connectionScope = scope + job
         try {
+            val watched = FirstContactSeam(seam)
             val quilter = Quilter(
                 replica = ReplicaId("${author.value}#c$n"),
-                seam = seam,
+                seam = watched,
                 initial = held.value,
                 messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
                 scope = connectionScope,
                 config = config,
             )
-            return Connection(seam, quilter, job, connectionScope)
+            return Connection(seam, quilter, job, connectionScope, watched.relayBoard)
         } catch (failure: Throwable) {
             job.cancel()
             throw failure
