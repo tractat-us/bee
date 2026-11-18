@@ -61,8 +61,7 @@ object WhiteboardGuide {
         note = "The tool for a diagram, flow or mockup: any HTML, CSS, inline SVG and script, sandboxed with no " +
             "network (data: images only). A click on a data-choice element asks the viewer \"Send <its text>?\"; " +
             "Send records \"choice\" with {choice, text}. Keep diagrams compact: nodes in one or two rows, a viewBox " +
-            "just tall enough for them. A frame is at most min(80vh, 720px) tall; past that it scrolls inside, " +
-            "so put long prose in a Text surface. Redraw by updating the whole html.",
+            "just tall enough for them. Redraw by updating the whole html.",
     )
 
     private val FIELD = Example(
