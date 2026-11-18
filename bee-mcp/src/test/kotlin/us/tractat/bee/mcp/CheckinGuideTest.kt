@@ -90,7 +90,7 @@ class CheckinGuideTest {
             ),
         )
         // Control: a card missing a child it names is refused, so a green open above means something.
-        val broken = CheckinGuide.CARD_COMPONENTS.replace("""{"id":"done_label",""", """{"id":"done-text",""")
+        val broken = CheckinGuide.CARD_COMPONENTS.replace("""{"id":"done_label",""", """{"id":"done_text",""")
         val refused = ada.call(
             BeeTools.OPEN,
             mapOf("surfaceId" to "control", "title" to "control", "components" to Json.parseToJsonElement(broken).jsonArray),

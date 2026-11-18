@@ -148,11 +148,11 @@ class SentButtonsTest {
             buildJsonObject {
                 put("id", "file")
                 put("component", "Button")
-                put("child", "file-label")
+                put("child", "file_label")
                 putJsonObject("action") { putJsonObject("event") { put("name", "file") } }
             },
             buildJsonObject {
-                put("id", "file-label")
+                put("id", "file_label")
                 put("component", "Text")
                 put("text", "Yes, file it")
             },
