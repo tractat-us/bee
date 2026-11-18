@@ -135,7 +135,8 @@ export function subscribeData(rootElement, surfaceId, path, handler) {
  * its `<button>`, so a screen reader hears the state while the text stays as it is. It stays
  * focusable and clickable, as Sketch's Send does (bee#193); bee's driver refuses a press on a sent
  * button. The basic catalog renders into light DOM, as `<a2ui-basic-button>`, and Lit leaves an
- * attribute it doesn't bind alone. A button not on the page is skipped.
+ * attribute it doesn't bind alone. A button not on the page is skipped. `componentId` is the id the
+ * renderer holds, which bee-web maps from the stored one (`ComponentIds`, bee#230).
  *
  * @param instance the data path of the instance pressed ([pressedInstance]), so one row of a list
  *   template is marked and not its siblings; null marks every instance of `componentId`
@@ -158,6 +159,7 @@ export function markSent(rootElement, surfaceId, componentId, instance, sent) {
  * `{surfaceId, componentId, focused}`, or `{error}` for a field it can't place. The basic
  * catalog renders into light DOM, as `<a2ui-basic-textfield>`, so focus events reach the root
  * with the input as their target. Focus on anything else is not a field's, and isn't reported.
+ * `componentId` is the id the renderer holds; bee-web maps it back to the stored one (bee#230).
  */
 export function onTextFieldFocus(rootElement, handler) {
   const report = (event, focused) => {
