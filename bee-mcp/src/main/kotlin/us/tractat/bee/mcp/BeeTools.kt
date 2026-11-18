@@ -56,11 +56,13 @@ object BeeTools {
                 "session's claims are online. You is this session's own identity. Attached lists each peer once: " +
                 "agents, and the people and room screens with the board open, leaving out any that departed. A person's lastActedAt is when their page loaded. A claim a person " +
                 "reassigned to this session shows here as held by it; the record itself arrives through " +
-                "bee_wait_action, on its surface or board-wide, with its token.",
+                "bee_wait_action, on its surface or board-wide, with its token. Just after connecting it waits a " +
+                "moment for the board to arrive; synced false means it hadn't, and the board shown may be missing surfaces.",
             inputSchema = ToolSchema(properties = JsonObject(emptyMap())),
         ) { _ ->
             bridge.touch()
-            answer(board(bridge.board.value, bridge.self, bridge.roster().values, bridge.claimsOnline))
+            val synced = bridge.awaitSynced()
+            answer(board(bridge.board.value, bridge.self, bridge.roster().values, bridge.claimsOnline, synced))
         }
         server.addTool(
             name = OPEN,
@@ -185,7 +187,14 @@ object BeeTools {
         }
     }
 
-    private fun board(state: BoardState, you: PeerIdentity, roster: Collection<PresenceEntry>, claimsOnline: Boolean): JsonObject = buildJsonObject {
+    @Suppress("LongParameterList")
+    private fun board(
+        state: BoardState,
+        you: PeerIdentity,
+        roster: Collection<PresenceEntry>,
+        claimsOnline: Boolean,
+        synced: Boolean,
+    ): JsonObject = buildJsonObject {
         put("you", you.toString())
         put(
             "open",
@@ -227,6 +236,8 @@ object BeeTools {
             ),
         )
         put("claims", if (claimsOnline) "online" else "offline")
+        // Only when it isn't: a replica that synced once holds the board from then on (bee#240).
+        if (!synced) put("synced", false)
     }
 
     private fun outcome(outcome: ClaimOutcome): JsonObject = buildJsonObject {
