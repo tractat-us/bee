@@ -68,8 +68,8 @@ object WhiteboardGuide {
         name = "A field people type into",
         components = """[{"id":"root","component":"Column","children":["idea","send"]},""" +
             """{"id":"idea","component":"TextField","label":"Your idea","value":{"path":"/idea"}},""" +
-            """{"id":"send","component":"Button","child":"send-label","action":{"event":{"name":"submit","context":{"idea":{"path":"/idea"}}}}},""" +
-            """{"id":"send-label","component":"Text","text":"Send"}]""",
+            """{"id":"send","component":"Button","child":"send_label","action":{"event":{"name":"submit","context":{"idea":{"path":"/idea"}}}}},""" +
+            """{"id":"send_label","component":"Text","text":"Send"}]""",
         data = """{"idea":""}""",
         append = null,
         note = "Typing reaches /idea live for everyone (bee_board shows it); Send's record carries it in its " +
@@ -94,8 +94,8 @@ object WhiteboardGuide {
             name = "Layout and a Button",
             components = """[{"id":"root","component":"Column","children":["q","yes"]},""" +
                 """{"id":"q","component":"Text","variant":"h4","text":"Ship on Friday?"},""" +
-                """{"id":"yes","component":"Button","child":"yes-label","action":{"event":{"name":"ship","context":{"day":"friday"}}}},""" +
-                """{"id":"yes-label","component":"Text","text":"Ship it"}]""",
+                """{"id":"yes","component":"Button","child":"yes_label","action":{"event":{"name":"ship","context":{"day":"friday"}}}},""" +
+                """{"id":"yes_label","component":"Text","text":"Ship it"}]""",
             data = null,
             append = null,
             note = "A click records name \"ship\" with that context. Row lays children across, Card wraps one child, " +
