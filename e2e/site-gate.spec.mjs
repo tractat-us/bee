@@ -104,10 +104,8 @@ test('a page from another origin cannot open a pairing', async ({ browser, page 
     await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
     expect(await status('elsewhere-image', asImage)).toBe(403);
     expect(await status('elsewhere-post', asNoCorsPost)).toBe(403);
-    // Well past the dwell, after which an admitted pairing posts its request.
-    await page.waitForTimeout(PAST_THE_DWELL_MS);
-    await expect(request('elsewhere-image')).toHaveCount(0);
-    await expect(request('elsewhere-post')).toHaveCount(0);
+    // No board check: neither caller can read the token, so neither can poll, and since bee#211 a
+    // pairing that never polls posts nothing. The 403s are what read the site gate.
   } finally {
     await context.close();
   }
@@ -118,14 +116,13 @@ test('a page from another origin cannot open a pairing', async ({ browser, page 
 // is a navigation from another site. One that lists it in speculation rules gets a prefetch
 // Chromium marks `Sec-Fetch-Site: none`, as if typed, so only the path tells it from a real one.
 test('a page from another origin cannot navigate to or prefetch a pairing channel', async ({ browser, page }) => {
-  const { context, request } = await watchBoard(browser);
+  const { context } = await watchBoard(browser);
   try {
     await page.goto(`http://127.0.0.1:${elsewhere.address().port}/`);
 
     // The browser reports each prefetch's outcome over CDP, which is what says the host answered
-    // it: no request on the board alone can't tell a refused prefetch from one never sent. Under
-    // the old rule, headless Chromium reports `PrefetchFailedNetError` and drops the stream before
-    // the dwell, so here the board stays empty either way and only the outcome reads the host.
+    // it. The board can't: neither caller here can read the token to poll, and since bee#211 a
+    // pairing that never polls posts nothing, so the board stays empty either way.
     const preloading = await page.context().newCDPSession(page);
     const prefetches = [];
     preloading.on('Preload.prefetchStatusUpdated', (event) => prefetches.push(event));
@@ -136,7 +133,7 @@ test('a page from another origin cannot navigate to or prefetch a pairing channe
       rules.textContent = JSON.stringify({ prefetch: [{ source: 'list', urls: [url] }] });
       document.head.append(rules);
     }, prefetched);
-    // Soft, so a host that admits both shows each one, and the board, in one run.
+    // Soft, so a host that admits both shows each one in one run.
     const soft = expect.configure({ soft: true });
     await soft
       .poll(() => prefetches.findLast((e) => e.prefetchUrl === prefetched && e.status === 'Failure')?.prefetchStatus, {
@@ -151,17 +148,10 @@ test('a page from another origin cannot navigate to or prefetch a pairing channe
       location.href = url;
     }, navigated);
     soft((await answered).status(), 'the navigation').toBe(403);
-
-    await page.waitForTimeout(PAST_THE_DWELL_MS);
-    await soft(request('elsewhere-prefetch')).toHaveCount(0);
-    await soft(request('elsewhere-navigation')).toHaveCount(0);
   } finally {
     await context.close();
   }
 });
-
-/** The 3 s dwell, after which an admitted pairing posts its join request, and then some. */
-const PAST_THE_DWELL_MS = 7_000;
 
 /** `/pair` on the host, for a room screen named `screen`. */
 const pair = (screen) => `http://127.0.0.1:${port}/pair?screen=${screen}`;

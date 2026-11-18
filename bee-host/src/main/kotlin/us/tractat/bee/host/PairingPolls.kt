@@ -34,9 +34,10 @@ private val logger = KotlinLogging.logger {}
  * [idle] from its end, so a device whose poll was lost still gets its key on the next one; polls
  * don't stretch that.
  *
- * A device that opens and never asks again leaves its request up from the dwell until [idle] runs
- * out, since [idle] outlasts [Pairing.DWELL] to ride out a slow or lost poll. The cooldown and the
- * pairing budget bound those as they bound every pairing.
+ * **A device that never asks writes nothing** (bee#211). Its request goes up only once the dwell
+ * has passed and its first poll has come ([PairingDesk.serve]); one that opens and never asks
+ * again is let go at [idle] with nothing posted. A first poll that comes late, past the dwell,
+ * as one does when a proxy eats the first few (bee#209), puts the request up then.
  *
  * **The token is the capability.** The pairing id is on the board, so it fetches nothing here: only
  * the token [open] gave the device does. Sessions are found by the token's SHA-256, so a lookup's
@@ -50,8 +51,8 @@ class PairingPolls(
     private val random: SecureRandom,
     private val idle: Duration = PairingWire.IDLE,
 ) {
-    /** One open pairing's state between polls, from its [code] on. */
-    private class Session(code: PairingMessage.Code, @Volatile var seen: Instant) {
+    /** One open pairing's state between polls, from its [code] on; [asked] completes on its first poll. */
+    private class Session(code: PairingMessage.Code, @Volatile var seen: Instant, val asked: CompletableDeferred<Unit>) {
         @Volatile var latest: PairingMessage = code
             private set
 
@@ -77,17 +78,18 @@ class PairingPolls(
         val token = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(TOKEN_BYTES).also(random::nextBytes))
         val digest = digest(token)
         val first = CompletableDeferred<PairingMessage>()
+        val asked = CompletableDeferred<Unit>()
         scope.launch {
             try {
                 coroutineScope {
                     lateinit var session: Session
                     val serving = launch {
-                        desk.serve(device) { message ->
+                        desk.serve(device, asked::await) { message ->
                             if (first.isCompleted) {
                                 session.end(message, clock())
                             } else {
                                 // Only a code opens a session: a refusal leaves nothing behind.
-                                if (message is PairingMessage.Code) session = Session(message, clock()).also { sessions[digest] = it }
+                                if (message is PairingMessage.Code) session = Session(message, clock(), asked).also { sessions[digest] = it }
                                 first.complete(message)
                             }
                         }
@@ -116,6 +118,7 @@ class PairingPolls(
     /** The newest message for the pairing [token] opened, or null if the host holds none for it. Counts as the device still being here. */
     fun poll(token: String): PairingMessage? = sessions[digest(token)]?.let { session ->
         session.seen = clock()
+        session.asked.complete(Unit)
         session.latest
     }
 
