@@ -216,11 +216,13 @@ class BeeBridge(
     }
 
     /**
-     * Upserts [components] by id, writes each of [data]'s pointers in order, then appends each of
-     * [appends] as a new entry of the append-only array at its pointer (A12).
+     * Retitles the surface to [title] unless it's null (bee#242), upserts [components] by id, writes
+     * each of [data]'s pointers in order, then appends each of [appends] as a new entry of the
+     * append-only array at its pointer (A12).
      */
     suspend fun update(
         surfaceId: String,
+        title: String?,
         components: List<JsonObject>,
         data: List<Pair<String, JsonElement>>,
         appends: List<Pair<String, JsonElement>>,
@@ -230,6 +232,7 @@ class BeeBridge(
         write(surfaceId, posted) { state ->
             requireNotNull(state.surfaceDoc(surfaceId)) { "No surface $surfaceId on the board." }
             val writes = buildList<(BoardState) -> Patch<BoardState>> {
+                title?.let { add { s -> s.retitleSurface(author, surfaceId, it) } }
                 if (components.isNotEmpty()) add { it.updateComponents(author, surfaceId, components) }
                 data.forEach { (path, value) -> add { it.updateData(author, surfaceId, path, value) } }
                 addAll(appendsTo(surfaceId, appends, posted))
