@@ -45,7 +45,7 @@ On the machine that runs the board, start one Codex session with the board, rath
 for every folder:
 
 ```sh
-codex -c 'mcp_servers.bee.url="http://127.0.0.1:8233/mcp?name=<you>"' -c 'mcp_servers.bee.default_tools_approval_mode="approve"'
+codex -c 'mcp_servers.bee.url="http://127.0.0.1:8233/mcp?name=<you>"'
 ```
 
 `bee-up` prints this line, and the panel offers it to the board's owner. Each `-c` lasts for that

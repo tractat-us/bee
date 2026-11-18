@@ -28,7 +28,7 @@ const folderLine = (origin, query) => `claude mcp add --transport http bee '${or
 // A Codex session's: user-wide for a teammate, one run only for the owner.
 const codexLine = (origin, query) => `codex mcp add bee --url '${origin}/mcp?${query}'`;
 const ownerCodexLine = (origin, query) =>
-  `codex -c 'mcp_servers.bee.url="${origin}/mcp?${query}"' -c 'mcp_servers.bee.default_tools_approval_mode="approve"'`;
+  `codex -c 'mcp_servers.bee.url="${origin}/mcp?${query}"'`;
 
 async function openBoard(page, url) {
   await page.goto(url);

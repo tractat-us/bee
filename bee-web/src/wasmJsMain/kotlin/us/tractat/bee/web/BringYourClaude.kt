@@ -73,7 +73,7 @@ internal sealed interface McpCommand {
         val folderLine = "claude mcp add --transport http bee ${endpoint(origin, emptyList(), viewer)}"
 
         override val codexLine =
-            "codex -c ${singleQuoted("mcp_servers.bee.url=${tomlString(url(origin, emptyList(), viewer))}")} -c '$CODEX_APPROVE'"
+            "codex -c ${singleQuoted("mcp_servers.bee.url=${tomlString(url(origin, emptyList(), viewer))}")}"
     }
 
     companion object {
@@ -88,9 +88,6 @@ internal sealed interface McpCommand {
 
         /** Drops an earlier `bee` entry, saying nothing whether or not there was one. */
         private const val REMOVE_EARLIER = "claude mcp remove --scope user bee >/dev/null 2>&1;"
-
-        /** A Codex config override that runs bee's tools without asking before each call. */
-        private const val CODEX_APPROVE = "mcp_servers.bee.default_tools_approval_mode=\"approve\""
 
         fun of(origin: String, access: Access.Admitted, viewer: Viewer): McpCommand = when (access) {
             is Access.Keyed -> Teammate(origin, access.key, viewer)
