@@ -6,6 +6,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
@@ -92,14 +93,19 @@ class BoardClientSyncedTest {
     fun aClientIsSyncedOnlyOnceItsBoardHoldsTheRelays() = runTest(StandardTestDispatcher()) {
         val hub = SlowHub(this, opened()).apply { start() }
         val sam = hub.client().also { it.connect() }
+        // Unconfined: it reads the board the instant synced turns true, before anything else runs.
+        val boardWhenSynced = backgroundScope.async(UnconfinedTestDispatcher(testScheduler)) {
+            sam.synced.first { it }
+            sam.state.value
+        }
         sam.online.first { it }
         val syncedOnline = sam.synced.value
         val boardOnline = sam.state.value.surfaceDoc(SURFACE)
-        sam.synced.first { it }
+        val board = boardWhenSynced.await()
         assertAll(
             { assertFalse(syncedOnline, "online, but the hub's FullState is still on its way: not synced") },
             { assertNull(boardOnline, "precondition: the board is still the empty one the client started with") },
-            { assertTrue(SURFACE in sam.state.value.openSurfaces(), "synced: the board holds the hub's surface") },
+            { assertTrue(SURFACE in board.openSurfaces(), "the moment it is synced, the board holds the hub's surface") },
         )
     }
 
