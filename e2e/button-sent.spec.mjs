@@ -40,8 +40,8 @@ async function openAsk(surfaceId) {
     title: 'File it?',
     components: [
       { id: 'root', component: 'Column', children: ['file', 'note'] },
-      { id: 'file', component: 'Button', child: 'file-label', action: { event: { name: 'file' } } },
-      { id: 'file-label', component: 'Text', text: 'Yes, file it' },
+      { id: 'file', component: 'Button', child: 'file_label', action: { event: { name: 'file' } } },
+      { id: 'file_label', component: 'Text', text: 'Yes, file it' },
       { id: 'note', component: 'Text', text: { path: '/note' } },
     ],
     data: { note: 'waiting' },
@@ -132,9 +132,12 @@ test('each row of a templated list is its own button: pressing one leaves the ot
     surfaceId: id,
     title: 'Approve which?',
     components: [
-      { id: 'root', component: 'Column', children: { componentId: 'row', path: '/items' } },
-      { id: 'row', component: 'Button', child: 'row-label', action: { event: { name: 'approve', context: { item: { path: 'name' } } } } },
-      { id: 'row-label', component: 'Text', text: { path: 'name' } },
+      // The button's id is spelled as an agent with an older skill wrote one, before ids were
+      // identifiers (bee#230): the renderer is shown `_bee_approve_2d_row`, and the page still
+      // marks the row it pressed and records the id the agent wrote.
+      { id: 'root', component: 'Column', children: { componentId: 'approve-row', path: '/items' } },
+      { id: 'approve-row', component: 'Button', child: 'row_label', action: { event: { name: 'approve', context: { item: { path: 'name' } } } } },
+      { id: 'row_label', component: 'Text', text: { path: 'name' } },
     ],
     data: { items: [{ name: 'Alpha' }, { name: 'Beta' }] },
   });
@@ -146,6 +149,7 @@ test('each row of a templated list is its own button: pressing one leaves the ot
   await row('Alpha').dblclick();
   await expect(row('Alpha')).toHaveAttribute('aria-disabled', 'true', { timeout: 2_000 });
   await expect(records(page, id)).toHaveCount(1, { timeout: 5_000 });
+  await expect(records(page, id).first()).toHaveText(/^human:alex approve on approve-row/);
   await expect(row('Beta')).not.toHaveAttribute('aria-disabled', 'true');
 
   await row('Beta').click();

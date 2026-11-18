@@ -138,6 +138,9 @@ private suspend fun seed(host: URI, fixtures: List<String>, flags: Map<String, S
     }
 }
 
+// Spelled with hyphens on purpose, as a board saved before ids were identifiers (bee#230): typing
+// into note-field holds through its focus reports, and a press records press-button, only if the
+// page maps the ids the renderer reports back to these.
 private fun components(): List<JsonObject> = listOf(
     buildJsonObject {
         put("id", "root")
