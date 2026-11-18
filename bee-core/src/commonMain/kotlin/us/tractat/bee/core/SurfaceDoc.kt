@@ -58,11 +58,17 @@ internal object SurfaceDoc {
         return doc.set(SurfaceFormat.COMPONENTS, JsonNode.Object(delta))
     }
 
-    fun setClosedAt(doc: JsonCrdt, replica: ReplicaId, at: Instant?): Patch<JsonCrdt> {
+    fun setClosedAt(doc: JsonCrdt, replica: ReplicaId, at: Instant?): Patch<JsonCrdt> =
+        setMeta(doc, replica, SurfaceFormat.META_CLOSED_AT, at?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null)
+
+    /** Rewrites the title from the register just read (A13), so the last retitle a peer saw wins. */
+    fun setTitle(doc: JsonCrdt, replica: ReplicaId, title: String): Patch<JsonCrdt> =
+        setMeta(doc, replica, SurfaceFormat.META_TITLE, JsonValue.Str(title))
+
+    private fun setMeta(doc: JsonCrdt, replica: ReplicaId, key: String, value: JsonValue): Patch<JsonCrdt> {
         val meta = doc[SurfaceFormat.META] as JsonNode.Object
-        val value = at?.let { JsonValue.Str(it.toString()) } ?: JsonValue.Null
-        val leaf = leafFrom(meta.map[SurfaceFormat.META_CLOSED_AT], replica, value)
-        return doc.set(SurfaceFormat.META, JsonNode.Object(meta.map.put(replica, SurfaceFormat.META_CLOSED_AT, leaf).delta))
+        val leaf = leafFrom(meta.map[key], replica, value)
+        return doc.set(SurfaceFormat.META, JsonNode.Object(meta.map.put(replica, key, leaf).delta))
     }
 
     /**

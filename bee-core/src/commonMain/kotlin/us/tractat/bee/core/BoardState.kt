@@ -131,6 +131,10 @@ class BoardState internal constructor(
     fun updateComponents(replica: ReplicaId, id: String, components: List<JsonObject>): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.updateComponents(it, replica, components) }
 
+    /** Retitles surface [id]. Its id, its place on the board and its content stay. */
+    fun retitleSurface(replica: ReplicaId, id: String, title: String): Patch<BoardState> =
+        writeSurface(replica, id) { SurfaceDoc.setTitle(it, replica, title) }
+
     /** Closes surface [id] at [at]. It keeps its content and its records ("clear" never deletes). */
     fun closeSurface(replica: ReplicaId, id: String, at: Instant): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setClosedAt(it, replica, at) }
