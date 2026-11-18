@@ -455,17 +455,19 @@ internal class JoinRig(private val test: TestScope) {
     /**
      * A bridge named [name], with its own replica, supervised claims connection and identity,
      * served over an in-process MCP client. Each claims link it opens runs [onLink] on its scope,
-     * which a test uses to break a link.
+     * which a test uses to break a link. A session not [online] never dials the board, so its
+     * replica never syncs.
      */
     suspend fun session(
         name: String,
         scope: CoroutineScope = test.backgroundScope,
         retryDelay: (Int) -> Duration = { 1.seconds },
+        online: Boolean = true,
         onLink: (Int, CoroutineScope) -> Unit = { _, _ -> },
     ): Session {
         val n = ++bridges
         val author = ReplicaId("mcp-$name")
-        val client = star.client(author, scope = scope).also { it.connect() }
+        val client = star.client(author, scope = scope).also { if (online) it.connect() }
         var links = 0
         val failures = mutableListOf<Throwable>()
         val connection = ClaimsConnection(
