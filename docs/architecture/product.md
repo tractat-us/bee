@@ -77,8 +77,20 @@ and building the tool instead of the work is an anti-goal
   [#156](https://github.com/tractat-us/bee/issues/156). Adds an install path.
 - **A Compose A2UI renderer, in the app and maybe browsers:** [#158](https://github.com/tractat-us/bee/issues/158).
   No new chrome.
-- **Make host / Evict on the peer bubbles:** [#164](https://github.com/tractat-us/bee/issues/164).
-  Adds controls, so each must name its need.
+- **A host's menu on a person's bubble**: [#164](https://github.com/tractat-us/bee/issues/164),
+  designed in [`access.md`](access.md#hosts-and-eviction). Right-click on a laptop, long-press on
+  a phone, and a host sees **Make host** (or **Not host**, on a host) and **Evict**. Under
+  invariant 1:
+  - **It meets a need nothing else does**, taking one device off a board. Today the only way is `--forget-devices`, a
+    restart that cuts off everyone. Make host meets the second need, someone besides the owner
+    who can do that while the owner is away.
+  - **Hidden until asked for.** The menu adds nothing to the strip. A member's page has no menu,
+    so the gesture does what the browser does; an agent's bubble has none either.
+  - **It says only what a person must know before pressing.** Evict on someone who came by the
+    join link says it mints a new link. Evict on someone who came by a live invite says that invite
+    stops for everyone who hasn't opened it yet. Make host on a name used by more than one device
+    says how many.
+  - The strip doesn't mark who is a host ([`access.md`](access.md#open)).
 - **A board-only view for projectors and the app:** [#168](https://github.com/tractat-us/bee/issues/168).
   Removes clutter.
 - **HTTPS off loopback with a self-minted certificate:** [#73](https://github.com/tractat-us/bee/issues/73);
