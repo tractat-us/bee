@@ -69,15 +69,23 @@ class McpHttpFirstReadTest {
                 late.close()
                 board.jsonObject.getValue("open").jsonArray.none { it.jsonObject.getValue("surfaceId").jsonPrimitive.content == SURFACE }
             }.count { it }
-            val reopened = (1..SESSIONS).count { n ->
+            // Refused for what is on the board, not for a board that hasn't arrived.
+            val answers = (1..SESSIONS).map { n ->
                 val late = connect(host, "eager$n")
                 val again = late.callTool(BeeTools.OPEN, openArgs(SURFACE, data = false))
                 late.close()
-                again.isError != true
+                again
             }
+            val notRefusedAsThere = answers.filterNot { it.isError == true && "already on the board" in text(it) }.map(::text)
             assertAll(
                 { assertEquals(0, missed, "of $SESSIONS sessions' first bee_board, these came back without $SURFACE") },
-                { assertEquals(0, reopened, "of $SESSIONS sessions' first bee_surface_open of $SURFACE, these opened it again") },
+                {
+                    assertEquals(
+                        emptyList(),
+                        notRefusedAsThere,
+                        "every session's first bee_surface_open of $SURFACE is refused as already on the board",
+                    )
+                },
             )
             opener.close()
         } finally {
