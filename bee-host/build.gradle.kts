@@ -13,12 +13,13 @@ application {
     mainClass = "us.tractat.bee.host.MainKt"
     // A bounded heap, so a leak ends the host with an OutOfMemoryError in its log instead of
     // growing to the JVM's default cap of a quarter of RAM and swapping the machine (#256).
-    // A healthy host holds about 26 MB of heap idle and sat at 222 MB resident after 13 days;
-    // hosted bee runs in 256 MB (fly.toml). 512 MB is twice that, ample for a busy board.
-    // Out of memory exits rather than leaving a wedged process. The launcher reads
-    // JAVA_OPTS and then BEE_HOST_OPTS after these, and the JVM keeps the last -Xmx it is
-    // given, so `BEE_HOST_OPTS=-Xmx2g` overrides this one.
-    applicationDefaultJvmArgs = listOf("-Xmx512m", "-XX:+ExitOnOutOfMemoryError")
+    // Each live MCP session holds its own replica of the board in this JVM: about 125 MB for a
+    // 9.5 MB board, so 10 sessions on such a board peak near 1 GB with no leak at all. 4 GB fits
+    // that board's 32-session cap and still stops a runaway long before swap. Hosted bee sets its
+    // own smaller cap (fly.toml). Out of memory exits rather than leaving a wedged process. The
+    // launcher reads JAVA_OPTS and then BEE_HOST_OPTS after these, and the JVM keeps the last
+    // -Xmx it is given, so `BEE_HOST_OPTS=-Xmx8g` overrides this one.
+    applicationDefaultJvmArgs = listOf("-Xmx4g", "-XX:+ExitOnOutOfMemoryError")
 }
 
 // The browser page, served by the host at `/`: bee-web's production distribution,

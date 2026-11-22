@@ -23,7 +23,7 @@ kill_timeout = "10s"
   # Heap sized explicitly for the 512 MB VM below. Idle, in this image, the host's heap holds about
   # 26 MB and the whole process about 135 MB resident (2026-11-08); 256 MB of heap leaves the rest
   # of the VM to metaspace, code cache, threads and Netty's buffers. Out of memory exits, so Fly
-  # restarts the machine. The launcher reads this after its own default (-Xmx512m, set in
+  # restarts the machine. The launcher reads this after its own default (-Xmx4g, set in
   # bee-host/build.gradle.kts), and the last -Xmx wins.
   BEE_HOST_OPTS = "-Xmx256m -XX:+ExitOnOutOfMemoryError"
 
