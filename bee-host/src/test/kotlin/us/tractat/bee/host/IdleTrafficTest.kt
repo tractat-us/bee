@@ -36,6 +36,12 @@ private val LAG = 2.seconds
 /** A board-sized frame: at least half the first-contact `FullState`, which no delta here comes near. */
 private const val BOARD_FRACTION = 2
 
+/**
+ * How many times the whole board may cross one spoke's link, either way, in an idle minute. At a
+ * 1 s backstop it crossed 169 to 234 times; at 30 s, 2 to 5.
+ */
+private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
+
 private fun TestScope.settle(duration: Duration) {
     advanceTimeBy(duration)
     runCurrent()
@@ -95,7 +101,7 @@ class IdleTrafficTest {
         val boardSized = star.taps.mapValues { (_, tap) -> (tap.up + tap.down).count { it >= board / BOARD_FRACTION } }
         assertAll(
             { assertTrue(board > 50_000, "precondition: the board ($board B) outweighs a presence post") },
-            { assertTrue(boardSized.values.sum() <= 6, "board-sized frames ($board B) over a minute idle, per spoke: $boardSized") },
+            { assertTrue(boardSized.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE }, "board-sized frames ($board B) over a minute idle, per spoke: $boardSized") },
         )
     }
 }
