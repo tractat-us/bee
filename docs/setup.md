@@ -293,12 +293,12 @@ restart on the same directory brings the board back, with every key the host han
 lets other devices on your network reach it; see
 [Showing the board on another screen](#showing-the-board-on-another-screen).
 
-The host's heap stops at 512 MB. If it runs out, the host exits and logs
-`Terminating due to java.lang.OutOfMemoryError`, in `~/.bee/host.log` under `bee-up`. A healthy
-host uses far less, so treat that line as a bug. Set `BEE_HOST_OPTS` to change the flags; `bee-up`
-passes it through. For example, `BEE_HOST_OPTS=-Xmx2g` raises the cap, and
-`BEE_HOST_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$HOME/.bee"` saves a heap dump
-to report.
+The host's heap stops at 4 GB, room for a large board with many sessions. If it runs out, the host
+exits and logs `Terminating due to java.lang.OutOfMemoryError`, in `~/.bee/host.log` under `bee-up`.
+A healthy host uses far less, so treat that line as a bug. Set `BEE_HOST_OPTS` to change the flags;
+`bee-up` passes it through. For example, `BEE_HOST_OPTS=-Xmx8g` raises the cap, and
+`BEE_HOST_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$HOME/.bee"` saves a heap dump to
+report.
 
 Open `http://localhost:8233/?name=<you>` in a browser, and point a session at the bridge with
 an MCP config like the one `bee-up` writes:
