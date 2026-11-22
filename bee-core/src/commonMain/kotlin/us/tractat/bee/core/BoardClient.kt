@@ -47,12 +47,24 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
- * The board's replication tuning, as kuilt's Patchwork relay: a 1 s anti-entropy backstop behind
- * the gossip flood and the relay's forward, and a spoke that stops acking is evicted after 30 s,
- * so a reconnect's stale fabric id doesn't pin the pending-delta buffer for kuilt's default 5
- * minutes.
+ * The board's replication tuning: a 30 s anti-entropy backstop behind the gossip flood and the
+ * relay's forward, and a spoke that stops acking is evicted after 30 s, so a reconnect's stale
+ * fabric id doesn't pin the pending-delta buffer for kuilt's default 5 minutes.
+ *
+ * The backstop is rare because each of its rounds costs the whole board (bee#256). A round
+ * encodes the board for its root digest, at both ends, and when the roots differ it ships the
+ * board. A host that has fallen behind its inbound frames compares each digest against a board
+ * that has moved on, so the roots nearly always differ. At the 1 s that kuilt's Patchwork relay
+ * uses, a 9 MB board and a few MCP sessions made every round cost more than the interval, and
+ * whole-board frames queued in the link spools until a 32 GB heap ran out. Edits don't wait on
+ * the backstop: the flood and the forward bring them within a round trip, a gap is resent, and a
+ * reconnect starts with a first-contact `FullState`.
+ *
+ * TODO(kuilt#3617): a round costs the board's size, and the link queues are bounded by frame
+ * count, not by bytes. A slower interval only moves the point where a large enough board or
+ * enough spokes outrun the host.
  */
-val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 1.seconds, evictionAfter = 30.seconds)
+val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 30.seconds, evictionAfter = 30.seconds)
 
 /**
  * One peer's long-lived replica of the board. Invariant: **the client holds the board, and a
