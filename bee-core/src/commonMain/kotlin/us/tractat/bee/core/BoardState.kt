@@ -231,7 +231,7 @@ class BoardState internal constructor(
      */
     fun compactClosed(replica: ReplicaId, closedBy: Instant): Patch<BoardState> {
         requireReplica(replica)
-        val gone = surfaceMetas().filter { (_, meta) -> meta.closedAt?.let { it <= closedBy } == true }.map { it.first }.toSet()
+        val gone = closedBy(closedBy)
         val surfacesDelta = gone.fold(ORMap.empty<String, JsonCrdt>()) { delta, id -> delta.piece(surfaces.remove(id).delta) }
         val removed = records.entries().filter { (_, record) -> record.surfaceId in gone }.map { it.first }.toSet()
         val recordsDelta = records.entries().withIndex().filter { (_, entry) -> entry.first in removed }.reversed()
@@ -259,6 +259,10 @@ class BoardState internal constructor(
         .filter { it.second.closedAt != null }
         .sortedWith(compareByDescending<Pair<String, SurfaceMeta>> { it.second.closedAt }.thenBy { it.first })
         .map { it.first }
+
+    /** The surfaces closed at or before [instant]: what [compactClosed] removes. */
+    fun closedBy(instant: Instant): Set<String> =
+        surfaceMetas().filter { (_, meta) -> meta.closedAt?.let { it <= instant } == true }.map { it.first }.toSet()
 
     fun surfaceDoc(id: String): JsonCrdt? = surfaces[id]
 
