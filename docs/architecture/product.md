@@ -52,7 +52,9 @@ get onto it. A rule here binds every subsystem that puts something in front of a
   collapsed history strip ([`HistoryStrip.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/HistoryStrip.kt),
   [spec §6.1](../superpowers/specs/2026-11-06-bee-design.md#61-surfaces)), where anyone can
   reopen one. A day after its close the host removes it from the board, with its records, so a
-  board doesn't keep every surface it ever showed (Iain, 2026-11-23;
+  board doesn't keep every surface it ever showed. The day counts from when the host saw it
+  closed, and starts again when the host restarts. A closed orphan decision stays while its
+  claim is still orphaned (Iain, 2026-11-23;
   [`ClosedSurfaces.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/ClosedSurfaces.kt),
   [#274](https://github.com/tractat-us/bee/issues/274)).
 - **Three ways onto a hosted board.** The owner opens it with the owner key. Anyone on it
@@ -117,8 +119,11 @@ and building the tool instead of the work is an anti-goal
   endless 2D canvas is what Iain means, or a page that never runs out of room meets it:
   [#150](https://github.com/tractat-us/bee/issues/150).
 - **What a write racing a surface's removal should show.** The removal retires only what the
-  host had seen, so a write it hadn't comes back holding its writer's contributions alone. From a
-  writer that didn't open the surface it stays hidden, and its id can't be opened again. From the
-  opener it shows the surface open again, without anyone else's writes. Whether that's good
-  enough, or a removed id should stay removed:
+  host had seen. A write it hadn't seen comes back carrying everything its writer ever gave the
+  surface, that writer's own close included. From the opener, the surface shows open again,
+  without anyone else's writes. From anyone else, it stays hidden, and where it has arrived the id
+  can't be opened again. Where it hasn't, a fresh open of the same id merges with it when it does.
+  The old writes show on the new surface, and a closer's old close wins over the new open, so the
+  new surface shows closed at the old time and goes in turn, a day later. A writer offline for the
+  whole day, such as a laptop asleep, is enough. Whether a removed id should stay removed:
   [#274](https://github.com/tractat-us/bee/issues/274).
