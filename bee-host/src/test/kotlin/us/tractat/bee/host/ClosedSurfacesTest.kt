@@ -141,6 +141,64 @@ class ClosedSurfacesTest {
     }
 
     /**
+     * Found in review of #276: a sighting is of one `closedAt`. The surface was seen closed most of
+     * a period ago; then, between two checks, a page reopens it and a late close stamped long ago
+     * arrives, which beats the reopen. That close gets a whole period of its own, not the rest of
+     * the first one.
+     */
+    @Test
+    fun aReopenAndALateCloseBetweenTwoChecksStartTheGraceAgain() = runTest(StandardTestDispatcher()) {
+        val star = BoardStar(this).apply { start() }
+        val sam = star.client(SAM).apply { connect() }
+        settle(1.seconds)
+        ClosedSurfaces(star.relay, KEPT_FOR, star.clock).start(backgroundScope)
+        sam.mutate { it.openSurface(SAM, "x", meta(star), listOf(root), JsonObject(emptyMap())) }
+        sam.mutate { it.closeSurface(SAM, "x", star.clock()) }
+        settle(KEPT_FOR - 10.minutes)
+        sam.mutate { it.reopenSurface(SAM, "x") }
+        sam.mutate { it.closeSurface(SAM, "x", star.clock() - 2.days) }
+        settle(NEXT_CHECK)
+        val afterTheNextCheck = star.relay.state.value.closedSurfaces()
+        settle(KEPT_FOR + NEXT_CHECK)
+        assertAll(
+            { assertEquals(listOf("x"), afterTheNextCheck, "the late close got a period of its own") },
+            { assertEquals(emptySet(), star.relay.state.value.surfaces.keys, "and then it went") },
+        )
+    }
+
+    /**
+     * A check that finds a surface open forgets its sighting, so a close stamped with the very time
+     * of the first one is a new sighting. Sightings are held only for surfaces closed now: one
+     * reopened, or removed, leaves none.
+     */
+    @Test
+    fun aSurfaceSeenOpenIsSeenAfreshWhenItClosesAgain() = runTest(StandardTestDispatcher()) {
+        val star = BoardStar(this).apply { start() }
+        val sam = star.client(SAM).apply { connect() }
+        settle(1.seconds)
+        val surfaces = ClosedSurfaces(star.relay, KEPT_FOR, star.clock).also { it.start(backgroundScope) }
+        sam.mutate { it.openSurface(SAM, "x", meta(star), listOf(root), JsonObject(emptyMap())) }
+        val closedAt = star.clock()
+        sam.mutate { it.closeSurface(SAM, "x", closedAt) }
+        settle(KEPT_FOR - 10.minutes)
+        val sightedClosed = surfaces.sighted
+        sam.mutate { it.reopenSurface(SAM, "x") }
+        settle(NEXT_CHECK)
+        val sightedOpen = surfaces.sighted
+        sam.mutate { it.closeSurface(SAM, "x", closedAt) }
+        settle(NEXT_CHECK * 2)
+        val stillThere = star.relay.state.value.closedSurfaces()
+        settle(KEPT_FOR + NEXT_CHECK)
+        assertAll(
+            { assertEquals(setOf("x"), sightedClosed, "rig: x was sighted closed") },
+            { assertEquals(emptySet(), sightedOpen, "a check that finds it open forgets it") },
+            { assertEquals(listOf("x"), stillThere, "the same close time, seen again, gets a whole period") },
+            { assertEquals(emptySet(), star.relay.state.value.surfaces.keys, "and then it went") },
+            { assertEquals(emptySet(), surfaces.sighted, "a removed surface leaves no sighting") },
+        )
+    }
+
+    /**
      * A person closed an orphan's decision while its target is still orphaned: the host keeps it,
      * closed, rather than remove it and have `OrphanDecisions` post it again. The control, another
      * surface closed at the same time, goes.

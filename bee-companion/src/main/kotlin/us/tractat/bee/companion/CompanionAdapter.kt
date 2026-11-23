@@ -394,8 +394,8 @@ class CompanionAdapter(
     }
 
     /**
-     * The last screen handled, by name and mtime, and whether the board had the surface open after
-     * it, or since: [hadSurface] goes false once the surface is closed.
+     * The last screen handled, by name and mtime, and whether the board has the surface open:
+     * [hadSurface] follows the board while the companion runs, and keeps its JSON name.
      */
     private data class Shown(val file: String, val mtime: Long, val hadSurface: Boolean) {
         fun json() = buildJsonObject {
