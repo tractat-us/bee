@@ -68,6 +68,10 @@ What else to know:
   own.
 - **One host per data dir.** A second host started on a directory another host holds stops at
   once: `Another bee host (pid N) is using the data dir <dir>.`
+- **Rebuilding is safe while the board is up.** From a checkout, `bin/bee-up` runs the host from
+  its own copy of the build, in `~/.bee/host-installs`, so a `./gradlew installDist` can't break
+  the running host or lose its last save. The next `bee-up` after a rebuild runs the new build,
+  and removes the copies no host still runs.
 - **`--local`** keeps the board on this machine: no join link, and nothing on your network can
   reach it. `--port <n>` moves it off the default port, 8233. `--no-open` skips the browser.
 
@@ -289,7 +293,10 @@ bee-host/build/install/bee-host/bin/bee-host --data-dir /tmp/bee-demo-data
 
 It listens on port 8233 (`--port <n>` changes it), answers only this machine, and logs
 `bee host on http://127.0.0.1:8233/`. Without `--data-dir` it keeps the board in `~/.bee/host`. A
-restart on the same directory brings the board back, with every key the host handed out. `--lan`
+restart on the same directory brings the board back, with every key the host handed out. Run by
+hand like this, the host reads its classes from `build/install`, so stop it before the next
+`installDist`: a rebuild under it breaks its shutdown, and the board loses whatever changed since
+its last save. `bee-up` runs a copy instead. `--lan`
 lets other devices on your network reach it; see
 [Showing the board on another screen](#showing-the-board-on-another-screen).
 

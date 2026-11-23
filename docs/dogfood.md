@@ -49,7 +49,7 @@ board moves back at the next seed.
 
 | What | Where | Change it with |
 |---|---|---|
-| The board, its keys and the host's log | `~/.bee-dogfood/` | `BEE_DOGFOOD_HOME` |
+| The board, its keys, the host's log and the copy of the host it runs | `~/.bee-dogfood/` | `BEE_DOGFOOD_HOME` |
 | The port | 8240 | `BEE_DOGFOOD_PORT`, or `--port` |
 | The seeder's name on the board | `dogfood-agent` | `bin/bee-dogfood-seed --name <agent>` |
 

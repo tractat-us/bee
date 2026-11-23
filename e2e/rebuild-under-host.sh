@@ -46,7 +46,11 @@ held=""
 
 # Stops the hosts this check started, by the pids it recorded, whatever happened.
 finish() {
-    for p in $pid $held; do kill -0 "$p" 2>/dev/null && kill "$p"; done
+    for p in $pid $held; do
+        kill -0 "$p" 2>/dev/null || continue
+        kill "$p"
+        for _ in $(seq 1 60); do kill -0 "$p" 2>/dev/null || break; sleep 0.5; done
+    done
     rm -rf "$scratch"
 }
 trap finish EXIT
