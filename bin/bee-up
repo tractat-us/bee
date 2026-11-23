@@ -88,13 +88,59 @@ if running && [ -n "$reset" ]; then
     stop_host
 fi
 
+# In a checkout, the host runs from a copy of its install, never from build/install itself. The JVM
+# reads each class from its jar when first used, so an installDist that rewrote the jars under a
+# running host would break it, its shutdown and last save included (bee#260). Each copy sits in
+# $bee_home/host-installs/<key>, beside the data dir, keyed by the checksums of its files, so an
+# unchanged install is copied once. A kit or a Homebrew install has no build to rewrite it, and runs
+# where it is.
+installs="$bee_home/host-installs"
+install_key() { (cd "$1" && find . -type f -exec cksum {} + | LC_ALL=C sort | cksum | cut -d' ' -f1-2 | tr ' ' -); }
+# Prints the copy of the install at $1, making it first if there is none.
+install_copy() {
+    local key tmp
+    key=$(install_key "$1")
+    if [ ! -d "$installs/$key" ]; then
+        # A command substitution doesn't inherit set -e, so every step returns on failure, and
+        # bee-up stops. An empty $tmp would otherwise copy the install into /.
+        mkdir -p "$installs" || return 1
+        tmp=$(mktemp -d "$installs/.copying.XXXXXX") && [ -n "$tmp" ] || return 1
+        cp -R "$1/." "$tmp/" || { rm -rf "$tmp"; return 1; }
+        # Named by what was copied, in case a build rewrote the install during the copy.
+        key=$(install_key "$tmp") || { rm -rf "$tmp"; return 1; }
+        if [ -d "$installs/$key" ]; then rm -rf "$tmp"; else mv "$tmp" "$installs/$key" || { rm -rf "$tmp"; return 1; }; fi
+    fi
+    echo "$installs/$key"
+}
+# Removes every copy but $1 whose jars no process holds open. Without lsof it can't tell, so it keeps
+# them all. A copy is renamed before it's removed, so a removal cut short never leaves a copy half
+# there under a name the next start would run.
+prune_copies() {
+    local dir gone
+    command -v lsof >/dev/null 2>&1 || return 0
+    for dir in "$installs"/*; do
+        [ -d "$dir" ] && [ "$dir" != "$1" ] || continue
+        [ -z "$(lsof -t -- "$dir"/lib/*.jar 2>/dev/null)" ] || continue
+        gone=$(mktemp -d "$installs/.removing.XXXXXX")
+        mv "$dir" "$gone/" && rm -rf "$gone"
+    done
+    for dir in "$installs"/.removing.*; do [ -d "$dir" ] && rm -rf "$dir"; done
+    return 0
+}
+
 if running; then
     echo "A bee host is already running (pid $(cat "$pidfile")); reprinting its links. bee-up --stop ends it."
 else
+    host_bin=$bee_host
+    copy=""
+    if [ -n "${bee_host_install:-}" ]; then
+        copy=$(install_copy "$bee_host_install")
+        host_bin=$copy/bin/bee-host
+    fi
     printf '%s\n' "${args[@]}" > "$argsfile"
     [ -n "$reset" ] && args+=("$reset")
     : > "$log"
-    nohup "$bee_host" "${args[@]}" >> "$log" 2>&1 &
+    nohup "$host_bin" "${args[@]}" >> "$log" 2>&1 &
     echo $! > "$pidfile"
     for _ in $(seq 1 120); do
         grep -q 'bee host on http' "$log" && break
@@ -103,6 +149,7 @@ else
     done
     grep -q 'bee host on http' "$log" || { echo "The bee host didn't come up in 60 s; see $log" >&2; exit 1; }
     started=1
+    [ -z "$copy" ] || prune_copies "$copy"
 fi
 # On the network, the host logs its join link just after it comes up, once it has looked up this
 # machine's name, which can take seconds on macOS: wait for that line too.

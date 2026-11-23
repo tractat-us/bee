@@ -24,8 +24,9 @@ else echo "bee-dogfood: no bee-up beside this script or on PATH." >&2; exit 1
 fi
 
 # In a checkout, a host built before the latest edit is stale: bee-env rebuilds it with BEE_BUILD=1.
-# Never under a running host, whose jars a rebuild would replace: not this board's, nor an everyday
-# bee-up host running from the same checkout. Any process holding the jar open counts.
+# Not while this board's host runs, since bee-up wouldn't restart it anyway. Nor under a host that
+# runs from build/install itself (one started by hand, or by a bee-up older than bee#260's copy),
+# whose jars a rebuild would replace. Any process holding the jar open counts.
 root=$(cd "$here/.." && pwd)
 jar=$root/bee-host/build/install/bee-host/lib/bee-host.jar
 pidfile=$BEE_HOME/host.pid
