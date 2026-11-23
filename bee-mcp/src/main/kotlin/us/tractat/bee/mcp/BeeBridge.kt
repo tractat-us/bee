@@ -220,6 +220,11 @@ class BeeBridge(
     /**
      * Opens surface [surfaceId] with [components] and [data], then appends each of [appends], in
      * order, as a new entry of the append-only array at its pointer (A12).
+     *
+     * Each of [replaces] still open closes in the same write (bee#273), so no peer ever sees the
+     * new surface beside one it supersedes. An id not on the board, or already closed, is passed
+     * over. Returns the ids it closed, in [replaces]' order. A surface can't replace itself: that
+     * is a redraw, and `bee_surface_update` does it in place.
      */
     suspend fun open(
         surfaceId: String,
@@ -227,16 +232,27 @@ class BeeBridge(
         components: List<JsonObject>,
         data: JsonObject,
         appends: List<Pair<String, JsonElement>>,
-    ) {
+        replaces: Set<String>,
+    ): List<String> {
+        if (surfaceId in replaces) {
+            throw BridgeRefusal("Surface $surfaceId can't replace itself: bee_surface_update it to redraw it in place.")
+        }
         val by = beforeWrite()
         val posted = mutableSetOf<JsonElement>()
+        var closed = emptyList<String>()
         write(surfaceId, posted) { state ->
             require(state.surfaceDoc(surfaceId) == null) { "Surface $surfaceId is already on the board; update or reopen it." }
+            val now = clock()
             val opening: (BoardState) -> Patch<BoardState> = {
-                it.openSurface(author, surfaceId, SurfaceMeta(title, NOTIONS_CATALOG_ID, by, clock()), components, data)
+                it.openSurface(author, surfaceId, SurfaceMeta(title, NOTIONS_CATALOG_ID, by, now), components, data)
             }
-            joined(state, listOf(opening) + appendsTo(surfaceId, appends, posted))
+            // Decided against the very state the closes land on, as [clear] is.
+            val open = state.openSurfaces().toSet()
+            closed = replaces.filter { it in open }
+            val closing = closed.map { id -> { s: BoardState -> s.closeSurface(author, id, now) } }
+            joined(state, listOf(opening) + appendsTo(surfaceId, appends, posted) + closing)
         }
+        return closed
     }
 
     /**

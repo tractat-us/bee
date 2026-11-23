@@ -70,7 +70,10 @@ object BeeTools {
             description = "Puts a new surface $SHARED. Takes surfaceId, title, components (A2UI v1.0 components " +
                 "from the Notions catalog, one with id \"root\"), an optional data object, and an optional append, " +
                 "which maps a JSON Pointer to the entries appended there, each its own entry a vote can name. A " +
-                "malformed surface is refused, naming the bad id or type, and the board is unchanged. Notions adds " +
+                "malformed surface is refused, naming the bad id or type, and the board is unchanged. To redraw the " +
+                "same picture, bee_surface_update it in place; never open a new surface per revision. A new surface " +
+                "that supersedes old ones names them in replaces: each still open closes as it opens, and the " +
+                "result's closed lists them. Notions adds " +
                 "Poll, which binds question, options and answers by {\"@path\": \"/…\"}: question revisions and " +
                 "options go in append, never data (options as strings or {id, label}), and answers is an object " +
                 "keyed by peer, which each answer writes. It also adds " +
@@ -87,12 +90,18 @@ object BeeTools {
                 putJsonObject("components") { put("type", "array"); putJsonObject("items") { put("type", "object") } }
                 putJsonObject("data") { put("type", "object") }
                 appendProperty()
+                putJsonObject(REPLACES) {
+                    put("type", "array")
+                    putJsonObject("items") { put("type", "string") }
+                    put("description", "Ids of the surfaces this one supersedes, closed as it opens; one not open is passed over.")
+                }
             },
         ) { request ->
             tool {
                 val id = request.string("surfaceId")
-                bridge.open(id, request.string("title"), request.objects("components"), request.objectOrEmpty("data"), request.appends())
-                answer(buildJsonObject { put("opened", id) })
+                val replaces = request.stringsOrEmpty(REPLACES).toSet()
+                val closed = bridge.open(id, request.string("title"), request.objects("components"), request.objectOrEmpty("data"), request.appends(), replaces)
+                answer(buildJsonObject { put("opened", id); put("closed", JsonArray(closed.map(::JsonPrimitive))) })
             }
         }
         server.addTool(
@@ -281,6 +290,15 @@ object BeeTools {
             .map { it as? JsonObject ?: throw IllegalArgumentException("$key must be an array of objects; got $it.") }
 
     private fun CallToolRequest.objectsOrEmpty(key: String): List<JsonObject> = if (arg(key) == null) emptyList() else objects(key)
+
+    private fun CallToolRequest.stringsOrEmpty(key: String): List<String> = when (val v = arg(key)) {
+        null -> emptyList()
+        is JsonArray -> v.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: throw IllegalArgumentException("$key must be an array of strings; got $it.") }
+        else -> throw IllegalArgumentException("$key must be an array of strings; got $v.")
+    }
+
+    /** `bee_surface_open`'s list of the surfaces the new one supersedes (bee#273). */
+    private const val REPLACES = "replaces"
 
     /** The `append` argument both surface writes take: a pointer to the entries appended there. */
     private fun kotlinx.serialization.json.JsonObjectBuilder.appendProperty() = putJsonObject(APPEND) {
