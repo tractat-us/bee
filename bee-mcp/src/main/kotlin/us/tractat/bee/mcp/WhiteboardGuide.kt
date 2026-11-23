@@ -181,7 +181,7 @@ object WhiteboardGuide {
             |
             |1. Call bee_board to see what is up and who is here, set your bee_presence status, and call $EXAMPLES_TOOL for every component that renders.
             |2. $start
-            |3. Keep the board current as the conversation moves: update your surfaces in place as things are decided, open a new surface for a new topic, close the ones that are settled. When you ask a question, put the way to answer on the board too: Buttons for the options, or a field and a Send button.
+            |3. Keep the board current as the conversation moves: update your surfaces in place as things are decided, open a new surface for a new topic (one that supersedes another opens with replaces naming it), close the ones that are settled. When you ask a question, put the way to answer on the board too: Buttons for the options, or a field and a Send button.
             |4. Put a Done button on your main surface. Then loop: bee_wait_action with no surfaceId (all your surfaces) and timeoutSeconds 20, passing back the cursor it returned, act on each record, bee_action_done it, and redraw. Re-read bee_board now and then for what others changed.
             |5. Stop when someone clicks Done or says, here or on the board, that they are done; when bee_board shows no person attached; or when no record has arrived for about 10 minutes. Leave a short summary surface of what was decided, clear your bee_presence status, and say here that you have stopped.
         """.trimMargin()
