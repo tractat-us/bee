@@ -117,6 +117,8 @@ fun lanName(): String = InetAddress.getLocalHost().hostName.let { if ('.' in it)
  *   ([HttpBridges.MAX_SESSIONS]); not a flag, a test's
  * @param mcpUnclaimedAfter how long an MCP session the last host kept may wait for its client
  *   before the host departs it `Quiet` ([Departures.QUIET_AFTER], bee#126); not a flag, a test's
+ * @param closedKeptFor how long a closed surface stays on the board before the host removes it
+ *   ([ClosedSurfaces.KEPT_FOR], bee#274); not a flag yet
  */
 data class HostConfig(
     val port: Int = DEFAULT_PORT,
@@ -128,6 +130,7 @@ data class HostConfig(
     val mcpIdleAfter: Duration = HttpBridges.IDLE_AFTER,
     val mcpMaxSessions: Int = HttpBridges.MAX_SESSIONS,
     val mcpUnclaimedAfter: Duration = Departures.QUIET_AFTER,
+    val closedKeptFor: Duration = ClosedSurfaces.KEPT_FOR,
 ) {
     /** The address the host binds, from [reach]. */
     val bind: String get() = reach.bind
