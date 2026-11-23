@@ -129,9 +129,12 @@ class IdleTrafficTest {
      * test scheduler's clock and a seeded random. Before they were injected, each Quilter read the
      * wall clock for its stale-digest skip and drew its anti-entropy peer from an unseeded random,
      * so the same minute gave different counts run to run (tractat-us/kuilt#3622). Two runs here
-     * must put the same frames, of the same sizes in the same order, on every spoke's link. The
-     * 1 s backstop is the tuning whose rounds land inside the skip's window, so it is the one the
-     * wall clock moved most.
+     * must put the same frames, of the same sizes in the same order, on every spoke's link.
+     *
+     * This pins the random: with the Quilters' draws unseeded it reds every run. It can't pin the
+     * clock. A whole run takes well under a second of wall time, so a wall clock makes every write
+     * look recent to the skip, every run alike, and the counts come out wrong but repeatable. The
+     * clock is pinned by `BoardClient` and `BoardRelay` taking it with no default.
      */
     @Test
     fun anIdleMinuteReplaysFrameForFrame() {
