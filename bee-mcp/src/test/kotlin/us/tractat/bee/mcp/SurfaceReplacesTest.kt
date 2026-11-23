@@ -1,0 +1,157 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
+package us.tractat.bee.mcp
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
+import us.tractat.bee.core.BoardState
+import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.test.assertAll
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
+
+/** `bee_surface_open`'s `replaces` (bee#273): a new surface closes the ones it supersedes as it opens. */
+class SurfaceReplacesTest {
+    /**
+     * The new surface and the closes of the ones it replaces are one write. Every state the
+     * writer's replica passes through is collected, unconfined, so each write shows up as its own
+     * state: two writes would leave one state with `v3` open beside `v1` or `v2`, and that state is
+     * what a peer would be sent. With the closes moved to a second write after the open, the
+     * "no state" assertion goes red.
+     *
+     * The control is that this collector does see two back-to-back writes apart: `ada` closes `v2`
+     * and at once reopens it, nothing awaited between, as a split open would write, and the
+     * collector passes through the state with `v2` closed. A collector that coalesced them would
+     * fail it, and then the atomicity assertion would prove nothing.
+     *
+     * The browser is checked only for converging on `v3` alone. Its replica can't show atomicity:
+     * `BoardClient` copies a remote state into `state` from a pump on its own scope, so two deltas
+     * that arrive together reach the browser as one state. Under the split-write mutant, a browser
+     * collector saw no state with `v3` beside `v1` or `v2`, and it missed the control's split too.
+     */
+    @Test
+    fun openWithReplacesClosesTheSupersededSurfacesInTheSameWrite() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        val browser = rig.browser()
+        val written = mutableListOf<BoardState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { ada.client.state.collect { written += it } }
+        ada.call(BeeTools.OPEN, openArgs("v1"))
+        ada.call(BeeTools.OPEN, openArgs("v2"))
+        val split = Instant.fromEpochSeconds(0)
+        ada.client.mutate { it.closeSurface(ReplicaId("mcp-ada"), "v2", split) }
+        ada.client.mutate { it.reopenSurface(ReplicaId("mcp-ada"), "v2") }
+
+        val result = ada.call(BeeTools.OPEN, openArgs("v3") + ("replaces" to JsonArray(listOf("v2", "v1", "v2").map(::JsonPrimitive))))
+        val after = withTimeout(1.minutes) { browser.state.first { it.openSurfaces() == listOf("v3") } }
+        assertAll(
+            { assertEquals(null, result.isError, "open: ${result.text()}") },
+            { assertTrue(written.any { it.meta("v2")?.closedAt == split }, "control: the collector sees back-to-back writes apart") },
+            { assertEquals(emptyList(), overlapping(written), "no state shows v3 beside a surface it replaces") },
+            { assertEquals(listOf("v2", "v1"), result.closedIds(), "the result names what it closed, once each, in replaces' order") },
+            { assertTrue(after.surfaceDoc("v1") != null && after.surfaceDoc("v2") != null, "the browser converges with nothing deleted") },
+        )
+        rig.close()
+    }
+
+    /** The open surfaces of each of [states] that shows `v3` open beside `v1` or `v2`. */
+    private fun overlapping(states: List<BoardState>): List<List<String>> = states.map { it.openSurfaces() }
+        .filter { "v3" in it && ("v1" in it || "v2" in it) }
+
+    /**
+     * An id in `replaces` that isn't on the board, or is closed already, is passed over: the open
+     * still lands, the result leaves the id out, and a closed one keeps its first closing.
+     */
+    @Test
+    fun replacesPassesOverAnUnknownOrClosedSurface() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("old"))
+        ada.call(BeeTools.OPEN, openArgs("live"))
+        ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "old"))
+        val firstClose = ada.client.state.value.meta("old")!!.closedAt
+        delay(1.minutes)
+
+        val names = listOf("ghost", "old", "live").map(::JsonPrimitive)
+        val result = ada.call(BeeTools.OPEN, openArgs("new") + ("replaces" to JsonArray(names)))
+        val after = ada.client.state.value
+        assertAll(
+            { assertEquals(null, result.isError, "open: ${result.text()}") },
+            { assertEquals(listOf("live"), result.closedIds(), "only the open one is reported closed") },
+            { assertEquals(listOf("new"), after.openSurfaces()) },
+            { assertEquals(firstClose, after.meta("old")!!.closedAt, "the closed one keeps its first close") },
+            { assertEquals(null, after.surfaceDoc("ghost"), "no surface is made for an unknown id") },
+        )
+        rig.close()
+    }
+
+    /** With no `replaces`, an open closes nothing and says so. */
+    @Test
+    fun openWithoutReplacesClosesNothing() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("one"))
+
+        val result = ada.call(BeeTools.OPEN, openArgs("two"))
+        assertAll(
+            { assertEquals(emptyList(), result.closedIds()) },
+            { assertEquals(listOf("one", "two"), ada.client.state.value.openSurfaces()) },
+        )
+        rig.close()
+    }
+
+    /**
+     * A surface can't replace itself: that is a redraw, so the open is refused, pointing at
+     * `bee_surface_update`, and the board is unchanged, the other named surface still open. The
+     * control is the same open without its own id, which lands.
+     */
+    @Test
+    fun aSurfaceCannotReplaceItself() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("draft"))
+
+        val refused = ada.call(BeeTools.OPEN, openArgs("plan") + ("replaces" to JsonArray(listOf(JsonPrimitive("draft"), JsonPrimitive("plan")))))
+        val unchanged = ada.client.state.value
+        val control = ada.call(BeeTools.OPEN, openArgs("plan") + ("replaces" to JsonArray(listOf(JsonPrimitive("draft")))))
+        assertAll(
+            { assertTrue(refused.isError == true && BeeTools.UPDATE in refused.text(), "refused: ${refused.text()}") },
+            { assertEquals(listOf("draft"), unchanged.openSurfaces(), "the refusal changed nothing") },
+            { assertEquals(null, unchanged.surfaceDoc("plan"), "the refused surface wasn't opened") },
+            { assertEquals(null, control.isError, "control: ${control.text()}") },
+            { assertEquals(listOf("plan"), ada.client.state.value.openSurfaces(), "control: the replace lands") },
+        )
+        rig.close()
+    }
+
+    /** A `replaces` that isn't an array of strings is refused, naming the argument. */
+    @Test
+    fun replacesMustBeAnArrayOfStrings() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+
+        val notArray = ada.call(BeeTools.OPEN, openArgs("a") + ("replaces" to "one"))
+        val notStrings = ada.call(BeeTools.OPEN, openArgs("b") + ("replaces" to JsonArray(listOf(JsonPrimitive(1)))))
+        assertAll(
+            { assertTrue(notArray.isError == true && "replaces" in notArray.text(), "not an array: ${notArray.text()}") },
+            { assertTrue(notStrings.isError == true && "replaces" in notStrings.text(), "not strings: ${notStrings.text()}") },
+            { assertEquals(emptyList(), ada.client.state.value.openSurfaces(), "neither opened") },
+        )
+        rig.close()
+    }
+
+    private fun io.modelcontextprotocol.kotlin.sdk.types.CallToolResult.closedIds(): List<String> =
+        json().getValue("closed").jsonArray.map { it.jsonPrimitive.content }
+}
