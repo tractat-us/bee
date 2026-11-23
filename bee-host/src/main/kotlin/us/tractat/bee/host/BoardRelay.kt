@@ -42,7 +42,8 @@ private val logger = KotlinLogging.logger {}
  * - **The host replica.** A [Quilter] on the hub seam holds the board, so a late joiner, or a
  *   spoke back from offline, gets the whole board in its first-contact `FullState`.
  * - **The forward.** Every frame that changes the host's board is re-broadcast by the host's own
- *   replica as it arrived: a spoke's delta as that delta, a spoke's `FullState` as its state.
+ *   replica, cut down to what it adds to the host's board ([BoardState.addedBy]): a spoke's delta
+ *   as that delta, a spoke's `FullState` as the components of it that move the host's board.
  *   The flood alone is not enough, for two reasons. A reconnecting spoke's offline edits reach
  *   the hub point to point, in its `FullState`, which the hub does not flood. And a spoke that
  *   joined while another was mid-stream expects that spoke's deltas from seq 1: it buffers the
@@ -51,9 +52,10 @@ private val logger = KotlinLogging.logger {}
  *   stream is one every spoke can follow, since the hub's first-contact `FullState` syncs a
  *   spoke's cursor for it. A frame that leaves the host's board unchanged, a duplicate or a
  *   stale `FullState`, is not forwarded. Before #24 the relay re-broadcast its whole merged
- *   board on every change instead, so a 947 B keystroke came down as a 23 KB frame. A reconnect
- *   that carries offline edits costs more than it did then: the reconnecting spoke gets two more
- *   board-sized frames, and each other spoke one more.
+ *   board on every change instead, so a 947 B keystroke came down as a 23 KB frame. Before #262 it
+ *   forwarded a spoke's whole `FullState`, so a spoke one presence post ahead sent every other
+ *   spoke a whole board. A reconnect that carries offline surface edits still does: the cut is no
+ *   finer than a component, so the forward carries every surface (tractat-us/kuilt#3632).
  *
  * @param replica the host's CRDT author and Quilter id, fresh per boot (`host-<uuid>`): a rebooted
  *   host restarting its delta seqs under an old id would look stale to the spokes.
@@ -102,11 +104,13 @@ class BoardRelay(
     override fun close() = quilter.close()
 
     /**
-     * Re-broadcasts what [frame] would change on the host's board, under the host's replica. It
+     * Re-broadcasts what [frame] adds to the host's board, under the host's replica. It
      * runs on the Quilter's inbound collector, just before the Quilter dispatches the same frame,
      * so the board it compares against is the one the frame lands on.
      */
     private fun forward(frame: Swatch) {
+        // The Quilter decodes this frame again as it dispatches it: it shows no consumer the
+        // message it decoded (tractat-us/kuilt#3633).
         val change = when (val message = decodeOrNull(frame)) {
             is QuiltMessage.Delta -> message.delta
             is QuiltMessage.FullState -> message.state
@@ -116,7 +120,7 @@ class BoardRelay(
         try {
             quilter.mutateOrSkip { board ->
                 ran = true
-                Patch(change).takeIf { board.piece(change) != board }
+                board.addedBy(change)
             }
         } catch (closed: IllegalStateException) {
             // Only the close race is caught: mutateOrSkip checks for a closed Quilter before it

@@ -41,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
@@ -65,6 +66,28 @@ class BoardStateTest {
             { assertEquals(setOf(JsonPrimitive(2)), values(ab, "/count")) },
             { assertEquals(2, BoardFixtures.entryDots(ab, "/options").size) },
             { assertEquals(setOf("root", "go"), (ab.surfaceDoc(SURFACE)!!["components"] as JsonNode.Object).map.keys) },
+        )
+    }
+
+    /** bee#262: the relay forwards [BoardState.addedBy], so it must land where the whole state does. */
+    @Test
+    fun whatAStateAddsLandsWhereTheWholeStateDoesAndCarriesOnlyTheComponentsThatMove() {
+        val host = opened()
+        val presence = PresenceEntry(PeerIdentity.human("b"), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(0), waiting = false)
+        val presenceAhead = host.piece { it.postPresence(B, presence, 1) }
+        val editsAhead = presenceAhead
+            .piece { it.updateData(B, SURFACE, "/note", str("offline")) }
+            .piece { it.appendRecord(B, BoardFixtures.record(it)) }
+        val hostAhead = host.piece { it.updateData(A, SURFACE, "/count", JsonPrimitive(1)) }
+        val presenceOnly = hostAhead.addedBy(presenceAhead)?.delta
+        val edits = hostAhead.addedBy(editsAhead)?.delta
+        assertAll(
+            { assertEquals(hostAhead.piece(presenceAhead), presenceOnly?.let(hostAhead::piece)) },
+            { assertEquals(BoardState.EMPTY.surfaces, presenceOnly?.surfaces, "a presence post ahead carries no surface") },
+            { assertEquals(BoardState.EMPTY.records, presenceOnly?.records) },
+            { assertEquals(hostAhead.piece(editsAhead), edits?.let(hostAhead::piece)) },
+            { assertNull(hostAhead.addedBy(host), "a state behind adds nothing") },
+            { assertNull(hostAhead.addedBy(hostAhead), "an equal state adds nothing") },
         )
     }
 
