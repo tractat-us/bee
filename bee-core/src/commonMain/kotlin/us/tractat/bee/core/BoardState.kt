@@ -198,10 +198,10 @@ class BoardState internal constructor(
     fun mirrorClaims(replica: ReplicaId, table: ClaimTable): Patch<BoardState> {
         requireReplica(replica)
         val index = table.appliedIndex
-        val removed = records.tombstones.map { RecordId(it.dot).claimTarget.value }.toSet()
+        val removed = removedRecordTargets()
         val views = table.targets.entries.filter { (target, _) -> target.value !in removed }
             .associate { (target, status) -> target.value to ClaimView.of(status, index) }
-        val freed = claims.entries.filter { (key, view) -> key !in views && view.status != ClaimView.FREE }
+        val freed = claims.entries.filter { (key, view) -> key !in views && key !in removed && view.status != ClaimView.FREE }
             .mapValues { ClaimView(ClaimView.FREE, holder = null, token = null, logIndex = index) }
         val changed = (views + freed).filter { (key, view) -> claims[key]?.copy(logIndex = view.logIndex) != view }
         val claimsDelta = changed.entries.fold(LWWMap.empty<String, ClaimView>()) { delta, (key, view) ->
@@ -317,6 +317,13 @@ class BoardState internal constructor(
      */
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
         surfaces.keys.mapNotNull { id -> SurfaceDoc.meta(surfaces[id]!!)?.let { id to it } }
+
+    /**
+     * The claim targets of every record removed from the board, tombstoned or compacted away. A record
+     * that hasn't arrived yet isn't one: its claim may reach the mirror first.
+     */
+    private fun removedRecordTargets(): Set<String> =
+        (records.tombstones + records.compactedIds).map { RecordId(it.dot).claimTarget.value }.toSet()
 
     private fun writeSurface(replica: ReplicaId, id: String, write: (JsonCrdt) -> Patch<JsonCrdt>): Patch<BoardState> {
         requireReplica(replica)
