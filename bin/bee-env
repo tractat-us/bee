@@ -1,7 +1,8 @@
 # Sourced by bee-up and bee-join: finds the bridge, the host and a Java 25 runtime, whether these
 # scripts run from a bee checkout (bin/), from an unzipped kit (bee-bundle's layout, with its own
 # runtime/ beside them) or from the release tarball (bee-dist's layout, no runtime/, which Homebrew
-# installs). Sets: bee_root, bee_mcp, bee_host, bee_home, and exports JAVA_HOME.
+# installs). Sets: bee_root, bee_mcp, bee_host, bee_home, and exports JAVA_HOME. In a checkout it
+# also sets bee_host_install, the install a build rewrites, which bee-up runs a copy of.
 
 # pwd, not pwd -P: Homebrew's wrappers run these scripts through the formula's opt/ symlink, and
 # the MCP config written below must keep naming that path so it survives brew upgrade.
@@ -22,7 +23,8 @@ else
         export JAVA_HOME="$HOME/.sdkman/candidates/java/25.0.5.0+8-tem"
     fi
     bee_mcp="$bee_root/bee-mcp/build/install/bee-mcp/bin/bee-mcp"
-    bee_host="$bee_root/bee-host/build/install/bee-host/bin/bee-host"
+    bee_host_install="$bee_root/bee-host/build/install/bee-host"
+    bee_host="$bee_host_install/bin/bee-host"
     if [ ! -x "$bee_mcp" ] || [ ! -x "$bee_host" ] || [ "${BEE_BUILD:-}" = 1 ]; then
         echo "Building the bee host and bridge (./gradlew installDist)…" >&2
         (cd "$bee_root" && ./gradlew :bee-host:installDist :bee-mcp:installDist --no-watch-fs --console=plain -q) >&2
