@@ -86,6 +86,8 @@ class CompactClosedTest {
         val later = ClaimTable.EMPTY
             .fold(Committed.Entry(LogEntry(1, 1, ClaimCommand.encode(ClaimCommand.Claim(target, agent, ProposalId("n", 0, 1))))))
             .fold(Committed.Entry(LogEntry(2, 1, ClaimCommand.encode(ClaimCommand.Complete(target, agent, ClaimToken(1, 1))))))
+            // Past the tombstone's own index, one past the claim's, so a mirror of it would win.
+            .fold(Committed.Internal(10))
         val remirrored = board.compacted().piece { it.mirrorClaims(host, later) }
         assertEquals(emptySet(), remirrored.claimTargets())
     }
