@@ -42,7 +42,7 @@ private const val BOARD_FRACTION = 2
  * How many times the whole board may cross one spoke's link, either way, in an idle minute. On
  * kuilt 0.7.0-dev.1696 a 1 s backstop crossed 169 to 234 times, and 30 s crossed 2 to 5, both
  * with the Quilters on the wall clock. On 0.7.0-dev.1926 (kuilt#3617), with every Quilter on the
- * test scheduler's clock and a seeded random, 1 s crosses 41 to 57 times, 5 s 2 to 5, and 30 s
+ * test scheduler's clock and a seeded random, 1 s crosses 40 to 46 times, 5 s 2 to 4, and 30 s
  * none, the same counts every run.
  */
 private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8

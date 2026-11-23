@@ -59,9 +59,10 @@ import kotlin.time.TimeSource
  * and a few MCP sessions queued whole-board frames in the link spools until a 32 GB heap ran out.
  * Since kuilt#3617 the root is cached and a peer has one whole-board exchange outstanding at a
  * time, so the frames no longer queue without end. Their rate still follows the interval: in
- * bee-host's `IdleTrafficTest`, an idle minute behind a 2 s lag, 41 to 57 whole boards crossed
- * each spoke at 1 s, 2 to 5 at 5 s, and none at 30 s, the same each minute over three. Most change
- * nothing: at 1 s, at most 5 of the 22 to 32 the host sent a spoke brought it anything. These
+ * bee-host's `IdleTrafficTest`, an idle minute behind a 2 s lag, 40 to 46 whole boards crossed
+ * each spoke at 1 s, 2 to 4 at 5 s, and none at 30 s, and about as many each minute over three.
+ * Most change nothing: at 1 s, at most 7 of the 21 to 25 the host sent a spoke brought it anything,
+ * and none of those a spoke sent the host did. These
  * counts replay exactly, since every Quilter in the test reads the test scheduler's clock and a
  * seeded random; earlier counts read the wall clock, and so did not. Edits don't wait on
  * the backstop: the flood and the forward bring them within a round trip, a gap is resent, and a
