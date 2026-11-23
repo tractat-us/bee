@@ -29,6 +29,7 @@ import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -77,11 +78,12 @@ class HostCore private constructor(
             dispatcher: CoroutineContext,
             raftConfig: RaftConfig,
             clock: () -> Instant,
+            timeSource: TimeSource,
             random: Random = Random.Default,
             quilterConfig: QuilterConfig = BEE_QUILTER_CONFIG,
             waitingForClient: () -> Set<PeerIdentity> = { emptySet() },
         ): HostCore {
-            val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, stores.boardId, clock, random, quilterConfig)
+            val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, stores.boardId, clock, timeSource, random, quilterConfig)
             val voter = ClaimsVoter.start(scope, claimsHost, stores.claims, raftConfig, boardMirror(board.relay), clock)
             val departures = hostDepartures(voter, board.relay.state, clock, waitingForClient).start(scope)
             return HostCore(board, voter, departures, intake)
@@ -183,6 +185,7 @@ class HostBoard private constructor(
             store: DurableStore,
             id: BoardId,
             clock: () -> Instant,
+            timeSource: TimeSource,
             random: Random,
             config: QuilterConfig,
         ): HostBoard {
@@ -196,7 +199,7 @@ class HostBoard private constructor(
                     unreadable,
                 )
             }
-            val relay = BoardRelay.hosted(scope, source, dispatcher, author, clock, random, initial, config)
+            val relay = BoardRelay.hosted(scope, source, dispatcher, author, clock, timeSource, random, initial, config)
             log.info { "board $id restored as ${author.value}: ${initial.surfaces.keys.size} surfaces, ${initial.records.size} records" }
             val saving = scope + CoroutineExceptionHandler { _, bug -> log.error(bug) { "Saving the board hit a bug, so the board is no longer saved." } }
             val saver = snapshot.saveOnChange(relay.state, saving, BoardState::withoutPresence)

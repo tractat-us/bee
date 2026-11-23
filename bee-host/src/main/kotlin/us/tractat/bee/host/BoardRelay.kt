@@ -11,6 +11,7 @@ import kotlinx.serialization.cbor.Cbor
 import us.tractat.bee.core.BEE_QUILTER_CONFIG
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.HostAddress
+import us.tractat.bee.core.asMonotonicMillis
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Seam
 import us.tractat.kuilt.core.Swatch
@@ -24,6 +25,7 @@ import us.tractat.kuilt.quilter.QuilterConfig
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 private val logger = KotlinLogging.logger {}
 
@@ -54,13 +56,18 @@ private val logger = KotlinLogging.logger {}
  *   board-sized frames, and each other spoke one more.
  *
  * @param replica the host's CRDT author and Quilter id, fresh per boot (`host-<uuid>`): a rebooted
- *   host restarting its delta seqs under an old id would look stale to the spokes. The Quilter
- *   keeps kuilt's monotonic clock for eviction.
+ *   host restarting its delta seqs under an old id would look stale to the spokes.
+ * @param timeSource the monotonic time the Quilter reads for its stale-digest skip and eviction:
+ *   [TimeSource.Monotonic] in production, the test scheduler's under virtual time.
+ * @param random the Quilter's own random, which draws its anti-entropy peer.
  */
+@Suppress("LongParameterList")
 class BoardRelay(
     hub: Seam,
     scope: CoroutineScope,
     val replica: ReplicaId,
+    timeSource: TimeSource,
+    random: Random,
     initial: BoardState = BoardState.EMPTY,
     config: QuilterConfig = BEE_QUILTER_CONFIG,
 ) : AutoCloseable {
@@ -74,7 +81,9 @@ class BoardRelay(
         messageSerializer = messageSerializer,
         scope = scope,
         config = config,
+        clock = timeSource.asMonotonicMillis(),
         binaryFormat = FORMAT,
+        random = random,
     )
 
     /** The host's merged board. */
@@ -141,19 +150,25 @@ class BoardRelay(
         @OptIn(ExperimentalSerializationApi::class)
         private val FORMAT: BinaryFormat = Cbor
 
-        /** A relay whose hub accepts spokes from [source]. Background work runs on [scope]. */
+        /**
+         * A relay whose hub accepts spokes from [source]. Background work runs on [scope]. [random]
+         * drives the hub's overlay and seeds the Quilter's own, so the two never share one instance.
+         */
+        @Suppress("LongParameterList")
         suspend fun hosted(
             scope: CoroutineScope,
             source: ConnectionSource,
             dispatcher: CoroutineContext,
             replica: ReplicaId,
             clock: () -> Instant,
+            timeSource: TimeSource,
             random: Random = Random.Default,
             initial: BoardState = BoardState.EMPTY,
             config: QuilterConfig = BEE_QUILTER_CONFIG,
         ): BoardRelay {
+            val quilterRandom = Random(random.nextLong())
             val hub = scope.hostedOverlay(PeerId(replica.value), source, dispatcher, random, clock)
-            return BoardRelay(hub, scope, replica, initial, config)
+            return BoardRelay(hub, scope, replica, timeSource, quilterRandom, initial, config)
         }
     }
 }
