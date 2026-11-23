@@ -47,6 +47,9 @@ private const val BOARD_FRACTION = 2
  */
 private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
 
+/** The relay seeds the reconnect runs under: each replays exactly, and each is another schedule. */
+private val SEEDS = 0..4
+
 private fun TestScope.settle(duration: Duration) {
     advanceTimeBy(duration)
     runCurrent()
@@ -94,12 +97,48 @@ private suspend fun TestScope.idleMinute(config: QuilterConfig): IdleMinute {
     var clock = 0L
     repeat((1.minutes / Presence.EVERY).toInt()) {
         spokes.forEach { (replica, client) ->
-            val entry = PresenceEntry(PeerIdentity.human(replica.value), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(0), waiting = false)
-            client.mutate { it.postPresence(replica, entry, ++clock) }
+            client.mutate { it.postPresence(replica, entry(replica, at = 0), ++clock) }
         }
         settle(Presence.EVERY)
     }
     return IdleMinute(board, star.taps.mapValues { (_, tap) -> IdleMinute.Frames(tap.up.toList(), tap.down.toList()) })
+}
+
+/** A reconnect's traffic: the first-contact board's size, and what came down to each spoke that stayed. */
+private data class Reconnect(val board: Int, val down: Map<String, List<Int>>) {
+    /** How many board-sized frames came down to each spoke that stayed online. */
+    fun boardSized(): Map<String, Int> = down.mapValues { (_, sizes) -> sizes.count { it >= board / BOARD_FRACTION } }
+}
+
+private fun entry(replica: ReplicaId, at: Long) =
+    PresenceEntry(PeerIdentity.human(replica.value), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(at), waiting = false)
+
+/**
+ * Three spokes on a 40-surface board under relay [seed]. Sam goes offline, posts presence there,
+ * and comes back: its first-contact `FullState` is the whole board, one presence post ahead of the
+ * host's. The window is the few seconds after, well inside an anti-entropy round, so what comes
+ * down to Alex and Carol is the host's forward of that `FullState` and nothing else board-sized.
+ */
+private suspend fun TestScope.reconnect(seed: Int): Reconnect {
+    val star = BoardStar(this, BEE_QUILTER_CONFIG.copy(expectVirtualTime = true), seed = seed)
+    star.start()
+    val alex = star.client(ALEX)
+    alex.connect()
+    settle(1.seconds)
+    alex.openBoard(surfaces = 40)
+    settle(5.seconds)
+    val sam = star.client(SAM)
+    listOf(sam, star.client(CAROL)).forEach { it.connect() }
+    settle(5.seconds)
+    val board = star.taps.getValue(SAM.value).down.max()
+
+    sam.disconnect()
+    settle(5.seconds)
+    sam.mutate { it.postPresence(SAM, entry(SAM, at = 1), 1) }
+    star.taps.values.forEach { it.clear() }
+    sam.connect()
+    settle(5.seconds)
+    return Reconnect(board, listOf(ALEX, CAROL).associate { it.value to star.taps.getValue(it.value).down.toList() })
 }
 
 /**
@@ -149,6 +188,25 @@ class IdleTrafficTest {
         assertAll(
             { assertTrue(runs[0].boardSized().values.any { it > 0 }, "precondition: the minute ships whole boards: ${runs[0].boardSized()}") },
             { assertEquals(runs[0], runs[1], "two runs of one idle minute, board-sized frames per spoke: ${runs.map { it.boardSized() }}") },
+        )
+    }
+
+    /**
+     * bee#262: the host forwards what a spoke's `FullState` adds to its board, not the spoke's
+     * whole state. A spoke back from offline one presence post ahead used to send a board-sized
+     * frame, through the forward, to every other spoke; now the forward carries the presence.
+     */
+    @Test
+    fun aReconnectOnePresencePostAheadForwardsNoWholeBoard() {
+        val runs = SEEDS.associateWith { seed ->
+            lateinit var run: Reconnect
+            runTest(StandardTestDispatcher()) { run = reconnect(seed) }
+            run
+        }
+        assertAll(
+            { assertTrue(runs.values.all { it.board > 50_000 }, "precondition: the board outweighs a presence post: ${runs.mapValues { it.value.board }}") },
+            { assertTrue(runs.values.all { it.down.values.all(List<Int>::isNotEmpty) }, "precondition: the reconnect reached the spokes that stayed: ${runs.mapValues { it.value.down }}") },
+            { assertTrue(runs.values.all { run -> run.boardSized().values.all { it == 0 } }, "board-sized frames to the spokes that stayed, per seed: ${runs.mapValues { it.value.boardSized() }}") },
         )
     }
 }
