@@ -32,11 +32,14 @@ import kotlin.time.Instant
  * @param config the Quilter tuning of the relay and of every client: [CONFIG] unless a test pins another
  * @param lag how long each frame takes to cross a link, either way, in order: how a host that has
  *   fallen behind its inbound frames looks to its spokes
+ * @param seed the relay's random, which drives the hub's overlay and seeds its Quilter's. A rig
+ *   replays exactly under one seed; another seed is another schedule of the same draws.
  */
 class BoardStar(
     private val test: TestScope,
     private val config: QuilterConfig = CONFIG,
     private val lag: Duration = Duration.ZERO,
+    private val seed: Int = 0,
 ) {
     val source = InMemoryConnectionSource()
     val hubEnds = mutableListOf<Connection>()
@@ -45,13 +48,8 @@ class BoardStar(
     private val dispatcher = StandardTestDispatcher(test.testScheduler)
     lateinit var relay: BoardRelay
 
-    /**
-     * Starts the relay. Its seed fixes the hub's overlay draws and its Quilter's, so a rig replays
-     * exactly. `OpenBeforeWriteTest`'s repro needs one schedule of them: it reproduces under seed 1
-     * and not under 0.
-     */
     suspend fun start() {
-        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, test.testScheduler.timeSource, Random(1), config = config)
+        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, test.testScheduler.timeSource, Random(seed), config = config)
     }
 
     fun loom(name: String, scope: CoroutineScope = test.backgroundScope) = SpokeLoom(scope, name, Random(name.hashCode()), clock) { id, _ ->

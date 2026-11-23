@@ -35,6 +35,12 @@ private val KIM = ReplicaId("web-kim")
 private const val POLL = "poll"
 private val AT = Instant.parse("2026-11-08T00:00:00Z")
 
+/**
+ * The relay seeds the repro runs under. On kuilt 0.7.0-dev.1926 the answer overtakes the open
+ * under 1 and 4 to 7, and under 17 of seeds 0 to 29.
+ */
+private val SEEDS = 0..7
+
 private fun TestScope.settle(duration: Duration) {
     advanceTimeBy(duration)
     runCurrent()
@@ -52,14 +58,51 @@ private fun TestScope.settle(duration: Duration) {
  * sights from seq 1, and passes at once. The Quilter delivers in order per origin, not causally
  * across origins, so nothing holds the answer back for the open it was based on.
  *
- * This repro leans on those two kuilt bugs. Once they're fixed it stops reproducing, and its
- * precondition fails. The guard's lasting coverage is `BoardStateTest`'s
- * `aWriteThatArrivesBeforeItsSurfacesOpenWaitsUnshownUntilTheOpenArrives`.
+ * This repro leans on those two kuilt bugs, and on a schedule of the relay's random draws that
+ * lets the answer overtake the open: a seed is one such schedule, and only some of them overtake.
+ * So it runs under [SEEDS]. The guard must hold under every one, and the overtake must happen
+ * under at least one, or the test proves nothing. The guard's lasting coverage is
+ * `BoardStateTest`'s `aWriteThatArrivesBeforeItsSurfacesOpenWaitsUnshownUntilTheOpenArrives`.
  */
 class OpenBeforeWriteTest {
+    /** What kim saw of the poll under one seed. */
+    private data class Outcome(
+        val answerBeforeOpen: Boolean,
+        val readFailures: List<Throwable>,
+        val shownWithoutMeta: List<String>,
+        val open: List<String>,
+        val answers: String,
+    )
+
     @Test
-    fun aPageThatJoinedLateWaitsForTheOpenOfAnAnswerThatOvertookIt() = runTest(StandardTestDispatcher()) {
-        val star = BoardStar(this).apply { start() }
+    fun aPageThatJoinedLateWaitsForTheOpenOfAnAnswerThatOvertookIt() {
+        val outcomes = SEEDS.associateWith { seed ->
+            lateinit var outcome: Outcome
+            runTest(StandardTestDispatcher()) { outcome = lateJoin(seed) }
+            outcome
+        }
+        assertAll(
+            {
+                assertTrue(
+                    outcomes.values.any { it.answerBeforeOpen },
+                    "precondition: under some seed in $SEEDS, kim held the answer before the open. If none does, the " +
+                        "repro no longer reproduces: either kuilt#2916/#3148 are fixed, or the relay's draws moved " +
+                        "and every seed here now delivers the open first. Try more seeds before deciding which.",
+                )
+            },
+            *outcomes.flatMap { (seed, it) ->
+                listOf(
+                    { assertEquals(emptyList(), it.readFailures, "seed $seed: reading kim's board never threw") },
+                    { assertEquals(emptyList(), it.shownWithoutMeta, "seed $seed: kim never showed the poll before its open") },
+                    { assertEquals(listOf(POLL), it.open, "seed $seed: kim shows the poll once its open arrives") },
+                    { assertEquals("[\"SSO\"]", it.answers, "seed $seed: with the answer") },
+                )
+            }.toTypedArray(),
+        )
+    }
+
+    private suspend fun TestScope.lateJoin(seed: Int): Outcome {
+        val star = BoardStar(this, seed = seed).apply { start() }
         val agent = star.client(AGENT)
         agent.connect()
         settle(200.milliseconds)
@@ -94,13 +137,7 @@ class OpenBeforeWriteTest {
         settle(3.seconds)
 
         val answers = kim.state.value.surfaceDoc(POLL)?.toSurfaceView(POLL)?.data?.get("answers")
-        assertAll(
-            { assertTrue(answerBeforeOpen, "precondition: kim held the answer before the open. If this fails after a kuilt upgrade, kuilt#2916/#3148 are fixed and this repro no longer reproduces; the guard's lasting coverage is BoardStateTest.aWriteThatArrivesBeforeItsSurfacesOpenWaitsUnshownUntilTheOpenArrives") },
-            { assertEquals(emptyList(), readFailures, "reading kim's board never threw") },
-            { assertEquals(emptyList(), shownWithoutMeta, "kim never showed the poll before its open") },
-            { assertEquals(listOf(POLL), kim.state.value.openSurfaces(), "kim shows the poll once its open arrives") },
-            { assertEquals("[\"SSO\"]", answers.toString(), "with the answer") },
-        )
+        return Outcome(answerBeforeOpen, readFailures, shownWithoutMeta, kim.state.value.openSurfaces(), answers.toString())
     }
 
     private fun presence() = PresenceEntry(PeerIdentity.human("agent"), null, null, AT, false)
