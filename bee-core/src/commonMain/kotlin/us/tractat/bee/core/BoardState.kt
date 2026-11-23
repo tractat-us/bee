@@ -271,6 +271,9 @@ class BoardState internal constructor(
 
     fun surfaceDoc(id: String): JsonCrdt? = surfaces[id]
 
+    /** Whether surface [id] shows open: its open has arrived and it isn't closed. */
+    fun isOpen(id: String): Boolean = meta(id)?.let { it.closedAt == null } == true
+
     fun meta(id: String): SurfaceMeta? = surfaces[id]?.let(SurfaceDoc::meta)
 
     /** Every record on the board, whatever its surface, in sequence order. */

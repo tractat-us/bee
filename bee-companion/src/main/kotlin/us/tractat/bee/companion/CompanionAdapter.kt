@@ -86,10 +86,13 @@ private val logger = KotlinLogging.logger {}
  *   completed, so no restart writes it twice. The timestamp is when the click was made.
  * - `stateDir/bee-companion.json`, written whole or not at all, keeps the [board] it's on, its
  *   [surface] there, and the last screen handled, so a restart neither pushes that screen again
- *   nor clears its events. It also says whether the board had the surface open then; if it did, a
- *   restart on the same board waits for the surface to arrive and never opens a second one. A
- *   surface closed, by the companion or anyone else, is noted as not open, because a day later the
- *   host removes it (bee#274) and a restart opens it afresh. That
+ *   nor clears its events. It also says whether the board has the surface open, kept up to date
+ *   while the companion runs; if it does, a restart on the same board waits for the surface to
+ *   arrive and never opens a second one. A surface the companion saw closed or gone, whoever closed
+ *   it, is noted as not open, so a restart after the host removed it (a day after its close,
+ *   bee#274) opens it afresh. One killed while its surface was open, which someone then closed and
+ *   the host removed, still waits for it and fails: whether a removed id stays removed waits on a
+ *   ruling (bee#274). That
  *   wait is bounded: a board that still lacks it after [surfaceWait] (its host crashed before its
  *   save) fails the companion with [SurfaceMissing]. A file naming another board (a new host, a
  *   moved `board/`, another `BEE_HOST`) counts as none: the companion starts over, under a fresh id.
@@ -147,18 +150,21 @@ class CompanionAdapter(
         launch { handleClicks() }
         while (true) {
             sync()
-            noteClosed()
+            noteOpen()
             delay(pollEvery)
         }
     }
 
     /**
-     * Notes in [keptFile] that the surface is no longer open, once it's closed on the board: whoever
-     * closed it, the host removes it a day later (bee#274), and a restart must not wait for it.
+     * Keeps [keptFile]'s note of whether the surface is open in step with the board: closed or gone,
+     * whoever closed it, the host removes it a day later (bee#274), and a restart must not wait for
+     * it; reopened, a restart must.
      */
-    private suspend fun noteClosed() = turn.withLock {
-        if (kept.shown?.hadSurface != true || client.state.value.meta(surface)?.closedAt == null) return@withLock
-        kept = kept.copy(shown = kept.shown?.copy(hadSurface = false))
+    private suspend fun noteOpen() = turn.withLock {
+        val shown = kept.shown ?: return@withLock
+        val open = client.state.value.isOpen(surface)
+        if (shown.hadSurface == open) return@withLock
+        kept = kept.copy(shown = shown.copy(hadSurface = open))
         writeKept(kept)
     }
 
@@ -191,8 +197,7 @@ class CompanionAdapter(
      */
     suspend fun closeSurface(): Boolean = turn.withLock {
         client.mutateOrSkip { state ->
-            val open = state.surfaceDoc(surface) != null && state.meta(surface)?.closedAt == null
-            if (open) state.closeSurface(author, surface, clock()) else null
+            if (state.isOpen(surface)) state.closeSurface(author, surface, clock()) else null
         }
         kept.shown?.takeIf { it.hadSurface }?.let { shown ->
             kept = kept.copy(shown = shown.copy(hadSurface = false))
@@ -229,8 +234,7 @@ class CompanionAdapter(
             report(line)
         }
         // A refused screen counts as handled too, so it isn't retried every poll.
-        val after = client.state.value
-        kept = kept.copy(shown = Shown(screen.name, screen.mtime, hadSurface = after.surfaceDoc(surface) != null && after.meta(surface)?.closedAt == null))
+        kept = kept.copy(shown = Shown(screen.name, screen.mtime, hadSurface = client.state.value.isOpen(surface)))
         writeKept(kept)
     }
 
