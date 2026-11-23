@@ -354,14 +354,7 @@ class CompanionAdapterTest {
         first.stop()
         rig.removeFromTheBoard(rig.surface)
 
-        val second = rig.companion()
-        rig.screen("next.html", "<p>next</p>")
-        val state = rig.shows(rig.browser("web-sam")) { "next" in it }
-        assertAll(
-            { assertEquals(listOf(second.surface), state.openSurfaces()) },
-            { assertFalse(second.failed.isCompleted, "it didn't fail") },
-        )
-        rig.close()
+        assertTheRestartOpensItAfresh(rig)
     }
 
     /**
@@ -381,12 +374,51 @@ class CompanionAdapterTest {
         first.stop()
         rig.removeFromTheBoard(rig.surface)
 
+        assertTheRestartOpensItAfresh(rig)
+    }
+
+    /**
+     * The same, when the companion was offline through both the close and the removal: back
+     * online, its board no longer holds the surface at all, and it notes that, as it notes a close.
+     */
+    @Test
+    fun aRestartAfterBeingOfflineThroughTheCloseAndTheRemovalOpensItAfresh() = runTest(timeout = 240.seconds) {
+        val rig = rig(this).apply { start() }
+        rig.screen("layout.html", "<p>layout</p>")
+        val first = rig.companion()
+        val browser = rig.browser()
+        rig.shows(browser) { "layout" in it }
+        first.client.disconnect()
+        withTimeout(WAIT) { first.client.online.first { !it } }
+        browser.client.mutate { it.closeSurface(browser.author, rig.surface, rig.claims.clock()) }
+        withTimeout(WAIT) { rig.star.relay.state.first { rig.surface in it.closedSurfaces() } }
+        rig.removeFromTheBoard(rig.surface)
+        first.client.connect()
+        withTimeout(WAIT) { first.client.state.first { it.surfaceDoc(rig.surface) == null } }
+        delay(1.seconds)
+        first.stop()
+
+        assertTheRestartOpensItAfresh(rig)
+    }
+
+    /**
+     * Restarts the companion over [rig]'s directories and pushes a new screen, which must show on
+     * the surface opened afresh. The wait is bounded past the companion's own wait for its surface,
+     * so a companion still waiting for the removed one fails first, and the red names its failure.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private suspend fun assertTheRestartOpensItAfresh(rig: CompanionRig) {
         val second = rig.companion()
         rig.screen("next.html", "<p>next</p>")
-        val state = rig.shows(rig.browser("web-sam")) { "next" in it }
+        val browser = rig.browser("web-sam")
+        val shown = withTimeoutOrNull(WAIT + 10.seconds) {
+            while (!second.failed.isCompleted && "next" !in sketchHtml(browser.client.state.value, second.surface).orEmpty()) delay(100)
+        }
+        val failure = if (second.failed.isCompleted) second.awaitFailure() else null
         assertAll(
-            { assertEquals(listOf(second.surface), state.openSurfaces()) },
-            { assertFalse(second.failed.isCompleted, "it didn't fail") },
+            { assertEquals(null, failure?.let { "${it::class.simpleName}: ${it.message}" }, "the restart didn't fail") },
+            { assertTrue(shown != null && failure == null, "the next screen showed") },
+            { assertEquals(listOf(second.surface), browser.client.state.value.openSurfaces()) },
         )
         rig.close()
     }

@@ -151,9 +151,11 @@ class ClosedSurfacesTest {
         val star = BoardStar(this).apply { start() }
         val sam = star.client(SAM).apply { connect() }
         settle(1.seconds)
-        ClosedSurfaces(star.relay, KEPT_FOR, star.clock).start(backgroundScope)
         sam.mutate { it.openSurface(SAM, "x", meta(star), listOf(root), JsonObject(emptyMap())) }
         sam.mutate { it.closeSurface(SAM, "x", star.clock()) }
+        settle(1.seconds)
+        // Started after the close, so its first check sees x closed: a whole period before the check after the race.
+        ClosedSurfaces(star.relay, KEPT_FOR, star.clock).start(backgroundScope)
         settle(KEPT_FOR - 10.minutes)
         sam.mutate { it.reopenSurface(SAM, "x") }
         sam.mutate { it.closeSurface(SAM, "x", star.clock() - 2.days) }
