@@ -45,8 +45,13 @@ class BoardStar(
     private val dispatcher = StandardTestDispatcher(test.testScheduler)
     lateinit var relay: BoardRelay
 
+    /**
+     * Starts the relay. Its seed fixes the hub's overlay draws and its Quilter's, so a rig replays
+     * exactly. `OpenBeforeWriteTest`'s repro needs one schedule of them: it reproduces under seed 1
+     * and not under 0.
+     */
     suspend fun start() {
-        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, test.testScheduler.timeSource, Random(0), config = config)
+        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, test.testScheduler.timeSource, Random(1), config = config)
     }
 
     fun loom(name: String, scope: CoroutineScope = test.backgroundScope) = SpokeLoom(scope, name, Random(name.hashCode()), clock) { id, _ ->
