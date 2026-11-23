@@ -249,6 +249,29 @@ class BoardState internal constructor(
     fun withoutPresence(): BoardState = copy(presence = EphemeralMap.empty())
 
     /**
+     * What [other] adds to this board, as a patch, or null when it adds nothing: each of
+     * [other]'s components that would move this board's, and the empty one for each that would
+     * not. The board's join is taken component by component, so absorbing the patch lands where
+     * absorbing [other] does: `piece(addedBy(other)) == piece(other)`.
+     *
+     * It is no finer than a component. A surface edit brings every surface in [other], since an
+     * `ORMap` can't be cut down to the keys that moved from outside kuilt (tractat-us/kuilt#3632).
+     */
+    fun addedBy(other: BoardState): Patch<BoardState>? {
+        val added = BoardState(
+            surfaces = surfaces.addedBy(other.surfaces, EMPTY.surfaces),
+            records = records.addedBy(other.records, EMPTY.records),
+            presence = presence.addedBy(other.presence, EMPTY.presence),
+            departed = departed.addedBy(other.departed, EMPTY.departed),
+            claims = claims.addedBy(other.claims, EMPTY.claims),
+        )
+        return Patch(added).takeIf { added != EMPTY }
+    }
+
+    /** [other] if it would move this component, else [empty]. */
+    private fun <S : Quilted<S>> S.addedBy(other: S, empty: S): S = if (piece(other) != this) other else empty
+
+    /**
      * Every surface whose open has arrived, with its meta. One still waiting for its open is left
      * out: a write can arrive before its surface's open ([SurfaceDoc.meta], bee#171).
      */
