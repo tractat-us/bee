@@ -26,15 +26,20 @@ import kotlin.time.Instant
 class SurfaceReplacesTest {
     /**
      * The new surface and the closes of the ones it replaces are one write. Every state the
-     * writer's replica and the browser's replica pass through is collected, unconfined, so each
-     * write shows up as its own state: two writes would leave one state with `v3` open beside `v1`
-     * or `v2`, and that state is what a peer would be sent. With the closes moved to a second write
-     * after the open, both "no state shows" assertions go red.
+     * writer's replica passes through is collected, unconfined, so each write shows up as its own
+     * state: two writes would leave one state with `v3` open beside `v1` or `v2`, and that state is
+     * what a peer would be sent. With the closes moved to a second write after the open, the
+     * "no state" assertion goes red.
      *
-     * The control is that the browser's collector does see two back-to-back writes apart: `ada`
-     * closes `v2` and at once reopens it, with nothing awaited between, as a split open would, and
-     * the browser passes through the state with `v2` closed. A collector that coalesced them would
-     * fail it, and then the browser assertion would prove nothing.
+     * The control is that this collector does see two back-to-back writes apart: `ada` closes `v2`
+     * and at once reopens it, nothing awaited between, as a split open would write, and the
+     * collector passes through the state with `v2` closed. A collector that coalesced them would
+     * fail it, and then the atomicity assertion would prove nothing.
+     *
+     * The browser is checked only for converging on `v3` alone. Its replica can't show atomicity:
+     * `BoardClient` copies a remote state into `state` from a pump on its own scope, so two deltas
+     * that arrive together reach the browser as one state. Under the split-write mutant, a browser
+     * collector saw no state with `v3` beside `v1` or `v2`, and it missed the control's split too.
      */
     @Test
     fun openWithReplacesClosesTheSupersededSurfacesInTheSameWrite() = runTest(timeout = 120.seconds) {
@@ -42,25 +47,21 @@ class SurfaceReplacesTest {
         val ada = rig.session("ada")
         val browser = rig.browser()
         val written = mutableListOf<BoardState>()
-        val received = mutableListOf<BoardState>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { ada.client.state.collect { written += it } }
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { browser.state.collect { received += it } }
         ada.call(BeeTools.OPEN, openArgs("v1"))
         ada.call(BeeTools.OPEN, openArgs("v2"))
         val split = Instant.fromEpochSeconds(0)
         ada.client.mutate { it.closeSurface(ReplicaId("mcp-ada"), "v2", split) }
         ada.client.mutate { it.reopenSurface(ReplicaId("mcp-ada"), "v2") }
-        withTimeout(1.minutes) { browser.state.first { it.openSurfaces() == listOf("v1", "v2") } }
 
         val result = ada.call(BeeTools.OPEN, openArgs("v3") + ("replaces" to JsonArray(listOf(JsonPrimitive("v1"), JsonPrimitive("v2")))))
         val after = withTimeout(1.minutes) { browser.state.first { it.openSurfaces() == listOf("v3") } }
         assertAll(
             { assertEquals(null, result.isError, "open: ${result.text()}") },
-            { assertTrue(received.any { it.meta("v2")?.closedAt == split }, "control: the browser sees back-to-back writes apart") },
-            { assertEquals(emptyList(), overlapping(written), "no state the writer passes through shows v3 beside a surface it replaces") },
-            { assertEquals(emptyList(), overlapping(received), "no state the browser passes through shows v3 beside a surface it replaces") },
+            { assertTrue(written.any { it.meta("v2")?.closedAt == split }, "control: the collector sees back-to-back writes apart") },
+            { assertEquals(emptyList(), overlapping(written), "no state shows v3 beside a surface it replaces") },
             { assertEquals(listOf("v1", "v2"), result.closedIds(), "the result names what it closed") },
-            { assertTrue(after.surfaceDoc("v1") != null && after.surfaceDoc("v2") != null, "nothing was deleted") },
+            { assertTrue(after.surfaceDoc("v1") != null && after.surfaceDoc("v2") != null, "the browser converges with nothing deleted") },
         )
         rig.close()
     }
