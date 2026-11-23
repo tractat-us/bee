@@ -54,13 +54,13 @@ class SurfaceReplacesTest {
         ada.client.mutate { it.closeSurface(ReplicaId("mcp-ada"), "v2", split) }
         ada.client.mutate { it.reopenSurface(ReplicaId("mcp-ada"), "v2") }
 
-        val result = ada.call(BeeTools.OPEN, openArgs("v3") + ("replaces" to JsonArray(listOf(JsonPrimitive("v1"), JsonPrimitive("v2")))))
+        val result = ada.call(BeeTools.OPEN, openArgs("v3") + ("replaces" to JsonArray(listOf("v2", "v1", "v2").map(::JsonPrimitive))))
         val after = withTimeout(1.minutes) { browser.state.first { it.openSurfaces() == listOf("v3") } }
         assertAll(
             { assertEquals(null, result.isError, "open: ${result.text()}") },
             { assertTrue(written.any { it.meta("v2")?.closedAt == split }, "control: the collector sees back-to-back writes apart") },
             { assertEquals(emptyList(), overlapping(written), "no state shows v3 beside a surface it replaces") },
-            { assertEquals(listOf("v1", "v2"), result.closedIds(), "the result names what it closed") },
+            { assertEquals(listOf("v2", "v1"), result.closedIds(), "the result names what it closed, once each, in replaces' order") },
             { assertTrue(after.surfaceDoc("v1") != null && after.surfaceDoc("v2") != null, "the browser converges with nothing deleted") },
         )
         rig.close()

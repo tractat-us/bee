@@ -99,7 +99,7 @@ object BeeTools {
         ) { request ->
             tool {
                 val id = request.string("surfaceId")
-                val replaces = request.stringsOrEmpty(REPLACES).toSet()
+                val replaces = request.stringsOrEmpty(REPLACES)
                 val closed = bridge.open(id, request.string("title"), request.objects("components"), request.objectOrEmpty("data"), request.appends(), replaces)
                 answer(buildJsonObject { put("opened", id); put("closed", JsonArray(closed.map(::JsonPrimitive))) })
             }
