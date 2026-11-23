@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import us.tractat.bee.a2ui.NOTIONS_CATALOG_ID
+import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimTable
 import us.tractat.bee.core.ClaimTarget
@@ -41,6 +42,9 @@ private val KEPT_FOR = 1.hours
 /** The longest past its grace period a surface waits for the next check, plus a little. */
 private val NEXT_CHECK = KEPT_FOR / 4 + 2.seconds
 
+/** The surface ids the host hasn't removed: a removed one leaves only its tombstone (bee#274). */
+private fun BoardState.unremoved(): Set<String> = surfaces.keys.filterNot { isRemoved(it) }.toSet()
+
 private fun TestScope.settle(duration: Duration) {
     advanceTimeBy(duration)
     runCurrent()
@@ -68,8 +72,8 @@ class ClosedSurfacesTest {
         settle(5.minutes + NEXT_CHECK)
         assertAll(
             { assertEquals(listOf("old"), inGrace.closedSurfaces(), "inside its grace period the surface stays") },
-            { assertEquals(setOf("kept"), star.relay.state.value.surfaces.keys, "the host removed it") },
-            { assertEquals(setOf("kept"), sam.state.value.surfaces.keys, "the page took the removal") },
+            { assertEquals(setOf("kept"), star.relay.state.value.unremoved(), "the host removed it") },
+            { assertEquals(setOf("kept"), sam.state.value.unremoved(), "the page took the removal") },
             { assertEquals(listOf("kept"), sam.state.value.openSurfaces()) },
         )
     }
@@ -105,7 +109,7 @@ class ClosedSurfacesTest {
         settle(5.minutes + NEXT_CHECK * 2)
         assertAll(
             { assertEquals(listOf("late"), inGrace, "an old closedAt alone doesn't remove it") },
-            { assertEquals(emptySet(), star.relay.state.value.surfaces.keys, "a period after the host saw it, it goes") },
+            { assertEquals(emptySet(), star.relay.state.value.unremoved(), "a period after the host saw it, it goes") },
         )
     }
 
@@ -136,7 +140,7 @@ class ClosedSurfacesTest {
         assertAll(
             { assertEquals(setOf("old", "older"), afterBoot, "nothing went at boot") },
             { assertEquals(listOf("old"), star.relay.state.value.openSurfaces(), "the offline reopen kept it") },
-            { assertEquals(setOf("old"), star.relay.state.value.surfaces.keys, "the one left closed went") },
+            { assertEquals(setOf("old"), star.relay.state.value.unremoved(), "the one left closed went") },
         )
     }
 
@@ -164,7 +168,7 @@ class ClosedSurfacesTest {
         settle(KEPT_FOR + NEXT_CHECK)
         assertAll(
             { assertEquals(listOf("x"), afterTheNextCheck, "the late close got a period of its own") },
-            { assertEquals(emptySet(), star.relay.state.value.surfaces.keys, "and then it went") },
+            { assertEquals(emptySet(), star.relay.state.value.unremoved(), "and then it went") },
         )
     }
 
@@ -195,7 +199,7 @@ class ClosedSurfacesTest {
             { assertEquals(setOf("x"), sightedClosed, "rig: x was sighted closed") },
             { assertEquals(emptySet(), sightedOpen, "a check that finds it open forgets it") },
             { assertEquals(listOf("x"), stillThere, "the same close time, seen again, gets a whole period") },
-            { assertEquals(emptySet(), star.relay.state.value.surfaces.keys, "and then it went") },
+            { assertEquals(emptySet(), star.relay.state.value.unremoved(), "and then it went") },
             { assertEquals(emptySet(), surfaces.sighted, "a removed surface leaves no sighting") },
         )
     }
@@ -249,7 +253,7 @@ class ClosedSurfacesTest {
         relay.mutate { it.openSurface(relay.replica, "old", meta, listOf(root), JsonObject(emptyMap())) }
         relay.mutate { it.closeSurface(relay.replica, "old", claims.clock()) }
         settle(KEPT_FOR * 2 + NEXT_CHECK * 2)
-        val left = relay.state.value.surfaces.keys
+        val left = relay.state.value.unremoved()
         core.close()
         assertEquals(emptySet(), left)
     }

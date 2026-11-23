@@ -75,8 +75,8 @@ class ClosedSurfaces(
         val cutoff = now - keptFor
         val due = state.closedBy(cutoff).filter { sightings.getValue(it).seenAt <= cutoff && !decidesAnOrphan(state, it) }.toSet()
         if (due.isEmpty()) return
-        relay.mutate { it.compactClosed(relay.replica, due, cutoff) }
-        val removed = due.filter { relay.state.value.surfaceDoc(it) == null }.sorted()
+        relay.mutate { it.compactClosed(relay.replica, due, closedBy = cutoff, at = now) }
+        val removed = due.filter { relay.state.value.isRemoved(it) }.sorted()
         log.info { "Removed ${removed.size} surfaces closed for $keptFor: ${removed.joinToString()}" }
     }
 

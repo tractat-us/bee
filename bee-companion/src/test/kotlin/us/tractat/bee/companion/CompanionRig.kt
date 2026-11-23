@@ -270,8 +270,8 @@ internal class CompanionRig(
     /** The host removes closed [surface], as its daily compaction does (bee#274). */
     fun removeFromTheBoard(surface: String) {
         check(surface in star.relay.state.value.closedSurfaces()) { "rig: $surface isn't closed on the host" }
-        star.relay.mutate { it.compactClosed(star.relay.replica, setOf(surface), claims.clock()) }
-        check(star.relay.state.value.surfaceDoc(surface) == null) { "rig: the host still has $surface" }
+        star.relay.mutate { it.compactClosed(star.relay.replica, setOf(surface), closedBy = claims.clock(), at = claims.clock()) }
+        check(star.relay.state.value.isRemoved(surface)) { "rig: the host still has $surface" }
     }
 
     /** Writes screen [name] with [html] into [dirs], newer than every screen before it. */
