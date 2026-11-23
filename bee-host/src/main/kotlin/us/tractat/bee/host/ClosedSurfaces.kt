@@ -23,7 +23,9 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.ClosedSurfaces")
  * target is still orphaned all stay.**
  *
  * - **Grace runs from what the host saw.** A close made offline and delivered late, or stamped by a
- *   slow clock, still gets its full grace period. What the host first saw isn't saved: a boot
+ *   slow clock, still gets its full grace period. A sighting is of one `closedAt`: a check that
+ *   finds the surface open, or closed at another time (a reopen and a late close between two
+ *   checks), starts its grace again. What the host first saw isn't saved: a boot
  *   counts as the first sight of everything already closed, so the worst case is one more period
  *   after a restart, and nothing is removed at boot. A peer that reopened a surface while the host
  *   was down has a whole period to reconnect.
@@ -35,7 +37,7 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.ClosedSurfaces")
  *
  * Checks run on start and every [every] after, so a surface goes at most [every] past its grace
  * period, and a close is first seen at most [every] after it arrives. Only the checking coroutine
- * touches [firstSeen].
+ * touches [sightings], which holds the surfaces closed at the last check and no others.
  */
 class ClosedSurfaces(
     private val relay: BoardRelay,
@@ -48,8 +50,11 @@ class ClosedSurfaces(
 
     private val every: Duration = minOf(CHECK_EVERY, keptFor / 4)
 
-    /** Each surface closed at the last check, with when a check first saw it closed. */
-    private val firstSeen = mutableMapOf<String, Instant>()
+    /** Each surface closed at the last check: the `closedAt` it showed, and when a check first saw that. */
+    private val sightings = mutableMapOf<String, Sighting>()
+
+    /** The surfaces this holds a sighting of: those closed at the last check. */
+    internal val sighted: Set<String> get() = sightings.keys.toSet()
 
     /** Checks now and every [every] after, until [scope] ends. */
     fun start(scope: CoroutineScope): Job = scope.launch(CoroutineName("closed-surfaces")) {
@@ -62,15 +67,21 @@ class ClosedSurfaces(
     private fun check() {
         val now = clock()
         val state = relay.state.value
-        val closed = state.closedSurfaces().toSet()
-        firstSeen.keys.retainAll(closed)
-        closed.forEach { firstSeen.getOrPut(it) { now } }
+        val closed = state.closedSurfaces().associateWith { requireNotNull(state.meta(it)?.closedAt) }
+        sightings.keys.retainAll(closed.keys)
+        closed.forEach { (id, closedAt) ->
+            if (sightings[id]?.closedAt != closedAt) sightings[id] = Sighting(closedAt, now)
+        }
         val cutoff = now - keptFor
-        val due = state.closedBy(cutoff).filter { firstSeen.getValue(it) <= cutoff && !decidesAnOrphan(state, it) }.toSet()
+        val due = state.closedBy(cutoff).filter { sightings.getValue(it).seenAt <= cutoff && !decidesAnOrphan(state, it) }.toSet()
         if (due.isEmpty()) return
         relay.mutate { it.compactClosed(relay.replica, due, cutoff) }
-        log.info { "Removed ${due.size} surfaces closed for $keptFor: ${due.sorted().joinToString()}" }
+        val removed = due.filter { relay.state.value.surfaceDoc(it) == null }.sorted()
+        log.info { "Removed ${removed.size} surfaces closed for $keptFor: ${removed.joinToString()}" }
     }
+
+    /** A check saw a surface closed at [closedAt], first at [seenAt]. */
+    private data class Sighting(val closedAt: Instant, val seenAt: Instant)
 
     /** Whether [id] is the decision of a target the mirror still shows orphaned. */
     private fun decidesAnOrphan(state: BoardState, id: String): Boolean =
