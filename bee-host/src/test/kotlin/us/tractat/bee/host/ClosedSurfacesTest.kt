@@ -124,6 +124,8 @@ class ClosedSurfacesTest {
         sam.mutate { it.closeSurface(SAM, "older", star.clock() - 2.days) }
         settle(1.seconds)
         sam.disconnect()
+        settle(1.seconds)
+        check(!sam.online.value) { "rig: sam is offline" }
         sam.mutate { it.reopenSurface(SAM, "old") }
 
         ClosedSurfaces(star.relay, KEPT_FOR, star.clock).start(backgroundScope)
