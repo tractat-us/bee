@@ -37,7 +37,7 @@ These write to the board, and everyone attached sees the result:
 
 | Tool | What it does |
 |---|---|
-| `bee_surface_open` | Puts a new surface on the board. |
+| `bee_surface_open` | Puts a new surface on the board, and closes any it names in `replaces` in the same write. |
 | `bee_surface_update` | Changes a surface in place: its title, its components, its data, or new entries such as a poll's options. |
 | `bee_surface_close` | Closes a surface. It moves to the history strip with its content and records. |
 | `bee_board_clear` | Closes every open surface except the host's. Nothing is deleted. |
