@@ -6,6 +6,7 @@ import us.tractat.bee.core.BoardFixtures.OPENED_AT
 import us.tractat.bee.core.BoardFixtures.SURFACE
 import us.tractat.bee.core.BoardFixtures.opened
 import us.tractat.bee.core.BoardFixtures.str
+import kotlinx.serialization.json.JsonObject
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.raft.Committed
@@ -34,7 +35,7 @@ class CompactClosedTest {
         return voted.piece { it.mirrorClaims(host, table) }.piece { it.closeSurface(B, SURFACE, closedAt) }
     }
 
-    private fun BoardState.compacted(closedBy: Instant = closedAt): BoardState = piece { it.compactClosed(host, closedBy) }
+    private fun BoardState.compacted(closedBy: Instant = closedAt): BoardState = piece { it.compactClosed(host, surfaces.keys, closedBy) }
 
     private fun BoardState.claimTargets(): Set<String> = claims.entries.keys
 
@@ -55,7 +56,7 @@ class CompactClosedTest {
     @Test
     fun anOpenSurfaceOrOneClosedAfterTheCutoffStays() {
         val board = closed()
-        val alsoOpen = board.piece { it.openSurface(A, "open", SurfaceMeta("Open", "c", PeerIdentity.human("iain"), OPENED_AT), listOf(BoardFixtures.root), kotlinx.serialization.json.JsonObject(emptyMap())) }
+        val alsoOpen = board.piece { it.openSurface(A, "open", SurfaceMeta("Open", "c", PeerIdentity.human("iain"), OPENED_AT), listOf(BoardFixtures.root), JsonObject(emptyMap())) }
         val after = alsoOpen.compacted(closedBy = closedAt - 1.hours)
         assertAll(
             { assertEquals(listOf("open"), after.openSurfaces()) },
@@ -107,6 +108,28 @@ class CompactClosedTest {
             { assertEquals(null, merged.meta(SURFACE)) },
             { assertEquals(emptyList(), merged.openSurfaces()) },
             { assertEquals(emptyList(), merged.closedSurfaces()) },
+        )
+    }
+
+    /**
+     * The closer's race, found in review of #276: [B] closed the surface, then wrote to it offline,
+     * so its tag carries its close. After the host removes the surface, [A] opens the same id
+     * afresh, and when [B]'s write arrives its old `closedAt` is concurrent with the new open's null
+     * and wins: the new surface shows closed at the old time, so the host removes it too.
+     */
+    @Test
+    fun aRacingWriteByTheCloserClosesAFreshOpenOfTheSameId() {
+        val board = closed()
+        val racing = board.updateData(B, SURFACE, "/note", str("late"))
+        val again = SurfaceMeta("Lunch again", "c", PeerIdentity.human("iain"), closedAt + 2.hours)
+        val reopenedFresh = board.compacted().piece { it.openSurface(A, SURFACE, again, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+        val merged = reopenedFresh.piece(racing.delta)
+        assertAll(
+            { assertEquals(listOf(SURFACE), reopenedFresh.openSurfaces(), "the fresh open shows, until the write arrives") },
+            { assertEquals(emptyList(), merged.openSurfaces()) },
+            { assertEquals(closedAt, merged.meta(SURFACE)?.closedAt, "closed at the old time") },
+            { assertEquals("Lunch again", merged.meta(SURFACE)?.title) },
+            { assertEquals(setOf(SURFACE), merged.closedBy(closedAt)) },
         )
     }
 

@@ -224,16 +224,15 @@ class BoardState internal constructor(
      *
      * The removal is causal: it retires the surface's tags this replica has seen, so an older copy
      * on a lagging replica, holding only tags seen here, can't bring the surface back on merge. A
-     * write this replica hasn't seen keeps its tag (add-wins), and its writer's tag carries
-     * everything that writer ever contributed to the surface, its own close included:
-     * - from a writer that neither opened nor closed it, the copy holds no meta and stays unshown
-     *   ([SurfaceMeta] is read only once an open's fields are there, bee#171), and its id can't be
-     *   opened again;
-     * - from the opener, it shows open again, without anyone else's writes;
-     * - from the closer, a copy that never saw the open stays unshown, but once the same id is opened
-     *   afresh, the old `closedAt` is concurrent with the new open's null and wins, so the new surface
-     *   shows closed at the old time, and is removed in turn once the host has seen it closed for its
-     *   grace period. A writer offline for the whole grace period, such as a laptop asleep, is enough.
+     * write this replica hasn't seen keeps its tag (add-wins), and that tag carries everything its
+     * writer ever contributed to the surface, its own close included:
+     * - from the opener, the surface shows open again, without anyone else's writes;
+     * - from anyone else, the copy holds no open's meta and stays unshown (bee#171's guard,
+     *   [SurfaceDoc.meta]). Where it has arrived, the id can't be opened again. Where it hasn't, a
+     *   fresh open of the same id merges with it when it does: the old writes show on the new
+     *   surface, and an old `closedAt` is concurrent with the new open's null and wins, so the new
+     *   surface shows closed at the old time and is removed in turn, a grace period later. A writer
+     *   offline for the whole grace period, such as a laptop asleep, is enough.
      *
      * A record's tombstone keeps its value until the records are compacted, so removing records hides
      * them rather than shrinking the board. A claim's mirror is tombstoned one past its own index,
