@@ -2,54 +2,72 @@
 
 package us.tractat.bee.mcp
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import us.tractat.bee.core.BoardState
+import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /** `bee_surface_open`'s `replaces` (bee#273): a new surface closes the ones it supersedes as it opens. */
 class SurfaceReplacesTest {
     /**
      * The new surface and the closes of the ones it replaces are one write. Every state the
-     * writer's own replica passes through is collected, unconfined, so each write shows up as its
-     * own state: two writes would leave one state with `v3` open beside `v1` or `v2`, and that
-     * state is what a peer could be sent. The control is the same collector seeing `v1` and `v2`
-     * open together before the replace.
+     * writer's replica and the browser's replica pass through is collected, unconfined, so each
+     * write shows up as its own state: two writes would leave one state with `v3` open beside `v1`
+     * or `v2`, and that state is what a peer would be sent. With the closes moved to a second write
+     * after the open, both "no state shows" assertions go red.
+     *
+     * The control is that the browser's collector does see two back-to-back writes apart: `ada`
+     * closes `v2` and at once reopens it, with nothing awaited between, as a split open would, and
+     * the browser passes through the state with `v2` closed. A collector that coalesced them would
+     * fail it, and then the browser assertion would prove nothing.
      */
     @Test
     fun openWithReplacesClosesTheSupersededSurfacesInTheSameWrite() = runTest(timeout = 120.seconds) {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
         val browser = rig.browser()
-        val seen = mutableListOf<BoardState>()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { ada.client.state.collect { seen += it } }
+        val written = mutableListOf<BoardState>()
+        val received = mutableListOf<BoardState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { ada.client.state.collect { written += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { browser.state.collect { received += it } }
         ada.call(BeeTools.OPEN, openArgs("v1"))
         ada.call(BeeTools.OPEN, openArgs("v2"))
+        val split = Instant.fromEpochSeconds(0)
+        ada.client.mutate { it.closeSurface(ReplicaId("mcp-ada"), "v2", split) }
+        ada.client.mutate { it.reopenSurface(ReplicaId("mcp-ada"), "v2") }
+        withTimeout(1.minutes) { browser.state.first { it.openSurfaces() == listOf("v1", "v2") } }
 
         val result = ada.call(BeeTools.OPEN, openArgs("v3") + ("replaces" to JsonArray(listOf(JsonPrimitive("v1"), JsonPrimitive("v2")))))
-        val after = browser.state.first { "v3" in it.openSurfaces() }
-        val overlapping = seen.filter { "v3" in it.openSurfaces() && (it.openSurfaces().toSet() intersect setOf("v1", "v2")).isNotEmpty() }
+        val after = withTimeout(1.minutes) { browser.state.first { it.openSurfaces() == listOf("v3") } }
         assertAll(
             { assertEquals(null, result.isError, "open: ${result.text()}") },
-            { assertTrue(seen.any { it.openSurfaces().containsAll(listOf("v1", "v2")) }, "control: the collector sees each write") },
-            { assertEquals(emptyList(), overlapping.map { it.openSurfaces() }, "no state shows v3 beside a surface it replaces") },
+            { assertTrue(received.any { it.meta("v2")?.closedAt == split }, "control: the browser sees back-to-back writes apart") },
+            { assertEquals(emptyList(), overlapping(written), "no state the writer passes through shows v3 beside a surface it replaces") },
+            { assertEquals(emptyList(), overlapping(received), "no state the browser passes through shows v3 beside a surface it replaces") },
             { assertEquals(listOf("v1", "v2"), result.closedIds(), "the result names what it closed") },
-            { assertEquals(listOf("v3"), after.openSurfaces(), "the browser sees only the new surface open") },
             { assertTrue(after.surfaceDoc("v1") != null && after.surfaceDoc("v2") != null, "nothing was deleted") },
         )
         rig.close()
     }
+
+    /** The open surfaces of each of [states] that shows `v3` open beside `v1` or `v2`. */
+    private fun overlapping(states: List<BoardState>): List<List<String>> = states.map { it.openSurfaces() }
+        .filter { "v3" in it && ("v1" in it || "v2" in it) }
 
     /**
      * An id in `replaces` that isn't on the board, or is closed already, is passed over: the open
@@ -63,7 +81,7 @@ class SurfaceReplacesTest {
         ada.call(BeeTools.OPEN, openArgs("live"))
         ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "old"))
         val firstClose = ada.client.state.value.meta("old")!!.closedAt
-        kotlinx.coroutines.delay(1.minutes)
+        delay(1.minutes)
 
         val names = listOf("ghost", "old", "live").map(::JsonPrimitive)
         val result = ada.call(BeeTools.OPEN, openArgs("new") + ("replaces" to JsonArray(names)))
