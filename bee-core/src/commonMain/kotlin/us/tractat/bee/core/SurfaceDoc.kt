@@ -122,6 +122,26 @@ internal object SurfaceDoc {
     }
 
     /**
+     * The tombstone the host leaves under a surface id it removed at [at] (bee#274): a doc whose
+     * meta holds [SurfaceFormat.META_REMOVED_AT] and nothing else. It's minted under fresh tags in
+     * every map it touches, so no write made before it, by anyone, can retire it. A late write merges
+     * under it and stays hidden ([removedAt]), and a reader that predates it finds meta without a
+     * title, which [meta] has always read as a surface whose open hasn't arrived.
+     */
+    fun tombstone(replica: ReplicaId, at: Instant): JsonCrdt {
+        val field = JsonNode.Leaf(MVRegister.empty<JsonValue>().set(replica, JsonValue.Str(at.toString())))
+        val meta = JsonNode.Object(ORMap.empty<String, JsonNode>().put(replica, SurfaceFormat.META_REMOVED_AT, field).delta)
+        return JsonCrdt.empty(replica).set(SurfaceFormat.META, meta).delta
+    }
+
+    /** When the host removed [doc]'s surface for good, or null if it hasn't ([tombstone]). */
+    fun removedAt(doc: JsonCrdt): Instant? {
+        val meta = doc[SurfaceFormat.META] as? JsonNode.Object ?: return null
+        val leaf = meta.map[SurfaceFormat.META_REMOVED_AT] ?: return null
+        return SurfaceFormat.metaString(leaf as JsonNode.Leaf)?.let(Instant::parse)
+    }
+
+    /**
      * [doc]'s meta, or null while its open hasn't arrived: the doc holds no meta yet, or meta
      * without the fields an open writes. Meta of the wrong shape is corrupt, not early, and throws.
      *
