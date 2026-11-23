@@ -45,6 +45,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 /**
  * The board's replication tuning: a 30 s anti-entropy backstop behind the gossip flood and the
@@ -128,9 +129,12 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 30.s
  * one [Mutex], which is never held across a suspension: weaving and closing happen outside it.
  * [lastFailure] is written from pump callbacks, which can't suspend, so it stands alone.
  *
- * @param clock the wall clock, kept for what the client will stamp (presence, Task 7). The Quilter
- *   keeps kuilt's monotonic clock for eviction.
- * @param random the redial backoff's jitter.
+ * @param clock the wall clock, kept for what the client will stamp (presence, Task 7).
+ * @param timeSource the monotonic time each connection's Quilter reads for its stale-digest skip
+ *   and eviction: [TimeSource.Monotonic] in production, the test scheduler's under virtual time.
+ *   It has no default, so a test on virtual time can't leave a Quilter reading the wall clock.
+ * @param random the redial backoff's jitter, and the seed of each connection Quilter's own random,
+ *   which draws its anti-entropy peer: seeded in a test, the replication replays exactly.
  * @param dialTimeout how long one [Loom.weave] may take. A dial that never answers (a socket
  *   accepted and never upgraded, or one closed mid-handshake) is cancelled at this bound, recorded
  *   as a [DialTimeoutException], and redialled on the backoff, so it can't leave the client
@@ -147,9 +151,10 @@ class BoardClient(
     private val rendezvous: Rendezvous,
     private val scope: CoroutineScope,
     @Suppress("unused") private val clock: () -> Instant,
+    private val timeSource: TimeSource,
     initial: BoardState = BoardState.EMPTY,
     private val config: QuilterConfig = BEE_QUILTER_CONFIG,
-    random: Random = Random.Default,
+    private val random: Random = Random.Default,
     private val dialTimeout: Duration = 5.seconds,
     val maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
     private val settleAfter: Duration = 5.seconds,
@@ -451,6 +456,8 @@ class BoardClient(
                 messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
                 scope = connectionScope,
                 config = config,
+                clock = timeSource.asMonotonicMillis(),
+                random = Random(random.nextLong()),
             )
             return Connection(seam, quilter, job, connectionScope, relayBoard)
         } catch (failure: Throwable) {
