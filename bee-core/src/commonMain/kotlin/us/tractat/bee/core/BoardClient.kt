@@ -51,18 +51,20 @@ import kotlin.time.Instant
  * relay's forward, and a spoke that stops acking is evicted after 30 s, so a reconnect's stale
  * fabric id doesn't pin the pending-delta buffer for kuilt's default 5 minutes.
  *
- * The backstop is rare because each of its rounds costs the whole board (bee#256). A round
- * encodes the board for its root digest, at both ends, and when the roots differ it ships the
- * board. A host that has fallen behind its inbound frames compares each digest against a board
- * that has moved on, so the roots nearly always differ. At the 1 s that kuilt's Patchwork relay
- * uses, a 9 MB board and a few MCP sessions made every round cost more than the interval, and
- * whole-board frames queued in the link spools until a 32 GB heap ran out. Edits don't wait on
+ * The backstop is rare because a round whose root digests differ still ships the whole board
+ * (bee#256). A host that has fallen behind its inbound frames compares each digest against a
+ * board that has moved on, so behind a lag longer than the interval the roots nearly always
+ * differ. On kuilt 0.7.0-dev.1696, at the 1 s that kuilt's Patchwork relay uses, a 9 MB board
+ * and a few MCP sessions queued whole-board frames in the link spools until a 32 GB heap ran out.
+ * Since kuilt#3617 the root is cached and a peer has one whole-board exchange outstanding at a
+ * time, so the frames no longer queue without end. Their rate still follows the interval: in
+ * bee-host's `IdleTrafficTest`, an idle minute behind a 2 s lag, 7 to 19 whole boards crossed
+ * each spoke at 1 s, 2 to 4 at 5 s, and none at 30 s. Edits don't wait on
  * the backstop: the flood and the forward bring them within a round trip, a gap is resent, and a
  * reconnect starts with a first-contact `FullState`.
  *
- * TODO(kuilt#3617): a round costs the board's size, and the link queues are bounded by frame
- * count, not by bytes. A slower interval only moves the point where a large enough board or
- * enough spokes outrun the host.
+ * TODO(kuilt#3622): a mismatched round costs the board's size, not what changed. A slower
+ * interval only moves the point where a large enough board or enough spokes outrun the host.
  */
 val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 30.seconds, evictionAfter = 30.seconds)
 

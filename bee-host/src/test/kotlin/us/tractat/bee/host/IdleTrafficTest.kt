@@ -37,8 +37,9 @@ private val LAG = 2.seconds
 private const val BOARD_FRACTION = 2
 
 /**
- * How many times the whole board may cross one spoke's link, either way, in an idle minute. At a
- * 1 s backstop it crossed 169 to 234 times; at 30 s, 2 to 5.
+ * How many times the whole board may cross one spoke's link, either way, in an idle minute. On
+ * kuilt 0.7.0-dev.1696 a 1 s backstop crossed 169 to 234 times, and 30 s crossed 2 to 5. On
+ * 0.7.0-dev.1926 (kuilt#3617), 1 s crossed 7 to 19 times, 5 s 2 to 4, and 30 s none.
  */
 private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
 
