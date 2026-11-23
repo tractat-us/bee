@@ -169,6 +169,13 @@ jobs:
           [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
           timeout 600 ./gradlew check --stacktrace --console=plain
 
+      # What the wasm Yarn install left behind, for a failure like bee#269's.
+      - name: wasm install state
+        if: failure()
+        uses: ./.github/actions/wasm-install-state
+        with:
+          name: wasm-install-state-build
+
       # A green build is a claim until the test count says otherwise.
       - name: Test count
         if: always()
@@ -225,6 +232,12 @@ jobs:
           # above built the installs, so the webServer command skips its own build.
           BEE_E2E_PREBUILT=1 BEE_E2E_SKIP_DEMO=1 timeout 600 npx playwright test
 
+      - name: wasm install state
+        if: failure()
+        uses: ./.github/actions/wasm-install-state
+        with:
+          name: wasm-install-state-smoke
+
       - name: Test count
         if: always()
         run: |
@@ -279,6 +292,12 @@ jobs:
           name: demo-paths-report
           path: e2e/test-results/
           retention-days: 7
+
+      - name: wasm install state
+        if: failure()
+        uses: ./.github/actions/wasm-install-state
+        with:
+          name: wasm-install-state-demo
 
   ci-required:
     needs: [detect, links, build, demo]
