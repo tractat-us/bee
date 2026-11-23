@@ -45,6 +45,7 @@ import kotlin.test.assertNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 /**
  * A tab left open across a host wipe (bee#46), with real hosts on one port: the tab joins the first
@@ -80,6 +81,7 @@ class WipedHostTest {
             Rendezvous.Existing(WebSocketAdvertisement("ws://127.0.0.1:$port${BoardRelay.PATH}?${BoardId.PARAM}=${first.boardId}", PeerId("bee-host"), "board")),
             scope,
             clock,
+            TimeSource.Monotonic,
         )
         tab.connect()
         tab.mutate { it.openSurface(author, OLD_SURFACE, meta(), listOf(root), JsonObject(emptyMap())) }

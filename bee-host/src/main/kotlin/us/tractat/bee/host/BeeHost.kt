@@ -37,6 +37,7 @@ import kotlin.random.asKotlinRandom
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 /**
  * The always-on host (spec §5.4): it serves the page at `/`, names its board at [BoardId.PATH],
@@ -205,6 +206,7 @@ class BeeHost private constructor(
                     Dispatchers.Default,
                     RaftConfig(),
                     clock,
+                    TimeSource.Monotonic,
                     waitingForClient = kept::waitingIdentities,
                 )
                 board.set(core.board.relay.state)

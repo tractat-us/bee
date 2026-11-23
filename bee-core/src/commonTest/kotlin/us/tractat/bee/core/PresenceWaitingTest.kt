@@ -92,7 +92,7 @@ class PresenceWaitingTest {
         private val time = test.testScheduler
         fun now(): Instant = Instant.fromEpochMilliseconds(time.currentTime)
         private val presenceClock: () -> Instant = { failNextClockRead?.let { failNextClockRead = null; throw it } ?: now() }
-        val client = BoardClient(A, InMemoryLoom(), Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, ::now)
+        val client = BoardClient(A, InMemoryLoom(), Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, ::now, time.timeSource)
         val presence = Presence(client, A, emptyFlow(), presenceClock, test.backgroundScope) { throw it }
 
         /** This peer's entry as last posted. */

@@ -37,6 +37,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import us.tractat.kuilt.quilter.MonotonicMillis
 
 private val CONFIG = QuilterConfig(antiEntropyInterval = 1.seconds, evictionAfter = 30.seconds, expectVirtualTime = true)
 
@@ -62,6 +63,8 @@ private class SlowHub(private val test: TestScope, private val board: BoardState
             messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
             scope = test.backgroundScope,
             config = CONFIG,
+            clock = MonotonicMillis { test.testScheduler.currentTime },
+            random = Random(2),
         )
     }
 
@@ -72,7 +75,7 @@ private class SlowHub(private val test: TestScope, private val board: BoardState
             source.offer(Slow(hubEnd))
             peerMesh(id, listOf(spokeEnd), dispatcher)
         }
-        return BoardClient(B, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, clock, BoardState.EMPTY, CONFIG, Random(0))
+        return BoardClient(B, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, clock, test.testScheduler.timeSource, BoardState.EMPTY, CONFIG, Random(0))
     }
 
     private class Slow(private val base: Connection) : Connection by base {

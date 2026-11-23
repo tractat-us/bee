@@ -36,6 +36,7 @@ import us.tractat.kuilt.core.Seam
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.piece
 import us.tractat.kuilt.test.assertAll
+import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -189,7 +190,9 @@ class LiveInputsTest {
             rendezvous = Rendezvous.New(Pattern("board")),
             scope = backgroundScope,
             clock = { Instant.fromEpochMilliseconds(testScheduler.currentTime) },
+            timeSource = testScheduler.timeSource,
             initial = board,
+            random = Random(0),
         )
         val inputs = LiveInputs(root, client, AUTHOR, backgroundScope, { error("Unexpected problem: $it") }, DEBOUNCE)
         val view = board.surfaceDoc(SURFACE)!!.toSurfaceView(SURFACE)

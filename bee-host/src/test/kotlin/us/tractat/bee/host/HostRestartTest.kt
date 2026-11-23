@@ -346,12 +346,12 @@ class HostRestartTest {
                 boardSource.offer(hubEnd)
                 peerMesh(id, listOf(spokeEnd), dispatcher)
             }
-            return BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, claims.clock, held, BoardStar.CONFIG, Random(0))
+            return BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, claims.clock, test.testScheduler.timeSource, held, BoardStar.CONFIG, Random(0))
         }
 
         suspend fun openBoard(): HostBoard {
             val stores = HostStores.settle(boardStore, claims.store)
-            return HostBoard.open(test.backgroundScope, InMemoryConnectionSource(), dispatcher, stores.board, stores.boardId, claims.clock, Random(0), BoardStar.CONFIG)
+            return HostBoard.open(test.backgroundScope, InMemoryConnectionSource(), dispatcher, stores.board, stores.boardId, claims.clock, test.testScheduler.timeSource, Random(0), BoardStar.CONFIG)
         }
 
         suspend fun boot(): HostCore = HostCore.start(
@@ -363,6 +363,7 @@ class HostRestartTest {
             dispatcher = dispatcher,
             raftConfig = claims.raftConfig,
             clock = claims.clock,
+            timeSource = test.testScheduler.timeSource,
             random = Random(0),
             quilterConfig = BoardStar.CONFIG,
         )

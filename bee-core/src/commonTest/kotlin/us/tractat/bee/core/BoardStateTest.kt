@@ -44,6 +44,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
+import us.tractat.kuilt.quilter.MonotonicMillis
+import kotlin.random.Random
 
 class BoardStateTest {
     @Test
@@ -326,8 +328,9 @@ class BoardStateTest {
         val loom = InMemoryLoom()
         val config = QuilterConfig(expectVirtualTime = true)
         val wire = QuiltMessage.serializer(BoardState.serializer())
-        Quilter(ReplicaId("q-a"), loom.weave(Rendezvous.New(Pattern("board"))), board, wire, backgroundScope, config)
-        val receiver = Quilter(ReplicaId("q-b"), loom.weave(Rendezvous.Existing(InMemoryTag("board"))), BoardState.EMPTY, wire, backgroundScope, config)
+        val virtual = MonotonicMillis { testScheduler.currentTime }
+        Quilter(ReplicaId("q-a"), loom.weave(Rendezvous.New(Pattern("board"))), board, wire, backgroundScope, config, virtual, random = Random(0))
+        val receiver = Quilter(ReplicaId("q-b"), loom.weave(Rendezvous.Existing(InMemoryTag("board"))), BoardState.EMPTY, wire, backgroundScope, config, virtual, random = Random(1))
         advanceTimeBy(100.milliseconds)
         runCurrent()
         val got = receiver.state.value

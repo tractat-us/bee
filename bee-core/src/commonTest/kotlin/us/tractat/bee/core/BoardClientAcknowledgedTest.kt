@@ -40,6 +40,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import us.tractat.kuilt.quilter.MonotonicMillis
 
 private val CONFIG = QuilterConfig(antiEntropyInterval = 1.seconds, evictionAfter = 30.seconds, expectVirtualTime = true)
 
@@ -73,6 +74,8 @@ private class AckHub(private val test: TestScope) {
             messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
             scope = test.backgroundScope,
             config = CONFIG,
+            clock = MonotonicMillis { test.testScheduler.currentTime },
+            random = Random(2),
         )
     }
 
@@ -84,7 +87,7 @@ private class AckHub(private val test: TestScope) {
             source.offer(hubEnd)
             peerMesh(id, listOf(Slow(spokeEnd) { slow }), dispatcher)
         }
-        return BoardClient(A, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, clock, opened(), CONFIG, Random(0))
+        return BoardClient(A, loom, Rendezvous.Existing(InMemoryTag("board")), test.backgroundScope, clock, test.testScheduler.timeSource, opened(), CONFIG, Random(0))
     }
 
     /** Drops every spoke's link, as a relay that goes away does. */

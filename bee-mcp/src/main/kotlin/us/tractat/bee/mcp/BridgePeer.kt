@@ -22,6 +22,7 @@ import kotlin.random.Random
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlin.time.TimeSource
 
 // Lazy, as in Main.kt: stdio's main points System.out at stderr before any logger may start.
 private val logger by lazy { KotlinLogging.logger {} }
@@ -70,6 +71,7 @@ class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClie
                 host.boardRendezvous(),
                 scope,
                 clock,
+                TimeSource.Monotonic,
             )
             // TODO(kuilt#3110): one refused dial ends clusterClient's reconnect loop for good, so the
             // connection rebuilds a failed link, under a fresh node each time (kuilt keeps a NodeId unique).

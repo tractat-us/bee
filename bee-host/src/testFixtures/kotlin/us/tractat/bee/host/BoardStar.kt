@@ -32,11 +32,14 @@ import kotlin.time.Instant
  * @param config the Quilter tuning of the relay and of every client: [CONFIG] unless a test pins another
  * @param lag how long each frame takes to cross a link, either way, in order: how a host that has
  *   fallen behind its inbound frames looks to its spokes
+ * @param seed the relay's random, which drives the hub's overlay and seeds its Quilter's. A rig
+ *   replays exactly under one seed; another seed is another schedule of the same draws.
  */
 class BoardStar(
     private val test: TestScope,
     private val config: QuilterConfig = CONFIG,
     private val lag: Duration = Duration.ZERO,
+    private val seed: Int = 0,
 ) {
     val source = InMemoryConnectionSource()
     val hubEnds = mutableListOf<Connection>()
@@ -46,7 +49,7 @@ class BoardStar(
     lateinit var relay: BoardRelay
 
     suspend fun start() {
-        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, Random(0), config = config)
+        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, test.testScheduler.timeSource, Random(seed), config = config)
     }
 
     fun loom(name: String, scope: CoroutineScope = test.backgroundScope) = SpokeLoom(scope, name, Random(name.hashCode()), clock) { id, _ ->
@@ -63,7 +66,10 @@ class BoardStar(
         loom: SpokeLoom = loom(author.value),
         scope: CoroutineScope = test.backgroundScope,
         maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
-    ) = BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, config = config, maxPayloadBytes = maxPayloadBytes)
+    ) = BoardClient(
+        author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, test.testScheduler.timeSource,
+        config = config, random = Random(author.value.hashCode() + 1), maxPayloadBytes = maxPayloadBytes,
+    )
 
     /** This end, each frame it receives arriving [lag] after it was sent, in send order. */
     private fun Connection.lagged(): Connection = if (lag == Duration.ZERO) this else Lagged(this)

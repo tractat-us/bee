@@ -45,6 +45,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 /**
  * The board's replication tuning: a 30 s anti-entropy backstop behind the gossip flood and the
@@ -58,8 +59,12 @@ import kotlin.time.Instant
  * and a few MCP sessions queued whole-board frames in the link spools until a 32 GB heap ran out.
  * Since kuilt#3617 the root is cached and a peer has one whole-board exchange outstanding at a
  * time, so the frames no longer queue without end. Their rate still follows the interval: in
- * bee-host's `IdleTrafficTest`, an idle minute behind a 2 s lag, 7 to 19 whole boards crossed
- * each spoke at 1 s, 2 to 4 at 5 s, and none at 30 s. Edits don't wait on
+ * bee-host's `IdleTrafficTest`, an idle minute behind a 2 s lag, across relay seeds 0 to 9, 24 to
+ * 57 whole boards crossed each spoke at 1 s, 2 to 5 at 5 s, and none at 30 s. Most change
+ * nothing: at 1 s, at most 82 of the 647 the host sent its spokes brought them anything, and
+ * none of the 560 the spokes sent the host did. Each seed's counts replay exactly, since every
+ * Quilter in the test reads the test scheduler's clock and a seeded random; earlier counts read
+ * the wall clock, and so did not. Edits don't wait on
  * the backstop: the flood and the forward bring them within a round trip, a gap is resent, and a
  * reconnect starts with a first-contact `FullState`.
  *
@@ -128,9 +133,12 @@ val BEE_QUILTER_CONFIG: QuilterConfig = QuilterConfig(antiEntropyInterval = 30.s
  * one [Mutex], which is never held across a suspension: weaving and closing happen outside it.
  * [lastFailure] is written from pump callbacks, which can't suspend, so it stands alone.
  *
- * @param clock the wall clock, kept for what the client will stamp (presence, Task 7). The Quilter
- *   keeps kuilt's monotonic clock for eviction.
- * @param random the redial backoff's jitter.
+ * @param clock the wall clock, kept for what the client will stamp (presence, Task 7).
+ * @param timeSource the monotonic time each connection's Quilter reads for its stale-digest skip
+ *   and eviction: [TimeSource.Monotonic] in production, the test scheduler's under virtual time.
+ *   It has no default, so a test on virtual time can't leave a Quilter reading the wall clock.
+ * @param random the redial backoff's jitter, and the seed of each connection Quilter's own random,
+ *   which draws its anti-entropy peer: seeded in a test, the replication replays exactly.
  * @param dialTimeout how long one [Loom.weave] may take. A dial that never answers (a socket
  *   accepted and never upgraded, or one closed mid-handshake) is cancelled at this bound, recorded
  *   as a [DialTimeoutException], and redialled on the backoff, so it can't leave the client
@@ -147,9 +155,10 @@ class BoardClient(
     private val rendezvous: Rendezvous,
     private val scope: CoroutineScope,
     @Suppress("unused") private val clock: () -> Instant,
+    private val timeSource: TimeSource,
     initial: BoardState = BoardState.EMPTY,
     private val config: QuilterConfig = BEE_QUILTER_CONFIG,
-    random: Random = Random.Default,
+    private val random: Random = Random.Default,
     private val dialTimeout: Duration = 5.seconds,
     val maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
     private val settleAfter: Duration = 5.seconds,
@@ -451,6 +460,8 @@ class BoardClient(
                 messageSerializer = QuiltMessage.serializer(BoardState.serializer()),
                 scope = connectionScope,
                 config = config,
+                clock = timeSource.asMonotonicMillis(),
+                random = Random(random.nextLong()),
             )
             return Connection(seam, quilter, job, connectionScope, relayBoard)
         } catch (failure: Throwable) {

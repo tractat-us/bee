@@ -37,6 +37,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * The relay over real sockets: a [BeeHost] on an ephemeral loopback port and two [BoardClient]s
@@ -61,6 +62,7 @@ class RelaySmokeTest {
                     rendezvous,
                     scope,
                     clock,
+                    TimeSource.Monotonic,
                 )
                 val alex = client(ReplicaId("web-alex"))
                 val sam = client(ReplicaId("web-sam"))
