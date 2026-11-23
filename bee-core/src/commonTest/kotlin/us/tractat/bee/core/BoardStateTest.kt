@@ -68,6 +68,28 @@ class BoardStateTest {
         )
     }
 
+    /** bee#262: the relay forwards [BoardState.addedBy], so it must land where the whole state does. */
+    @Test
+    fun whatAStateAddsLandsWhereTheWholeStateDoesAndCarriesOnlyTheComponentsThatMove() {
+        val host = opened()
+        val presence = PresenceEntry(PeerIdentity.human("b"), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(0), waiting = false)
+        val presenceAhead = host.piece { it.postPresence(B, presence, 1) }
+        val editsAhead = presenceAhead
+            .piece { it.updateData(B, SURFACE, "/note", str("offline")) }
+            .piece { it.appendRecord(B, BoardFixtures.record(it)) }
+        val hostAhead = host.piece { it.updateData(A, SURFACE, "/count", JsonPrimitive(1)) }
+        val presenceOnly = hostAhead.addedBy(presenceAhead)?.delta
+        val edits = hostAhead.addedBy(editsAhead)?.delta
+        assertAll(
+            { assertEquals(hostAhead.piece(presenceAhead), presenceOnly?.let(hostAhead::piece)) },
+            { assertEquals(BoardState.EMPTY.surfaces, presenceOnly?.surfaces, "a presence post ahead carries no surface") },
+            { assertEquals(BoardState.EMPTY.records, presenceOnly?.records) },
+            { assertEquals(hostAhead.piece(editsAhead), edits?.let(hostAhead::piece)) },
+            { assertEquals(null, hostAhead.addedBy(host), "a state behind adds nothing") },
+            { assertEquals(null, hostAhead.addedBy(hostAhead), "an equal state adds nothing") },
+        )
+    }
+
     @Test
     fun closeKeepsTheSurfaceAndItsRecords() {
         val voted = opened(buildJsonObject { put("answer", "pizza") })
