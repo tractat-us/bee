@@ -79,7 +79,7 @@ mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"
 [ -n "$session" ] || fail "the host's MCP endpoint gave no session"
 mcp '{"jsonrpc":"2.0","method":"notifications/initialized"}'
 mcp '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"bee_surface_open","arguments":{"surfaceId":"rebuilt","title":"Drawn before the rebuild","components":[{"id":"root","component":"Text","text":"Still here"}]}}}'
-grep -q '"isError":false' "$scratch/answer" || { cat "$scratch/answer" >&2; fail "bee_surface_open was refused"; }
+grep -q '"opened":"rebuilt"' "$scratch/answer" || { cat "$scratch/answer" >&2; fail "bee_surface_open was refused"; }
 
 # installDist writes a changed jar over the old one, in place: the same file, new bytes. A repack
 # of the same classes moves every entry, as a real rebuild does.
