@@ -45,10 +45,11 @@ pid=""
 held=""
 
 # Stops the hosts this check started, by the pids it recorded, whatever happened.
+# The host.pid read covers a bee-up that launched a host and then failed before up() saw its pid.
 finish() {
-    for p in $pid $held; do
+    for p in $pid $held $(cat "$BEE_HOME/host.pid" 2>/dev/null); do
         kill -0 "$p" 2>/dev/null || continue
-        kill "$p"
+        kill "$p" 2>/dev/null || true
         for _ in $(seq 1 60); do kill -0 "$p" 2>/dev/null || break; sleep 0.5; done
     done
     rm -rf "$scratch"

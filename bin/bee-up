@@ -101,13 +101,14 @@ install_copy() {
     local key tmp
     key=$(install_key "$1")
     if [ ! -d "$installs/$key" ]; then
-        mkdir -p "$installs"
-        tmp=$(mktemp -d "$installs/.copying.XXXXXX")
-        # A command substitution doesn't inherit set -e: a failed copy returns, and bee-up stops.
+        # A command substitution doesn't inherit set -e, so every step returns on failure, and
+        # bee-up stops. An empty $tmp would otherwise copy the install into /.
+        mkdir -p "$installs" || return 1
+        tmp=$(mktemp -d "$installs/.copying.XXXXXX") && [ -n "$tmp" ] || return 1
         cp -R "$1/." "$tmp/" || { rm -rf "$tmp"; return 1; }
         # Named by what was copied, in case a build rewrote the install during the copy.
-        key=$(install_key "$tmp")
-        if [ -d "$installs/$key" ]; then rm -rf "$tmp"; else mv "$tmp" "$installs/$key"; fi
+        key=$(install_key "$tmp") || { rm -rf "$tmp"; return 1; }
+        if [ -d "$installs/$key" ]; then rm -rf "$tmp"; else mv "$tmp" "$installs/$key" || { rm -rf "$tmp"; return 1; }; fi
     fi
     echo "$installs/$key"
 }
