@@ -74,7 +74,8 @@ data class ClaimView(val status: String, val holder: String?, val token: String?
  * The board: every peer's replica of it is one of these (§6).
  *
  * A join-semilattice taken componentwise over five lattices:
- * - [surfaces], one `JsonCrdt` per surface id. Surfaces close; they're never removed.
+ * - [surfaces], one `JsonCrdt` per surface id. Surfaces close, and only the host removes one,
+ *   once it has been closed for a day ([compactClosed], bee#274).
  * - [records], the action records, appended and never edited (§6.2).
  * - [presence], who is attached.
  * - [departed] and [claims], which only the host writes (A2).
@@ -135,7 +136,10 @@ class BoardState internal constructor(
     fun retitleSurface(replica: ReplicaId, id: String, title: String): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setTitle(it, replica, title) }
 
-    /** Closes surface [id] at [at]. It keeps its content and its records ("clear" never deletes). */
+    /**
+     * Closes surface [id] at [at]. It keeps its content and its records ("clear" never deletes), until
+     * the host compacts it ([compactClosed]).
+     */
     fun closeSurface(replica: ReplicaId, id: String, at: Instant): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setClosedAt(it, replica, at) }
 
@@ -185,13 +189,18 @@ class BoardState internal constructor(
      * (released) shows `free`. A newly retired identity is recorded at the table's index, which is
      * its `Depart`'s own index when the host mirrors every committed table in order.
      *
+     * A removed record's claim is never mirrored again ([compactClosed]): the table still holds it,
+     * and a mirror of it would undo the tombstone.
+     *
      * The "only grows across host boots" premise can break when a tab is left open across a wipe, or
      * `claims/` is moved aside: the tab's old views carry indexes the new log hasn't reached (bee#46).
      */
     fun mirrorClaims(replica: ReplicaId, table: ClaimTable): Patch<BoardState> {
         requireReplica(replica)
         val index = table.appliedIndex
-        val views = table.targets.entries.associate { (target, status) -> target.value to ClaimView.of(status, index) }
+        val removed = records.tombstones.map { RecordId(it.dot).claimTarget.value }.toSet()
+        val views = table.targets.entries.filter { (target, _) -> target.value !in removed }
+            .associate { (target, status) -> target.value to ClaimView.of(status, index) }
         val freed = claims.entries.filter { (key, view) -> key !in views && view.status != ClaimView.FREE }
             .mapValues { ClaimView(ClaimView.FREE, holder = null, token = null, logIndex = index) }
         val changed = (views + freed).filter { (key, view) -> claims[key]?.copy(logIndex = view.logIndex) != view }
@@ -204,6 +213,37 @@ class BoardState internal constructor(
                 delta.piece(departed.add(Departure(identity, reason, index)).delta)
             }
         return Patch(EMPTY.copy(claims = claimsDelta, departed = departedDelta))
+    }
+
+    /**
+     * Removes every surface closed at or before [closedBy], with its action records and their claims'
+     * mirror (bee#274). Only the host calls it, on a timer.
+     *
+     * The removal is causal: it retires the surface's tags this replica has seen, so an older copy
+     * on a lagging replica, holding only tags seen here, can't bring the surface back on merge. A
+     * write this replica hasn't seen keeps its tag, and the surface comes back holding that writer's
+     * contributions alone (add-wins). If the writer never opened the surface, the copy holds no meta
+     * and stays unshown ([SurfaceDoc.meta]); if it did, it shows as that writer last left it.
+     *
+     * A record's tombstone keeps its value until the records are compacted, so removing records hides
+     * them rather than shrinking the board. A claim's mirror is tombstoned one past its own index,
+     * and [mirrorClaims] never writes a removed record's claim again.
+     */
+    fun compactClosed(replica: ReplicaId, closedBy: Instant): Patch<BoardState> {
+        requireReplica(replica)
+        val gone = surfaceMetas().filter { (_, meta) -> meta.closedAt?.let { it <= closedBy } == true }.map { it.first }.toSet()
+        val surfacesDelta = gone.fold(ORMap.empty<String, JsonCrdt>()) { delta, id -> delta.piece(surfaces.remove(id).delta) }
+        val removed = records.entries().filter { (_, record) -> record.surfaceId in gone }.map { it.first }.toSet()
+        val recordsDelta = records.entries().withIndex().filter { (_, entry) -> entry.first in removed }.reversed()
+            .fold(records to Rga.empty<ActionRecord>()) { (rga, delta), (index, _) ->
+                val (next, op) = requireNotNull(rga.removeAt(index))
+                next to delta.apply(op)
+            }.second
+        val claimsDelta = removed.map { RecordId(it.dot).claimTarget.value }
+            .fold(LWWMap.empty<String, ClaimView>()) { delta, key ->
+                claims[key]?.let { view -> delta.piece(claims.remove(replica, view.logIndex + 1, key).delta) } ?: delta
+            }
+        return Patch(EMPTY.copy(surfaces = surfacesDelta, records = recordsDelta, claims = claimsDelta))
     }
 
     // ---- Reads ----
