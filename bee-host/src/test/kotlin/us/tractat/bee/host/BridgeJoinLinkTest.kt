@@ -53,6 +53,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * A bridge on another machine, given the host's join link as its `BEE_HOST`: a real [BeeHost], and
@@ -198,6 +199,7 @@ class BridgeJoinLinkTest {
             Rendezvous.Existing(WebSocketAdvertisement(host.socket(BoardRelay.PATH), PeerId("bee-host"), "board")),
             scope,
             clock,
+            TimeSource.Monotonic,
         ).also { it.connect() }
 
         /** The first refusal the claims connection hears, from the gate. */

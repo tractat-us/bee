@@ -56,6 +56,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlin.time.TimeSource
 
 private val log = KotlinLogging.logger("us.tractat.bee.web.Main")
 
@@ -347,6 +348,7 @@ private fun startBoard(http: HttpClient, actor: PeerIdentity, viewer: Viewer, sc
             rendezvous = rendezvous,
             scope = scope,
             clock = clock,
+            timeSource = TimeSource.Monotonic,
             initial = initial,
         )
         val onProblem: (String) -> Unit = { problem.textContent = it }

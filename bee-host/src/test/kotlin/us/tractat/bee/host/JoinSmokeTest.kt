@@ -45,6 +45,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * The join over real loopback sockets: a [BeeHost], and a bridge's three pieces (a board replica,
@@ -76,6 +77,7 @@ class JoinSmokeTest {
                     Rendezvous.Existing(WebSocketAdvertisement("ws://127.0.0.1:${host.port}${BoardRelay.PATH}", PeerId("bee-host"), "board")),
                     bridgeScope,
                     clock,
+                    TimeSource.Monotonic,
                 ).also { it.connect() }
                 // The bridge's own connection, as bee-mcp builds it: links under fresh nodes, presence naming each.
                 val claims = ClaimsConnection(

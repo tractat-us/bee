@@ -38,6 +38,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlin.time.TimeSource
 
 /**
  * The Playwright fixture surfaces (e2e/two-browsers.spec.mjs), one per test so no test sees
@@ -90,7 +91,7 @@ private suspend fun seed(host: URI, fixtures: List<String>, flags: Map<String, S
     )
     val board = BoardPin.learnedFrom { http.askBoardId(HostAddress.parse("http://${host.host}:${host.port}")) }
     fun client(author: ReplicaId) =
-        BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock).pinnedTo(board), rendezvous, scope, clock)
+        BoardClient(author, SpokeLoom(http, Dispatchers.Default, scope, author.value, Random.Default, clock).pinnedTo(board), rendezvous, scope, clock, TimeSource.Monotonic)
     try {
         val author = ReplicaId("e2e-seeder-${Uuid.random()}")
         val writer = client(author).apply { connect() }

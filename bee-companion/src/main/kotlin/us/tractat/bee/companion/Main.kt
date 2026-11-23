@@ -47,6 +47,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlin.time.TimeSource
 
 // Lazy, so the logger starts only after main() has pointed System.out at stderr.
 private val logger by lazy { KotlinLogging.logger {} }
@@ -89,6 +90,7 @@ fun main(args: Array<String>) {
         host.boardRendezvous(),
         scope,
         clock,
+        TimeSource.Monotonic,
     )
     // TODO(kuilt#3110): one refused dial ends clusterClient's reconnect loop, so the connection
     // rebuilds a failed link under a fresh node, as the bridge's does.
