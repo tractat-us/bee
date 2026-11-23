@@ -259,17 +259,17 @@ class BoardState internal constructor(
      */
     fun addedBy(other: BoardState): Patch<BoardState>? {
         val added = BoardState(
-            surfaces = surfaces.addedBy(other.surfaces, EMPTY.surfaces),
-            records = records.addedBy(other.records, EMPTY.records),
-            presence = presence.addedBy(other.presence, EMPTY.presence),
-            departed = departed.addedBy(other.departed, EMPTY.departed),
-            claims = claims.addedBy(other.claims, EMPTY.claims),
+            surfaces = surfaces.ifMoves(other.surfaces, EMPTY.surfaces),
+            records = records.ifMoves(other.records, EMPTY.records),
+            presence = presence.ifMoves(other.presence, EMPTY.presence),
+            departed = departed.ifMoves(other.departed, EMPTY.departed),
+            claims = claims.ifMoves(other.claims, EMPTY.claims),
         )
         return Patch(added).takeIf { added != EMPTY }
     }
 
     /** [other] if it would move this component, else [empty]. */
-    private fun <S : Quilted<S>> S.addedBy(other: S, empty: S): S = if (piece(other) != this) other else empty
+    private fun <S : Quilted<S>> S.ifMoves(other: S, empty: S): S = if (piece(other) != this) other else empty
 
     /**
      * Every surface whose open has arrived, with its meta. One still waiting for its open is left

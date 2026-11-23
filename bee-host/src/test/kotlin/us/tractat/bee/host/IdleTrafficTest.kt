@@ -104,14 +104,20 @@ private suspend fun TestScope.idleMinute(config: QuilterConfig): IdleMinute {
     return IdleMinute(board, star.taps.mapValues { (_, tap) -> IdleMinute.Frames(tap.up.toList(), tap.down.toList()) })
 }
 
-/** A reconnect's traffic: the first-contact board's size, and what came down to each spoke that stayed. */
-private data class Reconnect(val board: Int, val down: Map<String, List<Int>>) {
+/**
+ * A reconnect's traffic: the first-contact board's size, what came down to each spoke that stayed,
+ * and when each of those spokes last saw Sam act, or null if it holds no entry of Sam's.
+ */
+private data class Reconnect(val board: Int, val down: Map<String, List<Int>>, val samActedAt: Map<String, Instant?>) {
     /** How many board-sized frames came down to each spoke that stayed online. */
     fun boardSized(): Map<String, Int> = down.mapValues { (_, sizes) -> sizes.count { it >= board / BOARD_FRACTION } }
 }
 
 private fun entry(replica: ReplicaId, at: Long) =
     PresenceEntry(PeerIdentity.human(replica.value), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(at), waiting = false)
+
+/** When Sam acts offline, in [reconnect]. */
+private val SAM_OFFLINE_ACT = Instant.fromEpochMilliseconds(1)
 
 /**
  * Three spokes on a 40-surface board under relay [seed]. Sam goes offline, posts presence there,
@@ -128,17 +134,25 @@ private suspend fun TestScope.reconnect(seed: Int): Reconnect {
     alex.openBoard(surfaces = 40)
     settle(5.seconds)
     val sam = star.client(SAM)
-    listOf(sam, star.client(CAROL)).forEach { it.connect() }
+    val carol = star.client(CAROL)
+    listOf(sam, carol).forEach { it.connect() }
     settle(5.seconds)
     val board = star.taps.getValue(SAM.value).down.max()
 
     sam.disconnect()
     settle(5.seconds)
-    sam.mutate { it.postPresence(SAM, entry(SAM, at = 1), 1) }
+    sam.mutate { it.postPresence(SAM, entry(SAM, at = SAM_OFFLINE_ACT.toEpochMilliseconds()), 1) }
     star.taps.values.forEach { it.clear() }
     sam.connect()
     settle(5.seconds)
-    return Reconnect(board, listOf(ALEX, CAROL).associate { it.value to star.taps.getValue(it.value).down.toList() })
+    val stayed = mapOf(ALEX to alex, CAROL to carol)
+    return Reconnect(
+        board,
+        stayed.keys.associate { it.value to star.taps.getValue(it.value).down.toList() },
+        stayed.entries.associate { (replica, client) ->
+            replica.value to client.state.value.latestPresence().singleOrNull { it.identity == PeerIdentity.human(SAM.value) }?.lastActedAt
+        },
+    )
 }
 
 /**
@@ -195,6 +209,11 @@ class IdleTrafficTest {
      * bee#262: the host forwards what a spoke's `FullState` adds to its board, not the spoke's
      * whole state. A spoke back from offline one presence post ahead used to send a board-sized
      * frame, through the forward, to every other spoke; now the forward carries the presence.
+     *
+     * The count alone passes a forward that sends nothing, since digests and hellos keep `down`
+     * non-empty. So each spoke that stayed must also hold Sam's offline post. No client here posts
+     * presence on its own (only `Presence` does, and the rig runs none), and the window closes
+     * well inside an anti-entropy round, so only the forward can have brought it.
      */
     @Test
     fun aReconnectOnePresencePostAheadForwardsNoWholeBoard() {
@@ -207,6 +226,10 @@ class IdleTrafficTest {
             { assertTrue(runs.values.all { it.board > 50_000 }, "precondition: the board outweighs a presence post: ${runs.mapValues { it.value.board }}") },
             { assertTrue(runs.values.all { it.down.values.all(List<Int>::isNotEmpty) }, "precondition: the reconnect reached the spokes that stayed: ${runs.mapValues { it.value.down }}") },
             { assertTrue(runs.values.all { run -> run.boardSized().values.all { it == 0 } }, "board-sized frames to the spokes that stayed, per seed: ${runs.mapValues { it.value.boardSized() }}") },
+            {
+                val held = SEEDS.associateWith { mapOf(ALEX.value to SAM_OFFLINE_ACT, CAROL.value to SAM_OFFLINE_ACT) }
+                assertEquals(held, runs.mapValues { it.value.samActedAt }, "when the spokes that stayed saw Sam act, per seed")
+            },
         )
     }
 }

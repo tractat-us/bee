@@ -41,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
@@ -85,8 +86,8 @@ class BoardStateTest {
             { assertEquals(BoardState.EMPTY.surfaces, presenceOnly?.surfaces, "a presence post ahead carries no surface") },
             { assertEquals(BoardState.EMPTY.records, presenceOnly?.records) },
             { assertEquals(hostAhead.piece(editsAhead), edits?.let(hostAhead::piece)) },
-            { assertEquals(null, hostAhead.addedBy(host), "a state behind adds nothing") },
-            { assertEquals(null, hostAhead.addedBy(hostAhead), "an equal state adds nothing") },
+            { assertNull(hostAhead.addedBy(host), "a state behind adds nothing") },
+            { assertNull(hostAhead.addedBy(hostAhead), "an equal state adds nothing") },
         )
     }
 
