@@ -23,7 +23,11 @@ plugins.withType<WasmYarnPlugin> {
             .withPropertyName("beeNotions")
             .withPathSensitivity(PathSensitivity.RELATIVE)
         val yarnIntegrity = nodeModules.file(".yarn-integrity")
-        doFirst { yarnIntegrity.get().asFile.delete() }
+        val installReport = layout.buildDirectory.file("wasm/bee-notions-install-report.txt")
+        doFirst {
+            yarnIntegrity.get().asFile.delete()
+            installReport.get().asFile.delete()
+        }
         val notionsDir = file("bee-notions")
         val installed = nodeModules.dir("@bee/notions")
         doLast {
@@ -34,15 +38,14 @@ plugins.withType<WasmYarnPlugin> {
                 val modules = copy.parentFile.parentFile
                 val wasm = modules.parentFile
                 val report = buildString {
-                    val entries = modules.list()
-                    appendLine("node_modules: ${entries?.let { "${it.size} entries" } ?: "absent"}")
+                    appendLine("node_modules: ${modules.list()?.let { "${it.size} entries" } ?: "absent"}")
                     val scope = copy.parentFile
                     appendLine("node_modules/@bee: ${scope.list()?.sorted()?.ifEmpty { null } ?: "absent or empty"}")
                     if (Files.isSymbolicLink(copy.toPath())) {
                         appendLine("node_modules/@bee/notions: symlink to ${Files.readSymbolicLink(copy.toPath())}")
                     }
                     // doFirst deleted it, so a fresh one means Yarn finished linking and called the tree whole.
-                    val integrity = modules.resolve(".yarn-integrity")
+                    val integrity = yarnIntegrity.get().asFile
                     appendLine(
                         ".yarn-integrity: " + if (integrity.isFile) {
                             "written, ${integrity.length()} bytes, " +
@@ -63,7 +66,7 @@ plugins.withType<WasmYarnPlugin> {
                         },
                     )
                 }
-                wasm.resolve("bee-notions-install-report.txt").writeText(report)
+                installReport.get().asFile.writeText(report)
                 error("Yarn didn't install bee-notions at $copy (bee#93).\n$report")
             }
             // The whole tree, not only what webpack reads today, so a styles/ or assets/ added
