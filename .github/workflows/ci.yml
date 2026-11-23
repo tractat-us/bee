@@ -219,6 +219,10 @@ jobs:
           # installDist: Playwright starts the host from it, and the board-page and orphan-decisions specs' bridges.
           timeout 600 ./gradlew check :bee-host:installDist :bee-mcp:installDist -Pbee.realsocket.tests=true --stacktrace --console=plain
 
+      # A bee-up host keeps its last save when installDist rewrites the install under it (bee#260).
+      - name: Rebuild under a host
+        run: timeout 300 e2e/rebuild-under-host.sh
+
       - name: Playwright
         env:
           # global-setup.mjs runs :bee-host:e2eSeed, which resolves kuilt too.
