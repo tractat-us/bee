@@ -102,7 +102,7 @@ class ClosedSurfacesTest {
         sam.mutate { it.closeSurface(SAM, "late", star.clock() - 2.days) }
         settle(KEPT_FOR - 5.minutes)
         val inGrace = star.relay.state.value.closedSurfaces()
-        settle(5.minutes + 2 * NEXT_CHECK)
+        settle(5.minutes + NEXT_CHECK * 2)
         assertAll(
             { assertEquals(listOf("late"), inGrace, "an old closedAt alone doesn't remove it") },
             { assertEquals(emptySet(), star.relay.state.value.surfaces.keys, "a period after the host saw it, it goes") },
@@ -186,7 +186,7 @@ class ClosedSurfacesTest {
         val meta = SurfaceMeta("Notes", NOTIONS_CATALOG_ID, PeerIdentity.human("sam"), claims.clock())
         relay.mutate { it.openSurface(relay.replica, "old", meta, listOf(root), JsonObject(emptyMap())) }
         relay.mutate { it.closeSurface(relay.replica, "old", claims.clock()) }
-        settle(KEPT_FOR * 2 + 2 * NEXT_CHECK)
+        settle(KEPT_FOR * 2 + NEXT_CHECK * 2)
         val left = relay.state.value.surfaces.keys
         core.close()
         assertEquals(emptySet(), left)
