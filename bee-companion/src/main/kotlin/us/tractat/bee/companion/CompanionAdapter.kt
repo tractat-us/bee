@@ -86,8 +86,10 @@ private val logger = KotlinLogging.logger {}
  *   completed, so no restart writes it twice. The timestamp is when the click was made.
  * - `stateDir/bee-companion.json`, written whole or not at all, keeps the [board] it's on, its
  *   [surface] there, and the last screen handled, so a restart neither pushes that screen again
- *   nor clears its events. It also says whether the board had the surface then; if it did, a
- *   restart on the same board waits for the surface to arrive and never opens a second one. That
+ *   nor clears its events. It also says whether the board had the surface open then; if it did, a
+ *   restart on the same board waits for the surface to arrive and never opens a second one. A
+ *   surface closed, by the companion or anyone else, is noted as not open, because a day later the
+ *   host removes it (bee#274) and a restart opens it afresh. That
  *   wait is bounded: a board that still lacks it after [surfaceWait] (its host crashed before its
  *   save) fails the companion with [SurfaceMissing]. A file naming another board (a new host, a
  *   moved `board/`, another `BEE_HOST`) counts as none: the companion starts over, under a fresh id.
@@ -145,8 +147,19 @@ class CompanionAdapter(
         launch { handleClicks() }
         while (true) {
             sync()
+            noteClosed()
             delay(pollEvery)
         }
+    }
+
+    /**
+     * Notes in [keptFile] that the surface is no longer open, once it's closed on the board: whoever
+     * closed it, the host removes it a day later (bee#274), and a restart must not wait for it.
+     */
+    private suspend fun noteClosed() = turn.withLock {
+        if (kept.shown?.hadSurface != true || client.state.value.meta(surface)?.closedAt == null) return@withLock
+        kept = kept.copy(shown = kept.shown?.copy(hadSurface = false))
+        writeKept(kept)
     }
 
     /**
@@ -171,7 +184,8 @@ class CompanionAdapter(
      * Closes [surface], as a graceful stop does, so a finished session leaves no open, dead Sketch
      * on the board, and waits until the host has the close. Unbounded: the caller bounds it. Only
      * the surface closes: `bee-companion.json` still names the screen shown, so a restart over the
-     * same directories leaves the surface closed until the agent pushes a new screen.
+     * same directories leaves the surface closed until the agent pushes a new screen. The close is
+     * noted there, so that restart doesn't wait for a surface the host may have removed by then.
      *
      * @return whether the host acknowledged the close; false when the companion is offline
      */
@@ -179,6 +193,10 @@ class CompanionAdapter(
         client.mutateOrSkip { state ->
             val open = state.surfaceDoc(surface) != null && state.meta(surface)?.closedAt == null
             if (open) state.closeSurface(author, surface, clock()) else null
+        }
+        kept.shown?.takeIf { it.hadSurface }?.let { shown ->
+            kept = kept.copy(shown = shown.copy(hadSurface = false))
+            writeKept(kept)
         }
         client.awaitAcknowledged()
     }
@@ -211,7 +229,8 @@ class CompanionAdapter(
             report(line)
         }
         // A refused screen counts as handled too, so it isn't retried every poll.
-        kept = kept.copy(shown = Shown(screen.name, screen.mtime, hadSurface = client.state.value.surfaceDoc(surface) != null))
+        val after = client.state.value
+        kept = kept.copy(shown = Shown(screen.name, screen.mtime, hadSurface = after.surfaceDoc(surface) != null && after.meta(surface)?.closedAt == null))
         writeKept(kept)
     }
 
@@ -370,7 +389,10 @@ class CompanionAdapter(
         }
     }
 
-    /** The last screen handled, by name and mtime, and whether the board had the surface after it. */
+    /**
+     * The last screen handled, by name and mtime, and whether the board had the surface open after
+     * it, or since: [hadSurface] goes false once the surface is closed.
+     */
     private data class Shown(val file: String, val mtime: Long, val hadSurface: Boolean) {
         fun json() = buildJsonObject {
             put("file", file)
