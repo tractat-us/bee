@@ -24,6 +24,7 @@ import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.Quilted
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.Rga
+import us.tractat.kuilt.crdt.RgaOp
 import us.tractat.kuilt.crdt.VersionVector
 import us.tractat.kuilt.raft.NodeId
 import kotlin.time.Instant
@@ -216,29 +217,34 @@ class BoardState internal constructor(
     }
 
     /**
-     * Removes every surface closed at or before [closedBy], with its action records and their claims'
-     * mirror (bee#274). Only the host calls it, on a timer.
+     * Removes each surface of [ids] that is closed at or before [closedBy], with its action records
+     * and their claims' mirror (bee#274). Only the host calls it, from [ids] it has seen closed for
+     * its grace period; checking the close again here, in the host's `mutate`, means a reopen the
+     * host has already merged keeps the surface.
      *
      * The removal is causal: it retires the surface's tags this replica has seen, so an older copy
      * on a lagging replica, holding only tags seen here, can't bring the surface back on merge. A
-     * write this replica hasn't seen keeps its tag, and the surface comes back holding that writer's
-     * contributions alone (add-wins). If the writer never opened the surface, the copy holds no meta
-     * and stays unshown ([SurfaceDoc.meta]); if it did, it shows as that writer last left it.
+     * write this replica hasn't seen keeps its tag (add-wins), and its writer's tag carries
+     * everything that writer ever contributed to the surface, its own close included:
+     * - from a writer that neither opened nor closed it, the copy holds no meta and stays unshown
+     *   ([SurfaceMeta] is read only once an open's fields are there, bee#171), and its id can't be
+     *   opened again;
+     * - from the opener, it shows open again, without anyone else's writes;
+     * - from the closer, a copy that never saw the open stays unshown, but once the same id is opened
+     *   afresh, the old `closedAt` is concurrent with the new open's null and wins, so the new surface
+     *   shows closed at the old time, and is removed in turn once the host has seen it closed for its
+     *   grace period. A writer offline for the whole grace period, such as a laptop asleep, is enough.
      *
      * A record's tombstone keeps its value until the records are compacted, so removing records hides
      * them rather than shrinking the board. A claim's mirror is tombstoned one past its own index,
      * and [mirrorClaims] never writes a removed record's claim again.
      */
-    fun compactClosed(replica: ReplicaId, closedBy: Instant): Patch<BoardState> {
+    fun compactClosed(replica: ReplicaId, ids: Set<String>, closedBy: Instant): Patch<BoardState> {
         requireReplica(replica)
-        val gone = closedBy(closedBy)
+        val gone = closedBy(closedBy) intersect ids
         val surfacesDelta = gone.fold(ORMap.empty<String, JsonCrdt>()) { delta, id -> delta.piece(surfaces.remove(id).delta) }
-        val removed = records.entries().filter { (_, record) -> record.surfaceId in gone }.map { it.first }.toSet()
-        val recordsDelta = records.entries().withIndex().filter { (_, entry) -> entry.first in removed }.reversed()
-            .fold(records to Rga.empty<ActionRecord>()) { (rga, delta), (index, _) ->
-                val (next, op) = requireNotNull(rga.removeAt(index))
-                next to delta.apply(op)
-            }.second
+        val removed = records.entries().filter { (_, record) -> record.surfaceId in gone }.map { it.first }
+        val recordsDelta = removed.fold(Rga.empty<ActionRecord>()) { delta, id -> delta.apply(RgaOp.Remove(id)) }
         val claimsDelta = removed.map { RecordId(it.dot).claimTarget.value }
             .fold(LWWMap.empty<String, ClaimView>()) { delta, key ->
                 claims[key]?.let { view -> delta.piece(claims.remove(replica, view.logIndex + 1, key).delta) } ?: delta
@@ -260,7 +266,7 @@ class BoardState internal constructor(
         .sortedWith(compareByDescending<Pair<String, SurfaceMeta>> { it.second.closedAt }.thenBy { it.first })
         .map { it.first }
 
-    /** The surfaces closed at or before [instant]: what [compactClosed] removes. */
+    /** The surfaces closed at or before [instant], by their closers' clocks. */
     fun closedBy(instant: Instant): Set<String> =
         surfaceMetas().filter { (_, meta) -> meta.closedAt?.let { it <= instant } == true }.map { it.first }.toSet()
 
