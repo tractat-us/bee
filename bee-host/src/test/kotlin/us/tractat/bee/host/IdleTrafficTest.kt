@@ -18,8 +18,10 @@ import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.quilter.QuilterConfig
 import us.tractat.kuilt.test.assertAll
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -61,6 +63,43 @@ private suspend fun BoardClient.openBoard(surfaces: Int) = repeat(surfaces) { n 
     mutate { it.openSurface(ALEX, id, meta, components, JsonObject(emptyMap())) }
 }
 
+/** One idle minute's traffic: the first-contact board's size, and each spoke's tap as it saw that minute. */
+private data class IdleMinute(val board: Int, val frames: Map<String, Frames>) {
+    data class Frames(val up: List<Int>, val down: List<Int>)
+
+    /** How many board-sized frames crossed each spoke's link, either way. */
+    fun boardSized(): Map<String, Int> = frames.mapValues { (_, f) -> (f.up + f.down).count { it >= board / BOARD_FRACTION } }
+}
+
+/**
+ * Three spokes on a 40-surface board, the host [LAG] behind on every link, then a minute of
+ * nothing but each spoke's presence post every [Presence.EVERY], under [config].
+ */
+private suspend fun TestScope.idleMinute(config: QuilterConfig): IdleMinute {
+    val star = BoardStar(this, config.copy(expectVirtualTime = true), lag = LAG)
+    star.start()
+    val alex = star.client(ALEX)
+    alex.connect()
+    settle(LAG * 3)
+    alex.openBoard(surfaces = 40)
+    settle(10.seconds)
+    val spokes = listOf(ALEX to alex) + listOf(SAM, CAROL).map { it to star.client(it) }
+    spokes.drop(1).forEach { (_, client) -> client.connect() }
+    settle(10.seconds)
+    val board = star.taps.getValue(SAM.value).down.max()
+    star.taps.values.forEach { it.clear() }
+
+    var clock = 0L
+    repeat((1.minutes / Presence.EVERY).toInt()) {
+        spokes.forEach { (replica, client) ->
+            val entry = PresenceEntry(PeerIdentity.human(replica.value), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(0), waiting = false)
+            client.mutate { it.postPresence(replica, entry, ++clock) }
+        }
+        settle(Presence.EVERY)
+    }
+    return IdleMinute(board, star.taps.mapValues { (_, tap) -> IdleMinute.Frames(tap.up.toList(), tap.down.toList()) })
+}
+
 /**
  * An idle board costs its host traffic in proportion to what changes, not to the board's size
  * times the clock (bee#256). A host that a 9 MB board and a few MCP sessions put behind its
@@ -77,32 +116,34 @@ private suspend fun BoardClient.openBoard(surfaces: Int) = repeat(surfaces) { n 
 class IdleTrafficTest {
     @Test
     fun anIdleBoardBehindALaggingHostShipsTheWholeBoardRarely() = runTest(StandardTestDispatcher()) {
-        val star = BoardStar(this, BEE_QUILTER_CONFIG.copy(expectVirtualTime = true), lag = LAG)
-        star.start()
-        val alex = star.client(ALEX)
-        alex.connect()
-        settle(LAG * 3)
-        alex.openBoard(surfaces = 40)
-        settle(10.seconds)
-        val spokes = listOf(ALEX to alex) + listOf(SAM, CAROL).map { it to star.client(it) }
-        spokes.drop(1).forEach { (_, client) -> client.connect() }
-        settle(10.seconds)
-        val board = star.taps.getValue(SAM.value).down.max()
-        star.taps.values.forEach { it.clear() }
-
-        var clock = 0L
-        repeat((1.minutes / Presence.EVERY).toInt()) {
-            spokes.forEach { (replica, client) ->
-                val entry = PresenceEntry(PeerIdentity.human(replica.value), claimsNode = null, status = null, lastActedAt = Instant.fromEpochMilliseconds(0), waiting = false)
-                client.mutate { it.postPresence(replica, entry, ++clock) }
-            }
-            settle(Presence.EVERY)
-        }
-
-        val boardSized = star.taps.mapValues { (_, tap) -> (tap.up + tap.down).count { it >= board / BOARD_FRACTION } }
+        val minute = idleMinute(BEE_QUILTER_CONFIG)
+        val boardSized = minute.boardSized()
         assertAll(
-            { assertTrue(board > 50_000, "precondition: the board ($board B) outweighs a presence post") },
-            { assertTrue(boardSized.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE }, "board-sized frames ($board B) over a minute idle, per spoke: $boardSized") },
+            { assertTrue(minute.board > 50_000, "precondition: the board (${minute.board} B) outweighs a presence post") },
+            { assertTrue(boardSized.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE }, "board-sized frames (${minute.board} B) over a minute idle, per spoke: $boardSized") },
+        )
+    }
+
+    /**
+     * The counts above are a measurement only if the rig replays exactly: every Quilter on the
+     * test scheduler's clock and a seeded random. Before they were injected, each Quilter read the
+     * wall clock for its stale-digest skip and drew its anti-entropy peer from an unseeded random,
+     * so the same minute gave different counts run to run (tractat-us/kuilt#3622). Two runs here
+     * must put the same frames, of the same sizes in the same order, on every spoke's link. The
+     * 1 s backstop is the tuning whose rounds land inside the skip's window, so it is the one the
+     * wall clock moved most.
+     */
+    @Test
+    fun anIdleMinuteReplaysFrameForFrame() {
+        val config = BEE_QUILTER_CONFIG.copy(antiEntropyInterval = 1.seconds)
+        val runs = List(2) {
+            lateinit var minute: IdleMinute
+            runTest(StandardTestDispatcher()) { minute = idleMinute(config) }
+            minute
+        }
+        assertAll(
+            { assertTrue(runs[0].boardSized().values.any { it > 0 }, "precondition: the minute ships whole boards: ${runs[0].boardSized()}") },
+            { assertEquals(runs[0], runs[1], "two runs of one idle minute, board-sized frames per spoke: ${runs.map { it.boardSized() }}") },
         )
     }
 }
