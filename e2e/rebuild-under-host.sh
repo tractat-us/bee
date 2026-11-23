@@ -5,7 +5,8 @@
 #
 # Starts a host through bin/bee-up, draws a surface on its board, rewrites the host install's
 # bee-host.jar in place the way installDist does, then stops the host. It passes when the host's
-# shutdown logged no NoClassDefFoundError and the next bee-up restores the surface.
+# shutdown logged no NoClassDefFoundError and the next bee-up restores the surface. It also checks
+# that the next bee-up removes the copies of the install no host runs, and only those.
 #
 # It never touches this checkout's own install: bee-up and bee-env run from a scratch checkout
 # holding a copy of bee-host and bee-mcp's installs, with a scratch BEE_HOME, on a port the host
@@ -41,10 +42,11 @@ cp -R "$repo/bee-host/build/install/bee-host" "$checkout/bee-host/build/install/
 cp -R "$repo/bee-mcp/build/install/bee-mcp" "$checkout/bee-mcp/build/install/"
 log=$BEE_HOME/host.log
 pid=""
+held=""
 
-# Stops the host this check started, by the pid it recorded, whatever happened.
+# Stops the hosts this check started, by the pids it recorded, whatever happened.
 finish() {
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill "$pid"; fi
+    for p in $pid $held; do kill -0 "$p" 2>/dev/null && kill "$p"; done
     rm -rf "$scratch"
 }
 trap finish EXIT
@@ -62,6 +64,8 @@ up() {
     pid=$(cat "$BEE_HOME/host.pid")
     port=$(sed -n 's/.*bee host on http:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$log" | tail -1)
 }
+# The install the host with pid $1 runs, as its launcher named it on the classpath.
+install_of() { ps -o command= -p "$1" | sed 's/.* -classpath \([^:]*\)\/lib\/.*/\1/'; }
 
 # One JSON-RPC message to the host's MCP endpoint, as a Claude with nothing installed sends it.
 session=""
@@ -75,7 +79,8 @@ mcp() {
 }
 
 up
-echo "Host up (pid $pid, port $port), running $(ps -o command= -p "$pid" | sed 's/.* -classpath \([^:]*\)\/lib\/.*/\1/')"
+first_copy=$(install_of "$pid")
+echo "Host up (pid $pid, port $port), running $first_copy"
 mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"rebuild-check","version":"0"}}}'
 [ -n "$session" ] || fail "the host's MCP endpoint gave no session"
 mcp '{"jsonrpc":"2.0","method":"notifications/initialized"}'
@@ -97,18 +102,32 @@ if grep -q -e NoClassDefFoundError -e 'Exception in thread' "$log"; then
     fail "the host's shutdown died after the rebuild, so its last save never ran"
 fi
 
+# Two copies wait beside the first host's: one a host still runs, one nobody does. The next start
+# must remove only the one nobody runs.
+copies=$BEE_HOME/host-installs
+cp -R "$first_copy" "$copies/held"
+cp -R "$first_copy" "$copies/stale"
+"$copies/held/bin/bee-host" --port 0 --data-dir "$scratch/held-data" > "$scratch/held.log" 2>&1 &
+held=$!
+for _ in $(seq 1 120); do grep -q 'bee host on http' "$scratch/held.log" && break; sleep 0.5; done
+grep -q 'bee host on http' "$scratch/held.log" || fail "the host on the held copy didn't come up"
+
 up
 restored=$(grep 'board .* restored as ' "$log" | tail -1)
 case $restored in
     *": 1 surfaces"*) ;;
     *) fail "the next host didn't restore the surface drawn before the rebuild: ${restored:-no restore line}" ;;
 esac
-# The next host runs the rebuilt install, from a copy of its own; the first host's copy is gone.
-running_from=$(ps -o command= -p "$pid" | sed 's/.* -classpath \([^:]*\)\/lib\/.*/\1/')
-copies=$(find "$BEE_HOME/host-installs" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')
-[ "$(dirname "$running_from")" = "$BEE_HOME/host-installs" ] || fail "the next host runs from $running_from, not a copy"
+# The next host runs the rebuilt install, from a copy of its own.
+running_from=$(install_of "$pid")
+[ "$(dirname "$running_from")" = "$copies" ] || fail "the next host runs from $running_from, not a copy"
 cmp -s "$running_from/lib/bee-host.jar" "$jar" || fail "the next host's copy isn't the rebuilt install"
-[ "$copies" = 1 ] || fail "$copies copies of the install are kept; only the running host's should be"
+[ -d "$copies/held" ] || fail "bee-up removed the copy a running host runs from"
+[ ! -e "$copies/stale" ] || fail "bee-up kept a copy no host runs"
+[ ! -e "$first_copy" ] || fail "bee-up kept the first host's copy after that host stopped"
 "$checkout/bin/bee-up" --stop > /dev/null
 pid=""
-echo "PASS: the host stopped cleanly after a rebuild under it, and the next one restored the board."
+kill "$held"
+wait "$held" || true
+held=""
+echo "PASS: the host stopped cleanly after a rebuild under it, the next one restored the board, and only unused copies were removed."
