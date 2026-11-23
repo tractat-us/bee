@@ -38,8 +38,8 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.HostBoard")
 
 /**
  * Everything the host runs but its server: the [board], the claims [voter] mirroring onto it, the
- * departures reading both, and the removal of surfaces closed for a day ([ClosedSurfaces]). [BeeHost] puts a Netty server in front of it; tests run it in
- * memory. Invariant: **[close] saves the board last, whatever fails before it, and after the
+ * departures reading both, and the removal of surfaces closed for a day ([ClosedSurfaces]).
+ * [BeeHost] puts a Netty server in front of it; tests run it in memory. Invariant: **[close] saves the board last, whatever fails before it, and after the
  * server has stopped taking writes.**
  */
 class HostCore private constructor(
