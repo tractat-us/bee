@@ -103,7 +103,8 @@ install_copy() {
     if [ ! -d "$installs/$key" ]; then
         mkdir -p "$installs"
         tmp=$(mktemp -d "$installs/.copying.XXXXXX")
-        cp -R "$1/." "$tmp/"
+        # A command substitution doesn't inherit set -e: a failed copy returns, and bee-up stops.
+        cp -R "$1/." "$tmp/" || { rm -rf "$tmp"; return 1; }
         # Named by what was copied, in case a build rewrote the install during the copy.
         key=$(install_key "$tmp")
         if [ -d "$installs/$key" ]; then rm -rf "$tmp"; else mv "$tmp" "$installs/$key"; fi
