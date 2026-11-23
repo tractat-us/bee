@@ -125,5 +125,8 @@ and building the tool instead of the work is an anti-goal
   can't be opened again. Where it hasn't, a fresh open of the same id merges with it when it does.
   The old writes show on the new surface, and a closer's old close wins over the new open, so the
   new surface shows closed at the old time and goes in turn, a day later. A writer offline for the
-  whole day, such as a laptop asleep, is enough. Whether a removed id should stay removed:
+  whole day, such as a laptop asleep, is enough. The two things that reuse an id are the ones
+  exposed. A brainstorming companion's `companion-<id>` goes quiet: its screens stop showing, and
+  nothing fails. An orphan decision posted again as `orphan-<target>` stays hidden, with no title.
+  Whether a removed id should stay removed:
   [#274](https://github.com/tractat-us/bee/issues/274).
