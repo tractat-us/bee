@@ -95,7 +95,6 @@ pid=""
 if grep -q -e NoClassDefFoundError -e 'Exception in thread' "$log"; then
     fail "the host's shutdown died after the rebuild, so its last save never ran"
 fi
-cp "$log" "$scratch/first-host.log"
 
 up
 restored=$(grep 'board .* restored as ' "$log" | tail -1)
@@ -103,6 +102,12 @@ case $restored in
     *": 1 surfaces"*) ;;
     *) fail "the next host didn't restore the surface drawn before the rebuild: ${restored:-no restore line}" ;;
 esac
+# The next host runs the rebuilt install, from a copy of its own; the first host's copy is gone.
+running_from=$(ps -o command= -p "$pid" | sed 's/.* -classpath \([^:]*\)\/lib\/.*/\1/')
+copies=$(find "$BEE_HOME/host-installs" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')
+[ "$(dirname "$running_from")" = "$BEE_HOME/host-installs" ] || fail "the next host runs from $running_from, not a copy"
+cmp -s "$running_from/lib/bee-host.jar" "$jar" || fail "the next host's copy isn't the rebuilt install"
+[ "$copies" = 1 ] || fail "$copies copies of the install are kept; only the running host's should be"
 "$checkout/bin/bee-up" --stop > /dev/null
 pid=""
 echo "PASS: the host stopped cleanly after a rebuild under it, and the next one restored the board."
