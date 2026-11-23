@@ -50,7 +50,11 @@ get onto it. A rule here binds every subsystem that puts something in front of a
   An empty board shows one quiet hint on how to start.
 - **Clearing the board closes surfaces, it doesn't delete them.** Closed surfaces wait in a
   collapsed history strip ([`HistoryStrip.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/HistoryStrip.kt),
-  [spec §6.1](../superpowers/specs/2026-11-06-bee-design.md#61-surfaces)).
+  [spec §6.1](../superpowers/specs/2026-11-06-bee-design.md#61-surfaces)), where anyone can
+  reopen one. A day after its close the host removes it from the board, with its records, so a
+  board doesn't keep every surface it ever showed (Iain, 2026-11-23;
+  [`ClosedSurfaces.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/ClosedSurfaces.kt),
+  [#274](https://github.com/tractat-us/bee/issues/274)).
 - **Three ways onto a hosted board.** The owner opens it with the owner key. Anyone on it
   presses Invite for a link, and whoever opens that link types a name and presses Join
   ([`JoinByInvite.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/JoinByInvite.kt),
@@ -103,9 +107,18 @@ and building the tool instead of the work is an anti-goal
 - **A guess at an invite costs the host nothing.** Rejected: a per-address limit on unknown
   secrets. An IPv6 caller sidesteps it with a fresh address per guess, and the table it keeps
   grows without bound; the 256-bit secret is the defence. ([#218](https://github.com/tractat-us/bee/pull/218), 2026-11-09)
+- **A closed surface is removed a day after its close.** Rejected: keeping every closed surface
+  forever so it can always be reopened. On the 8233 board closed surfaces were most of a 10 MB
+  snapshot that every replica holds. ([#274](https://github.com/tractat-us/bee/issues/274), Iain, 2026-11-23)
 
 ## Open
 
 - **Does "infinite" mean a pan-and-zoom canvas?** Today the board is a page of cards. Whether an
   endless 2D canvas is what Iain means, or a page that never runs out of room meets it:
   [#150](https://github.com/tractat-us/bee/issues/150).
+- **What a write racing a surface's removal should show.** The removal retires only what the
+  host had seen, so a write it hadn't comes back holding its writer's contributions alone. From a
+  writer that didn't open the surface it stays hidden, and its id can't be opened again. From the
+  opener it shows the surface open again, without anyone else's writes. Whether that's good
+  enough, or a removed id should stay removed:
+  [#274](https://github.com/tractat-us/bee/issues/274).

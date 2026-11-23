@@ -13,8 +13,9 @@ import us.tractat.kuilt.crdt.ReplicaId
 
 /**
  * The history strip (spec §6.1): the board's closed surfaces, newest first, collapsed until the
- * person opens it. "Clear the board" closes surfaces and never deletes them, so a click on one
- * here reopens it with its content and its records ([BoardState.reopenSurface]).
+ * person opens it. "Clear the board" closes surfaces and doesn't delete them, so a click on one
+ * here reopens it with its content and its records ([BoardState.reopenSurface]). A day after its
+ * close the host removes it, and it leaves the strip (bee#274).
  *
  * It's a `<details id="history">`, so its entries are hidden until opened. Each entry is a button
  * showing the surface's title as text, with `data-surface-id`.

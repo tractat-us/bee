@@ -39,8 +39,8 @@ These write to the board, and everyone attached sees the result:
 |---|---|
 | `bee_surface_open` | Puts a new surface on the board, and closes any it names in `replaces` in the same write. |
 | `bee_surface_update` | Changes a surface in place: its title, its components, its data, or new entries such as a poll's options. |
-| `bee_surface_close` | Closes a surface. It moves to the history strip with its content and records. |
-| `bee_board_clear` | Closes every open surface except the host's. Nothing is deleted. |
+| `bee_surface_close` | Closes a surface. It moves to the history strip with its content and records, and a day later the host removes it. |
+| `bee_board_clear` | Closes every open surface except the host's. Nothing is deleted until a day later. |
 | `bee_action_done` | Marks an action record handled. |
 | `bee_wait_action` | Waits up to a minute for the next click, vote, answer or chat message, on one surface or on every surface this session opened, and claims it for this session. Never one the session wrote itself, such as its own chat message. While it waits, the session's cards show it's listening. |
 | `bee_claim` | Claims an action record or a card for this session. Exactly one claimer wins. |

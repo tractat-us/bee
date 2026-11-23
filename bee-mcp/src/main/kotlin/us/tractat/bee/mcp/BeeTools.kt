@@ -130,7 +130,7 @@ object BeeTools {
         server.addTool(
             name = CLOSE,
             toolAnnotations = ToolHints.write(destructive = true, idempotent = true),
-            description = "Puts a surface's closing $SHARED. A closed surface keeps its content and records.",
+            description = "Puts a surface's closing $SHARED. A closed surface keeps its content and records for a day, then the host removes it.",
             inputSchema = schema(required = listOf("surfaceId")) { putJsonObject("surfaceId") { put("type", "string") } },
         ) { request ->
             tool {
