@@ -114,7 +114,7 @@ private fun overBound(): BoardState = opened(buildJsonObject { put("note", "x".r
 
 private fun TestScope.client(loom: Loom, initial: BoardState, maxPayloadBytes: Int = BOUND, settleAfter: Duration = 5.seconds) = BoardClient(
     A, loom, Rendezvous.Existing(InMemoryTag("board")), backgroundScope, { Instant.fromEpochMilliseconds(testScheduler.currentTime) },
-    initial, CONFIG, Random(0), maxPayloadBytes = maxPayloadBytes, settleAfter = settleAfter,
+    testScheduler.timeSource, initial, CONFIG, Random(0), maxPayloadBytes = maxPayloadBytes, settleAfter = settleAfter,
 )
 
 private fun TestScope.relay(hangUpOver: Int, closeTakes: Duration = Duration.ZERO, linkBudget: Int? = null): HangUpRelay {

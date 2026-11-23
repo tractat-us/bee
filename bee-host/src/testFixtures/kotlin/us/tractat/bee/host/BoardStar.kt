@@ -46,7 +46,7 @@ class BoardStar(
     lateinit var relay: BoardRelay
 
     suspend fun start() {
-        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, Random(0), config = config)
+        relay = BoardRelay.hosted(test.backgroundScope, source, dispatcher, ReplicaId("host-test"), clock, test.testScheduler.timeSource, Random(0), config = config)
     }
 
     fun loom(name: String, scope: CoroutineScope = test.backgroundScope) = SpokeLoom(scope, name, Random(name.hashCode()), clock) { id, _ ->
@@ -63,7 +63,10 @@ class BoardStar(
         loom: SpokeLoom = loom(author.value),
         scope: CoroutineScope = test.backgroundScope,
         maxPayloadBytes: Int = BOARD_PAYLOAD_BYTES,
-    ) = BoardClient(author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, config = config, maxPayloadBytes = maxPayloadBytes)
+    ) = BoardClient(
+        author, loom, Rendezvous.Existing(InMemoryTag("board")), scope, clock, test.testScheduler.timeSource,
+        config = config, random = Random(author.value.hashCode() + 1), maxPayloadBytes = maxPayloadBytes,
+    )
 
     /** This end, each frame it receives arriving [lag] after it was sent, in send order. */
     private fun Connection.lagged(): Connection = if (lag == Duration.ZERO) this else Lagged(this)

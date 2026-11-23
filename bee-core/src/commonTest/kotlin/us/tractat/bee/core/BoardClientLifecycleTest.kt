@@ -58,7 +58,7 @@ class BoardClientLifecycleTest {
         val loom = InMemoryLoom()
         loom.weave(Rendezvous.New(Pattern("board")))
         val clock = { Instant.fromEpochMilliseconds(testScheduler.currentTime) }
-        val alex = BoardClient(A, loom, Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock, opened(), CONFIG, Random(0))
+        val alex = BoardClient(A, loom, Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock, testScheduler.timeSource, opened(), CONFIG, Random(0))
         alex.connect()
         runCurrent()
         val stale = assertNotNull(alex.liveConnection(), "precondition: alex is connected")
@@ -76,7 +76,7 @@ class BoardClientLifecycleTest {
         val mesh = InMemoryLoom()
         mesh.weave(Rendezvous.New(Pattern("board")))
         val clock = { Instant.fromEpochMilliseconds(testScheduler.currentTime) }
-        val alex = BoardClient(A, FailingLoom(mesh, failures = 1), Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock, config = CONFIG, random = Random(0))
+        val alex = BoardClient(A, FailingLoom(mesh, failures = 1), Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock, testScheduler.timeSource, config = CONFIG, random = Random(0))
         alex.connect()
         runCurrent()
         val afterRefusal = alex.lastFailure.value
@@ -114,7 +114,7 @@ class BoardClientLifecycleTest {
             mesh.weave(rendezvous)
         }
         val alex = BoardClient(
-            A, loom, Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock,
+            A, loom, Rendezvous.Existing(InMemoryTag("board")), backgroundScope, clock, testScheduler.timeSource,
             config = CONFIG, random = Random(0), dialTimeout = 5.seconds,
         )
         alex.connect()
