@@ -340,6 +340,58 @@ class CompanionAdapterTest {
     }
 
     /**
+     * bee#274: a companion stopped gracefully closes its surface, and a day later the host removes
+     * it. A restart over the same directories doesn't wait for the removed surface: it opens it
+     * afresh with the next screen.
+     */
+    @Test
+    fun aRestartAfterTheHostRemovedTheClosedSurfaceOpensItAfresh() = runTest(timeout = 240.seconds) {
+        val rig = rig(this).apply { start() }
+        rig.screen("layout.html", "<p>layout</p>")
+        val first = rig.companion()
+        rig.shows(rig.browser()) { "layout" in it }
+        first.adapter.closeSurface()
+        first.stop()
+        rig.removeFromTheBoard(rig.surface)
+
+        val second = rig.companion()
+        rig.screen("next.html", "<p>next</p>")
+        val state = rig.shows(rig.browser("web-sam")) { "next" in it }
+        assertAll(
+            { assertEquals(listOf(second.surface), state.openSurfaces()) },
+            { assertFalse(second.failed.isCompleted, "it didn't fail") },
+        )
+        rig.close()
+    }
+
+    /**
+     * The same, when someone else closed the surface while the companion ran: it notes the close,
+     * so after it's killed and the host removes the surface, a restart doesn't wait for it.
+     */
+    @Test
+    fun aRestartAfterSomeoneElsesCloseAndTheRemovalOpensItAfresh() = runTest(timeout = 240.seconds) {
+        val rig = rig(this).apply { start() }
+        rig.screen("layout.html", "<p>layout</p>")
+        val first = rig.companion()
+        val browser = rig.browser()
+        rig.shows(browser) { "layout" in it }
+        browser.client.mutate { it.closeSurface(browser.author, rig.surface, rig.claims.clock()) }
+        withTimeout(WAIT) { first.client.state.first { rig.surface in it.closedSurfaces() } }
+        delay(1.seconds)
+        first.stop()
+        rig.removeFromTheBoard(rig.surface)
+
+        val second = rig.companion()
+        rig.screen("next.html", "<p>next</p>")
+        val state = rig.shows(rig.browser("web-sam")) { "next" in it }
+        assertAll(
+            { assertEquals(listOf(second.surface), state.openSurfaces()) },
+            { assertFalse(second.failed.isCompleted, "it didn't fail") },
+        )
+        rig.close()
+    }
+
+    /**
      * A companion whose state names another board (a new host, a moved `board/`, another
      * `BEE_HOST`) doesn't wait for a surface that board never had: it shows the newest screen.
      */
