@@ -1,0 +1,45 @@
+name: wasm install state
+description: >-
+  Upload what the Kotlin wasm Yarn install left in build/wasm, so a failed install such as
+  bee#269's missing bee-notions copy reads from one artifact. Call it with `if: failure()`.
+
+inputs:
+  name:
+    description: The artifact's name, unique within the run.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The Kotlin plugin keeps none of Yarn's output when Yarn exits 0, so the tree is the evidence.
+    # The root build.gradle.kts writes bee-notions-install-report.txt when its bee-notions guard fails.
+    - name: Record node_modules
+      shell: bash
+      run: |
+        mkdir -p build/wasm
+        {
+          echo "## ls -la build/wasm/node_modules/@bee"
+          ls -la build/wasm/node_modules/@bee 2>&1 || true
+          echo "## entries in build/wasm/node_modules"
+          ls -A build/wasm/node_modules 2>/dev/null | wc -l
+          echo "## every @bee/notions under build/wasm"
+          find build/wasm -maxdepth 6 -path '*/node_modules/@bee/notions' -exec ls -ld {} + 2>/dev/null || true
+          echo "## bee-notions in Yarn's global cache"
+          ls -ld "$HOME"/.cache/yarn/v6/*bee-notions* 2>&1 || true
+        } > build/wasm/node-modules-state.txt
+
+    - name: Upload
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.name }}
+        path: |
+          build/wasm/node-modules-state.txt
+          build/wasm/bee-notions-install-report.txt
+          build/wasm/node_modules/.yarn-integrity
+          build/wasm/package.json
+          build/wasm/yarn.lock
+          build/wasm/packages/*/package.json
+        # .yarn-integrity is a dotfile, which upload-artifact skips by default.
+        include-hidden-files: true
+        if-no-files-found: ignore
+        retention-days: 7

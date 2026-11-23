@@ -65,6 +65,13 @@ jobs:
           # The page rides in its own jar; an image without it serves no board.
           test -f bee-host/build/install/bee-host/lib/bee-host-web.jar
 
+      # What the wasm Yarn install left behind, for a failure like bee#269's.
+      - name: wasm install state
+        if: failure()
+        uses: ./.github/actions/wasm-install-state
+        with:
+          name: wasm-install-state-deploy
+
       - name: Install flyctl
         if: env.FLY_API_TOKEN != ''
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6

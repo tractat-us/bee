@@ -88,6 +88,13 @@ jobs:
           [ -n "$S3_BUILD_CACHE_ACCESS_KEY_ID" ] && [ -n "$S3_BUILD_CACHE_SECRET_KEY" ] || { echo "::error::S3 build-cache secret missing"; exit 1; }
           timeout 600 bin/bee-dist "$VERSION"
 
+      # What the wasm Yarn install left behind, for a failure like bee#269's.
+      - name: wasm install state
+        if: failure()
+        uses: ./.github/actions/wasm-install-state
+        with:
+          name: wasm-install-state-release
+
       # The same check as the formula's test block, on the unpacked tarball: the host serves the
       # board page and answers MCP, and bee-up --stop ends it.
       - name: Smoke-test the tarball

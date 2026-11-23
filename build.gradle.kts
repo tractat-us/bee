@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstallTask
 import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnPlugin
 import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnRootExtension
+import java.nio.file.Files
 
 plugins {
     alias(libs.plugins.kotlinJvm) apply false
@@ -22,12 +23,52 @@ plugins.withType<WasmYarnPlugin> {
             .withPropertyName("beeNotions")
             .withPathSensitivity(PathSensitivity.RELATIVE)
         val yarnIntegrity = nodeModules.file(".yarn-integrity")
-        doFirst { yarnIntegrity.get().asFile.delete() }
+        val installReport = layout.buildDirectory.file("wasm/bee-notions-install-report.txt")
+        doFirst {
+            yarnIntegrity.get().asFile.delete()
+            installReport.get().asFile.delete()
+        }
         val notionsDir = file("bee-notions")
         val installed = nodeModules.dir("@bee/notions")
         doLast {
             val copy = installed.get().asFile
-            check(copy.isDirectory) { "Yarn didn't install bee-notions at $copy (bee#93)." }
+            if (!copy.isDirectory) {
+                // Yarn exited 0, and the Kotlin plugin drops Yarn's output when it does, so say what
+                // Yarn left behind. CI uploads the report with the rest of build/wasm's state (bee#269).
+                val modules = copy.parentFile.parentFile
+                val wasm = modules.parentFile
+                val report = buildString {
+                    appendLine("node_modules: ${modules.list()?.let { "${it.size} entries" } ?: "absent"}")
+                    val scope = copy.parentFile
+                    appendLine("node_modules/@bee: ${scope.list()?.sorted()?.ifEmpty { null } ?: "absent or empty"}")
+                    if (Files.isSymbolicLink(copy.toPath())) {
+                        appendLine("node_modules/@bee/notions: symlink to ${Files.readSymbolicLink(copy.toPath())}")
+                    }
+                    // doFirst deleted it, so a fresh one means Yarn finished linking and called the tree whole.
+                    val integrity = yarnIntegrity.get().asFile
+                    appendLine(
+                        ".yarn-integrity: " + if (integrity.isFile) {
+                            "written, ${integrity.length()} bytes, " +
+                                (if ("@bee/notions" in integrity.readText()) "names" else "doesn't name") + " @bee/notions"
+                        } else {
+                            "absent"
+                        },
+                    )
+                    val nested = wasm.resolve("packages").listFiles().orEmpty()
+                        .filter { it.resolve("node_modules/@bee/notions").exists() }
+                    appendLine("unhoisted copies: ${nested.map { it.name }.ifEmpty { "none" }}")
+                    val lock = wasm.resolve("yarn.lock")
+                    appendLine(
+                        "yarn.lock: " + if (lock.isFile) {
+                            (if ("\"@bee/notions@file:" in lock.readText()) "has" else "lacks") + " the @bee/notions entry"
+                        } else {
+                            "absent"
+                        },
+                    )
+                }
+                installReport.get().asFile.writeText(report)
+                error("Yarn didn't install bee-notions at $copy (bee#93).\n$report")
+            }
             // The whole tree, not only what webpack reads today, so a styles/ or assets/ added
             // later is checked too. If bee-notions gets a `files` field, compare the listed set
             // instead, since Yarn then copies only that (yarnpkg/yarn#2822).
