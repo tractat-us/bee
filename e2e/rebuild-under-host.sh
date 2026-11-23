@@ -31,7 +31,8 @@ done
 
 java_home=${JAVA_HOME:-$HOME/.sdkman/candidates/java/25.0.5.0+8-tem}
 
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/bee-rebuild-under-host.XXXXXX")
+# pwd -P: the host's launcher names its install by its physical path, which the checks below match.
+scratch=$(cd "$(mktemp -d "${TMPDIR:-/tmp}/bee-rebuild-under-host.XXXXXX")" && pwd -P)
 checkout=$scratch/checkout
 export BEE_HOME=$scratch/home
 mkdir -p "$checkout/bin" "$checkout/bee-host/build/install" "$checkout/bee-mcp/build/install"
