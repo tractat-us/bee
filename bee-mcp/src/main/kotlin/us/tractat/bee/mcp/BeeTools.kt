@@ -73,7 +73,8 @@ object BeeTools {
                 "malformed surface is refused, naming the bad id or type, and the board is unchanged. To redraw the " +
                 "same picture, bee_surface_update it in place; never open a new surface per revision. A new surface " +
                 "that supersedes old ones names them in replaces: each still open closes as it opens, and the " +
-                "result's closed lists them. Notions adds " +
+                "result's closed lists them. A closed surface is removed a day after its close, and its id is " +
+                "refused for good after that: use a new surfaceId. Notions adds " +
                 "Poll, which binds question, options and answers by {\"@path\": \"/…\"}: question revisions and " +
                 "options go in append, never data (options as strings or {id, label}), and answers is an object " +
                 "keyed by peer, which each answer writes. It also adds " +
