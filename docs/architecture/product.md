@@ -112,21 +112,16 @@ and building the tool instead of the work is an anti-goal
 - **A closed surface is removed a day after its close.** Rejected: keeping every closed surface
   forever so it can always be reopened. On the 8233 board closed surfaces were most of a 10 MB
   snapshot that every replica holds. ([#274](https://github.com/tractat-us/bee/issues/274), Iain, 2026-11-23)
+- **A removed surface id stays removed.** "276 - Yes." The host leaves a small marker under the
+  id, so nothing can open or reopen it again, and a late write from a writer who missed the
+  removal stays hidden under it. Whatever wants the surface back opens a new id: a brainstorming
+  companion moves to a fresh `companion-<id>`, and an orphan decision asked again goes on
+  `orphan-<term>:<index>-<target>`. Rejected: letting a fresh open reuse the id, where a late write
+  from a laptop asleep through the day merged into the new surface, and its old close could close
+  it. ([#274](https://github.com/tractat-us/bee/issues/274), Iain, 2026-11-23)
 
 ## Open
 
 - **Does "infinite" mean a pan-and-zoom canvas?** Today the board is a page of cards. Whether an
   endless 2D canvas is what Iain means, or a page that never runs out of room meets it:
   [#150](https://github.com/tractat-us/bee/issues/150).
-- **What a write racing a surface's removal should show.** The removal retires only what the
-  host had seen. A write it hadn't seen comes back carrying everything its writer ever gave the
-  surface, that writer's own close included. From the opener, the surface shows open again,
-  without anyone else's writes. From anyone else, it stays hidden, and where it has arrived the id
-  can't be opened again. Where it hasn't, a fresh open of the same id merges with it when it does.
-  The old writes show on the new surface, and a closer's old close wins over the new open, so the
-  new surface shows closed at the old time and goes in turn, a day later. A writer offline for the
-  whole day, such as a laptop asleep, is enough. The two things that reuse an id are the ones
-  exposed. A brainstorming companion's `companion-<id>` goes quiet: its screens stop showing, and
-  nothing fails. An orphan decision posted again as `orphan-<target>` stays hidden, with no title.
-  Whether a removed id should stay removed:
-  [#274](https://github.com/tractat-us/bee/issues/274).
