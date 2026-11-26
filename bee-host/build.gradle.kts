@@ -42,6 +42,8 @@ dependencies {
     implementation(libs.kuilt.raft)
     implementation(libs.kuilt.liveness)
     implementation(libs.kuilt.store)
+    // The claims voter's device key (BeeHost.DEVICE_KEY_APP_ID).
+    implementation(libs.kuilt.identity)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.websockets)

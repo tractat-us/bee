@@ -30,6 +30,8 @@ import us.tractat.bee.mcp.Caller
 import us.tractat.bee.mcp.HttpBridges
 import us.tractat.bee.mcp.KeptIdentities
 import us.tractat.bee.mcp.KeptSessionFile
+import us.tractat.kuilt.identity.DeviceKeyStore
+import us.tractat.kuilt.identity.platform
 import us.tractat.kuilt.raft.RaftConfig
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicReference
@@ -114,6 +116,12 @@ class BeeHost private constructor(
         const val CLAIMS_SESSION: String = "claims"
         val CLAIMS_SERVER: PeerId = PeerId("bee-host")
 
+        /**
+         * The folder in the data dir that holds the claims voter's device key: the key its room signs
+         * passes back in with. Not one of [HostKeys]' keys, which decide who reaches the room at all.
+         */
+        const val DEVICE_KEY_APP_ID: String = "device-key"
+
         /** Where the host serves MCP over Streamable HTTP, for a Claude with nothing installed ([HttpBridges]). */
         const val MCP_PATH: String = HttpBridges.PATH
 
@@ -188,9 +196,11 @@ class BeeHost private constructor(
             val desk = PairingDesk(pairing, joinRequests, Pairing.DWELL, clock, admitters)
             // A hosted board's invites (#215) sit beside its keys, and only a hosted board keeps any.
             val invitation = config.reach.invitation { Invites.boot(InviteFile(config.dataDir.resolve(InviteFile.NAME), clock), config.keyReset, clock, secrets, keys) }
+            // The claims voter's device key, kept beside the board so a restart is the same device.
+            val deviceKeys = DeviceKeyStore.platform(DEVICE_KEY_APP_ID, config.dataDir)
             lateinit var endpoints: HostEndpoints
             val server = embeddedServer(Netty, port = config.port, host = config.bind) {
-                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, invitation)
+                endpoints = mountEndpoints(stores.boardId, pairing, config.siteRule(), peers, ArrivalAddress.DIRECT, desk, invitation, deviceKeys)
                 bridges.mount(this)
             }
             server.start(wait = false)

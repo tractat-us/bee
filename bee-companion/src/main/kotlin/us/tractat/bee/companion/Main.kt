@@ -32,6 +32,7 @@ import us.tractat.bee.mcp.beeHostFrom
 import us.tractat.bee.mcp.boardNamedOrNull
 import us.tractat.bee.mcp.peerHttpClient
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import java.io.IOException
 import java.io.PrintStream
@@ -97,7 +98,7 @@ fun main(args: Array<String>) {
     val claims = ClaimsConnection(
         scope = scope,
         nextNode = { NodeId("companion-${Uuid.random()}") },
-        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
+        open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, InMemoryDeviceKeyStore(), clock, random) },
         // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
         onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
         retryDelay = ClaimsConnection.jitteredBackoff(random),

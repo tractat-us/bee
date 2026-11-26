@@ -21,6 +21,10 @@ import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.MAX_FRAME_BYTES
 import us.tractat.bee.core.PairingWire
 import us.tractat.kuilt.core.Pattern
+import us.tractat.kuilt.identity.DeviceKeyStore
+import us.tractat.kuilt.identity.RevocationList
+import us.tractat.kuilt.session.admit.AdmissionPolicy
+import us.tractat.kuilt.session.admit.HostAdmission
 import us.tractat.kuilt.websocket.KtorConnectionSource
 import us.tractat.kuilt.websocket.KtorRoomHost
 import us.tractat.kuilt.websocket.KtorServerLoom
@@ -128,6 +132,13 @@ fun isLoopback(literal: String): Boolean = try {
 class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
 
 /**
+ * Who the claims room lets in: every socket that reaches it. The [SocketGate] has already decided,
+ * before the upgrade, so kuilt's room admits each newcomer's key with no say of its own, and revokes
+ * none. Its passes back in change nothing, since the policy would admit their holders anyway.
+ */
+internal fun claimsAdmission(): HostAdmission = HostAdmission(AdmissionPolicy.open(), RevocationList.inMemory())
+
+/**
  * Mounts every route the host serves (spec §5.4, §5.7):
  *
  * - the board relay at [BoardRelay.PATH] and the claims voter at [BeeHost.CLAIMS_PATH], **behind
@@ -157,6 +168,7 @@ class HostEndpoints(val board: KtorConnectionSource, val claims: KtorRoomHost)
  * @param arrivals where each call arrived; production passes [ArrivalAddress.DIRECT]
  * @param desk serves the pairing channel, over [pairing]
  * @param invitation whether the host has a join link to give its owner's page
+ * @param deviceKeys the claims voter's own device key, which signs the passes its room hands out
  */
 @Suppress("LongParameterList")
 fun Application.mountEndpoints(
@@ -167,11 +179,12 @@ fun Application.mountEndpoints(
     arrivals: ArrivalAddress,
     desk: PairingDesk,
     invitation: Invitation,
+    deviceKeys: DeviceKeyStore,
 ): HostEndpoints {
     installSiteGate(site, arrivals)
     installBoundedWebSockets()
     val relay = KtorConnectionSource(this, BoardRelay.PATH)
-    val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION))
+    val claims = KtorRoomHost(this, BeeHost.CLAIMS_PATH, BeeHost.CLAIMS_SERVER, Pattern(BeeHost.CLAIMS_SESSION), deviceKeys, claimsAdmission())
     val keyRefusal = { call: ApplicationCall ->
         val keyed = peers.of(call).local || pairing.admits(call.request.queryParameters[PairingWire.KEY_PARAM])
         "This device needs a key: open the page to pair it.".takeUnless { keyed }
