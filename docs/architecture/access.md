@@ -209,18 +209,20 @@ doesn't know, so one written into `keys` would stop an older host from booting.
   (Iain, [#159](https://github.com/tractat-us/bee/pull/159); kuilt#3159 principle 4)
 - **The board on a kuilt room, so `HostAdmission` decides the board socket too.** The board is a
   `hostedOverlay` hub, and each `KtorRoomHost` connection is a two-peer room. Rewriting the relay
-  costs far more than a proof at the gate. Reopen when kuilt's hub links can prove a key (draft K3). (this PR)
+  costs far more than a proof at the gate. Reopen when kuilt's hub links can prove a key, K3 of
+  the kuilt gaps this PR drafts. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **Pairing by code inside the room's admission.** `AdmissionPolicy.decide` must answer within
-  the host's admit timeout, and a person typing a code takes minutes. (this PR)
+  the host's admit timeout, and a person typing a code takes minutes. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **The pairing code, invite secret or join link carried in the room's Hello.** The Hello's only
   free fields are the display name and device id. Both are printed by `AdmissionRequest.toString`,
-  so a secret there leaks into logs. (this PR)
+  so a secret there leaks into logs. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **A Claude on HTTP that shares its person's page key.** The page's key can't leave the page, and
-  a key the host holds for a page would be a bearer secret the page shows. (this PR)
-- **One host-held key shared by every HTTP bridge, today's `bridgeKey`.** A host's own key in the
-  claims room can't be told from another, so #164 couldn't evict one person's Claude. (this PR)
+  a key the host holds for a page would be a bearer secret the page shows. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
+- **One host-held key shared by every HTTP bridge, today's `bridgeKey`.** Every Claude would show
+  the host's own key in the claims room, so [#164](https://github.com/tractat-us/bee/issues/164)
+  couldn't tell one person's Claude from another's. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **Passes that run out and are renewed while connected.** A screen opens no claims link, so its
-  pass would never be renewed and its screen would stop. Today a paired key never runs out. (this PR)
+  pass would never be renewed and its screen would stop. Today a paired key never runs out. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 
 ## Open
 
@@ -230,6 +232,10 @@ doesn't know, so one written into `keys` would stop an older host from booting.
 - **A LAN page over plain HTTP before [#73](https://github.com/tractat-us/bee/issues/73).** It has
   no WebCrypto, so it can't hold a key. Recommendation: land pairing's pass after #73, and keep
   minting bearer keys on LAN until then, so there is one path at a time.
+- **A LAN page's claims link on kuilt `0.7.0-dev.1995`.** `clusterClient` needs a
+  `DeviceKeyStore`, and a page with no WebCrypto can't make even an in-memory key. Recommendation:
+  such a page opens no claims link until #73, as a screen opens none, so it can't answer an
+  orphan decision meanwhile. The bump has to choose before it merges.
 - **When legacy tokens stop.** Recommendation: at the next `--forget-devices`, with no clock.
 - **A disguised writer.** An admitted writer can declare one identity and show another, since
   presence is self-declared. The fix is attested authors, tractat-us/kuilt#3149;
