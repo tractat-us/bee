@@ -10,6 +10,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.host.ClaimMirror
 import us.tractat.bee.host.ClaimsVoter
+import us.tractat.bee.host.claimsAdmission
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
