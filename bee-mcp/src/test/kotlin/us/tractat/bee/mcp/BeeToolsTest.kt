@@ -148,10 +148,7 @@ class BeeToolsTest {
         val rig = JoinRig(this).apply { start() }
         val ada = rig.session("ada")
         ada.call(BeeTools.OPEN, openArgs("lunch"))
-        ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "lunch"))
-        rig.star.relay.state.first { "lunch" in it.closedSurfaces() }
-        rig.star.relay.mutate { it.compactClosed(rig.star.relay.replica, setOf("lunch"), closedBy = rig.claims.clock(), at = rig.claims.clock()) }
-        ada.client.state.first { it.isRemoved("lunch") }
+        rig.removeClosed(ada, "lunch")
 
         val again = ada.call(BeeTools.OPEN, openArgs("lunch"))
         val control = ada.call(BeeTools.OPEN, openArgs("lunch-2"))
@@ -159,6 +156,51 @@ class BeeToolsTest {
             { assertTrue(again.isError == true && "use a new surfaceId" in again.text(), "refused: ${again.text()}") },
             { assertEquals(listOf("lunch-2"), ada.client.state.value.openSurfaces(), "nothing of lunch shows") },
             { assertEquals(null, control.isError, "control: a new id opens: ${control.text()}") },
+        )
+        rig.close()
+    }
+
+    /**
+     * bee#274: `bee_surface_close` on an id the host removed succeeds and changes nothing, as a
+     * close of a closed surface does: the removed surface was closed, so the idempotent close holds.
+     * The control: a close of an id never on the board still fails.
+     */
+    @Test
+    fun closingAnIdTheHostRemovedChangesNothing() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("lunch"))
+        rig.removeClosed(ada, "lunch")
+
+        val again = ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "lunch"))
+        val control = ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "ghost"))
+        val after = ada.client.state.value
+        assertAll(
+            { assertEquals(null, again.isError, "closing a removed id: ${again.text()}") },
+            { assertTrue(after.isRemoved("lunch") && "lunch" !in after.closedSurfaces(), "lunch stays removed") },
+            { assertTrue(control.isError == true && "No surface ghost" in control.text(), "control: ${control.text()}") },
+        )
+        rig.close()
+    }
+
+    /**
+     * bee#274: `bee_surface_update` on an id the host removed is refused as removed, saying to use
+     * a new surfaceId, not as a surface that was never there. The control: an update of an id never
+     * on the board still says there's no such surface.
+     */
+    @Test
+    fun updatingAnIdTheHostRemovedSaysToUseANewOne() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("lunch"))
+        rig.removeClosed(ada, "lunch")
+
+        val again = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "lunch", "title" to "Lunch, later"))
+        val control = ada.call(BeeTools.UPDATE, mapOf("surfaceId" to "ghost", "title" to "Boo"))
+        assertAll(
+            { assertTrue(again.isError == true && "use a new surfaceId" in again.text(), "refused as removed: ${again.text()}") },
+            { assertTrue(ada.client.state.value.isRemoved("lunch"), "lunch stays removed") },
+            { assertTrue(control.isError == true && "No surface ghost" in control.text(), "control: ${control.text()}") },
         )
         rig.close()
     }
@@ -504,6 +546,14 @@ internal class JoinRig(private val test: TestScope) {
                 null
             }
         }
+
+    /** Closes [id] from [session], then has the host remove it ([BoardState.compactClosed]) as its timer does a day on. */
+    suspend fun removeClosed(session: Session, id: String) {
+        session.call(BeeTools.CLOSE, mapOf("surfaceId" to id))
+        star.relay.state.first { id in it.closedSurfaces() }
+        star.relay.mutate { it.compactClosed(star.relay.replica, setOf(id), closedBy = claims.clock(), at = claims.clock()) }
+        session.client.state.first { it.isRemoved(id) }
+    }
 
     /** Posts a join request from the host, as `BeeHost` does for a keyless device; returns its surface id. */
     fun joinRequest(): String {
