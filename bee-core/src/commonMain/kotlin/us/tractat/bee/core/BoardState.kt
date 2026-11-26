@@ -238,6 +238,11 @@ class BoardState internal constructor(
      * under the tombstone, which no such write can retire ([SurfaceDoc.tombstone]), so it shows
      * nowhere and the id still can't be opened: the late write's content stays on the board, hidden.
      *
+     * This is the one place bee removes a key and then puts under it again, which kuilt doesn't yet
+     * make safe: the re-put reissues tags other replicas may have seen (tractat-us/kuilt#3126). The
+     * tombstone's tag here is fresh, since each put is made against the map its removal left. Its
+     * tags inside the doc are not, and [SurfaceDoc.tombstone] says why that is safe today.
+     *
      * A record's tombstone keeps its value until the records are compacted, so removing records hides
      * them rather than shrinking the board. A claim's mirror is tombstoned one past its own index,
      * and [mirrorClaims] never writes a removed record's claim again.
