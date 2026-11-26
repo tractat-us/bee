@@ -50,7 +50,13 @@ get onto it. A rule here binds every subsystem that puts something in front of a
   An empty board shows one quiet hint on how to start.
 - **Clearing the board closes surfaces, it doesn't delete them.** Closed surfaces wait in a
   collapsed history strip ([`HistoryStrip.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/HistoryStrip.kt),
-  [spec §6.1](../superpowers/specs/2026-11-06-bee-design.md#61-surfaces)).
+  [spec §6.1](../superpowers/specs/2026-11-06-bee-design.md#61-surfaces)), where anyone can
+  reopen one. A day after its close the host removes it from the board, with its records, so a
+  board doesn't keep every surface it ever showed. The day counts from when the host saw it
+  closed, and starts again when the host restarts. A closed orphan decision stays while its
+  claim is still orphaned (Iain, 2026-11-23;
+  [`ClosedSurfaces.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/ClosedSurfaces.kt),
+  [#274](https://github.com/tractat-us/bee/issues/274)).
 - **Three ways onto a hosted board.** The owner opens it with the owner key. Anyone on it
   presses Invite for a link, and whoever opens that link types a name and presses Join
   ([`JoinByInvite.kt`](../../bee-web/src/wasmJsMain/kotlin/us/tractat/bee/web/JoinByInvite.kt),
@@ -103,6 +109,16 @@ and building the tool instead of the work is an anti-goal
 - **A guess at an invite costs the host nothing.** Rejected: a per-address limit on unknown
   secrets. An IPv6 caller sidesteps it with a fresh address per guess, and the table it keeps
   grows without bound; the 256-bit secret is the defence. ([#218](https://github.com/tractat-us/bee/pull/218), 2026-11-09)
+- **A closed surface is removed a day after its close.** Rejected: keeping every closed surface
+  forever so it can always be reopened. On the 8233 board closed surfaces were most of a 10 MB
+  snapshot that every replica holds. ([#274](https://github.com/tractat-us/bee/issues/274), Iain, 2026-11-23)
+- **A removed surface id stays removed.** "276 - Yes." The host leaves a small marker under the
+  id, so nothing can open or reopen it again, and a late write from a writer who missed the
+  removal stays hidden under it. Whatever wants the surface back opens a new id: a brainstorming
+  companion moves to a fresh `companion-<id>`, and an orphan decision asked again goes on
+  `orphan-<term>:<index>-<target>`. Rejected: letting a fresh open reuse the id, where a late write
+  from a laptop asleep through the day merged into the new surface, and its old close could close
+  it. ([#274](https://github.com/tractat-us/bee/issues/274), Iain, 2026-11-23)
 
 ## Open
 

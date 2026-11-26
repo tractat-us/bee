@@ -208,6 +208,7 @@ class BeeHost private constructor(
                     clock,
                     TimeSource.Monotonic,
                     waitingForClient = kept::waitingIdentities,
+                    closedKeptFor = config.closedKeptFor,
                 )
                 board.set(core.board.relay.state)
                 val requests = JoinRequestSurface(core.board.relay, pairing, clock)

@@ -44,6 +44,12 @@ object SurfaceFormat {
     const val META_OPENED_AT = "openedAt"
     const val META_CLOSED_AT = "closedAt"
 
+    /**
+     * The one meta field of a removed surface's tombstone (bee#274): when the host removed it. A
+     * doc whose meta holds it is no surface, for good, whatever else merges into it.
+     */
+    const val META_REMOVED_AT = "removedAt"
+
     /** The data key the driver publishes conflicts under, at `/_bee/conflicts/<escaped pointer>`. */
     const val RESERVED_DATA_KEY = "_bee"
 

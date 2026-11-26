@@ -5,7 +5,8 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * The decision an orphaned claim asks for (spec §6.4), as the host writes it and an answering
- * client reads it. Surface `orphan-<target>` is a Notions `Poll`:
+ * client reads it. Surface `orphan-<target>`, or `orphan-<term>:<index>-<target>` once the host has
+ * removed that one ([surfaceId]), is a Notions `Poll`:
  *
  * - `/question` is an append-only array of revisions, each a string; the last one shows.
  * - `/options` is an append-only array of `{"id", "label"}` objects: "Reassign to <peer>" for
@@ -26,15 +27,28 @@ object OrphanDecision {
     const val WAIT: String = "wait"
     const val TOKEN: String = "token"
     private const val REASSIGN = "reassign:"
+    private const val TOKEN_SEPARATOR = "-"
 
-    /** The decision surface for [target]. */
+    /** The decision surface for [target], `orphan-<target>`, until the host removes it. */
     fun surfaceId(target: ClaimTarget): String = PREFIX + target.value
 
-    /** The target a decision surface is for, or null if [surfaceId] isn't one. */
+    /**
+     * The decision surface for [target]'s orphaning [token], `orphan-<term>:<index>-<target>`: the
+     * id a decision takes once the host has removed [target]'s first one for good, which nothing can
+     * open again (bee#274). The token comes first because a target is any `record:` or `card:`
+     * string, so where it ends can't be found; and a target starts with a letter, so the head of the
+     * first form never reads as a token.
+     */
+    fun surfaceId(target: ClaimTarget, token: ClaimToken): String = PREFIX + token.text + TOKEN_SEPARATOR + target.value
+
+    /** The target a decision surface is for, in either form of [surfaceId], or null if [surfaceId] isn't one. */
     fun targetOf(surfaceId: String): ClaimTarget? {
         if (!surfaceId.startsWith(PREFIX)) return null
+        val rest = surfaceId.removePrefix(PREFIX)
+        val head = rest.substringBefore(TOKEN_SEPARATOR, missingDelimiterValue = "")
+        val target = if (tokenOrNull(head) != null) rest.removePrefix(head + TOKEN_SEPARATOR) else rest
         return try {
-            ClaimTarget(surfaceId.removePrefix(PREFIX))
+            ClaimTarget(target)
         } catch (_: IllegalArgumentException) {
             null
         }
@@ -44,13 +58,13 @@ object OrphanDecision {
      * The orphaning decision [data] is open for: the orphaned hold's token at `/token`, or null if
      * it names none a token reads as.
      */
-    fun orphaning(data: JsonObject): ClaimToken? {
-        val text = (data[TOKEN] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
-        return try {
-            ClaimToken.parse(text)
-        } catch (_: IllegalArgumentException) {
-            null
-        }
+    fun orphaning(data: JsonObject): ClaimToken? =
+        (data[TOKEN] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(::tokenOrNull)
+
+    private fun tokenOrNull(text: String): ClaimToken? = try {
+        ClaimToken.parse(text)
+    } catch (_: IllegalArgumentException) {
+        null
     }
 
     /**

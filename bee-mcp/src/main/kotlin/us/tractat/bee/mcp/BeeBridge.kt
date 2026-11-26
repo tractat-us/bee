@@ -43,6 +43,7 @@ import us.tractat.bee.core.PeerKind
 import us.tractat.bee.core.Presence
 import us.tractat.bee.core.PresenceEntry
 import us.tractat.bee.core.SurfaceMeta
+import us.tractat.bee.core.SurfaceRemoved
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import java.util.concurrent.atomic.AtomicLong
@@ -270,6 +271,8 @@ class BeeBridge(
         beforeWrite()
         val posted = mutableSetOf<JsonElement>()
         write(surfaceId, posted) { state ->
+            // A removed id reads as no surface too, but it's gone for good: say so (bee#274).
+            if (state.isRemoved(surfaceId)) throw SurfaceRemoved(surfaceId)
             // A doc whose open hasn't arrived (bee#171) is no surface yet, so it's refused, not written.
             requireNotNull(state.meta(surfaceId)) { "No surface $surfaceId on the board." }
             val writes = buildList<(BoardState) -> Patch<BoardState>> {
@@ -333,12 +336,14 @@ class BeeBridge(
 
     /**
      * Closes surface [surfaceId]; it keeps its content and records. A surface already closed is
-     * left alone, so a repeated close keeps its first time and its place in the history strip.
+     * left alone, so a repeated close keeps its first time and its place in the history strip. So is
+     * one the host removed (bee#274): it was closed, and a removal is a close that lasts.
      */
     suspend fun close(surfaceId: String) {
         beforeWrite()
         client.mutateOrSkip { state ->
-            if (state.meta(surfaceId)?.closedAt != null) null else state.closeSurface(author, surfaceId, clock())
+            val closed = state.isRemoved(surfaceId) || state.meta(surfaceId)?.closedAt != null
+            if (closed) null else state.closeSurface(author, surfaceId, clock())
         }
     }
 

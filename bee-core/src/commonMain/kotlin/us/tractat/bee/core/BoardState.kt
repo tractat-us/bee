@@ -24,6 +24,7 @@ import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.Quilted
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.Rga
+import us.tractat.kuilt.crdt.RgaOp
 import us.tractat.kuilt.crdt.VersionVector
 import us.tractat.kuilt.raft.NodeId
 import kotlin.time.Instant
@@ -74,7 +75,9 @@ data class ClaimView(val status: String, val holder: String?, val token: String?
  * The board: every peer's replica of it is one of these (§6).
  *
  * A join-semilattice taken componentwise over five lattices:
- * - [surfaces], one `JsonCrdt` per surface id. Surfaces close; they're never removed.
+ * - [surfaces], one `JsonCrdt` per surface id. Surfaces close, and only the host removes one,
+ *   once it has been closed for a day ([compactClosed], bee#274). A removed id stays removed: its
+ *   tombstone stays under it, no write to it is accepted, and no read shows it ([isRemoved]).
  * - [records], the action records, appended and never edited (§6.2).
  * - [presence], who is attached.
  * - [departed] and [claims], which only the host writes (A2).
@@ -114,7 +117,12 @@ class BoardState internal constructor(
 
     // ---- Mutators ----
 
-    /** Opens a new surface [id]. It must not exist yet: a closed surface is reopened, not opened. */
+    /**
+     * Opens a new surface [id]. It must not exist yet: a closed surface is reopened, not opened, and
+     * a removed one is never opened again.
+     *
+     * @throws SurfaceRemoved if the host removed [id]: the surface needs a new id
+     */
     fun openSurface(
         replica: ReplicaId,
         id: String,
@@ -123,6 +131,7 @@ class BoardState internal constructor(
         data: JsonObject,
     ): Patch<BoardState> {
         requireReplica(replica)
+        if (isRemoved(id)) throw SurfaceRemoved(id)
         require(surfaces[id] == null) { "Surface $id already exists; reopen it instead." }
         return surfacePatch(replica, id, SurfaceDoc.open(replica, meta, components, data))
     }
@@ -135,7 +144,10 @@ class BoardState internal constructor(
     fun retitleSurface(replica: ReplicaId, id: String, title: String): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setTitle(it, replica, title) }
 
-    /** Closes surface [id] at [at]. It keeps its content and its records ("clear" never deletes). */
+    /**
+     * Closes surface [id] at [at]. It keeps its content and its records ("clear" never deletes), until
+     * the host compacts it ([compactClosed]).
+     */
     fun closeSurface(replica: ReplicaId, id: String, at: Instant): Patch<BoardState> =
         writeSurface(replica, id) { SurfaceDoc.setClosedAt(it, replica, at) }
 
@@ -162,6 +174,7 @@ class BoardState internal constructor(
 
     fun appendRecord(replica: ReplicaId, record: ActionRecord): Patch<BoardState> {
         requireReplica(replica)
+        if (isRemoved(record.surfaceId)) throw SurfaceRemoved(record.surfaceId)
         require(surfaces[record.surfaceId] != null) { "No surface ${record.surfaceId} on the board." }
         val (_, op) = records.insertAt(replica, records.size, record)
         return Patch(EMPTY.copy(records = Rga.empty<ActionRecord>().apply(op)))
@@ -185,14 +198,19 @@ class BoardState internal constructor(
      * (released) shows `free`. A newly retired identity is recorded at the table's index, which is
      * its `Depart`'s own index when the host mirrors every committed table in order.
      *
+     * A removed record's claim is never mirrored again ([compactClosed]): the table still holds it,
+     * and a mirror of it would undo the tombstone.
+     *
      * The "only grows across host boots" premise can break when a tab is left open across a wipe, or
      * `claims/` is moved aside: the tab's old views carry indexes the new log hasn't reached (bee#46).
      */
     fun mirrorClaims(replica: ReplicaId, table: ClaimTable): Patch<BoardState> {
         requireReplica(replica)
         val index = table.appliedIndex
-        val views = table.targets.entries.associate { (target, status) -> target.value to ClaimView.of(status, index) }
-        val freed = claims.entries.filter { (key, view) -> key !in views && view.status != ClaimView.FREE }
+        val removed = removedRecordTargets()
+        val views = table.targets.entries.filter { (target, _) -> target.value !in removed }
+            .associate { (target, status) -> target.value to ClaimView.of(status, index) }
+        val freed = claims.entries.filter { (key, view) -> key !in views && key !in removed && view.status != ClaimView.FREE }
             .mapValues { ClaimView(ClaimView.FREE, holder = null, token = null, logIndex = index) }
         val changed = (views + freed).filter { (key, view) -> claims[key]?.copy(logIndex = view.logIndex) != view }
         val claimsDelta = changed.entries.fold(LWWMap.empty<String, ClaimView>()) { delta, (key, view) ->
@@ -204,6 +222,52 @@ class BoardState internal constructor(
                 delta.piece(departed.add(Departure(identity, reason, index)).delta)
             }
         return Patch(EMPTY.copy(claims = claimsDelta, departed = departedDelta))
+    }
+
+    /**
+     * Removes for good each surface of [ids] that is closed at or before [closedBy], with its action
+     * records and their claims' mirror, and leaves its tombstone, stamped [at], under its id
+     * (bee#274; Iain, 2026-11-23: a removed id stays removed). Only the host calls it, from [ids] it
+     * has seen closed for its grace period; checking the close again here, in the host's `mutate`,
+     * means a reopen the host has already merged keeps the surface.
+     *
+     * The removal is causal: it retires the surface's tags this replica has seen, so an older copy
+     * on a lagging replica, holding only tags seen here, can't bring the content back on merge. A
+     * write this replica hasn't seen keeps its tag (add-wins), and that tag carries everything its
+     * writer ever contributed to the surface, its opener's meta or its own close included. It merges
+     * under the tombstone, which no such write can retire ([SurfaceDoc.tombstone]), so it shows
+     * nowhere and the id still can't be opened: the late write's content stays on the board, hidden.
+     *
+     * This is the one place bee removes a key and then puts under it again, which kuilt doesn't yet
+     * make safe: the re-put reissues tags other replicas may have seen (tractat-us/kuilt#3126). The
+     * tombstone's tag here is fresh, since each put is made against the map its removal left. Its
+     * tags inside the doc are not, and [SurfaceDoc.tombstone] says why that is safe today.
+     *
+     * A record's tombstone keeps its value until the records are compacted, so removing records hides
+     * them rather than shrinking the board. A claim's mirror is tombstoned one past its own index,
+     * and [mirrorClaims] never writes a removed record's claim again.
+     */
+    fun compactClosed(replica: ReplicaId, ids: Set<String>, closedBy: Instant, at: Instant): Patch<BoardState> {
+        requireReplica(replica)
+        val gone = closedBy(closedBy) intersect ids
+        // Each id's removal and tombstone are made against the map after the ones before it, so each
+        // tombstone gets a tag of its own: two minted from the same map would share one, and the
+        // removal of the next id would retire it.
+        val (_, surfacesDelta) = gone.fold(surfaces to ORMap.empty<String, JsonCrdt>()) { (map, delta), id ->
+            val removal = map.remove(id).delta
+            val removed = map.piece(removal)
+            // Put after the removal, so the tombstone's tag carries none of this replica's own
+            // earlier contributions to the surface.
+            val tombstone = removed.put(replica, id, SurfaceDoc.tombstone(replica, at)).delta
+            removed.piece(tombstone) to delta.piece(removal).piece(tombstone)
+        }
+        val removed = records.entries().filter { (_, record) -> record.surfaceId in gone }.map { it.first }
+        val recordsDelta = removed.fold(Rga.empty<ActionRecord>()) { delta, id -> delta.apply(RgaOp.Remove(id)) }
+        val claimsDelta = removed.map { RecordId(it.dot).claimTarget.value }
+            .fold(LWWMap.empty<String, ClaimView>()) { delta, key ->
+                claims[key]?.let { view -> delta.piece(claims.remove(replica, view.logIndex + 1, key).delta) } ?: delta
+            }
+        return Patch(EMPTY.copy(surfaces = surfacesDelta, records = recordsDelta, claims = claimsDelta))
     }
 
     // ---- Reads ----
@@ -220,12 +284,33 @@ class BoardState internal constructor(
         .sortedWith(compareByDescending<Pair<String, SurfaceMeta>> { it.second.closedAt }.thenBy { it.first })
         .map { it.first }
 
-    fun surfaceDoc(id: String): JsonCrdt? = surfaces[id]
+    /** The surfaces closed at or before [instant], by their closers' clocks. */
+    fun closedBy(instant: Instant): Set<String> =
+        surfaceMetas().filter { (_, meta) -> meta.closedAt?.let { it <= instant } == true }.map { it.first }.toSet()
 
-    fun meta(id: String): SurfaceMeta? = surfaces[id]?.let(SurfaceDoc::meta)
+    /** Surface [id]'s document, or null if there's none or the host removed it ([isRemoved]). */
+    fun surfaceDoc(id: String): JsonCrdt? = surfaces[id]?.takeUnless { SurfaceDoc.removedAt(it) != null }
 
-    /** Every record on the board, whatever its surface, in sequence order. */
-    fun records(): List<Pair<RecordId, ActionRecord>> = records.entries().map { (id, record) -> RecordId(id.dot) to record }
+    /** Whether surface [id] shows open: its open has arrived and it isn't closed. */
+    fun isOpen(id: String): Boolean = meta(id)?.let { it.closedAt == null } == true
+
+    fun meta(id: String): SurfaceMeta? = surfaceDoc(id)?.let(SurfaceDoc::meta)
+
+    /**
+     * Whether the host removed surface [id] for good ([compactClosed]): it can't be opened, reopened
+     * or written again, and nothing from it shows. Something that wants that surface back opens a
+     * new id.
+     */
+    fun isRemoved(id: String): Boolean = surfaces[id]?.let(SurfaceDoc::removedAt) != null
+
+    /**
+     * Every record on the board, whatever its surface, in sequence order. A record on a removed
+     * surface that arrived after the removal is left out, with the rest of that surface.
+     */
+    fun records(): List<Pair<RecordId, ActionRecord>> {
+        val removed = surfaces.keys.filterTo(mutableSetOf()) { isRemoved(it) }
+        return records.entries().filter { it.second.surfaceId !in removed }.map { (id, record) -> RecordId(id.dot) to record }
+    }
 
     /** Surface [surfaceId]'s records, in sequence order. */
     fun records(surfaceId: String): List<Pair<RecordId, ActionRecord>> = records().filter { it.second.surfaceId == surfaceId }
@@ -276,10 +361,18 @@ class BoardState internal constructor(
      * out: a write can arrive before its surface's open ([SurfaceDoc.meta], bee#171).
      */
     private fun surfaceMetas(): List<Pair<String, SurfaceMeta>> =
-        surfaces.keys.mapNotNull { id -> SurfaceDoc.meta(surfaces[id]!!)?.let { id to it } }
+        surfaces.keys.mapNotNull { id -> meta(id)?.let { id to it } }
+
+    /**
+     * The claim targets of every record removed from the board, tombstoned or compacted away. A record
+     * that hasn't arrived yet isn't one: its claim may reach the mirror first.
+     */
+    private fun removedRecordTargets(): Set<String> =
+        (records.tombstones + records.compactedIds).map { RecordId(it.dot).claimTarget.value }.toSet()
 
     private fun writeSurface(replica: ReplicaId, id: String, write: (JsonCrdt) -> Patch<JsonCrdt>): Patch<BoardState> {
         requireReplica(replica)
+        if (isRemoved(id)) throw SurfaceRemoved(id)
         val doc = requireNotNull(surfaces[id]) { "No surface $id on the board." }.withReplica(replica)
         return surfacePatch(replica, id, write(doc).delta)
     }
@@ -327,6 +420,13 @@ class BoardState internal constructor(
         fun serializer(): KSerializer<BoardState> = BoardStateSerializer
     }
 }
+
+/**
+ * A write or an open named surface [id], which the host removed for good (bee#274). The surface is
+ * gone: whatever wants it back opens it under a new id.
+ */
+class SurfaceRemoved(val id: String) :
+    IllegalArgumentException("Surface $id was removed from the board for good and can't be opened or written again; use a new surfaceId.")
 
 @OptIn(ExperimentalSerializationApi::class)
 private object BoardStateSerializer : KSerializer<BoardState> {

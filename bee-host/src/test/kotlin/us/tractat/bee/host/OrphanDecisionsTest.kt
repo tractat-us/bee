@@ -24,6 +24,7 @@ import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
+import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.OrphanAnswers
@@ -97,6 +98,10 @@ class OrphanDecisionsTest {
             }
             return answers.answered(OrphanDecision.surfaceId(TARGET), OrphanDecision.ANSWER_ACTION, context, seen)
         }
+
+        /** The token of [TARGET]'s orphaning, once the voter's table shows it orphaned. */
+        suspend fun orphanedToken(): ClaimToken =
+            (voter.table.first { it.status(TARGET) is ClaimStatus.Orphaned }.status(TARGET) as ClaimStatus.Orphaned).token
 
         /** Every command in the voter's log, in order. */
         suspend fun log(): List<ClaimCommand?> = DurableStoreRaftStorage.open(claims.store).entries(1).map { entry ->
@@ -233,6 +238,45 @@ class OrphanDecisionsTest {
             { assertEquals(2, questions.size, "a second revision: $questions") },
             { assertTrue(bo.toString() in questions.last().jsonPrimitive.content, "naming the new holder") },
             { assertEquals("${orphaned.token.term}:${orphaned.token.index}", data().getValue("token").jsonPrimitive.content) },
+        )
+    }
+
+    /**
+     * bee#274: the host removed a target's decision, a day after it closed, and that id stays
+     * removed. Orphaned again, the target asks on a new surface named by the new orphaning's token,
+     * which an answer decides. Orphaned a third time while that one is on the board, closed, it asks
+     * again on it rather than open another.
+     */
+    @Test
+    fun aTargetWhoseDecisionWasRemovedAsksOnANewSurface() = rig {
+        val cy = PeerIdentity.agent("cy", Random(4))
+        star.relay.mutate { it.postPresence(ReplicaId("mcp-cy"), PresenceEntry(cy, null, null, star.clock(), waiting = false), 1) }
+        answer(iain, OrphanDecision.reassignOption(bo))
+        star.relay.state.first { surfaceId in it.closedSurfaces() }
+        star.relay.mutate { it.compactClosed(star.relay.replica, setOf(surfaceId), closedBy = star.clock(), at = star.clock()) }
+        check(board.isRemoved(surfaceId)) { "rig: the host removed the first decision" }
+
+        voter.depart(bo, DepartReason.Crashed)
+        val second = OrphanDecision.surfaceId(target, orphanedToken())
+        val asked = withTimeoutOrNull(30.seconds) { star.relay.state.first { second in it.openSurfaces() } }
+        val data = requireNotNull(board.surfaceDoc(second)).toSurfaceView(second).data
+        val toCy = buildJsonObject { put(OrphanDecision.OPTION_KEY, OrphanDecision.reassignOption(cy)) }
+        val answered = answers.answered(second, OrphanDecision.ANSWER_ACTION, toCy, data)
+        val closed = withTimeoutOrNull(30.seconds) { star.relay.state.first { second in it.closedSurfaces() } }
+
+        voter.depart(cy, DepartReason.Crashed)
+        val third = orphanedToken().text
+        val askedAgain = withTimeoutOrNull(30.seconds) {
+            star.relay.state.first { second in it.openSurfaces() && OrphanDecision.orphaning(it.surfaceDoc(second)!!.toSurfaceView(second).data)?.text == third }
+        }
+        assertAll(
+            { assertNotNull(asked, "the second orphaning asks on $second") },
+            { assertTrue(board.isRemoved(surfaceId), "the first id stays removed") },
+            { assertEquals(target.value, data.getValue("target").jsonPrimitive.content) },
+            { assertEquals(OrphanAnswers.Outcome.Proposed(OrphanDecision.Choice.Reassign(cy), applied = true), answered, "an answer on the new surface decides") },
+            { assertNotNull(closed, "and the host closes it once decided") },
+            { assertNotNull(askedAgain, "the third orphaning asks again on $second") },
+            { assertEquals(listOf(second), orphanSurfaces(), "and opens no other") },
         )
     }
 

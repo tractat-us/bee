@@ -28,6 +28,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
@@ -36,21 +37,23 @@ import kotlin.uuid.Uuid
 private val log = KotlinLogging.logger("us.tractat.bee.host.HostBoard")
 
 /**
- * Everything the host runs but its server: the [board], the claims [voter] mirroring onto it, and
- * the departures reading both. [BeeHost] puts a Netty server in front of it; tests run it in
- * memory. Invariant: **[close] saves the board last, whatever fails before it, and after the
+ * Everything the host runs but its server: the [board], the claims [voter] mirroring onto it, the
+ * departures reading both, and the removal of surfaces closed for a day ([ClosedSurfaces]).
+ * [BeeHost] puts a Netty server in front of it; tests run it in memory. Invariant: **[close] saves the board last, whatever fails before it, and after the
  * server has stopped taking writes.**
  */
 class HostCore private constructor(
     val board: HostBoard,
     val voter: ClaimsVoter,
     private val departures: Job,
+    private val compaction: Job,
     private val intake: AutoCloseable,
 ) {
-    /** Stops departures and the voter, then [intake], then saves the board one last time. */
+    /** Stops departures, compaction and the voter, then [intake], then saves the board one last time. */
     suspend fun close() = withContext(NonCancellable) {
         try {
             departures.cancelAndJoin()
+            compaction.cancelAndJoin()
             voter.close()
         } finally {
             try {
@@ -67,6 +70,7 @@ class HostCore private constructor(
          * [claimsHost]. Background work runs on [scope]. [intake] is what brings writes in from
          * outside, the server: [close] stops it before the board's last save. [Departures] leaves
          * the identities in [waitingForClient] alone: HTTP sessions kept for clients yet to return.
+         * A surface closed for [closedKeptFor] is removed ([ClosedSurfaces]).
          */
         @Suppress("LongParameterList")
         suspend fun start(
@@ -82,11 +86,13 @@ class HostCore private constructor(
             random: Random = Random.Default,
             quilterConfig: QuilterConfig = BEE_QUILTER_CONFIG,
             waitingForClient: () -> Set<PeerIdentity> = { emptySet() },
+            closedKeptFor: Duration = ClosedSurfaces.KEPT_FOR,
         ): HostCore {
             val board = HostBoard.open(scope, boardSource, dispatcher, stores.board, stores.boardId, clock, timeSource, random, quilterConfig)
             val voter = ClaimsVoter.start(scope, claimsHost, stores.claims, raftConfig, boardMirror(board.relay), clock)
             val departures = hostDepartures(voter, board.relay.state, clock, waitingForClient).start(scope)
-            return HostCore(board, voter, departures, intake)
+            val compaction = ClosedSurfaces(board.relay, closedKeptFor, clock).start(scope)
+            return HostCore(board, voter, departures, compaction, intake)
         }
     }
 }

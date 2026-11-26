@@ -122,6 +122,39 @@ internal object SurfaceDoc {
     }
 
     /**
+     * The tombstone the host leaves under a surface id it removed at [at] (bee#274): a doc whose
+     * meta holds [SurfaceFormat.META_REMOVED_AT] and nothing else. A late write merges under it and
+     * stays hidden ([removedAt]).
+     *
+     * Its tag in the board's surface map is fresh ([BoardState.compactClosed]), but its tags inside
+     * the doc start again at [replica]'s first, from empty maps and an empty register: kuilt drops a
+     * removed value's tags, so a re-put reissues them (tractat-us/kuilt#3126). On a surface the host
+     * opened, they are the tags of its open, which other peers have seen. That is safe while a
+     * reissued tag can be lost only where a peer that saw the old one retired it: a map's tag by
+     * removing its key (a put supersedes only its writer's own tags), a register's by writing over
+     * that register. No peer removes the meta key or a field of it, and only the host writes the
+     * `removedAt` register, so a late retitle or reopen supersedes the host's title or `closedAt`
+     * and leaves the tombstone whole. A write that breaks either premise breaks the tombstone.
+     *
+     * A reader from an earlier release reads [meta] alone. It finds the tombstone, or one with a
+     * non-opener's late write under it, without a title, and takes it for a surface whose open hasn't
+     * arrived. The opener's late write brings back its open's meta, whose `closedAt` is null, so that
+     * reader shows the surface again, open, until it reloads or upgrades.
+     */
+    fun tombstone(replica: ReplicaId, at: Instant): JsonCrdt {
+        val field = JsonNode.Leaf(MVRegister.empty<JsonValue>().set(replica, JsonValue.Str(at.toString())))
+        val meta = JsonNode.Object(ORMap.empty<String, JsonNode>().put(replica, SurfaceFormat.META_REMOVED_AT, field).delta)
+        return JsonCrdt.empty(replica).set(SurfaceFormat.META, meta).delta
+    }
+
+    /** When the host removed [doc]'s surface for good, or null if it hasn't ([tombstone]). */
+    fun removedAt(doc: JsonCrdt): Instant? {
+        val meta = doc[SurfaceFormat.META] as? JsonNode.Object ?: return null
+        val leaf = meta.map[SurfaceFormat.META_REMOVED_AT] ?: return null
+        return SurfaceFormat.metaString(leaf as JsonNode.Leaf)?.let(Instant::parse)
+    }
+
+    /**
      * [doc]'s meta, or null while its open hasn't arrived: the doc holds no meta yet, or meta
      * without the fields an open writes. Meta of the wrong shape is corrupt, not early, and throws.
      *

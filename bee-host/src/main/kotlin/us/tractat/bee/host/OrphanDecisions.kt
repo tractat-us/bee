@@ -16,6 +16,7 @@ import us.tractat.bee.a2ui.SurfaceFormat
 import us.tractat.bee.a2ui.toSurfaceView
 import us.tractat.bee.core.BoardState
 import us.tractat.bee.core.ClaimTarget
+import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.ClaimView
 import us.tractat.bee.core.OrphanDecision
 import us.tractat.bee.core.PeerIdentity
@@ -38,9 +39,11 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
  * boot can't close a decision it is about to reopen: each mirrored view carries its log index, and
  * a replayed one never wins over the newest (`BoardState.mirrorClaims`).
  *
- * - **One surface per target.** It is opened for one orphaning, named by its token (`/token`). A
- *   target orphaned again, after a reassign to an agent that then departed, gets a new question
- *   revision on the same surface, reopened if it was closed.
+ * - **One surface per target on the board at a time.** It is opened for one orphaning, named by its
+ *   token (`/token`). A target orphaned again, after a reassign to an agent that then departed, gets
+ *   a new question revision on the same surface, reopened if it was closed. Once the host has
+ *   removed it, a day after it closed ([ClosedSurfaces]), its id stays removed (bee#274), so the
+ *   next orphaning opens `orphan-<term>:<index>-<target>`, named by its own token, instead.
  * - **Answers belong to one orphaning.** The `Poll` binds its answers to
  *   `/rounds/<token>/answers`, and a new orphaning rebinds it to its own, empty, so no answer to an
  *   earlier one shows as an answer to this one. Earlier answers keep their path. The proposal an
@@ -48,9 +51,10 @@ private val log = KotlinLogging.logger("us.tractat.bee.host.OrphanDecisions")
  * - **One surface it can't write stops no other.** A surface someone else wrote under an orphan id,
  *   in a shape this can't extend, is logged once and skipped; every other decision goes on. An
  *   orphaned view naming no holder or token is a broken mirror, and that propagates.
- * - **A decision closes once its target isn't orphaned**, and keeps its content and records, in
- *   the history strip. A decision someone closes stays closed until the target is orphaned again,
- *   so the host never fights a close. `bee_board_clear` leaves it open, as it leaves every surface
+ * - **A decision closes once its target isn't orphaned**, and keeps its content and records in the
+ *   history strip until the host removes it, a day later ([ClosedSurfaces]). A decision someone
+ *   closes stays closed until the target is orphaned again, so the host never fights a close: while
+ *   its target is orphaned, [ClosedSurfaces] doesn't remove it, or this would post it again. `bee_board_clear` leaves it open, as it leaves every surface
  *   the host opened (bee#71).
  * - **Only agents are offered a reassign.** A person has no release path in v1, so a claim
  *   reassigned to one would be held for good. This filters for liveness; the table still commits
@@ -80,7 +84,10 @@ class OrphanDecisions(
             // one would be held for good. This filters for liveness, like `Departures`; the table still
             // commits any `Reassign`.
             val peers = present().filter { it.kind == PeerKind.Agent && it !in retired }
-            orphans.forEach { orphan -> isolated(OrphanDecision.surfaceId(orphan.target)) { decide(orphan, peers) } }
+            orphans.forEach { orphan ->
+                val id = decisionFor(relay.state.value, orphan)
+                isolated(id) { decide(id, orphan, peers) }
+            }
         }
         relay.state.value.openSurfaces()
             .mapNotNull { id -> OrphanDecision.targetOf(id)?.let { id to it } }
@@ -102,21 +109,40 @@ class OrphanDecisions(
         }
     }
 
-    /** An orphaned claim as the mirror shows it. A view naming no holder or token is a broken mirror. */
-    private data class Orphan(val target: ClaimTarget, val holder: PeerIdentity, val token: String) {
+    /**
+     * An orphaned claim as the mirror shows it. A view naming no holder, or no token a token reads
+     * as, is a broken mirror.
+     */
+    private data class Orphan(val target: ClaimTarget, val holder: PeerIdentity, val token: ClaimToken) {
         companion object {
             fun of(target: ClaimTarget, view: ClaimView) = Orphan(
                 target,
                 PeerIdentity.parse(requireNotNull(view.holder) { "an orphaned view names no holder: $view" }),
-                requireNotNull(view.token) { "an orphaned view names no token: $view" },
+                ClaimToken.parse(requireNotNull(view.token) { "an orphaned view names no token: $view" }),
             )
         }
     }
 
-    /** Opens, revises or extends [orphan]'s decision, from the board as it is now. */
-    private fun decide(orphan: Orphan, peers: List<PeerIdentity>) {
-        val (target, holder, token) = orphan
-        val id = OrphanDecision.surfaceId(target)
+    /**
+     * The surface [orphan]'s decision goes on in [state]: the target's decision still on the board,
+     * open or closed, if there is one; else `orphan-<target>`, unless the host removed it (bee#274);
+     * else the one named by this orphaning's token, which no earlier decision can have taken.
+     */
+    private fun decisionFor(state: BoardState, orphan: Orphan): String {
+        val base = OrphanDecision.surfaceId(orphan.target)
+        val onBoard = (state.openSurfaces() + state.closedSurfaces()).filter { OrphanDecision.targetOf(it) == orphan.target }
+        return when {
+            base in onBoard -> base
+            onBoard.isNotEmpty() -> onBoard.min()
+            state.isRemoved(base) -> OrphanDecision.surfaceId(orphan.target, orphan.token)
+            else -> base
+        }
+    }
+
+    /** Opens, revises or extends [orphan]'s decision on surface [id], from the board as it is now. */
+    private fun decide(id: String, orphan: Orphan, peers: List<PeerIdentity>) {
+        val (target, holder, claimToken) = orphan
+        val token = claimToken.text
         val offered = options(peers.filter { it != holder })
         val state = relay.state.value
         val doc = state.surfaceDoc(id)

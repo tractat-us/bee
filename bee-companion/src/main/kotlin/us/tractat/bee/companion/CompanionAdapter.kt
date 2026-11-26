@@ -31,6 +31,7 @@ import us.tractat.bee.core.ClaimTarget
 import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.CompanionSurfaces
 import us.tractat.bee.core.SurfaceMeta
+import us.tractat.bee.core.SurfaceRemoved
 import us.tractat.bee.mcp.ActionScope
 import us.tractat.bee.mcp.ActionSource
 import us.tractat.bee.mcp.BeeBridge
@@ -86,11 +87,16 @@ private val logger = KotlinLogging.logger {}
  *   completed, so no restart writes it twice. The timestamp is when the click was made.
  * - `stateDir/bee-companion.json`, written whole or not at all, keeps the [board] it's on, its
  *   [surface] there, and the last screen handled, so a restart neither pushes that screen again
- *   nor clears its events. It also says whether the board had the surface then; if it did, a
- *   restart on the same board waits for the surface to arrive and never opens a second one. That
- *   wait is bounded: a board that still lacks it after [surfaceWait] (its host crashed before its
- *   save) fails the companion with [SurfaceMissing]. A file naming another board (a new host, a
- *   moved `board/`, another `BEE_HOST`) counts as none: the companion starts over, under a fresh id.
+ *   nor clears its events. It also says whether the board has the surface open, kept up to date
+ *   while the companion runs; if it does, a restart on the same board waits for the surface to
+ *   arrive and never opens a second one. A surface the companion saw closed or gone, whoever closed
+ *   it, is noted as not open. The host removes a surface a day after its close, and a removed id
+ *   stays removed (bee#274; Iain, 2026-11-23), so a companion that finds its [surface] removed,
+ *   running or restarted, even one killed while the surface was open, moves to a fresh id and
+ *   shows its next screen there. The wait is bounded: a board that still lacks the surface, and
+ *   shows no removal of it, after [surfaceWait] (its host crashed before its save) fails the
+ *   companion with [SurfaceMissing]. A file naming another board (a new host, a moved `board/`,
+ *   another `BEE_HOST`) counts as none: the companion starts over, under a fresh id.
  *
  * The companion joins the board as a session does: [bridge] carries its identity, presence and
  * claims. It writes the surface through [client] as [author], validating it first (A11), because
@@ -118,7 +124,7 @@ class CompanionAdapter(
     private val clock: () -> Instant,
     private val report: (JsonObject) -> Unit,
     private val board: BoardId,
-    random: Random,
+    private val random: Random,
     private val pollEvery: Duration = 250.milliseconds,
     private val syncWait: Duration = SYNC_WAIT,
     private val surfaceWait: Duration = 60.seconds,
@@ -129,10 +135,13 @@ class CompanionAdapter(
 
     /** What [keptFile] holds, or will once [start] writes it. Changed only under [turn]. */
     private var kept: Kept = readKept()?.takeIf { it.board == board }
-        ?: Kept(board, "$SURFACE_PREFIX${random.nextBytes(SURFACE_ID_BYTES).toHexString()}", shown = null)
+        ?: Kept(board, freshSurfaceId(), shown = null)
 
-    /** The surface this companion keeps on the board: its own, `companion-<id>`. */
-    val surface: String = kept.surface
+    /**
+     * The surface this companion keeps on the board: its own, `companion-<id>`. It changes only
+     * when the host has removed it ([leaveIfRemoved]).
+     */
+    val surface: String get() = kept.surface
 
     /** Screen pushes and event writes, one at a time: a click is checked against the screen it lands under. */
     private val turn = Mutex()
@@ -145,8 +154,22 @@ class CompanionAdapter(
         launch { handleClicks() }
         while (true) {
             sync()
+            noteOpen()
             delay(pollEvery)
         }
+    }
+
+    /**
+     * Keeps [keptFile]'s note of whether the surface is open in step with the board: closed or gone,
+     * whoever closed it, the host removes it a day later (bee#274), and a restart must not wait for
+     * it; reopened, a restart must.
+     */
+    private suspend fun noteOpen() = turn.withLock {
+        val shown = kept.shown ?: return@withLock
+        val open = client.state.value.isOpen(surface)
+        if (shown.hadSurface == open) return@withLock
+        kept = kept.copy(shown = shown.copy(hadSurface = open))
+        writeKept(kept)
     }
 
     /**
@@ -161,30 +184,53 @@ class CompanionAdapter(
      */
     private suspend fun awaitSurface() {
         if (!client.awaitSynced(syncWait)) throw BoardNotSynced(board, syncWait)
+        turn.withLock { leaveIfRemoved(client.state.value) }
         if (kept.shown?.hadSurface == true) {
             logger.info { "$KEPT says $board has surface $surface: waiting up to $surfaceWait for it to arrive." }
-            withTimeoutOrNull(surfaceWait) { client.state.first { it.surfaceDoc(surface) != null } } ?: throw SurfaceMissing(board, surface)
+            val arrived = withTimeoutOrNull(surfaceWait) { client.state.first { it.surfaceDoc(surface) != null || it.isRemoved(surface) } }
+                ?: throw SurfaceMissing(board, surface)
+            turn.withLock { leaveIfRemoved(arrived) }
         }
     }
+
+    /**
+     * Moves this companion to a fresh `companion-<id>` if [state] shows the host removed its
+     * [surface] (bee#274): a removed id stays removed, so the next screen opens the fresh one. The
+     * last screen handled stays handled, as after a close. Called under [turn].
+     */
+    private fun leaveIfRemoved(state: BoardState) {
+        if (!state.isRemoved(kept.surface)) return
+        val fresh = freshSurfaceId()
+        logger.info { "The host removed surface ${kept.surface} for good, so this companion moves to $fresh." }
+        kept = kept.copy(surface = fresh, shown = kept.shown?.copy(hadSurface = false))
+        writeKept(kept)
+    }
+
+    private fun freshSurfaceId() = "$SURFACE_PREFIX${random.nextBytes(SURFACE_ID_BYTES).toHexString()}"
 
     /**
      * Closes [surface], as a graceful stop does, so a finished session leaves no open, dead Sketch
      * on the board, and waits until the host has the close. Unbounded: the caller bounds it. Only
      * the surface closes: `bee-companion.json` still names the screen shown, so a restart over the
-     * same directories leaves the surface closed until the agent pushes a new screen.
+     * same directories leaves the surface closed until the agent pushes a new screen. The close is
+     * noted there, so that restart doesn't wait for a surface the host may have removed by then.
      *
      * @return whether the host acknowledged the close; false when the companion is offline
      */
     suspend fun closeSurface(): Boolean = turn.withLock {
         client.mutateOrSkip { state ->
-            val open = state.surfaceDoc(surface) != null && state.meta(surface)?.closedAt == null
-            if (open) state.closeSurface(author, surface, clock()) else null
+            if (state.isOpen(surface)) state.closeSurface(author, surface, clock()) else null
+        }
+        kept.shown?.takeIf { it.hadSurface }?.let { shown ->
+            kept = kept.copy(shown = shown.copy(hadSurface = false))
+            writeKept(kept)
         }
         client.awaitAcknowledged()
     }
 
     /** Shows the newest screen if it isn't the one last handled. */
     private suspend fun sync() = turn.withLock {
+        leaveIfRemoved(client.state.value)
         val screen = newestScreen(screenDir.listDirectoryEntries("*.html")) ?: return@withLock
         val last = kept.shown
         if (last != null && last.file == screen.name && last.mtime == screen.mtime) return@withLock
@@ -194,6 +240,10 @@ class CompanionAdapter(
         val refusal = try {
             write(screen.name, if (waiting) null else framed(content))
             null
+        } catch (_: SurfaceRemoved) {
+            // The host removed it since the check above: the next poll shows this screen on a fresh id.
+            leaveIfRemoved(client.state.value)
+            return@withLock
         } catch (refused: BoardWriteTooLarge) {
             refused.message
         } catch (refused: ScreenInvalid) {
@@ -211,7 +261,7 @@ class CompanionAdapter(
             report(line)
         }
         // A refused screen counts as handled too, so it isn't retried every poll.
-        kept = kept.copy(shown = Shown(screen.name, screen.mtime, hadSurface = client.state.value.surfaceDoc(surface) != null))
+        kept = kept.copy(shown = Shown(screen.name, screen.mtime, hadSurface = client.state.value.isOpen(surface)))
         writeKept(kept)
     }
 
@@ -289,8 +339,10 @@ class CompanionAdapter(
     private suspend fun handleClicks() {
         var cursor: String? = null
         while (true) {
+            // Read once a wait: a move to a fresh id is waited on from the next one, up to [WAIT] later.
+            val on = surface
             val result = try {
-                actions.next(ActionScope.Surface(surface), cursor, WAIT)
+                actions.next(ActionScope.Surface(on), cursor, WAIT)
             } catch (refused: BridgeRefusal) {
                 // Retired mid-wait (the host lost this companion's link): it acts under a fresh
                 // identity now, and its orphaned claims wait for a participant to decide.
@@ -298,23 +350,27 @@ class CompanionAdapter(
                 continue
             }
             cursor = result.cursor
-            result.record?.let { handle(it) }
+            result.record?.let { handle(it, on) }
         }
     }
 
-    /** Writes [record] to the events file if it's a click on the latest screen, then completes its claim. */
-    private suspend fun handle(record: JsonObject) {
+    /**
+     * Writes [record], made on surface [on], to the events file if it's a click on the latest
+     * screen, then completes its claim. A record whose surface the host removed since it was taken
+     * is dropped with it.
+     */
+    private suspend fun handle(record: JsonObject, on: String) {
         val id = BoardActionSource.parseRecordId(record.getValue("recordId").jsonPrimitive.content)
         val token = BoardActionSource.parseToken(record.getValue("token").jsonPrimitive.content)
         turn.withLock {
             val state = bridge.board.value
-            val made = state.records(surface).single { it.first == id }.second
-            val latest = latestScreen(state, surface)
+            val made = if (state.isRemoved(on)) null else state.records(on).single { it.first == id }.second
+            val latest = latestScreen(state, on)
             // A closed surface's latest screen is a waiting or refused one, which takes no clicks.
-            val open = state.meta(surface)?.closedAt == null
+            val open = state.meta(on)?.closedAt == null
             when {
-                made.name != CHOICE -> Unit
-                open && latest != null && made.basis.saw(SCREENS, latest) -> append(click(made.context, made.at))
+                made != null && made.name != CHOICE -> Unit
+                made != null && open && latest != null && made.basis.saw(SCREENS, latest) -> append(click(made.context, made.at))
                 else -> report(event("click-dropped", null) { put("recordId", record.getValue("recordId")) })
             }
         }
@@ -370,7 +426,10 @@ class CompanionAdapter(
         }
     }
 
-    /** The last screen handled, by name and mtime, and whether the board had the surface after it. */
+    /**
+     * The last screen handled, by name and mtime, and whether the board has the surface open:
+     * [hadSurface] follows the board while the companion runs, and keeps its JSON name.
+     */
     private data class Shown(val file: String, val mtime: Long, val hadSurface: Boolean) {
         fun json() = buildJsonObject {
             put("file", file)
