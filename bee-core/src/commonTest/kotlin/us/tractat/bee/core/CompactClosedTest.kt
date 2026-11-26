@@ -210,6 +210,22 @@ class CompactClosedTest {
     }
 
     /**
+     * A record made on the surface before its writer saw the removal arrives after it: the record
+     * keeps its place in the log, but nothing shows it, board-wide or for the surface.
+     */
+    @Test
+    fun aLateRecordOnARemovedSurfaceShowsNowhere() {
+        val board = closed()
+        val racing = board.appendRecord(B, BoardFixtures.record(board))
+        val merged = board.compacted().piece(racing.delta)
+        assertAll(
+            { assertEquals(2, board.piece(racing.delta).records(SURFACE).size, "the control: the late record shows before the removal") },
+            { assertEquals(emptyList(), merged.records()) },
+            { merged.assertRemovedForGood() },
+        )
+    }
+
+    /**
      * Found measuring the 8233 board, which removed 184 surfaces at once and kept none of their
      * tombstones: every surface removed in one call stays removed, on the host and wherever its
      * removal merges.
