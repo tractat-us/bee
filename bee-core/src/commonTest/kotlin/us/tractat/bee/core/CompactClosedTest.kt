@@ -238,10 +238,15 @@ class CompactClosedTest {
         val board = BoardState.EMPTY.piece { it.openSurface(host, SURFACE, meta, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
             .piece { it.closeSurface(host, SURFACE, closedAt) }
         val racing = board.updateData(B, SURFACE, "/note", str("late"))
+        // B's whole replica, as anti-entropy sends it, not just the write's delta.
+        val lateReplica = board.piece(racing.delta)
         val merged = board.compacted().piece(racing.delta)
+        val mergedWhole = board.compacted().piece(lateReplica)
         assertAll(
             { board.compacted().assertRemovedForGood() },
             { merged.assertRemovedForGood() },
+            { mergedWhole.assertRemovedForGood() },
+            { lateReplica.piece(board.compacted()).assertRemovedForGood() },
             { assertTrue("data" in merged.surfaces[SURFACE]!!.keys, "the control: B's write did merge under the tombstone") },
         )
     }
