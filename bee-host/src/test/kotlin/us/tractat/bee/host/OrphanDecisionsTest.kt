@@ -24,6 +24,7 @@ import us.tractat.bee.core.ClaimCommand
 import us.tractat.bee.core.ClaimOutcome
 import us.tractat.bee.core.ClaimStatus
 import us.tractat.bee.core.ClaimTarget
+import us.tractat.bee.core.ClaimToken
 import us.tractat.bee.core.DepartReason
 import us.tractat.bee.core.LivePresence
 import us.tractat.bee.core.OrphanAnswers
@@ -97,6 +98,10 @@ class OrphanDecisionsTest {
             }
             return answers.answered(OrphanDecision.surfaceId(TARGET), OrphanDecision.ANSWER_ACTION, context, seen)
         }
+
+        /** The token of [TARGET]'s orphaning, once the voter's table shows it orphaned. */
+        suspend fun orphanedToken(): ClaimToken =
+            (voter.table.first { it.status(TARGET) is ClaimStatus.Orphaned }.status(TARGET) as ClaimStatus.Orphaned).token
 
         /** Every command in the voter's log, in order. */
         suspend fun log(): List<ClaimCommand?> = DurableStoreRaftStorage.open(claims.store).entries(1).map { entry ->
@@ -252,7 +257,7 @@ class OrphanDecisionsTest {
         check(board.isRemoved(surfaceId)) { "rig: the host removed the first decision" }
 
         voter.depart(bo, DepartReason.Crashed)
-        val second = OrphanDecision.surfaceId(target, (voter.table.value.status(target) as ClaimStatus.Orphaned).token)
+        val second = OrphanDecision.surfaceId(target, orphanedToken())
         val asked = withTimeoutOrNull(30.seconds) { star.relay.state.first { second in it.openSurfaces() } }
         val data = requireNotNull(board.surfaceDoc(second)).toSurfaceView(second).data
         val toCy = buildJsonObject { put(OrphanDecision.OPTION_KEY, OrphanDecision.reassignOption(cy)) }
@@ -260,7 +265,7 @@ class OrphanDecisionsTest {
         val closed = withTimeoutOrNull(30.seconds) { star.relay.state.first { second in it.closedSurfaces() } }
 
         voter.depart(cy, DepartReason.Crashed)
-        val third = (voter.table.value.status(target) as ClaimStatus.Orphaned).token.text
+        val third = orphanedToken().text
         val askedAgain = withTimeoutOrNull(30.seconds) {
             star.relay.state.first { second in it.openSurfaces() && OrphanDecision.orphaning(it.surfaceDoc(second)!!.toSurfaceView(second).data)?.text == third }
         }
