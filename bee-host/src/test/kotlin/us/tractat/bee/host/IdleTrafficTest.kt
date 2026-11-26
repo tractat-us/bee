@@ -43,7 +43,8 @@ private const val BOARD_FRACTION = 2
  * kuilt 0.7.0-dev.1696 a 1 s backstop crossed 169 to 234 times, and 30 s crossed 2 to 5, both
  * with the Quilters on the wall clock. On 0.7.0-dev.1926 (kuilt#3617), with every Quilter on the
  * test scheduler's clock and a seeded random, each relay seed replays the same counts every run.
- * Across relay seeds 0 to 9, 1 s crossed 24 to 57 times, 5 s 2 to 5, and 30 s none.
+ * Across relay seeds 0 to 9, 1 s crossed 24 to 57 times, 5 s 2 to 5, and 30 s none. On
+ * 0.7.0-dev.1995 (kuilt#3622 vector digests, #3629 behind-state replies), 1 s crosses none at seed 0.
  */
 private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
 
@@ -186,7 +187,10 @@ class IdleTrafficTest {
      * so the same minute gave different counts run to run (tractat-us/kuilt#3622). Two runs here
      * must put the same frames, of the same sizes in the same order, on every spoke's link.
      *
-     * This pins the random: with the Quilters' draws unseeded it reds every run. It can't pin the
+     * This pins the random: with the Quilters' draws unseeded it reds every run. Since kuilt
+     * 0.7.0-dev.1995 the minute ships no whole board even at 1 s, so the precondition asks only that
+     * every link carries frames; an unseeded relay random still reds the comparison on the digests'
+     * order alone. It can't pin the
      * clock. A whole run takes well under a second of wall time, so a wall clock makes every write
      * look recent to the skip, every run alike, and the counts come out wrong but repeatable. The
      * clock is pinned by `BoardClient` and `BoardRelay` taking it with no default.
@@ -201,7 +205,7 @@ class IdleTrafficTest {
         }
         assertAll(
             { assertTrue(runs[0].frames.values.all { it.up.isNotEmpty() && it.down.isNotEmpty() }, "precondition: every spoke's link carries frames both ways: ${runs[0].frames}") },
-            { assertEquals(runs[0], runs[1], "two runs of one idle minute, board-sized frames per spoke: ${runs.map { it.boardSized() }}") },
+            { assertEquals(runs[0], runs[1], "two runs of one idle minute, frames per spoke: ${runs.map { run -> run.frames.mapValues { (_, f) -> f.up.size + f.down.size } }}") },
         )
     }
 
