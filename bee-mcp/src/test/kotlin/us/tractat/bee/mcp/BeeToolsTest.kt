@@ -139,6 +139,31 @@ class BeeToolsTest {
     }
 
     /**
+     * bee#274: once the host has removed a closed surface, `bee_surface_open` refuses its id for
+     * good, saying to use a new one, and the board still shows nothing of it. The control: a new id
+     * opens.
+     */
+    @Test
+    fun openRefusesAnIdTheHostRemoved() = runTest(timeout = 120.seconds) {
+        val rig = JoinRig(this).apply { start() }
+        val ada = rig.session("ada")
+        ada.call(BeeTools.OPEN, openArgs("lunch"))
+        ada.call(BeeTools.CLOSE, mapOf("surfaceId" to "lunch"))
+        rig.star.relay.state.first { "lunch" in it.closedSurfaces() }
+        rig.star.relay.mutate { it.compactClosed(rig.star.relay.replica, setOf("lunch"), closedBy = rig.claims.clock(), at = rig.claims.clock()) }
+        ada.client.state.first { it.isRemoved("lunch") }
+
+        val again = ada.call(BeeTools.OPEN, openArgs("lunch"))
+        val control = ada.call(BeeTools.OPEN, openArgs("lunch-2"))
+        assertAll(
+            { assertTrue(again.isError == true && "use a new surfaceId" in again.text(), "refused: ${again.text()}") },
+            { assertEquals(listOf("lunch-2"), ada.client.state.value.openSurfaces(), "nothing of lunch shows") },
+            { assertEquals(null, control.isError, "control: a new id opens: ${control.text()}") },
+        )
+        rig.close()
+    }
+
+    /**
      * Closing a closed surface again changes nothing, so `bee_surface_close` can honestly say it's
      * idempotent: the surface keeps its first `closedAt` and its place in the history strip.
      */
