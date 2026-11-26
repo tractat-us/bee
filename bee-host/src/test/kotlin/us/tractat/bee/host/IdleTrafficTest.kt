@@ -200,7 +200,7 @@ class IdleTrafficTest {
             minute
         }
         assertAll(
-            { assertTrue(runs[0].boardSized().values.any { it > 0 }, "precondition: the minute ships whole boards: ${runs[0].boardSized()}") },
+            { assertTrue(runs[0].frames.values.all { it.up.isNotEmpty() && it.down.isNotEmpty() }, "precondition: every spoke's link carries frames both ways: ${runs[0].frames}") },
             { assertEquals(runs[0], runs[1], "two runs of one idle minute, board-sized frames per spoke: ${runs.map { it.boardSized() }}") },
         )
     }
