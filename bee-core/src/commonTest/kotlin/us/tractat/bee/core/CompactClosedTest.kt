@@ -196,10 +196,11 @@ class CompactClosedTest {
     /**
      * A peer on the release before this one reads a surface's meta with [SurfaceDoc.meta] alone. A
      * tombstone, and one with a non-opener's late write under it, holds no title, so that reader
-     * takes it for a surface whose open hasn't arrived, and shows nothing (bee#171's guard).
+     * takes it for a surface whose open hasn't arrived, and shows nothing (bee#171's guard). The
+     * opener's late write is another matter: [anOlderPeerShowsTheOpenersLateWriteOpenAgain].
      */
     @Test
-    fun aPeerThatPredatesTheTombstoneShowsNothingOfIt() {
+    fun anOlderPeerShowsNothingOfATombstoneOrANonOpenersLateWrite() {
         val board = closed()
         val racing = board.updateData(B, SURFACE, "/note", str("late"))
         val compacted = board.compacted()
@@ -207,6 +208,48 @@ class CompactClosedTest {
             { assertEquals(null, SurfaceDoc.meta(compacted.surfaces[SURFACE]!!)) },
             { assertEquals(null, SurfaceDoc.meta(compacted.piece(racing.delta).surfaces[SURFACE]!!)) },
         )
+    }
+
+    /**
+     * Pins what this release can't fix: a peer on the release before it shows a removed surface
+     * again, open, once its opener's late write arrives. [A]'s write carries its open's meta, whose
+     * `closedAt` is null, and [B]'s close went with the removal, so the older reader finds a whole
+     * open meta and never looks for `removedAt`. This release hides it. Reloading or upgrading the
+     * older page or agent is the fix, which the release note says.
+     */
+    @Test
+    fun anOlderPeerShowsTheOpenersLateWriteOpenAgain() {
+        val board = closed().piece { it.updateData(B, SURFACE, "/byB", str("b")) }
+        val merged = board.compacted().piece(board.updateData(A, SURFACE, "/note", str("late")).delta)
+        val olderRead = SurfaceDoc.meta(merged.surfaces[SURFACE]!!)
+        assertAll(
+            { assertEquals("Lunch", olderRead?.title, "the older reader finds the open's meta") },
+            { assertEquals(null, olderRead?.closedAt, "and takes the surface for open") },
+            { merged.assertRemovedForGood() },
+        )
+    }
+
+    /**
+     * The tombstone's inner tags start again at the host's first (kuilt#3126), so on a surface the
+     * host opened they are the very tags of the host's open, which [B] has seen. [B]'s late retitle
+     * or reopen supersedes the host's title or `closedAt` under those tags; neither touches
+     * `removedAt`, which only the host writes, so the tombstone stays whole and the id removed.
+     */
+    @Test
+    fun aLateMetaWriteToASurfaceTheHostOpenedStaysHidden() {
+        val meta = SurfaceMeta("Decide", "c", PeerIdentity.human("iain"), OPENED_AT)
+        val board = BoardState.EMPTY.piece { it.openSurface(host, SURFACE, meta, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+            .piece { it.closeSurface(host, SURFACE, closedAt) }
+        val compacted = board.compacted()
+        val late = listOf(board.retitleSurface(B, SURFACE, "Late"), board.reopenSurface(B, SURFACE))
+        val checks = late.flatMap { write ->
+            listOf<() -> Unit>(
+                { compacted.piece(write.delta).assertRemovedForGood() },
+                { compacted.piece(board.piece(write.delta)).assertRemovedForGood() },
+                { board.piece(write.delta).piece(compacted).assertRemovedForGood() },
+            )
+        }
+        assertAll(*checks.toTypedArray())
     }
 
     /**
