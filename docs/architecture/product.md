@@ -70,7 +70,8 @@ and building the tool instead of the work is an anti-goal
 
 - **Bring-your-own identity**, anonymous by default, or SSO or OAuth:
   [#149](https://github.com/tractat-us/bee/issues/149). Under invariant 1 the anonymous path stays
-  the default and adds no step to joining.
+  the default and adds no step to joining. Its first step, device keys and passes on kuilt's
+  identity library, is designed in [`access.md`](access.md#device-keys-and-passes).
 - **Every way to install bee, and a one-click join from the board:** [#145](https://github.com/tractat-us/bee/issues/145).
   Under invariant 1, one path beats many, and the join adds no board chrome.
 - **The bee app, a Kotlin Multiplatform kuilt app that hosts a board on a phone:**
