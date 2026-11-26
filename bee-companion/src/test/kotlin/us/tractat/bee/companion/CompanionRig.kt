@@ -46,6 +46,7 @@ import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.core.fabric.Connection
 import us.tractat.kuilt.core.fabric.peerMesh
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.fabric.connectionPair
 import java.nio.file.Files
@@ -204,6 +205,7 @@ internal class CompanionRig(
                     endpoints = ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))),
                     scope = linkScope,
                     raftConfig = claims.raftConfig,
+                    deviceKeys = InMemoryDeviceKeyStore(),
                     clock = claims.clock,
                     random = Random(1_000 * n + links),
                 )

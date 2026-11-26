@@ -60,6 +60,7 @@ import us.tractat.kuilt.core.InMemoryTag
 import us.tractat.kuilt.crdt.Patch
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.piece
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.DurableStoreRaftStorage
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
@@ -619,6 +620,7 @@ internal class JoinRig(private val test: TestScope) {
                     endpoints = ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))),
                     scope = linkScope,
                     raftConfig = claims.raftConfig,
+                    deviceKeys = InMemoryDeviceKeyStore(),
                     clock = claims.clock,
                     random = Random(1_000 * n + links),
                 ).also { onLink(links, linkScope) }

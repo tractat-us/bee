@@ -20,6 +20,7 @@ import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.core.Seam
 import us.tractat.kuilt.core.fabric.Connection
 import us.tractat.kuilt.core.fabric.identified
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.session.Room
@@ -58,6 +59,7 @@ class ClaimsRig(private val test: TestScope, val store: DurableStore = InMemoryD
             endpoints = ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))),
             scope = scope,
             raftConfig = raftConfig,
+            deviceKeys = InMemoryDeviceKeyStore(),
             clock = clock,
             // One seed per client in this rig, never from the node: a reused node must draw a new incarnation.
             random = Random(++clientSeeds),
@@ -79,6 +81,7 @@ class InMemoryClaimsHost(private val dispatcher: CoroutineContext, private val c
     private class Link(val server: Connection, val remote: PeerId)
 
     private val pending = Channel<Link>(Channel.UNLIMITED)
+    private val deviceKeys = InMemoryDeviceKeyStore()
     private val holds = mutableMapOf<NodeId, HoldableConnection>()
     private val upHolds = mutableMapOf<NodeId, HoldableConnection>()
     private val upDrops = mutableMapOf<NodeId, DroppableConnection>()
@@ -113,9 +116,10 @@ class InMemoryClaimsHost(private val dispatcher: CoroutineContext, private val c
                 return identified(link.server, SERVER, link.remote, dispatcher)
             }
         }
-        val factory = SeamRoomFactory(loom = accept, scope = this, clock = clock)
+        // One server, so one device key for every room it hosts, as `KtorRoomHost` keeps one.
+        val factory = SeamRoomFactory(loom = accept, scope = this, clock = clock, deviceKeyStore = deviceKeys)
         while (true) {
-            val room = factory.host(Pattern(SESSION))
+            val room = factory.host(Pattern(SESSION), admission = claimsAdmission())
             launch { onRoom(room) }
         }
     }

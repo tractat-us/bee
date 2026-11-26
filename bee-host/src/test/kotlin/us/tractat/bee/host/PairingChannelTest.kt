@@ -19,6 +19,7 @@ import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.test.assertAll
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -42,7 +43,7 @@ class PairingChannelTest {
     private val clock = { Clock.System.now() }
     private val pairing = Pairing(clock, SecureSecrets(SecureRandom()), memoryKeys())
     private val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
-        mountEndpoints(BoardId.mint(), pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), 10.minutes, clock, Admitters.WHOEVER_COMES), Invitation.Closed)
+        mountEndpoints(BoardId.mint(), pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), 10.minutes, clock, Admitters.WHOEVER_COMES), Invitation.Closed, InMemoryDeviceKeyStore())
     }.start(wait = false)
     private val port = runBlocking { server.engine.resolvedConnectors().first().port }
     private val client = HttpClient(CIO)

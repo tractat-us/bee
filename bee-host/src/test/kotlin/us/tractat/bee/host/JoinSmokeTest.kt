@@ -34,6 +34,7 @@ import us.tractat.bee.core.SpokeLoom
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import us.tractat.kuilt.websocket.WebSocketAdvertisement
@@ -83,7 +84,7 @@ class JoinSmokeTest {
                 val claims = ClaimsConnection(
                     scope = bridgeScope,
                     nextNode = { NodeId("mcp-ada-${Random.Default.nextLong().toULong()}") },
-                    open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, HostAddress.parse("ws://127.0.0.1:${host.port}"), BoardPin.to(host.boardId), linkScope, clock, Random.Default) },
+                    open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, HostAddress.parse("ws://127.0.0.1:${host.port}"), BoardPin.to(host.boardId), linkScope, InMemoryDeviceKeyStore(), clock, Random.Default) },
                     onFailure = { },
                     retryDelay = ClaimsConnection.jitteredBackoff(Random.Default),
                 )

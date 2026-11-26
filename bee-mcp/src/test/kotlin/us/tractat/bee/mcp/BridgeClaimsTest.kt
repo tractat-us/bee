@@ -39,6 +39,7 @@ import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.core.Seam
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import java.net.URI
@@ -777,6 +778,7 @@ class BridgeClaimsTest {
                     ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))),
                     linkScope,
                     rig.claims.raftConfig,
+                    InMemoryDeviceKeyStore(),
                     rig.claims.clock,
                     Random(nodes),
                 )
@@ -808,7 +810,7 @@ class BridgeClaimsTest {
             scope = backgroundScope,
             nextNode = { NodeId("hanging") },
             open = { node, linkScope ->
-                ClaimsLink.open(node, { hanging }, ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))), linkScope, rig.claims.raftConfig, rig.claims.clock, Random(1))
+                ClaimsLink.open(node, { hanging }, ClusterEndpoints(listOf(InMemoryTag(InMemoryClaimsHost.SESSION))), linkScope, rig.claims.raftConfig, InMemoryDeviceKeyStore(), rig.claims.clock, Random(1))
             },
             onFailure = { },
             retryDelay = ClaimsConnection.jitteredBackoff(Random(42)),

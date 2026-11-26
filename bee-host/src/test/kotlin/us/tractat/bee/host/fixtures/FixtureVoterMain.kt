@@ -12,6 +12,7 @@ import us.tractat.bee.host.ClaimMirror
 import us.tractat.bee.host.ClaimsVoter
 import us.tractat.kuilt.core.Pattern
 import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.websocket.KtorRoomHost
 import java.io.File
@@ -55,7 +56,7 @@ suspend fun startFixtureVoter(
 ): FixtureVoter {
     lateinit var host: KtorRoomHost
     val server = embeddedServer(Netty, host = "127.0.0.1", port = 0) {
-        host = KtorRoomHost(this, FixtureVoter.CLAIMS_PATH, FixtureVoter.SERVER, Pattern(FixtureVoter.SESSION))
+        host = KtorRoomHost(this, FixtureVoter.CLAIMS_PATH, FixtureVoter.SERVER, Pattern(FixtureVoter.SESSION), InMemoryDeviceKeyStore(), claimsAdmission())
     }
     server.start(wait = false)
     val port = server.engine.resolvedConnectors().first().port

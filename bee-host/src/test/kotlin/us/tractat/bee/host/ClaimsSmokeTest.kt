@@ -23,6 +23,7 @@ import us.tractat.bee.core.PeerIdentity
 import us.tractat.bee.host.fixtures.FixtureVoter
 import us.tractat.bee.host.fixtures.startFixtureVoter
 import us.tractat.kuilt.cluster.ClusterEndpoints
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.test.assertAll
@@ -118,6 +119,7 @@ class ClaimsSmokeTest {
             endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(voter.url, FixtureVoter.SERVER, FixtureVoter.SESSION))),
             scope = scope,
             raftConfig = RaftConfig(),
+            deviceKeys = InMemoryDeviceKeyStore(),
             clock = { Clock.System.now() },
             random = Random.Default,
         ).client
