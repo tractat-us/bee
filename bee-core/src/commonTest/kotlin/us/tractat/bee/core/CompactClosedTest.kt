@@ -209,6 +209,43 @@ class CompactClosedTest {
         )
     }
 
+    /**
+     * Found measuring the 8233 board, which removed 184 surfaces at once and kept none of their
+     * tombstones: every surface removed in one call stays removed, on the host and wherever its
+     * removal merges.
+     */
+    @Test
+    fun everySurfaceRemovedInOneCallStaysRemoved() {
+        val board = closed().piece { it.openSurface(A, "second", again, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+            .piece { it.closeSurface(B, "second", closedAt) }
+        val compacted = board.compacted()
+        val removed = setOf(SURFACE, "second")
+        assertAll(
+            { assertEquals(removed, removed.filter { compacted.isRemoved(it) }.toSet(), "on the host") },
+            { assertEquals(removed, removed.filter { board.piece(compacted).isRemoved(it) }.toSet(), "merged into a lagging copy") },
+            { assertEquals(emptyList(), compacted.closedSurfaces()) },
+        )
+    }
+
+    /**
+     * A surface the host opened itself, such as an orphan decision, then wrote to late by [B]: the
+     * host's own earlier writes to it must not hide the tombstone's. The late write merges under it,
+     * and the id stays removed.
+     */
+    @Test
+    fun aLateWriteToASurfaceTheHostOpenedStaysHidden() {
+        val meta = SurfaceMeta("Decide", "c", PeerIdentity.human("iain"), OPENED_AT)
+        val board = BoardState.EMPTY.piece { it.openSurface(host, SURFACE, meta, listOf(BoardFixtures.root), JsonObject(emptyMap())) }
+            .piece { it.closeSurface(host, SURFACE, closedAt) }
+        val racing = board.updateData(B, SURFACE, "/note", str("late"))
+        val merged = board.compacted().piece(racing.delta)
+        assertAll(
+            { board.compacted().assertRemovedForGood() },
+            { merged.assertRemovedForGood() },
+            { assertTrue("data" in merged.surfaces[SURFACE]!!.keys, "the control: B's write did merge under the tombstone") },
+        )
+    }
+
     /** The tombstone is ordinary surface content, so the board's wire form, unchanged, carries it. */
     @Test
     fun aTombstoneRoundTripsThroughTheBoardsCbor() {
