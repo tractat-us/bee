@@ -245,12 +245,16 @@ class BoardState internal constructor(
     fun compactClosed(replica: ReplicaId, ids: Set<String>, closedBy: Instant, at: Instant): Patch<BoardState> {
         requireReplica(replica)
         val gone = closedBy(closedBy) intersect ids
-        val surfacesDelta = gone.fold(ORMap.empty<String, JsonCrdt>()) { delta, id ->
-            val removal = surfaces.remove(id).delta
-            // Put against the map after the removal, so the tombstone's tag carries none of this
-            // replica's own earlier contributions to the surface.
-            val tombstone = surfaces.piece(removal).put(replica, id, SurfaceDoc.tombstone(replica, at)).delta
-            delta.piece(removal).piece(tombstone)
+        // Each id's removal and tombstone are made against the map after the ones before it, so each
+        // tombstone gets a tag of its own: two minted from the same map would share one, and the
+        // removal of the next id would retire it.
+        val (_, surfacesDelta) = gone.fold(surfaces to ORMap.empty<String, JsonCrdt>()) { (map, delta), id ->
+            val removal = map.remove(id).delta
+            val removed = map.piece(removal)
+            // Put after the removal, so the tombstone's tag carries none of this replica's own
+            // earlier contributions to the surface.
+            val tombstone = removed.put(replica, id, SurfaceDoc.tombstone(replica, at)).delta
+            removed.piece(tombstone) to delta.piece(removal).piece(tombstone)
         }
         val removed = records.entries().filter { (_, record) -> record.surfaceId in gone }.map { it.first }
         val recordsDelta = removed.fold(Rga.empty<ActionRecord>()) { delta, id -> delta.apply(RgaOp.Remove(id)) }
