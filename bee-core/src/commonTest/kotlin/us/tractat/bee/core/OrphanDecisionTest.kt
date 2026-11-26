@@ -28,6 +28,21 @@ class OrphanDecisionTest {
         )
     }
 
+    /**
+     * Both forms of a decision's id name their target (bee#274), whatever `-` and `:` the target
+     * holds, and an id that is neither names none.
+     */
+    @Test
+    fun bothFormsOfADecisionIdNameTheirTarget() {
+        val targets = listOf(ClaimTarget("record:web-iain:1"), ClaimTarget("card:2:5-x"), ClaimTarget("record:mcp-a-b:7"))
+        assertAll(
+            { assertEquals(targets, targets.map { OrphanDecision.targetOf(OrphanDecision.surfaceId(it)) }, "the first form") },
+            { assertEquals(targets, targets.map { OrphanDecision.targetOf(OrphanDecision.surfaceId(it, round2)) }, "the token form") },
+            { assertEquals("orphan-1:3-record:web-iain:1", OrphanDecision.surfaceId(targets[0], round2)) },
+            { assertEquals(listOf(null, null, null), listOf("orphan-1:3-", "orphan-1:3-notes", "notes").map(OrphanDecision::targetOf)) },
+        )
+    }
+
     private fun open(token: ClaimToken): JsonObject = buildJsonObject {
         put(OrphanDecision.TOKEN, token.text)
     }
