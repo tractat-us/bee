@@ -96,10 +96,10 @@ loopback with the host's own `bridgeKey`. It keeps each resumable session's iden
 which makes each accepted connection a two-peer room of its own, under a `serverCluster`
 ([`ClaimsVoter.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/ClaimsVoter.kt)). The board
 is a `KtorConnectionSource` feeding a `hostedOverlay` hub ([`BoardRelay.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/BoardRelay.kt)),
-which runs no admission of its own. Both sit behind the same key gate. On kuilt `0.7.0-dev.1995`
-([#280](https://github.com/tractat-us/bee/pull/280)) each claims link proves a fresh in-memory
-device key, the host's key is in memory too, and the room's policy is `AdmissionPolicy.open()`
-with nothing revoked, so the gate alone decides. A page with no WebCrypto, a LAN page over plain
+which runs no admission of its own. Both sit behind the same key gate. On kuilt `0.7.7`, with
+key-bound admission since [#280](https://github.com/tractat-us/bee/pull/280), each claims link
+proves a fresh in-memory device key, the host's key is in memory too, and the room's policy is
+`AdmissionPolicy.open()` with nothing revoked, so the gate alone decides. A page with no WebCrypto, a LAN page over plain
 HTTP, opens no claims link ([#282](https://github.com/tractat-us/bee/issues/282)).
 
 **Who is who is declared, not known.** A person is `human:<name>` from the page's `?name=`, an
@@ -115,7 +115,7 @@ record's actor to the connection that wrote it (tractat-us/kuilt#3149).
 The first step of [#149](https://github.com/tractat-us/bee/issues/149), on kuilt's identity
 library (tractat-us/kuilt#3159). It folds into [`setup.md`](../setup.md) and
 [`deploy.md`](../deploy.md#getting-on-the-board) when it lands. It starts from bee on kuilt
-`0.7.0-dev.1995`, where `KtorRoomHost` and `clusterClient` take a `DeviceKeyStore` and the claims
+`0.7.7`, where `KtorRoomHost` and `clusterClient` take a `DeviceKeyStore` and the claims
 room takes a `HostAdmission` whose policy admits everyone the gate let through.
 
 It lands in nine slices, in this order: [#290](https://github.com/tractat-us/bee/issues/290),

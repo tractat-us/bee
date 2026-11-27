@@ -1,5 +1,5 @@
 [versions]
-# Kotlin, coroutines, serialization and atomicfu follow the kuilt pin below (5607981d62).
+# Kotlin, coroutines, serialization and atomicfu follow the kuilt pin below (v0.7.7, 539ed95fc5).
 kotlin = "2.4.21"
 # Ktor runs ahead of kuilt (3.5.2) until tractat-us/kuilt#3150: 3.6.1 sends a WebSocket's last
 # frame, such as the host's 1009, before the connection closes (KTOR-9987 Netty, KTOR-10035
@@ -10,11 +10,13 @@ kotlinx-serialization = "1.13.0"
 atomicfu = "0.33.0"
 kotlinLogging = "8.0.6"
 logback = "1.6.6"
-# kuilt publish run 1995, kuilt commit 5607981d62: key-bound room admission. A claims link proves a
-# device key to get in (kuilt#3599), the claims host asks an AdmissionPolicy about each newcomer
-# (#3699) and hands it a pass back (#3701), so clusterClient and KtorRoomHost each take a
-# DeviceKeyStore. Also the quilter's vector digest (#3622) and its behind-state replies (#3629).
-kuilt = "0.7.0-dev.1995"
+# kuilt release 0.7.7, tag v0.7.7 at kuilt commit 539ed95fc5. Key-bound room admission came in
+# with publish run 1995 (5607981d62, bee#280): a claims link proves a device key to get in
+# (kuilt#3599), the claims host asks an AdmissionPolicy about each newcomer (#3699) and hands it a
+# pass back (#3701), so clusterClient and KtorRoomHost each take a DeviceKeyStore. 0.7.7 adds a
+# device returning on the last pass its host signed (#3748), which no bee link does yet: each
+# dials with a fresh in-memory key under AdmissionPolicy.open().
+kuilt = "0.7.7"
 mcp = "0.16.0"
 kotlinx-browser = "0.5.0"
 # bee-dogfood reads docs/project/plan.yaml, plain JSON in YAML form (bee#21).
