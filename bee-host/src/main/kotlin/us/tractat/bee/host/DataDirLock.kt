@@ -43,7 +43,7 @@ class DataDirLock private constructor(private val channel: FileChannel) : AutoCl
                 }
                 if (held == null) throw DataDirInUse(dataDir, readPid(channel))
                 channel.truncate(0)
-                channel.write(ByteBuffer.wrap("${ProcessHandle.current().pid()}\n".encodeToByteArray()), 0)
+                channel.write(ByteBuffer.wrap("${spikePid()}\n".encodeToByteArray()), 0)
                 channel.force(true)
                 return DataDirLock(channel)
             } catch (failure: Throwable) {
@@ -67,3 +67,6 @@ class DataDirInUse(val dataDir: Path, val pid: Long?) : IllegalStateException(
     "Another bee host${pid?.let { " (pid $it)" }.orEmpty()} is using the data dir $dataDir. " +
         "Stop it, or start this one with its own --data-dir.",
 )
+
+// SPIKE (docs/spikes/2026-11-bee-app.md): Android has no java.lang.ProcessHandle.
+internal fun spikePid(): Long = try { ProcessHandle.current().pid() } catch (_: LinkageError) { -1 }

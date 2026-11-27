@@ -153,11 +153,23 @@ class SiteRule(names: Set<String>, private val publicUrls: Set<PublicUrl> = empt
     }
 
     private fun literalOrNull(text: String): InetAddress? = try {
-        InetAddress.ofLiteral(text)
+        spikeOfLiteral(text)
     } catch (_: IllegalArgumentException) {
         null
     }
 }
+
+// SPIKE (docs/spikes/2026-11-bee-app.md): Android has no InetAddress.ofLiteral (Java 22).
+// getByName does no lookup for a literal; anything that isn't one is refused before it gets there.
+internal fun spikeOfLiteral(text: String): InetAddress = try {
+    InetAddress.ofLiteral(text)
+} catch (_: LinkageError) {
+    require(SPIKE_LITERAL.matches(text) && (':' in text || SPIKE_V4.matches(text))) { "Not a literal: $text" }
+    InetAddress.getByName(text)
+}
+
+private val SPIKE_LITERAL = Regex("[0-9A-Fa-f:.%]+")
+private val SPIKE_V4 = Regex("""\d{1,3}(\.\d{1,3}){3}""")
 
 /**
  * Refuses, with a 403 before any route runs, every call [rule] says isn't from the host's own site.
