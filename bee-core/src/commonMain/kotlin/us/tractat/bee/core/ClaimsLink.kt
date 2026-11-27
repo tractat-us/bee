@@ -74,7 +74,7 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
          *
          * @param deviceKeys the key this link proves to get into the claims room. Give each link a
          *   fresh `InMemoryDeviceKeyStore`: a link is a new device to the voter, as it is a new [node],
-         *   so nothing about one link carries to the next. The voter admits any key (`ClaimsVoter`).
+         *   so nothing about one link carries to the next. The host admits any key (`claimsAdmission()` in bee-host's `SocketGate`).
          * @param random draws the [ClaimsClient]'s incarnation; never seed it from [node].
          */
         @Suppress("LongParameterList")
