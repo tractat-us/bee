@@ -36,6 +36,7 @@ import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.Rendezvous
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.test.assertAll
 import us.tractat.kuilt.websocket.WebSocketAdvertisement
@@ -208,7 +209,7 @@ class BridgeJoinLinkTest {
         val claims = ClaimsConnection(
             scope = scope,
             nextNode = { NodeId("mcp-join-link-${Random.Default.nextLong().toULong()}") },
-            open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, Random.Default) },
+            open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, InMemoryDeviceKeyStore(), clock, Random.Default) },
             onFailure = { failure -> if (refused(failure)) claimsRefused.complete(failure) },
             retryDelay = { 200.milliseconds },
         )

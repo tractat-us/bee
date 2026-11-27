@@ -43,9 +43,19 @@ private const val BOARD_FRACTION = 2
  * kuilt 0.7.0-dev.1696 a 1 s backstop crossed 169 to 234 times, and 30 s crossed 2 to 5, both
  * with the Quilters on the wall clock. On 0.7.0-dev.1926 (kuilt#3617), with every Quilter on the
  * test scheduler's clock and a seeded random, each relay seed replays the same counts every run.
- * Across relay seeds 0 to 9, 1 s crossed 24 to 57 times, 5 s 2 to 5, and 30 s none.
+ * Across relay seeds 0 to 9, 1 s crossed 24 to 57 times, 5 s 2 to 5, and 30 s none. On
+ * 0.7.0-dev.1995 (kuilt#3622 vector digests, #3629 behind-state replies), across relay seeds 0
+ * to 9, 1 s and the production 30 s cross none, and 5 s crosses once, to two of the three spokes.
+ * So 1 catches 1696 at 30 s, and only the 1 s run catches a fall back to 1926, which 30 s
+ * can't tell from 1995.
  */
-private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
+private const val BOARD_FRAMES_PER_IDLE_MINUTE = 1
+
+/**
+ * An anti-entropy interval longer than the whole run, so no round falls inside the idle minute:
+ * what is left is presence and each link's liveness, 72 frames up per spoke on 0.7.0-dev.1995.
+ */
+private val NO_ROUND = 10.minutes
 
 /** The relay seeds the reconnect runs under: each replays exactly, and each is another schedule. */
 private val SEEDS = 0..4
@@ -102,6 +112,13 @@ private suspend fun TestScope.idleMinute(config: QuilterConfig): IdleMinute {
         settle(Presence.EVERY)
     }
     return IdleMinute(board, star.taps.mapValues { (_, tap) -> IdleMinute.Frames(tap.up.toList(), tap.down.toList()) })
+}
+
+/** [idleMinute] under [config], in a test of its own. */
+private fun measureIdleMinute(config: QuilterConfig): IdleMinute {
+    lateinit var minute: IdleMinute
+    runTest(StandardTestDispatcher()) { minute = idleMinute(config) }
+    return minute
 }
 
 /**
@@ -166,16 +183,20 @@ private suspend fun TestScope.reconnect(seed: Int): Reconnect {
  *
  * The test pins the production tuning ([BEE_QUILTER_CONFIG]) and makes the host [LAG] behind on
  * every link. The signal is a count of board-sized frames, which a working and a broken tuning
- * both produce but in very different numbers: one a round, against one a presence post.
+ * both produce but in very different numbers: one a round, against one a presence post. It also
+ * holds a 1 s backstop to the same bound, the case kuilt#3622 and #3629 fixed.
  */
 class IdleTrafficTest {
     @Test
-    fun anIdleBoardBehindALaggingHostShipsTheWholeBoardRarely() = runTest(StandardTestDispatcher()) {
-        val minute = idleMinute(BEE_QUILTER_CONFIG)
-        val boardSized = minute.boardSized()
+    fun anIdleBoardBehindALaggingHostShipsTheWholeBoardRarely() {
+        val minutes = mapOf(
+            "production" to measureIdleMinute(BEE_QUILTER_CONFIG),
+            "1 s" to measureIdleMinute(BEE_QUILTER_CONFIG.copy(antiEntropyInterval = 1.seconds)),
+        )
+        val boardSized = minutes.mapValues { it.value.boardSized() }
         assertAll(
-            { assertTrue(minute.board > 50_000, "precondition: the board (${minute.board} B) outweighs a presence post") },
-            { assertTrue(boardSized.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE }, "board-sized frames (${minute.board} B) over a minute idle, per spoke: $boardSized") },
+            { assertTrue(minutes.values.all { it.board > 50_000 }, "precondition: the board outweighs a presence post: ${minutes.mapValues { it.value.board }}") },
+            { assertTrue(boardSized.values.all { per -> per.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE } }, "board-sized frames over a minute idle, per interval and spoke: $boardSized") },
         )
     }
 
@@ -186,7 +207,12 @@ class IdleTrafficTest {
      * so the same minute gave different counts run to run (tractat-us/kuilt#3622). Two runs here
      * must put the same frames, of the same sizes in the same order, on every spoke's link.
      *
-     * This pins the random: with the Quilters' draws unseeded it reds every run. It can't pin the
+     * This pins the random: with the Quilters' draws unseeded it reds every run. Since kuilt
+     * 0.7.0-dev.1995 the minute ships no whole board even at 1 s, so the comparison rests on the
+     * digests' order alone, and the precondition asks that every link carries them: more frames up
+     * than the same minute with no anti-entropy round in it ([NO_ROUND]). Presence and liveness
+     * alone give every link frames both ways, so a bare "frames on every link" holds with
+     * anti-entropy gone, and so does "more frames up than presence posts". It can't pin the
      * clock. A whole run takes well under a second of wall time, so a wall clock makes every write
      * look recent to the skip, every run alike, and the counts come out wrong but repeatable. The
      * clock is pinned by `BoardClient` and `BoardRelay` taking it with no default.
@@ -194,14 +220,12 @@ class IdleTrafficTest {
     @Test
     fun anIdleMinuteReplaysFrameForFrame() {
         val config = BEE_QUILTER_CONFIG.copy(antiEntropyInterval = 1.seconds)
-        val runs = List(2) {
-            lateinit var minute: IdleMinute
-            runTest(StandardTestDispatcher()) { minute = idleMinute(config) }
-            minute
-        }
+        val runs = List(2) { measureIdleMinute(config) }
+        val noRound = measureIdleMinute(config.copy(antiEntropyInterval = NO_ROUND)).frames.mapValues { it.value.up.size }
+        val up = runs[0].frames.mapValues { it.value.up.size }
         assertAll(
-            { assertTrue(runs[0].boardSized().values.any { it > 0 }, "precondition: the minute ships whole boards: ${runs[0].boardSized()}") },
-            { assertEquals(runs[0], runs[1], "two runs of one idle minute, board-sized frames per spoke: ${runs.map { it.boardSized() }}") },
+            { assertTrue(up.all { (spoke, frames) -> frames > noRound.getValue(spoke) }, "precondition: every spoke sends anti-entropy frames, up per spoke $up against $noRound with no round") },
+            { assertEquals(runs[0], runs[1], "two runs of one idle minute, frames per spoke: ${runs.map { run -> run.frames.mapValues { (_, f) -> f.up.size + f.down.size } }}") },
         )
     }
 

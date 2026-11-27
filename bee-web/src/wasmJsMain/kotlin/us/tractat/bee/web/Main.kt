@@ -47,6 +47,7 @@ import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.crdt.Dot
 import us.tractat.kuilt.crdt.ReplicaId
 import us.tractat.kuilt.crdt.VersionVector
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.RaftConfig
 import us.tractat.kuilt.websocket.KtorClientLoom
@@ -410,6 +411,7 @@ private fun claimsConnection(http: HttpClient, pin: BoardPin, query: String, sco
                 endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(socketUrl(ClaimsLink.PATH, query), ClaimsLink.SERVER, ClaimsLink.SESSION))),
                 scope = linkScope,
                 raftConfig = RaftConfig(),
+                deviceKeys = InMemoryDeviceKeyStore(),
                 clock = clock,
                 random = Random.Default,
             )

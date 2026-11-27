@@ -17,6 +17,7 @@ import us.tractat.bee.core.SpokeLoom
 import us.tractat.bee.core.askBoardId
 import us.tractat.bee.core.pinnedTo
 import us.tractat.kuilt.crdt.ReplicaId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.NodeId
 import kotlin.random.Random
 import kotlin.time.Instant
@@ -78,7 +79,7 @@ class BridgePeer private constructor(val bridge: BeeBridge, val board: BoardClie
             val claims = ClaimsConnection(
                 scope = scope,
                 nextNode = { NodeId("mcp-${Uuid.random()}") },
-                open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, clock, random) },
+                open = { node, linkScope -> ClaimsLink.overWebSocket(node, http, host, pin, linkScope, InMemoryDeviceKeyStore(), clock, random) },
                 // A dial's failure can name the URL it dialled, key and all: log it as the host describes it.
                 onFailure = { failure -> logger.warn { "The claims link failed; rebuilding it. ${host.describe(failure)}" } },
                 retryDelay = ClaimsConnection.jitteredBackoff(random),

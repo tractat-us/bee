@@ -21,6 +21,7 @@ import us.tractat.kuilt.cluster.clusterClient
 import us.tractat.kuilt.core.Loom
 import us.tractat.kuilt.core.PeerId
 import us.tractat.kuilt.core.util.ExponentialBackoff
+import us.tractat.kuilt.identity.DeviceKeyStore
 import us.tractat.kuilt.raft.ClusterConfig
 import us.tractat.kuilt.raft.ForwardedProposalFailedException
 import us.tractat.kuilt.raft.LeadershipLostException
@@ -71,6 +72,9 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
          * A claims link under [node], dialling through the loom [loomFor] builds for the peer id
          * `PeerId(node.value)`. The loom and the learner can't disagree on who this client is.
          *
+         * @param deviceKeys the key this link proves to get into the claims room. Give each link a
+         *   fresh `InMemoryDeviceKeyStore`: a link is a new device to the voter, as it is a new [node],
+         *   so nothing about one link carries to the next. The host admits any key (`claimsAdmission()` in bee-host's `SocketGate`).
          * @param random draws the [ClaimsClient]'s incarnation; never seed it from [node].
          */
         @Suppress("LongParameterList")
@@ -80,6 +84,7 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
             endpoints: ClusterEndpoints,
             scope: CoroutineScope,
             raftConfig: RaftConfig,
+            deviceKeys: DeviceKeyStore,
             clock: () -> Instant,
             random: Random,
         ): ClaimsLink {
@@ -89,6 +94,7 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
                 clientNodeId = node,
                 clusterConfig = ClusterConfig(voters = setOf(VOTER), learners = setOf(node)),
                 raftConfig = raftConfig,
+                deviceKeyStore = deviceKeys,
                 clock = clock,
             )
             return ClaimsLink(node, cluster, ClaimsClient(cluster, node, clock, scope, random))
@@ -105,6 +111,7 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
             host: HostAddress,
             board: BoardPin,
             scope: CoroutineScope,
+            deviceKeys: DeviceKeyStore,
             clock: () -> Instant,
             random: Random,
         ): ClaimsLink = open(
@@ -113,6 +120,7 @@ class ClaimsLink private constructor(val node: NodeId, private val cluster: Clus
             endpoints = ClusterEndpoints(listOf(WebSocketAdvertisement(host.socket(PATH), SERVER, SESSION))),
             scope = scope,
             raftConfig = RaftConfig(),
+            deviceKeys = deviceKeys,
             clock = clock,
             random = random,
         )

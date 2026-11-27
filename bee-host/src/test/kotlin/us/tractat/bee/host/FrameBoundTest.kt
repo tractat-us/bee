@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.MAX_FRAME_BYTES
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.test.assertAll
 import java.io.DataInputStream
 import java.io.EOFException
@@ -39,7 +40,7 @@ class FrameBoundTest {
     private val pairing = Pairing(clock, SecureSecrets(SecureRandom()), memoryKeys())
     private val board = BoardId.mint()
     private val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
-        mountEndpoints(board, pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock, Admitters.WHOEVER_COMES), Invitation.Closed)
+        mountEndpoints(board, pairing, SiteRule(emptySet()), PeerAddress.DIRECT, ArrivalAddress.DIRECT, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock, Admitters.WHOEVER_COMES), Invitation.Closed, InMemoryDeviceKeyStore())
     }.start(wait = false)
     private val port = runBlocking { server.engine.resolvedConnectors().first().port }
 

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import us.tractat.bee.core.BoardId
 import us.tractat.bee.core.InviteLinks
 import us.tractat.bee.core.InviteWire
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.test.assertAll
 import java.net.InetAddress
 import java.security.SecureRandom
@@ -35,7 +36,7 @@ class InviteEndpointTest {
     private fun host(invitation: Invitation, test: suspend (HttpClient) -> Unit) = testApplication {
         application {
             val desk = PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, { Clock.System.now() }, Admitters.WHOEVER_COMES)
-            mountEndpoints(BoardId.mint(), pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, desk, invitation)
+            mountEndpoints(BoardId.mint(), pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, desk, invitation, InMemoryDeviceKeyStore())
         }
         test(client)
     }

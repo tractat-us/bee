@@ -1,5 +1,5 @@
 [versions]
-# Kotlin, coroutines, serialization and atomicfu follow the kuilt pin below (e979122a9).
+# Kotlin, coroutines, serialization and atomicfu follow the kuilt pin below (5607981d62).
 kotlin = "2.4.21"
 # Ktor runs ahead of kuilt (3.5.2) until tractat-us/kuilt#3150: 3.6.1 sends a WebSocket's last
 # frame, such as the host's 1009, before the connection closes (KTOR-9987 Netty, KTOR-10035
@@ -10,10 +10,11 @@ kotlinx-serialization = "1.13.0"
 atomicfu = "0.33.0"
 kotlinLogging = "8.0.6"
 logback = "1.6.6"
-# kuilt publish run 1926, kuilt commit e979122a9: the kuilt#3617 fixes, so idle anti-entropy stops
-# shipping whole boards (#3618 heartbeat byte compare, #3619 stateRoot cached per state value,
-# #3621 one outstanding FullStateRequest per Quilter and a per-peer send slot).
-kuilt = "0.7.0-dev.1926"
+# kuilt publish run 1995, kuilt commit 5607981d62: key-bound room admission. A claims link proves a
+# device key to get in (kuilt#3599), the claims host asks an AdmissionPolicy about each newcomer
+# (#3699) and hands it a pass back (#3701), so clusterClient and KtorRoomHost each take a
+# DeviceKeyStore. Also the quilter's vector digest (#3622) and its behind-state replies (#3629).
+kuilt = "0.7.0-dev.1995"
 mcp = "0.16.0"
 kotlinx-browser = "0.5.0"
 # bee-dogfood reads docs/project/plan.yaml, plain JSON in YAML form (bee#21).
@@ -29,6 +30,7 @@ kuilt-cluster = { module = "us.tractat.kuilt:kuilt-cluster" }
 kuilt-raft = { module = "us.tractat.kuilt:kuilt-raft" }
 kuilt-liveness = { module = "us.tractat.kuilt:kuilt-liveness" }
 kuilt-store = { module = "us.tractat.kuilt:kuilt-store" }
+kuilt-identity = { module = "us.tractat.kuilt:kuilt-identity" }
 kuilt-test = { module = "us.tractat.kuilt:kuilt-test" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }

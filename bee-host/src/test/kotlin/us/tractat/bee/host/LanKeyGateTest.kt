@@ -25,6 +25,7 @@ import us.tractat.bee.core.PairingMessage
 import us.tractat.bee.core.PairingPoll
 import us.tractat.bee.core.PairingWire
 import us.tractat.bee.core.PeerIdentity
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.test.assertAll
 import java.security.SecureRandom
 import kotlin.test.Test
@@ -57,7 +58,7 @@ class LanKeyGateTest {
 
     private fun gated(test: suspend ApplicationTestBuilder.(HttpClient) -> Unit) = testApplication {
         application {
-            mountEndpoints(BOARD_ID, pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }, Admitters.WHOEVER_COMES), Invitation.Closed)
+            mountEndpoints(BOARD_ID, pairing, SiteRule(setOf(LAN_NAME)), TEST_PEERS, TEST_ARRIVALS, PairingDesk(pairing, CompletableDeferred(), Pairing.DWELL, clock = { Clock.System.now() }, Admitters.WHOEVER_COMES), Invitation.Closed, InMemoryDeviceKeyStore())
             routing {
                 for (gated in listOf(BoardRelay.PATH, BeeHost.CLAIMS_PATH)) {
                     route(gated) { get(PROBE) { call.respondText("through the gate") } }

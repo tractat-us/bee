@@ -17,6 +17,7 @@ import us.tractat.bee.core.PeerIdentity
 import us.tractat.kuilt.cluster.ClusterEndpoints
 import us.tractat.kuilt.cluster.clusterClient
 import us.tractat.kuilt.core.PeerId
+import us.tractat.kuilt.identity.InMemoryDeviceKeyStore
 import us.tractat.kuilt.raft.ClusterConfig
 import us.tractat.kuilt.raft.NodeId
 import us.tractat.kuilt.raft.RaftConfig
@@ -60,6 +61,7 @@ class WasmClaimTest {
                     clientNodeId = node,
                     clusterConfig = ClusterConfig(voters = setOf(NodeId("bee-host")), learners = setOf(node)),
                     raftConfig = RaftConfig(),
+                    deviceKeyStore = InMemoryDeviceKeyStore(),
                     clock = { Clock.System.now() },
                 )
                 val claims = ClaimsClient(cluster, node, { Clock.System.now() }, scope, Random.Default)

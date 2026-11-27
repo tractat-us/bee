@@ -25,6 +25,8 @@ kotlin {
             api(libs.kuilt.quilter)
             api(libs.kuilt.cluster)
             api(libs.kuilt.raft)
+            // A claims link proves a device key to the voter (ClaimsLink.open takes the store).
+            api(libs.kuilt.identity)
             // The board spoke (Task 3) is shaped like kuilt's RelaySpokeLoom: an HttpClient
             // and a KtorMeshClientLoom. kuilt-websocket keeps ktor-client-core as
             // `implementation`, so bee-core names it itself.
