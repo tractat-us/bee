@@ -112,6 +112,13 @@ library (tractat-us/kuilt#3159). It folds into [`setup.md`](../setup.md) and
 `0.7.0-dev.1995`, where `KtorRoomHost` and `clusterClient` take a `DeviceKeyStore` and the claims
 room takes a `HostAdmission` whose policy admits everyone the gate let through.
 
+It lands in eight slices, in this order: [#290](https://github.com/tractat-us/bee/issues/290),
+[#283](https://github.com/tractat-us/bee/issues/283), [#284](https://github.com/tractat-us/bee/issues/284),
+[#285](https://github.com/tractat-us/bee/issues/285), [#286](https://github.com/tractat-us/bee/issues/286),
+[#287](https://github.com/tractat-us/bee/issues/287), [#288](https://github.com/tractat-us/bee/issues/288)
+and [#289](https://github.com/tractat-us/bee/issues/289). What kuilt lacks is
+tractat-us/kuilt#3749 to tractat-us/kuilt#3752.
+
 **The move.** Today a device's way back in is a secret it carries and shows, the key in its `?k=`.
 After, it is a key it holds and never shows, a kuilt `DeviceKey`, and a **pass** the host signed
 for that key, a kuilt `Grant`. A pass is useless without the key it names, so the host keeps no
@@ -144,13 +151,13 @@ gate's verdict is a sealed `Admitted`, built only by the gate:
 A browser can't set a header on a WebSocket upgrade, so a proof rides in the query. The client
 fetches a nonce, signs it with `signApp("bee/socket", nonce ‖ board ‖ path)`, and dials with its
 `DidKey`, the nonce, the signature and its pass. The host spends each nonce once, within a minute.
-Until kuilt ships this (draft K1), bee builds it over `signApp` and `verifyApp`, behind a comment
+Until kuilt ships this (tractat-us/kuilt#3749), bee builds it over `signApp` and `verifyApp`, behind a comment
 naming the kuilt issue.
 
 **The claims room.** A device back on a good `AnyRoomOfIssuer` pass is let in by kuilt without
 the policy. A newcomer there (a loopback page, a device the join link let in, a bridge on a token)
 is admitted by `BeePolicy` on `ThisRoom` terms. Each connection is its own room, so such a pass
-dies with the connection. Once kuilt's admission request carries the link's principal (draft K2),
+dies with the connection. Once kuilt's admission request carries the link's principal (tractat-us/kuilt#3750),
 the policy refuses a newcomer whose proven key isn't the one the gate saw.
 
 **Bee#159's ruling, kept whole.** Iain: "only a session on a paired device's own key, or with no
@@ -209,8 +216,8 @@ doesn't know, so one written into `keys` would stop an older host from booting.
   (Iain, [#159](https://github.com/tractat-us/bee/pull/159); kuilt#3159 principle 4)
 - **The board on a kuilt room, so `HostAdmission` decides the board socket too.** The board is a
   `hostedOverlay` hub, and each `KtorRoomHost` connection is a two-peer room. Rewriting the relay
-  costs far more than a proof at the gate. Reopen when kuilt's hub links can prove a key, K3 of
-  the kuilt gaps this PR drafts. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
+  costs far more than a proof at the gate. Reopen when kuilt's hub links can prove a key,
+  tractat-us/kuilt#3751. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **Pairing by code inside the room's admission.** `AdmissionPolicy.decide` must answer within
   the host's admit timeout, and a person typing a code takes minutes. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **The pairing code, invite secret or join link carried in the room's Hello.** The Hello's only
@@ -223,20 +230,21 @@ doesn't know, so one written into `keys` would stop an older host from booting.
   couldn't tell one person's Claude from another's. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
 - **Passes that run out and are renewed while connected.** A screen opens no claims link, so its
   pass would never be renewed and its screen would stop. Today a paired key never runs out. ([#281](https://github.com/tractat-us/bee/pull/281), 2026-11-26)
-
-## Open
-
-- **A device the join link let in: should it be paired on its own key?** It would come back as
-  itself, and its Claude too, but `--new-link` would no longer cut it off. Recommendation: no,
-  not in this migration; ask again with [#149](https://github.com/tractat-us/bee/issues/149).
-- **A LAN page over plain HTTP before [#73](https://github.com/tractat-us/bee/issues/73).** It has
-  no WebCrypto, so it can't hold a key. Recommendation: land pairing's pass after #73, and keep
-  minting bearer keys on LAN until then, so there is one path at a time.
-- **A LAN page's claims link on kuilt `0.7.0-dev.1995`.** `clusterClient` needs a
-  `DeviceKeyStore`, and a page with no WebCrypto can't make even an in-memory key. Recommendation:
-  such a page opens no claims link until #73, as a screen opens none, so it can't answer an
-  orphan decision meanwhile. The bump has to choose before it merges.
-- **When legacy tokens stop.** Recommendation: at the next `--forget-devices`, with no clock.
-- **A disguised writer.** An admitted writer can declare one identity and show another, since
-  presence is self-declared. The fix is attested authors, tractat-us/kuilt#3149;
-  `--forget-devices` is the backstop.
+- **Pairing a device the join link let in, on its own key, in this migration.** It would come
+  back as itself, and its Claude too, but `--new-link` would no longer cut it off. Ask again with
+  [#149](https://github.com/tractat-us/bee/issues/149). (Iain, "#281 seeds; file the work",
+  2026-11-26)
+- **Pairing's pass before [#73](https://github.com/tractat-us/bee/issues/73).** A LAN page over
+  plain HTTP has no WebCrypto, so it can't hold a key. Pairing's pass lands after #73
+  ([#289](https://github.com/tractat-us/bee/issues/289)), and LAN keeps minting bearer keys until
+  then, so there is one path at a time. (Iain, 2026-11-26)
+- **A claims link from a LAN page before #73.** On kuilt `0.7.0-dev.1995`, `clusterClient` needs a
+  `DeviceKeyStore`, and a page with no WebCrypto can't make even an in-memory key. Such a page
+  opens no claims link, as a screen opens none, so it can't answer an orphan decision meanwhile
+  ([#282](https://github.com/tractat-us/bee/issues/282)). (Iain, "Accept, track in issue", on
+  [#280](https://github.com/tractat-us/bee/pull/280), 2026-11-26)
+- **A clock on legacy tokens.** They stop at the next `--forget-devices`, and at no set time
+  ([#288](https://github.com/tractat-us/bee/issues/288)). (Iain, 2026-11-26)
+- **Closing the disguised writer in this migration.** An admitted writer can declare one identity
+  and show another, since presence is self-declared. It waits on attested authors,
+  tractat-us/kuilt#3149, and `--forget-devices` is the backstop. (Iain, 2026-11-26)
