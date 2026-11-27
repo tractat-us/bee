@@ -48,6 +48,12 @@ private const val BOARD_FRACTION = 2
  */
 private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
 
+/**
+ * An anti-entropy interval longer than the whole run, so no round falls inside the idle minute:
+ * what is left is presence and each link's liveness, 72 frames up per spoke on 0.7.0-dev.1995.
+ */
+private val NO_ROUND = 10.minutes
+
 /** The relay seeds the reconnect runs under: each replays exactly, and each is another schedule. */
 private val SEEDS = 0..4
 
@@ -103,6 +109,13 @@ private suspend fun TestScope.idleMinute(config: QuilterConfig): IdleMinute {
         settle(Presence.EVERY)
     }
     return IdleMinute(board, star.taps.mapValues { (_, tap) -> IdleMinute.Frames(tap.up.toList(), tap.down.toList()) })
+}
+
+/** [idleMinute] under [config], in a test of its own. */
+private fun measureIdleMinute(config: QuilterConfig): IdleMinute {
+    lateinit var minute: IdleMinute
+    runTest(StandardTestDispatcher()) { minute = idleMinute(config) }
+    return minute
 }
 
 /**
@@ -188,9 +201,11 @@ class IdleTrafficTest {
      * must put the same frames, of the same sizes in the same order, on every spoke's link.
      *
      * This pins the random: with the Quilters' draws unseeded it reds every run. Since kuilt
-     * 0.7.0-dev.1995 the minute ships no whole board even at 1 s, so the precondition asks only that
-     * every link carries frames; an unseeded relay random still reds the comparison on the digests'
-     * order alone. It can't pin the
+     * 0.7.0-dev.1995 the minute ships no whole board even at 1 s, so the comparison rests on the
+     * digests' order alone, and the precondition asks that every link carries them: more frames up
+     * than the same minute with no anti-entropy round in it ([NO_ROUND]). Presence and liveness
+     * alone give every link frames both ways, so a bare "frames on every link" holds with
+     * anti-entropy gone, and so does "more frames up than presence posts". It can't pin the
      * clock. A whole run takes well under a second of wall time, so a wall clock makes every write
      * look recent to the skip, every run alike, and the counts come out wrong but repeatable. The
      * clock is pinned by `BoardClient` and `BoardRelay` taking it with no default.
@@ -198,13 +213,11 @@ class IdleTrafficTest {
     @Test
     fun anIdleMinuteReplaysFrameForFrame() {
         val config = BEE_QUILTER_CONFIG.copy(antiEntropyInterval = 1.seconds)
-        val runs = List(2) {
-            lateinit var minute: IdleMinute
-            runTest(StandardTestDispatcher()) { minute = idleMinute(config) }
-            minute
-        }
+        val runs = List(2) { measureIdleMinute(config) }
+        val noRound = measureIdleMinute(config.copy(antiEntropyInterval = NO_ROUND)).frames.mapValues { it.value.up.size }
+        val up = runs[0].frames.mapValues { it.value.up.size }
         assertAll(
-            { assertTrue(runs[0].frames.values.all { it.up.isNotEmpty() && it.down.isNotEmpty() }, "precondition: every spoke's link carries frames both ways: ${runs[0].frames}") },
+            { assertTrue(up.all { (spoke, frames) -> frames > noRound.getValue(spoke) }, "precondition: every spoke sends anti-entropy frames, up per spoke $up against $noRound with no round") },
             { assertEquals(runs[0], runs[1], "two runs of one idle minute, frames per spoke: ${runs.map { run -> run.frames.mapValues { (_, f) -> f.up.size + f.down.size } }}") },
         )
     }
