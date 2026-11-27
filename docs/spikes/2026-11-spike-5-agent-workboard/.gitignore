@@ -1,0 +1,3 @@
+# A live map's session id, surface counter and log (livemap-loop.sh)
+*.state/
+scripts/bee-sid
