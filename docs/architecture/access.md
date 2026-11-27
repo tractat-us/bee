@@ -11,7 +11,8 @@ seed. The kept HTTP sessions of [#159](https://github.com/tractat-us/bee/pull/15
 ## Invariants
 
 1.  **A key admits only once the host has saved its hash, or holds it from memory, and today it
-    stops admitting only at a boot.** The join link's key is kept as it is, since the host prints
+    stops admitting only at a boot.** The one exception is a device key whose save fails: it is
+    logged and admits until the next boot. The join link's key is kept as it is, since the host prints
     the link on every start. A device's key, paired by code or given by an invite, is kept as its
     SHA-256. The hosted owner key and the host's own bridge key are held in memory and never
     saved. `--new-link` and `--forget-devices` are the only revokes, and `--forget-devices` forgets
@@ -43,10 +44,11 @@ seed. The kept HTTP sessions of [#159](https://github.com/tractat-us/bee/pull/15
     [`product.md`](product.md) invariant 3. Enforcer: `Invites`, whose constructor is private, so
     `boot` is the only way invites load ([`Invites.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/Invites.kt),
     `InvitesTest`); `HostedInviteTest`'s `theSecretAppearsInNoLogAndInNoAnswerButTheMint`.
-6.  **An HTTP MCP session comes back from a host restart as itself only on a key one device holds,
-    or on no key from the host's own machine, under a name someone chose (Iain, [#159](https://github.com/tractat-us/bee/pull/159)).**
+6.  **An HTTP MCP session comes back from a host restart as itself only on a key that isn't the
+    join link's, or on no key from the host's own machine, under a name someone chose (Iain, [#159](https://github.com/tractat-us/bee/pull/159)).**
     The join link's key never resumes, whatever the name, since everyone holding the link holds
-    it. Each kept identity goes to at most one session, and two kept sessions under one name and
+    it. A paired device's key qualifies, and so does the hosted owner key, though every one of the
+    owner's tabs and machines may hold it. Each kept identity goes to at most one session, and two kept sessions under one name and
     key go to neither. Enforcer: `HttpBridges.resumable` and `KeptIdentities`
     ([`KeptSessions.kt`](../../bee-mcp/src/main/kotlin/us/tractat/bee/mcp/KeptSessions.kt),
     `SessionNameTest`, `KeptIdentitiesTest`, `McpHttpRestartTest`'s
@@ -94,7 +96,11 @@ loopback with the host's own `bridgeKey`. It keeps each resumable session's iden
 which makes each accepted connection a two-peer room of its own, under a `serverCluster`
 ([`ClaimsVoter.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/ClaimsVoter.kt)). The board
 is a `KtorConnectionSource` feeding a `hostedOverlay` hub ([`BoardRelay.kt`](../../bee-host/src/main/kotlin/us/tractat/bee/host/BoardRelay.kt)),
-which runs no admission of its own. Both sit behind the same key gate.
+which runs no admission of its own. Both sit behind the same key gate. On kuilt `0.7.0-dev.1995`
+([#280](https://github.com/tractat-us/bee/pull/280)) each claims link proves a fresh in-memory
+device key, the host's key is in memory too, and the room's policy is `AdmissionPolicy.open()`
+with nothing revoked, so the gate alone decides. A page with no WebCrypto, a LAN page over plain
+HTTP, opens no claims link ([#282](https://github.com/tractat-us/bee/issues/282)).
 
 **Who is who is declared, not known.** A person is `human:<name>` from the page's `?name=`, an
 agent's identity is minted by its bridge, and each peer posts its own presence to the board
@@ -112,8 +118,8 @@ library (tractat-us/kuilt#3159). It folds into [`setup.md`](../setup.md) and
 `0.7.0-dev.1995`, where `KtorRoomHost` and `clusterClient` take a `DeviceKeyStore` and the claims
 room takes a `HostAdmission` whose policy admits everyone the gate let through.
 
-It lands in eight slices, in this order: [#290](https://github.com/tractat-us/bee/issues/290),
-[#283](https://github.com/tractat-us/bee/issues/283), [#284](https://github.com/tractat-us/bee/issues/284),
+It lands in nine slices, in this order: [#290](https://github.com/tractat-us/bee/issues/290),
+[#283](https://github.com/tractat-us/bee/issues/283), [#284](https://github.com/tractat-us/bee/issues/284), [#291](https://github.com/tractat-us/bee/issues/291),
 [#285](https://github.com/tractat-us/bee/issues/285), [#286](https://github.com/tractat-us/bee/issues/286),
 [#287](https://github.com/tractat-us/bee/issues/287), [#288](https://github.com/tractat-us/bee/issues/288)
 and [#289](https://github.com/tractat-us/bee/issues/289). What kuilt lacks is
@@ -127,16 +133,16 @@ secret of the device's at all: its own key, which signs every pass, and a `Revoc
 | bee today | after | why |
 |---|---|---|
 | A paired device's key, minted by `Pairing`, kept as a hash in `keys` | The device's own `DeviceKey` from `DeviceKeyStore.platform`, and one pass on it, issued when the code is admitted: scope `AnyRoomOfIssuer`, no expiry | A paired key admits until `--forget-devices` today, and so does a pass with no expiry. `AnyRoomOfIssuer` because `KtorRoomHost` mints a room per connection, so a `ThisRoom` pass never brings a device back |
-| The pairing code and the join request surface | Stay bee's. The pairing request carries the device's `DidKey`; Admit answers a pass, not a key | Admission answers within its timeout; a person typing a code takes minutes. Who is trusted is the app's call (kuilt#3159, principle 3) |
+| The pairing code and the join request surface | Stay bee's. The pairing request carries the device's `DidKey`; Admit answers a pass, not a key | Admission answers within its timeout; a person typing a code takes minutes. Who is trusted is the app's call (Decided 3 of [the kuilt identity spec](https://github.com/tractat-us/kuilt/blob/epic/3159/docs/superpowers/specs/2026-11-12-identity-key-bound-admission-design.md)) |
 | An invite | Stays bee's: secret, counts and minter. Redeeming answers a pass for the redeemer's `DidKey`, and `mintedBy` becomes the minter's `DidKey` | Invite budgets are a kuilt non-goal |
 | The owner key | Stays bee's ticket, from `BEE_OWNER_KEY`. The owner's page trades it once for a pass on its own key | It is how a hosted board's first device gets in |
 | The join link's key | Stays bee's: a ticket the gate checks on every dial. Nothing is ever issued on it | Everyone holding the link holds it (below) |
 | Loopback | Stays bee's: the gate admits a local caller, with no pass | It is a fact about the transport, not an identity |
-| The host's in-memory `bridgeKey`, and `heldKeys` | Retire. The host's key is `DeviceKeyStore.platform("identity", dataDir)`: it signs every pass and is `KtorRoomHost`'s own | One key per device (kuilt#3159, principle 5) |
+| The host's in-memory `bridgeKey`, and `heldKeys` | Retire. The host's key is `DeviceKeyStore.platform("identity", dataDir)`: it signs every pass and is `KtorRoomHost`'s own | One key per device (Decided 5 of the kuilt identity spec) |
 | `--forget-devices` | Moves `identity/` aside, so every pass is `UntrustedIssuer`, as well as what it does today | Losing the host key is the safe direction (kuilt-identity) |
 | Revoking one device ([#164](https://github.com/tractat-us/bee/issues/164)) | `HostAdmission.revocations.revoke`, over `RevocationList.open` on `dataDir/revocations/` | One list, read by the gate and the claims room alike |
 | The key in the "Bring your Claude" line | A **Claude token**: a 256-bit bearer the page mints for its Claude, by proving its own key. The host keeps its hash and the `DidKey` that minted it | Claude Code holds only a URL, and a page's key can't leave the page. Stays bee's until #149's OAuth |
-| Kept HTTP sessions, keyed by the hash of `?k=` | `KeptIdentities` stays bee's, keyed by the Claude token. The host holds a `DeviceKey` per token, and each bridge dials with that key and a pass on it | kuilt keeps a device's key and passes, never an app's identities. A key per token makes each Claude its own device in the claims room, so #164 can evict it |
+| Kept HTTP sessions, keyed by the hash of `?k=` | `KeptIdentities` stays bee's, keyed by the Claude token's hash. The host holds a `DeviceKey` per token, and each bridge dials with that key, holding no pass: each claims link of its is a newcomer, and revoking its key evicts it | kuilt keeps a device's key and passes, never an app's identities. A key per token makes each Claude its own device in the claims room, so #164 can evict it |
 | Who is who | Stays bee's. `Member.key` gives the host a proven key per claims link | Attested authors are tractat-us/kuilt#3149 |
 
 **The gate.** Every board, claims and MCP call shows the gate exactly one of four things, and the
@@ -144,7 +150,9 @@ gate's verdict is a sealed `Admitted`, built only by the gate:
 
 - `Local`: it came from loopback, on a board that isn't hosted.
 - `JoinLink`: it holds the join link's key, on a LAN board.
-- `Token`: it holds a Claude token, on `/mcp` or a bridge's own sockets.
+- `Token`: it holds a bearer key the host admits that isn't the join link's: a Claude token, a
+  legacy token, or the owner key. It admits every path, as such a key does today, since the gate
+  can't tell a bridge's dial from a page's.
 - `Keyed`: it proved a `DidKey`, and `GrantTrust(hostKey, revocations)` finds the pass it shows
   `Valid`.
 
@@ -179,16 +187,18 @@ whatever the name, since everyone holding the link holds it." It now reads:
 |---|---|---|
 | The page (bee-web) | `DeviceKeyStore.platform("bee")`: a WebCrypto key the page can't export, in IndexedDB, with its pass | Every tab of the origin is one device, so a new tab no longer pairs again. Needs a secure context: loopback and hosted boards have one, a LAN page needs [#73](https://github.com/tractat-us/bee/issues/73) first |
 | A stdio bridge or the companion | `DeviceKeyStore.platform("bee", ~/.bee/device)`, one key per machine | Never under `~/.bee/host`, which is the host's. `BEE_HOST` carries a join link or a Claude token |
-| An HTTP bridge | A key the host holds for its Claude token, in `dataDir/bridges/`, with a pass the host issued it | The Claude itself holds the URL and nothing else |
+| An HTTP bridge | A key the host holds for its Claude token, in `dataDir/bridges/`. It holds no pass, since each claims link is a newcomer | The Claude itself holds the URL and nothing else |
 | The host | `DeviceKeyStore.platform("identity", dataDir)` | Moves with `--data-dir`, as the board does |
 
 **Migration, from the code.** New state goes in new files: `KeyFile.load` refuses a line it
 doesn't know, so one written into `keys` would stop an older host from booting.
 
 - `keys`: the `join` line stays. Each `device <hash>` line is a SHA-256 of a 256-bit bearer, the
-  same shape as a Claude token, so it carries over as a **legacy token**: it still admits `/mcp`
-  and a bridge's sockets, and a page holding one trades it for a pass on its first load. Trading
-  doesn't spend it, since the same key may sit in that person's Claude config.
+  same shape as a Claude token, so it carries over as a **legacy token**: it still admits as a
+  `Token`, and a page holding one trades it for a pass on its first load. Trading
+  doesn't spend it, since the same key may sit in that person's Claude config. Until pairing
+  answers a pass ([#289](https://github.com/tractat-us/bee/issues/289)), a LAN board keeps adding
+  `device` lines, since a LAN page can't hold a key before #73.
 - Pages keep their key in their tab's `sessionStorage`, so a closed tab holds nothing to migrate.
   An open tab trades. Anything else pairs again, as a new tab does today.
 - `http-sessions.json`: `caller` is the SHA-256 of `?k=`, which is the legacy token's hash, so
@@ -196,6 +206,8 @@ doesn't know, so one written into `keys` would stop an older host from booting.
 - `invites`: `mintedBy` holds key hashes. An invite lapses within a day and is forgotten a day
   later, so a host reads both forms for two days and converts none.
 - `BEE_OWNER_KEY` is unchanged. The host's own key is made on the first boot that needs it.
+  The owner key stays a `Token`, so a Claude added with it in `?k=` ([`deploy.md`](../deploy.md))
+  keeps working when `heldKeys` retires, and its kept sessions still resume.
 
 **Typed rules this adds**, each landing with its slice:
 
@@ -205,15 +217,18 @@ doesn't know, so one written into `keys` would stop an older host from booting.
 - `BeePolicy` answers bee's own `NewcomerTerms`, which has no reach, so it can't issue an
   `AnyRoomOfIssuer` pass. Test: a loopback newcomer's pass is refused on a second connection.
 - `HttpBridges.resumable` takes the gate's `Admitted` and its `when` is exhaustive, so a new way
-  on can't resume until someone says whether it may. `JoinLink` returns false.
-- A Claude token never reaches the board: `ClaudeToken` lives in bee-host, as `DeviceKey` does
-  (invariant 4).
+  on can't resume until someone says whether it may. `JoinLink` returns false. `Admitted` lives in
+  bee-mcp beside `PresentedKey`, since bee-host depends on bee-mcp. Kotlin can't stop another
+  file building one, so [#284](https://github.com/tractat-us/bee/issues/284) adds a guard test
+  that only `SocketGate` does.
+- A Claude token never reaches the board: `ClaudeToken` lives in bee-host, as bee's bearer
+  `DeviceKey` does (invariant 4), and `KeptIdentities` keys on its hash.
 
 ## Settled — don't reopen
 
 - **Granting the join link: issuing a pass to one key every holder of the link shares.** Everyone
   holding the link would hold the pass, and `--new-link` could no longer cut them off.
-  (Iain, [#159](https://github.com/tractat-us/bee/pull/159); kuilt#3159 principle 4)
+  (Iain, [#159](https://github.com/tractat-us/bee/pull/159); the kuilt identity spec's Decided 4)
 - **The board on a kuilt room, so `HostAdmission` decides the board socket too.** The board is a
   `hostedOverlay` hub, and each `KtorRoomHost` connection is a two-peer room. Rewriting the relay
   costs far more than a proof at the gate. Reopen when kuilt's hub links can prove a key,
@@ -248,3 +263,13 @@ doesn't know, so one written into `keys` would stop an older host from booting.
 - **Closing the disguised writer in this migration.** An admitted writer can declare one identity
   and show another, since presence is self-declared. It waits on attested authors,
   tractat-us/kuilt#3149, and `--forget-devices` is the backstop. (Iain, 2026-11-26)
+
+## Open
+
+- **Narrowing a `Token` off the board.** A Claude token admits every path, as its person's key
+  does today. Recommendation: keep it so until the gate can tell a bridge's dial from a page's;
+  ask again with [#149](https://github.com/tractat-us/bee/issues/149)'s OAuth.
+- **When the owner key stops admitting `/mcp`.** It stays a `Token`, so the owner's Claude keeps
+  working through the migration. Recommendation: not in this migration; once the owner's page
+  can mint a Claude token ([#287](https://github.com/tractat-us/bee/issues/287)),
+  [`deploy.md`](../deploy.md) tells the owner to use one instead.
