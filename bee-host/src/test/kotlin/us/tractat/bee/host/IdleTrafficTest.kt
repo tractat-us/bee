@@ -44,9 +44,12 @@ private const val BOARD_FRACTION = 2
  * with the Quilters on the wall clock. On 0.7.0-dev.1926 (kuilt#3617), with every Quilter on the
  * test scheduler's clock and a seeded random, each relay seed replays the same counts every run.
  * Across relay seeds 0 to 9, 1 s crossed 24 to 57 times, 5 s 2 to 5, and 30 s none. On
- * 0.7.0-dev.1995 (kuilt#3622 vector digests, #3629 behind-state replies), 1 s crosses none at seed 0.
+ * 0.7.0-dev.1995 (kuilt#3622 vector digests, #3629 behind-state replies), across relay seeds 0
+ * to 9, 1 s and the production 30 s cross none, and 5 s crosses once, to two of the three spokes.
+ * So 1 catches 1696 at 30 s, and only the 1 s run catches a fall back to 1926, which 30 s
+ * can't tell from 1995.
  */
-private const val BOARD_FRAMES_PER_IDLE_MINUTE = 8
+private const val BOARD_FRAMES_PER_IDLE_MINUTE = 1
 
 /**
  * An anti-entropy interval longer than the whole run, so no round falls inside the idle minute:
@@ -180,16 +183,20 @@ private suspend fun TestScope.reconnect(seed: Int): Reconnect {
  *
  * The test pins the production tuning ([BEE_QUILTER_CONFIG]) and makes the host [LAG] behind on
  * every link. The signal is a count of board-sized frames, which a working and a broken tuning
- * both produce but in very different numbers: one a round, against one a presence post.
+ * both produce but in very different numbers: one a round, against one a presence post. It also
+ * holds a 1 s backstop to the same bound, the case kuilt#3622 and #3629 fixed.
  */
 class IdleTrafficTest {
     @Test
-    fun anIdleBoardBehindALaggingHostShipsTheWholeBoardRarely() = runTest(StandardTestDispatcher()) {
-        val minute = idleMinute(BEE_QUILTER_CONFIG)
-        val boardSized = minute.boardSized()
+    fun anIdleBoardBehindALaggingHostShipsTheWholeBoardRarely() {
+        val minutes = mapOf(
+            "production" to measureIdleMinute(BEE_QUILTER_CONFIG),
+            "1 s" to measureIdleMinute(BEE_QUILTER_CONFIG.copy(antiEntropyInterval = 1.seconds)),
+        )
+        val boardSized = minutes.mapValues { it.value.boardSized() }
         assertAll(
-            { assertTrue(minute.board > 50_000, "precondition: the board (${minute.board} B) outweighs a presence post") },
-            { assertTrue(boardSized.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE }, "board-sized frames (${minute.board} B) over a minute idle, per spoke: $boardSized") },
+            { assertTrue(minutes.values.all { it.board > 50_000 }, "precondition: the board outweighs a presence post: ${minutes.mapValues { it.value.board }}") },
+            { assertTrue(boardSized.values.all { per -> per.values.all { it <= BOARD_FRAMES_PER_IDLE_MINUTE } }, "board-sized frames over a minute idle, per interval and spoke: $boardSized") },
         )
     }
 
